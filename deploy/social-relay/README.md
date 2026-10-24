@@ -12,6 +12,19 @@ Deployed as the Vercel project `editorgpt-social-relay` -> `https://editorgpt-so
 
 Editor environment: `SOCIAL_RELAY_URL`, `SOCIAL_RELAY_SECRET` (same value as `RELAY_SECRET` on Vercel).
 
+## Instagram through a downloader API (no cookies)
+Instagram asks datacenter IPs to log in, so yt-dlp alone needs cookies that expire. When `RAPIDAPI_KEY` is set on Vercel, Instagram links are
+downloaded through the RapidAPI "Instagram Post, Reels, Stories downloader" API first (from Vercel: RapidAPI refuses the Iran server with HTTP 451),
+and yt-dlp is only the fallback. The key lives in Vercel's encrypted environment and never reaches the editor.
+
+```
+npx vercel env add RAPIDAPI_KEY production        # paste your RapidAPI key when asked
+npx vercel deploy --prod
+curl https://editorgpt-social-relay.vercel.app/api/index      # {"ok": true, ..., "rapidapi": true}
+```
+Optional (if the provider's endpoint differs from the defaults `instagram-post-reels-stories-downloader-api.p.rapidapi.com` + `/instagram/` + `?url=`):
+`RAPIDAPI_HOST`, `RAPIDAPI_PATH`, `RAPIDAPI_URL_PARAM`. The media link is found by walking the JSON (video_url, download_url, `.mp4`; never thumbnails).
+
 ## What works from Vercel's network (tested 2026-10-23)
 - TikTok: works without login.
 - YouTube / Vimeo / Instagram: the sites ask datacenter IPs to sign in. Give the relay a logged-in session:
