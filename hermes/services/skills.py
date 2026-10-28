@@ -41,6 +41,14 @@ SCHEMA = ('{"title": str, "summary": str, "sections": [{"heading": str, "body": 
           '"hashtags": [str], "editor_brief": str, "next_steps": [str]}  (omit keys that do not apply; "editor_brief" is one paragraph an editor can produce a video from)')
 
 
+# the result keys each skill is expected to fill; everything else is left out so the page shows only what belongs to the skill
+KEYS = {"profile": "title, summary, sections, next_steps", "audit": "title, summary, sections, next_steps", "viral": "title, summary, sections, hooks, next_steps",
+        "plan": "title, summary, sections, next_steps", "reel": "title, hooks, script, caption, hashtags, editor_brief, next_steps",
+        "carousel": "title, summary, sections, caption, hashtags, editor_brief", "story": "title, sections, next_steps",
+        "caption": "title, caption, hashtags", "repurpose": "title, summary, sections, hooks, editor_brief, next_steps",
+        "comment": "title, sections", "reply": "title, sections", "dm": "title, sections, next_steps", "human": "title, script, summary"}
+
+
 def catalog() -> list[dict]:
     return [{"id": key, **{k: v for k, v in spec.items()}} for key, spec in SKILLS.items()]
 
@@ -109,7 +117,7 @@ async def run(user_id: str, skill: str, text: str, language: str = "fa", options
     voice = "Persian (Farsi), natural spoken style" if language == "fa" else "English"
     system = (f"You are Hermes, an Instagram strategist and writer. Follow this skill definition exactly.\n\n{_skill_text(skill)}\n\n"
               f"Write for the person in {voice}. Use only the facts given; never invent metrics, quotes or results. If account data is absent, say what is missing. "
-              f"Return ONLY JSON in this shape: {SCHEMA}")
+              f"Return ONLY JSON in this shape: {SCHEMA}. For this skill fill ONLY these keys: {KEYS[skill]} (leave every other key out).")
     user = json.dumps({"request": text[:12_000], "options": options or {}, "account": context}, ensure_ascii=False)
     model = os.environ.get("HERMES_LLM_MODEL")
     result = await asyncio.to_thread(_complete, system, user, model)

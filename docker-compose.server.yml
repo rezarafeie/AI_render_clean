@@ -72,9 +72,17 @@ services:
     cpus: 0.25
 
   hermes:
+    environment:
+      LMAPI_API_KEY_FILE: /run/secrets/lmapi_key        # the skills call the same LM gateway as the app
     volumes:
       - /opt/rafieigroup/editor-storage/tmp/hermes:/tmp
       - /opt/rafieigroup/editor-storage/cache/hermes:/root/.cache
+      - type: bind
+        source: ./.lmapi_key
+        target: /run/secrets/lmapi_key
+        read_only: true
+        bind:
+          create_host_path: false
     build: !reset null
     image: ${AI_RENDER_RUNTIME_IMAGE:-ai-render-runtime:latest}
     ports: !override
