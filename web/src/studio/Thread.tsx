@@ -36,6 +36,38 @@ function Attachments({ conversationId, ids, local, autoOpen }: { conversationId?
   return <div className="msg-files">{ids.map((id, index) => <RemoteAttachment key={id} conversationId={conversationId} id={id} index={index} autoOpen={autoOpen}/>)}</div>;
 }
 
+/** Time and a copy button under a message: shown on hover (mouse) or when the message is tapped (touch). */
+function MessageMeta({ text, at }: { text: string; at: number }) {
+  const [copied, setCopied] = React.useState(false);
+  const copy = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    try { await navigator.clipboard.writeText(text); }
+    catch { const area = document.createElement("textarea"); area.value = text; document.body.appendChild(area); area.select(); try { document.execCommand("copy"); } catch { /* clipboard unavailable */ } area.remove(); }
+    setCopied(true); window.setTimeout(() => setCopied(false), 1500);
+  };
+  return <div className="msg-meta">
+    {Number.isFinite(at) && at > 0 ? <time dateTime={new Date(at).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at)}</time> : null}
+    {text ? <button type="button" className="msg-copy" onClick={copy} aria-label={copied ? "Copied" : "Copy message"}><Icon name={copied ? "check" : "copy"} size={14}/><span>{copied ? "Copied" : "Copy"}</span></button> : null}
+  </div>;
+}
+
+function MessageRow({ item, conversationId, localFiles, linkTitles, onRetryMessage }: { item: Extract<TimelineItem, { kind: "message" }>; conversationId?: string; localFiles?: LocalFileInfo[]; linkTitles: Record<string, string>; onRetryMessage: () => void }) {
+  const [tapped, setTapped] = React.useState(false);
+  const toggle = (event: React.MouseEvent) => { if ((event.target as HTMLElement).closest("a,button,summary,input,textarea,video,audio")) return; if (window.getSelection()?.toString()) return; setTapped(value => !value); };
+  return <li className={`msg msg-${item.role}`} data-pending={item.pending || undefined} data-meta={tapped || undefined} onClick={toggle}>
+    {item.role === "user"
+      ? <>
+          <div className="bubble">
+            <Attachments conversationId={conversationId} ids={item.attachments} local={item.pending || item.failed ? localFiles : undefined}/>
+            {item.content ? <RichText text={item.content} linkTitles={linkTitles}/> : null}
+            {item.failed ? <div className="msg-failed"><Icon name="alert" size={14}/>Not sent <button className="link-btn" onClick={onRetryMessage}>Retry</button></div> : null}
+          </div>
+          {!item.pending && !item.failed ? <MessageMeta text={item.content} at={item.createdAt}/> : null}
+        </>
+      : <div className="assistant"><span className="assistant-mark" aria-hidden="true"><Icon name="spark" size={13}/></span><div className="assistant-body"><RichText text={item.content} linkTitles={linkTitles}/><Attachments conversationId={conversationId} ids={item.attachments} autoOpen/><MessageMeta text={item.content} at={item.createdAt}/></div></div>}
+  </li>;
+}
+
 export function Thread({ items, conversation, projects, localFiles, thinking, compactRender, retryHref, onOpenPreview, onEditAgain, onChoice, onRetryMessage, sourceUrl, linkTitles = {}, events = [] }: {
   items: TimelineItem[]; conversation: StudioConversation | null; projects: StudioProject[]; localFiles?: LocalFileInfo[];
   thinking?: string; compactRender?: boolean; retryHref?: string; onOpenPreview: (projectId: string) => void; onEditAgain: (projectId: string) => void;
@@ -43,15 +75,7 @@ export function Thread({ items, conversation, projects, localFiles, thinking, co
 }) {
   return <ol className="thread" aria-label="Conversation">
     {items.map(item => {
-      if (item.kind === "message") return <li key={item.id} className={`msg msg-${item.role}`} data-pending={item.pending || undefined}>
-        {item.role === "user"
-          ? <div className="bubble">
-              <Attachments conversationId={conversation?.id} ids={item.attachments} local={item.pending || item.failed ? localFiles : undefined}/>
-              {item.content ? <RichText text={item.content} linkTitles={linkTitles}/> : null}
-              {item.failed ? <div className="msg-failed"><Icon name="alert" size={14}/>Not sent <button className="link-btn" onClick={onRetryMessage}>Retry</button></div> : null}
-            </div>
-          : <div className="assistant"><span className="assistant-mark" aria-hidden="true"><Icon name="spark" size={13}/></span><div className="assistant-body"><RichText text={item.content} linkTitles={linkTitles}/><Attachments conversationId={conversation?.id} ids={item.attachments} autoOpen/></div></div>}
-      </li>;
+      if (item.kind === "message") return <MessageRow key={item.id} item={item} conversationId={conversation?.id} localFiles={localFiles} linkTitles={linkTitles} onRetryMessage={onRetryMessage}/>;
       if (item.kind === "motion") return <li key={item.id} className="thread-aux"><MotionGraphicCard motionId={item.motionId} events={events}/></li>;
       if (item.kind === "discovery") return <li key={item.id} className="thread-aux thread-wide"><DiscoveryPanel analysisId={item.analysisId} events={events}/></li>;
       if (item.kind === "activity") return <li key={item.id} className="thread-aux"><ActivityBlock steps={item.steps} live={item.live} retryHref={retryHref}/></li>;

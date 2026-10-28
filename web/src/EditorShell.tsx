@@ -109,7 +109,7 @@ export default function EditorShell() {
 
   return <ShellContext.Provider value={shellValue}>
     <div className="app" data-collapsed={collapsed || undefined} data-resizing={resizing || undefined}
-      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-bare={kind === "studio" || undefined}>
+      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-bare={kind === "studio" || undefined} data-hide-bottom-nav={/^\/studio\/[^/]+/.test(location.pathname) || undefined}>
       <a className="skip-link" href="#main-content">Skip to content</a>
 
       <aside ref={sidebarRef} className="sidebar" data-open={drawer || undefined} aria-label="Main navigation" tabIndex={-1}>

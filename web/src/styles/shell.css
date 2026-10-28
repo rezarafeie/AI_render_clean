@@ -119,6 +119,7 @@
     font-size: 11px; font-weight: 500; color: var(--text-3);
   }
   .bottom-nav a[aria-current="page"] { color: var(--text); }
+  .app[data-hide-bottom-nav] .bottom-nav { display: none; }   /* inside a chat only the chat's own tabs stay fixed */
   .app:has(.dock textarea:focus) .bottom-nav { display: none; }   /* the keyboard is up: the composer needs the room */
 }
 @media (min-width: 821px) {

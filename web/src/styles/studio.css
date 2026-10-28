@@ -600,3 +600,12 @@ button.act-row:hover { color: var(--text-2); }
 .fx-times { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .fx-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .fx-frame { width: min(100%, 260px); border-radius: var(--radius-md, 10px); border: 1px solid var(--border-subtle); justify-self: center; }
+
+/* Under each message: time and copy, on hover or when the message is tapped */
+.msg-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; min-height: 24px; font-size: 12px; color: var(--text-3); opacity: 0; transition: opacity var(--dur-fast, .15s); }
+.msg-user .msg-meta { justify-content: flex-end; }
+.msg:hover .msg-meta, .msg:focus-within .msg-meta, .msg[data-meta] .msg-meta { opacity: 1; }
+.msg-copy { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: -2px -6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.msg-copy:hover { color: var(--text); background: var(--active); }
+.msg { cursor: default; }
+@media (hover: none) { .msg-meta { opacity: 0; } .msg[data-meta] .msg-meta { opacity: 1; } }
