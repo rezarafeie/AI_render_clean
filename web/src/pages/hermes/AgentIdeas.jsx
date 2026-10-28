@@ -19,14 +19,28 @@ function producedBrief(item) {
     + caption(item);
 }
 
+/** A collapsed idea shows an icon for its engine, the title and a tagline; the rest opens on tap. */
+function IdeaShell({ item, tagline, children, className = '' }) {
+  const [open, setOpen] = useState(false);
+  const talking = item.engine === 'talking';
+  return <article className={`idea ${className}`} data-open={open || undefined} dir="rtl">
+    <button type="button" className="idea-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <span className="idea-icon" data-engine={item.engine} role="img" aria-label={talking ? 'صحبتی' : 'اکسپلینر'} title={talking ? 'صحبتی: خودتان ضبط می‌کنید' : 'اکسپلینر: ادیتور می‌سازد'}><Icon name={talking ? 'mic' : 'wand'} size={18}/></span>
+      <span className="idea-heading"><strong dir="auto">{item.title}</strong>{tagline ? <small dir="auto">{tagline}</small> : null}</span>
+      {item.status !== 'proposed' ? <span className="idea-status">{STATUS[item.status] || item.status}</span> : null}
+      <Icon name="chevronDown" size={16} className="idea-chev"/>
+    </button>
+    {open ? <div className="idea-body">{children}</div> : null}
+  </article>;
+}
+
 function TalkingCard({ item, busy, onSend, onReject }) {
   const file = useRef(null);
   const [video, setVideo] = useState(null);
   const open = item.status === 'proposed';
-  return <article className="idea idea-talking" dir="rtl">
-    <div className="idea-top"><span className="idea-tag" data-engine="talking">صحبتی</span><span className="idea-need">نیاز به ضبط ویدیو توسط شما</span>{!open ? <span className="idea-status">{STATUS[item.status] || item.status}</span> : null}</div>
-    <h3 className="idea-title" dir="auto">{item.title}</h3>
+  return <IdeaShell item={item} className="idea-talking" tagline={item.hook || item.why}>
     {item.why ? <p className="idea-why" dir="auto">{item.why}</p> : null}
+    <span className="idea-need">نیاز به ضبط ویدیو توسط شما</span>
     {item.script ? <div className="idea-script"><span className="idea-label">متن گفتاری</span><pre dir="auto">{item.script}</pre></div> : null}
     {array(item.on_screen).length ? <div className="idea-chips">{array(item.on_screen).map((t) => <span key={t} className="idea-chip">{t}</span>)}</div> : null}
     {array(item.shooting_tips).length ? <ul className="idea-tips">{array(item.shooting_tips).map((t) => <li key={t} dir="auto">{t}</li>)}</ul> : null}
@@ -40,16 +54,13 @@ function TalkingCard({ item, busy, onSend, onReject }) {
         <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => onReject(item)}>Skip</button>
       </div></div> : null}
     {item.conversation_id ? <div className="idea-actions"><Link className="btn btn-secondary btn-sm" to={`/studio/${item.conversation_id}`}>Open in editor</Link></div> : null}
-  </article>;
+  </IdeaShell>;
 }
 
 function ProducedCard({ item, busy, onBuild, onReject }) {
   const open = item.status === 'proposed';
   const scenes = array(item.scenes);
-  return <article className="idea" dir="rtl">
-    <div className="idea-top"><span className="idea-tag" data-engine="explainer">اکسپلینر</span><span className="idea-need is-ok">ادیتور می‌سازد</span>{!open ? <span className="idea-status">{STATUS[item.status] || item.status}</span> : null}</div>
-    <h3 className="idea-title" dir="auto">{item.title}</h3>
-    {item.concept ? <p className="idea-hook" dir="auto">{item.concept}</p> : null}
+  return <IdeaShell item={item} tagline={item.concept || item.hook || item.why}>
     {item.hook ? <p className="idea-why" dir="auto">هوک: «{item.hook}»</p> : null}
     {item.style || item.mood || item.music ? <div className="idea-chips">{[item.style, item.mood, item.music].filter(Boolean).map((t) => <span key={t} className="idea-chip" dir="auto">{t}</span>)}</div> : null}
     {scenes.length ? <ol className="idea-scenes">{scenes.map((s, i) => <li key={i} dir="auto"><b>{s.on_screen_text || `سکانس ${i + 1}`}</b><span>{s.visual}</span></li>)}</ol> : null}
@@ -60,7 +71,7 @@ function ProducedCard({ item, busy, onBuild, onReject }) {
         <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => onReject(item)}>Skip</button></> : null}
       {item.conversation_id ? <Link className="btn btn-secondary btn-sm" to={`/studio/${item.conversation_id}`}>Open in editor</Link> : null}
     </div>
-  </article>;
+  </IdeaShell>;
 }
 
 /** Ideas the agent proposes: talking reels (the full script and a place to upload the filmed video) and ideas the editor produces from scratch. */
