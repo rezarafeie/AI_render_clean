@@ -1,8 +1,10 @@
 import { ensureFreshToken, getToken, handleUnauthorized } from '../auth';
+import { demo, demoOn } from './hermesDemo';
 
 const BASE = (import.meta.env.VITE_HERMES_API_URL || '/api/hermes').replace(/\/$/, '');
 
 async function request(path, { method = 'GET', body, ...options } = {}) {
+  if (demoOn()) return demo(path.split('?')[0], body);
   await ensureFreshToken();
   const token = getToken();
   if (!token) handleUnauthorized();

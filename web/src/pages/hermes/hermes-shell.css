@@ -1,7 +1,9 @@
 /* Instagram studio shell: the application's own tokens (neutral surfaces, ink actions), tabs like the rest of the app,
    and the agent as a fixed side panel like the preview panel of the chat. */
 main:has(.hs-shell) { min-width: 0; padding: 0; }
-.hs-shell { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100%; background: var(--bg); color: var(--text); }
+.hs-shell.hm-shell { max-width: none; margin: 0; padding-bottom: 0; }   /* the legacy page styles are scoped to .hm-shell; the shell keeps that class */
+.legacy-frame:has(> .hs-shell) { padding: 0; max-width: none; min-height: 100%; }
+.hs-shell { display: grid; align-items: start; grid-template-columns: minmax(0, 1fr); min-height: 100%; background: var(--bg); color: var(--text); }
 .hs-shell.has-panel { grid-template-columns: minmax(0, 1fr) 400px; }
 .hs-main-col { min-width: 0; display: flex; flex-direction: column; }
 .hs-head { display: flex; align-items: center; gap: 16px; padding: 14px 24px 0; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
@@ -41,7 +43,7 @@ main:has(.hs-shell) { min-width: 0; padding: 0; }
 .hs-seg-inline { display: inline-flex; }
 
 /* the agent panel */
-.hs-agent { position: sticky; top: 0; height: 100vh; border-inline-start: 1px solid var(--border-subtle); background: var(--sidebar); display: flex; flex-direction: column; min-width: 0; }
+.hs-agent { position: sticky; top: 0; height: 100vh; max-height: 100dvh; direction: rtl; border-inline-start: 1px solid var(--border-subtle); background: var(--sidebar); display: flex; flex-direction: column; min-width: 0; }
 .hs-agent-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 14px 16px 10px; }
 .hs-agent-head > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .hs-agent .hs-seg { margin: 0 16px 10px; }

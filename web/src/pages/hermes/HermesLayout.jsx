@@ -34,7 +34,7 @@ export default function HermesLayout() {
   const updating = agent.refreshing || connection.refreshing;
 
   return <HermesContext.Provider value={value}>
-    <div className={`hs-shell ${connected && panel ? 'has-panel' : ''}`}>
+    <div className={`hm-shell hs-shell ${connected && panel ? "has-panel" : ""}`}>
       <div className="hs-main-col">
         <header className="hs-head">
           <div className="hs-title"><h1>Instagram</h1>{updating && <span className="hs-updating" role="status">Updating…</span>}</div>
