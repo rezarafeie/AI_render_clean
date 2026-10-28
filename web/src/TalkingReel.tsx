@@ -96,7 +96,7 @@ export function TalkingReelCard({ jobId, onChanged }: { jobId: string; onChanged
       <div className="section-header">
         <h2>ویدیوی صحبتی (پادکست ← ریل عمودی)</h2>
         <span className="tag">
-          {running ? `${STAGES[state.stage] || state.stage} ${state.progress}%` : paused ? `متوقف موقت — ${STAGES[state.stage] || state.stage} ${state.progress}%` : state.status === "canceled" ? "لغو شد" : state.status === "ready" ? "آماده‌ی بازبینی" : state.status === "done" ? "آماده" : state.status === "error" ? "خطا" : ""}
+          {running ? `${STAGES[state.stage] || state.stage} ${state.progress}%` : paused ? `متوقف موقت — ${STAGES[state.stage] || state.stage} ${state.progress}%` : state.status === "canceled" ? "لغو شد" : state.status === "ready" ? "آماده‌ی بازبینی" : state.status === "done" ? "آماده" : state.status === "needs_review" ? "نیازمند بررسی خروجی" : state.status === "error" ? "خطا" : ""}
         </span>
       </div>
       {busy && <div className="action-bar">
@@ -104,7 +104,7 @@ export function TalkingReelCard({ jobId, onChanged }: { jobId: string; onChanged
         <button className="btn-danger" onClick={() => control("cancel")}>لغو پردازش</button>
       </div>}
       <p className="muted">اول ترنسکریب و تحلیل انجام می‌شود. استایل پیشنهادی، تیتر قلاب، کلمات برجسته و زیرنویس‌ها را بازبینی کن؛ سپس رندر را شروع کن.</p>
-      {state.status === "error" && <div className="errors">{state.message}</div>}
+      {["error", "needs_review"].includes(state.status) && <div className="errors">{state.message}</div>}
       {error && <div className="errors">{error}</div>}
       {state.output && state.status === "done" && (
         <div className="row" style={{ alignItems: "flex-start" }}>

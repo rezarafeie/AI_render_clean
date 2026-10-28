@@ -368,7 +368,7 @@ export interface LocalizeLine {
 }
 
 export interface TalkingReelState {
-  status: "idle" | "running" | "paused" | "canceled" | "ready" | "done" | "error";
+  status: "idle" | "running" | "paused" | "canceled" | "ready" | "done" | "error" | "needs_review";
   stage: string;
   message: string;
   progress: number;

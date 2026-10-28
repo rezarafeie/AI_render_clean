@@ -26,8 +26,6 @@ class VisualBeat(BaseModel):
     why: str = ""
     sentence_indices: list[int] = Field(default_factory=list)
     spoken: str = ""
-    # Authored scene from creative/motion.py: {"html","css","js","speaker"}; None = built-in template.
-    custom: dict | None = None
 
     @model_validator(mode="after")
     def valid_range(self):

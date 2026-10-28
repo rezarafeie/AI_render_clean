@@ -16,45 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def render(config: dict, output: Path, *, job_dir: Path, on_progress=None) -> None:
+    from engine.motion_contract import validate_motion_config
     root = job_dir.resolve()
-    config = json.loads(json.dumps(config))
-    # The cinematic look is heavier to rasterise: it is opt-in per installation (REMOTION_LOOK=cinematic) until a render on that machine is measured.
+    config = validate_motion_config(config, root)
     config["look"] = os.environ.get("REMOTION_LOOK", "classic")
     if config["look"] == "cinematic":
         _enrich(config, root)
-    if not 1 <= len(config.get("scenes", [])) <= 30:
-        raise ValueError("Motion scene count is outside render limits")
-    if sum(scene.get("frames", 0) for scene in config["scenes"]) > 2700:
-        raise ValueError("Motion duration exceeds 90 seconds")
-    for scene in config["scenes"]:
-        for field in ("asset", "narration"):
-            if not scene.get(field):
-                continue
-            path = (root / scene[field]).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                raise ValueError(f"Invalid owned scene {field}")
-            scene[field] = str(path)
-        if not 1 <= scene["frames"] <= 900:
-            raise ValueError("Scene duration is outside render limits")
-        supporting = []
-        for item in scene.get("supporting_assets", [])[:3]:
-            path = (root / item).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                raise ValueError("Invalid owned supporting asset")
-            supporting.append(str(path))
-        scene["supporting_assets"] = supporting
-    if config.get("music"):
-        music = Path(config["music"])
-        if not music.is_absolute():
-            music = root / music
-        # Music is selected by the server from its approved library.
-        music = music.resolve()
-        if not (music.is_relative_to(root) or music.is_relative_to((ROOT / "assets/music").resolve())):
-            raise ValueError("Music must belong to the job or approved library")
-        if not music.is_file():
-            raise ValueError("Music asset is missing")
-        config["music"] = str(music.resolve())
-    config["font"] = str(ROOT / "presets/fonts/RAY-EXTRABLACK.TTF")
+    config = validate_motion_config(config, root)
+    config["font"] = str(ROOT / "presets/fonts/RAY-EXTRABOLD.TTF")
     config_path = output.with_suffix(".remotion.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, ensure_ascii=False))
@@ -127,25 +96,10 @@ def _enrich(config: dict, root: Path) -> None:
 
 def prepare_reel_config(config: dict, job_dir: Path) -> dict:
     """The scene config with everything the HyperFrames reel needs: a look per scene, caption text, absolute owned paths. Never trusts a path outside the job."""
-    root = job_dir.resolve()
-    config = json.loads(json.dumps(config))
-    _enrich(config, root)
-    for scene in config.get("scenes", []):
-        for field in ("asset", "narration"):
-            if not scene.get(field):
-                continue
-            path = Path(scene[field])
-            path = (path if path.is_absolute() else root / path).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                raise ValueError(f"Invalid owned scene {field}")
-            scene[field] = str(path)
-    if config.get("music"):
-        music = Path(config["music"])
-        music = (music if music.is_absolute() else root / music).resolve()
-        if not (music.is_relative_to(root) or music.is_relative_to((ROOT / "assets/music").resolve())) or not music.is_file():
-            raise ValueError("Music must belong to the job or approved library")
-        config["music"] = str(music)
-    return config
+    from engine.motion_contract import validate_motion_config
+    config = validate_motion_config(config, job_dir)
+    _enrich(config, job_dir.resolve())
+    return validate_motion_config(config, job_dir)
 
 
 def scene_config(storyboard, media: list[dict], narration: list[dict], job_dir: Path, music: str | None) -> dict:

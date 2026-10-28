@@ -59,3 +59,9 @@ def inspect_export(path: Path, *, width: int, height: int, fps: int,
         "video_codec": video.get("codec_name"), "audio_codec": audio.get("codec_name") if audio else None,
         "loudness_lufs": loudness, "true_peak_dbfs": true_peak, "warnings": warnings,
     }
+
+
+def inspect_talking_export(path: Path, *, duration: float) -> dict:
+    """Talking exports always use the delivery contract, independent of source FPS."""
+    return inspect_export(path, width=1080, height=1920, fps=30,
+                          duration=duration, target_lufs=None)

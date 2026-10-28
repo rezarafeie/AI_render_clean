@@ -677,7 +677,7 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         # ONE path for every kind of work: the opening reply, the understanding step, then this intake (reference video, linked pages, screenshots, all
         # narrated), then the flow's own tools. Only the tools differ between localize, talking reels, discovery, ads and motion graphics.
         sources = None
-        if intent in _SOURCE_INTENTS and (_urls(text) or _dangling_link(text) or (intent in {"motion", "motion_graphic"} and any(a["kind"] == "video" for a in attachments))):
+        if intent in _SOURCE_INTENTS and intent != "motion_graphic" and (_urls(text) or _dangling_link(text) or (intent in {"motion", "motion_graphic"} and any(a["kind"] == "video" for a in attachments))):
             sources = _gather_sources(conversation_id, user_key, text, attachments, brief=intent == "motion", max_pages=1 if intent == "motion" else 2,
                                       video_role="reference" if intent in {"motion", "motion_graphic"} else "source")
             if not sources.ok:
@@ -961,18 +961,8 @@ def _reference_style(profile) -> str:
 
 def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, attachments: list[dict] | None = None,
                           sources: "Sources | None" = None) -> None:
-    from app import motion_graphic
-    if sources is None:
-        sources = _gather_sources(conversation_id, user_key, text, attachments or [], max_pages=2)
-    if not sources.ok:
-        return                                           # the person has been told why nothing could be read, and what to send instead
-    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style)
-    run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "motion": {"motion_id": record["id"]}}))
-    basis = " و ".join(part for part in ("سبک رفرنس" if sources.style else "", "محتوای صفحه" if sources.pages else "") if part)
-    _assistant(conversation_id, user_key, "شروع کردم: اول طرح و صحنه‌ها را از روی درخواست" + (f" و {basis}" if basis else "")
-               + " می‌نویسم، بعد هر صحنه را طراحی، بررسی و رندر می‌کنم. پیشرفت را در آخرین پیام می‌بینید.")
-    _emit(conversation_id, "motion.created", motion_id=record["id"])
-    motion_graphic.start(motion_graphic.folder(user_key, conversation_id, record["id"]))
+    from creative.motion_graphic import NOT_AVAILABLE
+    _assistant(conversation_id, user_key, NOT_AVAILABLE)
 
 
 def _motion_summary(user_key: str, conversation: dict) -> dict | None:
@@ -992,27 +982,10 @@ def _motion_summary(user_key: str, conversation: dict) -> dict | None:
 
 def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, *, answering: bool) -> bool:
     """The understanding step decided this message belongs to the existing motion graphic. False when there is none to continue."""
-    from app import motion_graphic
-    pointer = (conversation.get("state") or {}).get("motion")
-    if not pointer:
+    if not (conversation.get("state") or {}).get("motion"):
         return False
-    try:
-        directory = motion_graphic.locate(pointer["motion_id"], user_key)
-    except KeyError:
-        return False
-    record = motion_graphic.load(directory)
-    if record["status"] == "needs_input":
-        motion_graphic.answer(directory, text)
-        _assistant(conversation_id, user_key, "ممنون؛ با همین اطلاعات ادامه می‌دهم.")
-    elif record["status"] in motion_graphic.ACTIVE:
-        _assistant(conversation_id, user_key, "هنوز در حال ساخت نسخهٔ فعلی هستم؛ تا تمام شود صبر کنید و بعد تغییرتان را بنویسید.")
-    elif not record["versions"]:
-        motion_graphic.start(directory)
-        _assistant(conversation_id, user_key, "دوباره از اول شروع کردم.")
-    else:
-        motion_graphic.revise(directory, text)
-        _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
-        _emit(conversation_id, "motion.revising", motion_id=record["id"])
+    from creative.motion_graphic import NOT_AVAILABLE
+    _assistant(conversation_id, user_key, NOT_AVAILABLE)
     return True
 
 
@@ -2110,7 +2083,7 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                     await _refresh_plan(conversation_id, user_key, project, job, source="agent", after_analysis=not legacy_plan)
                     continue
                 workflow = project["state"].get("workflow")
-                if raw_status == 'awaiting_confirmation' and status.get('candidate_output'):
+                if raw_status in {'needs_review', 'awaiting_confirmation'} and status.get('candidate_output'):
                     project['state']['workflow'] = 'user_review'
                 if workflow == "awaiting_approval":
                     continue  # nothing runs until the user approves the current plan version
@@ -2134,9 +2107,10 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         {'next': 'دارایی‌ها و نریشن آماده‌اند؛ رندر فایل نهایی شروع شود؟',
                          'scenes': project['state'].get('storyboard', {}).get('scenes', [])}):
                         continue
-                if generation.get("state") == "ready" and job.render.status not in {"queued", "running", "done", "error"} and confirmed and not browser_target:
+                if generation.get("state") == "ready" and job.render.status not in {"queued", "running", "done", "error", "needs_review"} and confirmed and not browser_target:
                     jobstore.start_render(job, preview=False, loudnorm=True)
                 raw_status = ("awaiting_confirmation" if not confirmed else
+                              "needs_review" if job.render.status == "needs_review" else
                               "done" if job.render.status == "done" else
                               "error" if generation.get("state") == "failed" or job.render.status == "error" else
                               "awaiting_input" if browser_target and generation.get('state') == 'ready' else "running")
@@ -2147,9 +2121,15 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                          "generating assets" if generation.get("state") == "generating" else generation.get("state", "planning"))
                 progress = job.render.progress if job.render.status in {"queued", "running", "done"} else None
                 output = f"/api/jobs/{ref}/exports/{job.render.output}" if job.render.status == "done" and job.render.output else None
-                status = {"generation": generation, "render": job.render.__dict__}
+                status = {"generation": generation, "render": job.render.__dict__,
+                          "message": job.render.message,
+                          "candidate_output": job.render.candidate_output,
+                          "creative_review": (job.render.technical_qc or {}).get("creative_review"),
+                          "technical_qc": job.render.technical_qc}
+                if job.render.status == 'needs_review':
+                    project['state']['workflow'] = 'user_review'
             failure_message = ""
-            if raw_status == "error" and engine == "motion":
+            if raw_status in {"error", "needs_review"} and engine == "motion":
                 failure_message = str((status.get("generation") or {}).get("error") or status.get("message") or "")
             elif isinstance(status, dict):
                 failure_message = str(status.get("message") or "")
@@ -2179,18 +2159,19 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         source_event_id=f'{identity}:waiting:{elapsed // 30}')
                 activity_changed = activity != project['state'].get('activity_phase')
                 project['state'] = {**project['state'], 'activity_phase':activity}
-            candidate_changed = (engine == 'talking' and status.get('candidate_output') and
+            candidate_changed = (engine in {'talking', 'motion'} and status.get('candidate_output') and
                 (status.get('candidate_output') != project['state'].get('candidate_output') or
                  status.get('creative_review') != project['state'].get('creative_review')))
             workflow_changed = project["state"].get("workflow") != initial_workflow
             if observed != project["state"].get("last_observed") or candidate_changed or activity_changed or workflow_changed:
                 state = {**project["state"], "last_observed": observed, "last_observed_at": int(time.time() * 1000)}
-                if engine == 'talking' and status.get('candidate_output'):
+                if engine in {'talking', 'motion'} and status.get('candidate_output'):
                     state['candidate_output'] = status['candidate_output']
                     state['creative_review'] = status.get('creative_review')
+                    state['technical_qc'] = status.get('technical_qc')
                 new_status = ("done" if output else "paused" if raw_status == "paused" else "error" if raw_status == "error" else
                               "awaiting_input" if raw_status == "awaiting_input" else
-                              "awaiting_confirmation" if raw_status == "awaiting_confirmation" else "running")
+                              "awaiting_confirmation" if raw_status in {"awaiting_confirmation", "needs_review"} else "running")
                 await repo.update_project(project["id"], user_key, status=new_status, state=state)
                 if not (observed != project["state"].get("last_observed") or candidate_changed or activity_changed):
                     continue  # only the workflow position moved; nothing new to announce

@@ -7,7 +7,7 @@ import QCReview from "./QCReview";
 import { Breadcrumbs, JobWorkflow, LoadingState, NextStep, friendlyError } from "./ui";
 import { completeDenoise, trackDenoise } from "./taskNotifications";
 
-const TERMINAL_STATUSES = new Set(["completed", "failed", "error", "cancelled", "done", "ready", "skipped"]);
+const TERMINAL_STATUSES = new Set(["completed", "failed", "error", "cancelled", "done", "ready", "skipped", "needs_review"]);
 
 function DenoiseCard({ id }: { id: string }) {
   const [state, setState] = React.useState<any>(null);
@@ -463,8 +463,13 @@ export default function Render() {
       <DenoiseCard id={id} />
 
       <MusicCard id={id} renderStatus={s.status} renderOutput={s.output} />
-      {finished && s.technical_qc && <div className="card" style={{ marginTop: 16 }}>
+      {s.status === "needs_review" && <div className="notice" dir="rtl" role="status">خروجی برای بررسی نگه داشته شده و منتشر نشده است.
+        <p>{s.message}</p>{s.candidate_output ? <AuthenticatedMedia as="video" controls src={api.exportUrl(id, s.candidate_output)} /> : null}
+      </div>}
+      {(finished || s.status === "needs_review") && s.technical_qc && <div className="card" style={{ marginTop: 16 }}>
         <h2>Export checks</h2>
+        <p>Renderer: {s.renderer || s.technical_qc.renderer}</p>
+        {s.renderer_failure ? <p role="status">HyperFrames failure: {s.renderer_failure}</p> : null}
         <p className="muted">{s.technical_qc.width}×{s.technical_qc.height} · {s.technical_qc.duration_seconds}s
           {s.technical_qc.loudness_lufs != null && ` · ${s.technical_qc.loudness_lufs} LUFS`}
           {s.technical_qc.true_peak_dbfs != null && ` · peak ${s.technical_qc.true_peak_dbfs} dBFS`}</p>

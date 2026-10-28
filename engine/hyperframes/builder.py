@@ -137,7 +137,7 @@ def build_visual_beats(plan, decisions: dict, transcript: dict | None = None) ->
             id=f"beat-{sentence}-{n}", start=start, end=end,
             anchor_word=title.split()[0], visual_type=visual_type,
             title=title, items=values, accent=("ink", "teal")[n % 2],
-            layout="full_frame",
+            layout="top_panel",
             registry_refs=refs,
             narrative_role=str(item.get("narrative_role") or "evidence"),
             motion_style=motion_style,
@@ -203,9 +203,6 @@ def _continuous_beats(plan, decisions: dict, transcript: dict) -> list[VisualBea
 
 
 def _beat_markup(beat: VisualBeat) -> str:
-    if beat.custom:
-        from .scenes import scene_markup
-        return scene_markup(beat.id, beat.start, beat.end - beat.start, beat.custom["html"])
     title = html.escape(beat.title)
     if beat.registry_refs and beat.registry_refs[0] == "caption-kinetic-slam":
         body = (f'<div class="registry-stage"><div data-composition-id="caption-kinetic-slam" '
@@ -281,11 +278,6 @@ def _timeline_script(beats: list[VisualBeat]) -> str:
     lines = ['const tl = gsap.timeline({ paused: true });']
     for beat in beats:
         duration = beat.end - beat.start
-        if beat.custom:
-            from .scenes import scene_script
-            lines.append(scene_script(beat.id, beat.start, beat.end, beat.custom["js"],
-                                      'full' if beat.layout == 'top_panel' else beat.custom.get("speaker", "full")))
-            continue
         selector = f"#{beat.id} .beat-inner"
         entrances = {
             "slam": ('{opacity:0,scale:1.34,rotation:2}', '"back.out(1.45)"'),
@@ -339,8 +331,10 @@ def _timeline_script(beats: list[VisualBeat]) -> str:
 
 
 def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], *, duration: float,
-                  enable_registry: bool = True, motion_only: bool = False) -> Path:
+                  enable_registry: bool = True, motion_only: bool = False, allow_full_frame: bool = False) -> Path:
     """Write a self-contained 1080x1920 HyperFrames composition."""
+    if not allow_full_frame and any(b.layout == "full_frame" for b in beats):
+        raise ValueError("Full-screen talking graphics require explicit permission")
     project_dir.mkdir(parents=True, exist_ok=True)
     assets = project_dir / "assets"
     assets.mkdir(exist_ok=True)
@@ -352,14 +346,6 @@ def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], 
     except OSError:
         shutil.copy2(base_video, video)
     shutil.copy2(RAY, assets / "ray-extrabold.ttf")
-    custom_css = ""
-    if any(beat.custom for beat in beats):
-        from .scenes import FONT_FILES, fonts_css
-        (assets / "fonts").mkdir(exist_ok=True)
-        for target, source in FONT_FILES.items():
-            shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
-        custom_css = fonts_css() + ".custom-beat{position:absolute;inset:0;overflow:hidden;pointer-events:none}" + "".join(
-            beat.custom["css"] for beat in beats if beat.custom)
     # Local, integrity-checked GSAP: fail here, before any frame is encoded, if it is unavailable.
     from .assets import ensure_gsap
     shutil.copy2(ensure_gsap(), assets / "gsap.min.js")
@@ -382,13 +368,6 @@ def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], 
     cards = "\n".join(_beat_markup(beat) for beat in beats)
     backdrops = ""
     sfx_markup = ""
-    if any(beat.custom for beat in beats) and not motion_only:
-        from engine import sfx
-        cues = sfx.cues_for(beats)
-        files = sfx.ensure(assets / "sfx", {name for _, name in cues})
-        sfx_markup = sfx.markup(cues, duration, files)
-        from .scenes import scene_backdrop
-        backdrops = "\n".join(scene_backdrop(b.id, b.start, b.end - b.start, b.custom.get("bg", "")) for b in beats if b.custom and b.layout != 'top_panel')
     panel_ids = ','.join('#'+b.id for b in beats if b.layout == 'top_panel')
     panel_css = (panel_ids + '{position:absolute!important;left:0!important;right:0!important;top:0!important;'
                  'bottom:auto!important;width:1080px!important;height:888px!important;'
@@ -397,7 +376,6 @@ def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], 
 <html lang="fa"><head><meta charset="UTF-8"><meta name="viewport" content="width=1080,height=1920">
 <script src="./assets/gsap.min.js"></script>
 <style>
-{custom_css}
 {panel_css}
 @font-face{{font-family:Ray;src:url('./assets/ray-extrabold.ttf')}}
 *{{box-sizing:border-box}}html,body{{margin:0;width:1080px;height:1920px;overflow:hidden;background:#080b0c}}
@@ -408,7 +386,7 @@ def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], 
 .visual-beat.full_frame .beat-inner{{padding:240px 86px}}.visual-beat.full_frame h2{{font-size:108px;max-width:920px}}
 .beat-inner{{position:absolute;inset:0;padding:62px 58px;opacity:0}}
 .visual-beat:after{{content:"";position:absolute;inset:0;border:2px solid color-mix(in srgb,var(--fg) 12%,transparent);border-radius:42px;pointer-events:none}}
-.ghost{{position:absolute;left:-20px;top:8px;font-size:190px;opacity:.045;white-space:nowrap;direction:rtl}}.eyebrow{{font-size:22px;color:color-mix(in srgb,var(--fg) 55%,transparent);margin-bottom:25px;letter-spacing:.08em}}h2{{font-size:66px;line-height:1.28;margin:0;max-width:870px;letter-spacing:-.02em}}
+.ghost{{position:absolute;left:-20px;top:8px;font-size:190px;opacity:.045;white-space:nowrap;direction:rtl}}.eyebrow{{font-size:22px;color:color-mix(in srgb,var(--fg) 55%,transparent);margin-bottom:25px;letter-spacing:0}}h2{{font-size:66px;line-height:1.28;margin:0;max-width:870px;letter-spacing:0}}
 .teal{{--accent:#15977f;--bg:#f1efe7;--fg:#14221f}}.amber,.coral,.blue,.ink{{--accent:#d4ff42;--bg:#111513;--fg:#f4f1e8}}.stat{{font-size:150px;color:var(--accent);margin-top:58px;line-height:1}}
 .meter{{height:18px;background:#d8d4ca;border-radius:12px;margin-top:34px;overflow:hidden;direction:ltr}}.meter i{{display:block;width:78%;height:100%;background:var(--accent);transform-origin:left}}
 .step{{display:flex;align-items:center;gap:24px;margin-top:27px;font-size:40px}}.step b{{display:grid;place-items:center;width:72px;height:72px;border-radius:22px;background:var(--accent);color:white;font-size:28px}}.step span{{border-bottom:2px solid #151a1b20;padding:10px 0;flex:1}}

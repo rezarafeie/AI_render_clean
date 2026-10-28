@@ -122,9 +122,9 @@ def test_social_reference_does_not_enter_product_scraper(tmp_path, monkeypatch):
 def test_cached_motion_resume_never_generates_missing_scenes(tmp_path, monkeypatch):
     from creative import motion
     from types import SimpleNamespace
-    monkeypatch.setattr(motion, 'design_system', lambda *a: pytest.fail('must not call AI'))
-    with pytest.raises(ValueError, match='صحنه'):
-        motion.compose([SimpleNamespace(id='beat-1')], None, [], cache=tmp_path/'missing.json', cached_only=True)
+    monkeypatch.setattr('creative.llm.ask', lambda *a, **k: pytest.fail('must not call AI'))
+    beats = [SimpleNamespace(id='beat-1')]
+    assert motion.compose(beats, None, [], cache=tmp_path/'missing.json', cached_only=True) is beats
 
 
 def test_narration_cache_records_source_text():

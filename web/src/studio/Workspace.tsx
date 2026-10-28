@@ -80,10 +80,10 @@ function PreviewPane({ project, conversation, sourceAttachment, onCancel }: { pr
     {busy ? <RenderProgress project={project}/> : null}
     <div className="ws-meta">
       <span>Version {versions.find(item => item.file === selectedFile)?.version || version}</span>
-      <span>{output ? (project.state?.candidate_output && project.state?.creative_review?.status !== 'passed' ? 'Rendered · needs quality review' : 'Final quality') : 'Original upload'}</span>
+      <span>{output ? (view.review ? 'خروجی برای بررسی نگه داشته شده' : 'Final quality') : 'Original upload'}</span>
     </div>
     <div className="ws-actions">
-      {output ? <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(output, `${project.title || "video"}.mp4`)}><Icon name="download" size={15}/>Download video</button> : null}
+      {output && !view.review ? <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(output, `${project.title || "video"}.mp4`)}><Icon name="download" size={15}/>Download video</button> : null}
       {project.status === "running" ? <button className="btn btn-sm btn-secondary" onClick={onCancel}>Cancel</button> : null}
     </div>
   </div>;

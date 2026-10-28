@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Motion lab: author scenes for an existing talking_2 job, build the HyperFrames project and snapshot it.
+"""Motion lab: preview maintained templates for an existing talking_2 job, build the HyperFrames project and snapshot it.
 
     JOBS_DIR=/tmp/lab python scripts/motion_lab.py <job_dir> <out_dir> [--only beat-id] [--templates]
 
 Needs a job that has been analysed and rendered once (talking_reel_work/hyperframes_base.mp4 and visual_beats in
-talking_reel.json). Prints validation results and writes snapshot PNGs plus a contact sheet. Real model calls.
+talking_reel.json). Prints validation results and writes snapshot PNGs plus a contact sheet. No model calls.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from engine.hyperframes import VisualBeat, build_project  # noqa: E402
 
 def load(job: Path):
     state = json.loads((job / "talking_reel.json").read_text())
-    beats = [VisualBeat(**{**b, "custom": None}) for b in state["visual_beats"]]
+    beats = [VisualBeat(**b) for b in state["visual_beats"]]
     transcript = json.loads(next((job / "transcripts").glob("*.json")).read_text())
     plan = motion.plan_from_public(state.get("creative_plan"))
     return state, beats, transcript["sentences"], plan
@@ -40,7 +40,7 @@ def main() -> int:
     started = time.monotonic()
     if not templates:
         motion.compose(beats, plan, sentences)
-    print(f"authored in {time.monotonic() - started:.0f}s: {[(b.id, bool(b.custom), (b.custom or {}).get('speaker'), (b.custom or {}).get('notes', '')[:90]) for b in beats]}")
+    print(f"templates prepared in {time.monotonic() - started:.0f}s: {[b.id for b in beats]}")
     duration = float(state.get("duration") or 47)
     project = out / "project"
     build_project(project, base, beats, duration=duration)

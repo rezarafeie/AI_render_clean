@@ -9,7 +9,7 @@
  */
 import type { StudioEvent, StudioMessage, StudioProject } from "../api";
 
-export type StepStatus = "active" | "done" | "failed";
+export type StepStatus = "active" | "done" | "failed" | "needs_review";
 export interface ActivityStep {
   key: string;
   label: string;
@@ -149,7 +149,7 @@ function stepKey(event: StudioEvent): string | null {
 
 export interface RenderView {
   review?: boolean;
-  phase: "idle" | "queued" | "rendering" | "finalizing" | "done" | "failed";
+  phase: "idle" | "queued" | "rendering" | "finalizing" | "done" | "failed" | "needs_review";
   progress?: number;
   stageLabel: string;
   output?: string;
@@ -162,8 +162,8 @@ export function renderView(project: StudioProject | undefined): RenderView {
   const progress = typeof observed.progress === "number" ? Math.max(0, Math.min(100, Math.round(observed.progress))) : undefined;
   if (!project) return { phase: "idle", stageLabel: "" };
   const candidate = project.state?.candidate_output;
-  if (candidate && project.state?.creative_review?.status !== 'passed' && !observed.output && project.status !== 'running') {
-    return {phase:'done',review:true,output:String(candidate),progress:100,stageLabel:'ویدیو رندر شده؛ منتظر بررسی شما',message:project.state?.creative_review?.summary};
+  if (observed.status === 'needs_review' || (candidate && project.state?.creative_review?.status !== 'passed' && !observed.output && project.status !== 'running')) {
+    return {phase:'needs_review',review:true,output:candidate ? String(candidate) : undefined,stageLabel:'خروجی برای بررسی نگه داشته شده است',message:String(observed.message || project.state?.creative_review?.summary || '')};
   }
   if (observed.output) return { phase: "done", output: String(observed.output), progress: 100, stageLabel: "Your video is ready" };
   if (project.status === "error" || observed.status === "error") return { phase: "failed", stageLabel: "Rendering stopped", message: observed.message ? String(observed.message) : undefined };

@@ -39,13 +39,6 @@ def test_check_batches_cover_each_visual_and_ending(tmp_path):
     assert all('--no-contrast' not in batch for batch in batches)
 
 
-def test_inline_scene_does_not_claim_unregistered_child_timeline():
-    from engine.hyperframes.scenes import scene_markup
-    html = scene_markup('beat-1', 2, 3, '<div>test</div>')
-    assert 'data-composition-id' not in html
-    assert 'class="custom-beat clip"' in html
-
-
 def test_quality_receipt_invalidates_when_composition_or_asset_changes(tmp_path):
     from engine.hyperframes.renderer import audit_key
     (tmp_path/'index.html').write_text('first')

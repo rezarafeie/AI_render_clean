@@ -229,18 +229,11 @@ def _cancelled(motion_id: str) -> bool:
 
 def start(directory: Path, *, change: str = "") -> None:
     """(Re)start the pipeline in the background: a new clip from ``request`` or, with ``change``, a new version of the current one."""
-    key = directory.name
-    # Every start is a new run, and the run token lives in the record (a file): a worker of an older run, in this process or another, finds out at its next
-    # update that it is no longer the current run and unwinds. It never writes into the new run, and the new run never waits for it.
-    with _lock(key):
-        record = load(directory)
-        run_id = int(record.get("run") or 0) + 1
-        record["run"] = run_id
-        record["error"] = None
-        save(directory, record)
-    thread = threading.Thread(target=_guard, args=(directory, change, run_id), daemon=True, name=f"motion-{key}")
-    _RUNNING[key] = thread
-    thread.start()
+    from creative.motion_graphic import NOT_AVAILABLE
+    record = load(directory)
+    record.update(status="unavailable", stage="unavailable", progress=0,
+                  message=NOT_AVAILABLE, error=NOT_AVAILABLE)
+    save(directory, record)
 
 
 def stop(directory: Path) -> None:
@@ -321,6 +314,8 @@ def _public_error(exc: Exception) -> str:
 
 
 def _run(directory: Path, change: str) -> None:
+    from creative.motion_graphic import unavailable
+    unavailable()
     from creative import motion_graphic as mg
     record = load(directory)
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]

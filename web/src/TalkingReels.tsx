@@ -3,7 +3,7 @@ import { api, TalkingReelSummary } from "./api";
 import { TalkingReelCard } from "./TalkingReel";
 import { friendlyError, notify } from "./ui";
 
-const STATUS: Record<string, string> = { idle: "آماده‌ی تحلیل", running: "در حال تحلیل یا ساخت", ready: "آماده‌ی بازبینی", done: "آماده", error: "خطا" };
+const STATUS: Record<string, string> = { needs_review: "نیازمند بررسی خروجی", idle: "آماده‌ی تحلیل", running: "در حال تحلیل یا ساخت", ready: "آماده‌ی بازبینی", done: "آماده", error: "خطا" };
 
 /** Talking-head videos: upload a podcast clip, get a styled vertical reel. */
 export default function TalkingReels() {

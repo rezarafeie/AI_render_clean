@@ -51,12 +51,12 @@ export function MotionGraphicCard({ motionId, events }: { motionId: string; even
   const ratio = shown ? `${shown.width} / ${shown.height}` : "9 / 16";
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
+    <div className="notice" role="status">ساخت موشن‌گرافیک در چت فعلاً در دسترس نیست؛ این مسیر باید به قالب‌های تأییدشده متصل شود.</div>
     {motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length) ? <div className="mg-progress">
       <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" ? <div className="notice" data-tone="error" role="alert">{motion.error === "stopped" ? "ساخت متوقف شد." : motion.error || "ساخت کامل نشد."}</div> : null}
-      {motion.status === "failed" ? <div className="mg-actions"><button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.motionRetry(motionId))}>تلاش دوباره</button></div> : null}
     </div> : null}
 
     {shown ? <div className="mg-result">

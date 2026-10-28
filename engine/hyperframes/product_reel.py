@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import shutil
 import subprocess
 from html import escape
@@ -38,7 +39,7 @@ def _shade(color: str, amount: float) -> str:
 
 
 def _accent(value: str | None) -> str:
-    return value if value and len(value) == 7 and value.startswith("#") else "#d9b36c"
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) else "#d9b36c"
 
 
 def _fmt(x: float) -> str:
@@ -110,7 +111,7 @@ def _scene_html(i: int, scene: dict, start: float, dur: float, lead: float, coun
 <div class="wp" id="{sid}wp">
 <div class="bg" style="background:radial-gradient(120% 70% at 50% 40%,{_shade(accent, .42)} 0%,{_shade(accent, .14)} 48%,#07050a 100%)"></div>
 <div class="glow" id="{sid}gl" style="background:radial-gradient(circle,{accent}66 0%,{accent}22 38%,transparent 66%)"></div>
-<div class="stage"><div class="pw" id="{sid}pw"><img class="pr{' cut' if cutout else ''}" id="{sid}pr" src="assets/p{i}{Path(scene['asset']).suffix}"></div></div>
+<div class="stage"><div class="pw" id="{sid}pw"><img class="pr{' cut' if cutout else ''}" id="{sid}pr" src="assets/p{i}{escape(Path(scene['asset']).suffix, quote=True)}"></div></div>
 {''.join(sparkles)}
 <div class="vs"></div>
 <div class="head" id="{sid}hd" style="font-size:{head_size}px">{head}</div>
@@ -174,11 +175,13 @@ def _fit_music(source: Path, target: Path, seconds: float) -> None:
                    check=True, capture_output=True, timeout=120)
 
 
-def build_project(directory: Path, config: dict) -> Path:
+def build_project(directory: Path, config: dict, *, job_dir: Path | None = None) -> Path:
     """Write index.html and its local assets into *directory*. *config* is the Remotion scene config after engine.remotion_renderer._enrich:
     absolute asset / narration paths, kind, accent, title, narration_text and frames per scene."""
+    from engine.motion_contract import validate_motion_config
+    config = validate_motion_config(config, job_dir or directory.parent)
     from engine.hyperframes.assets import ensure_gsap
-    from engine.hyperframes.scenes import FONT_FILES, fonts_css
+    from engine.hyperframes.fonts import FONT_FILES, fonts_css
     scenes = config["scenes"]
     assets = directory / "assets"
     (assets / "fonts").mkdir(parents=True, exist_ok=True)
@@ -204,7 +207,7 @@ def build_project(directory: Path, config: dict) -> Path:
         if scene.get("narration"):
             voice = Path(scene["narration"])
             shutil.copy2(voice, assets / f"vo{i}{voice.suffix}")
-            audio.append(f'<audio id="vo{i}" src="assets/vo{i}{voice.suffix}" data-start="{_fmt(starts[i])}" data-duration="{_fmt(dur)}" data-track-index="1"></audio>')
+            audio.append(f'<audio id="vo{i}" src="assets/vo{i}{escape(voice.suffix, quote=True)}" data-start="{_fmt(starts[i])}" data-duration="{_fmt(dur)}" data-track-index="1"></audio>')
     if config.get("music"):
         _fit_music(Path(config["music"]), assets / "music.mp3", total)
         audio.append(f'<audio id="music" src="assets/music.mp3" data-start="0" data-duration="{_fmt(total)}" data-track-index="2" data-volume="0.1"></audio>')
@@ -229,6 +232,7 @@ def build_project(directory: Path, config: dict) -> Path:
 <script>
 const tl = gsap.timeline({{ paused: true }});
 {chr(10).join(js)}
+window.__timelines = window.__timelines || {{}};
 window.__timelines["{COMPOSITION_ID}"] = tl;
 </script>
 </body>
@@ -252,7 +256,7 @@ def _run_cli(project: Path, output: Path, *, timeout: int, on_progress=None, sho
     from engine.hyperframes.standalone import ensure_browser
     ensure_browser()
     output.parent.mkdir(parents=True, exist_ok=True)
-    command = [*cli_command(), "render", ".", "--output", str(output.resolve()), "--quality", "standard", "--workers", "1", "--sdr"]
+    command = [*cli_command(), "render", ".", "--output", str(output.resolve()), "--quality", "standard", "--workers", "1", "--fps", "30", "--sdr"]
     process = subprocess.Popen(command, cwd=project, env={**os.environ, "NO_COLOR": "1"}, text=True, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
     tail: deque[str] = deque(maxlen=60)
@@ -286,11 +290,13 @@ def _run_cli(project: Path, output: Path, *, timeout: int, on_progress=None, sho
 
 
 def render(config: dict, output: Path, *, job_dir: Path, on_progress=None, should_cancel=None, timeout: int = 5400) -> Path:
+    from engine.motion_contract import validate_motion_config
+    config = validate_motion_config(config, job_dir)
     project = job_dir / "hyperframes_reel"
     if project.exists():
         shutil.rmtree(project)
     project.mkdir(parents=True)
-    build_project(project, config)
+    build_project(project, config, job_dir=job_dir)
     _run_cli(project, output, timeout=timeout, on_progress=on_progress, should_cancel=should_cancel)
     shutil.rmtree(project, ignore_errors=True)         # the page and its copied assets are rebuilt on every render
     return output

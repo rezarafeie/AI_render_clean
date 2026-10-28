@@ -16,7 +16,7 @@ function humanStatus(status: string) {
   const value = status.toLowerCase();
   if (["done", "ready", "completed"].includes(value)) return ["Ready", "ready"] as const;
   if (["error", "failed"].includes(value)) return ["Failed", "failed"] as const;
-  if (["paused", "awaiting_confirmation", "awaiting_input"].includes(value)) return ["Needs attention", "attention"] as const;
+  if (["paused", "awaiting_confirmation", "awaiting_input", "needs_review"].includes(value)) return ["Needs attention", "attention"] as const;
   if (value === "rendering") return ["Rendering", "working"] as const;
   if (["running", "processing", "generating", "analyzing", "queued", "transcribing"].includes(value)) return ["Editing", "working"] as const;
   return ["Draft", "draft"] as const;

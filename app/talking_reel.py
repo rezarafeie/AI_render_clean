@@ -498,6 +498,11 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
                 raise ValueError('متن ذخیره‌شده موجود نیست؛ ادامهٔ رندر بدون تولید مجدد ممکن نیست.')
             decision_key = SPLIT_STYLES[state['style']][1] if state['style'] in SPLIT_STYLES else 'decisions'
             if not state.get(decision_key): raise ValueError('برنامهٔ تدوین ذخیره‌شده موجود نیست.')
+        state["published_outputs"] = published_outputs(state)
+        state["candidate_output"] = None
+        state["output"] = None
+        state["creative_review"] = None
+        state["technical_qc"] = None
         state['cached_render_only'] = cached_only
         state.update(status="running", stage="queued", message="", progress=0)
         save(job_dir, state)
@@ -512,9 +517,10 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
         except TaskCanceled:
             current = load(job_dir); current.update(status="canceled", stage="", message="Canceled by user"); save(job_dir, current)
         except Exception as exc:
-            log.exception("talking reel failed for %s", job_dir.name)
+            log.exception("talking reel export held for %s", job_dir.name)
             current = load(job_dir)
-            current.update(status="error", stage="", message=str(exc)[:500])
+            current.update(status="needs_review", stage="quality review", message=str(exc)[:800],
+                           technical_qc={**(current.get("technical_qc") or {}), "hold_reason": str(exc)[:800]})
             save(job_dir, current)
         finally:
             with _lock:
@@ -674,6 +680,7 @@ def _run_talking_1(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     _review_creative_output(job_dir,out)
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}",
+                 published_outputs=[*published_outputs(state), f"exports/{out.name}"],
                  duration=round(plan.duration, 2), shots=len(plan.shots))
     save(job_dir, state)
 
@@ -716,26 +723,39 @@ def _review_creative_output(job_dir: Path, output: Path, moments: list[float] | 
     from creative.review import required, review_export, enforce
     state=load(job_dir)
     direction=state.get('creative_plan')
-    if not required(direction):
-        return  # Legacy outputs are not retroactively blocked by new policy.
     from creative.capabilities import TALKING_STYLES
-    direction={**direction,'render_contract': {
+    direction={**(direction or {}),'render_contract': {
         'style':state.get('style'),
         'style_description':TALKING_STYLES.get(state.get('style'),''),
         'hook':state.get('hook'),
         'pinned_hook_is_intentional':state.get('style')=='talking_1',
     }}
     from engine.probe import probe
-    from engine.technical_qc import inspect_export
+    from engine.technical_qc import inspect_talking_export
+    _stage(job_dir, 'checking export', candidate_output=f'exports/{output.name}')
     duration=float(probe(output)['format']['duration'])
     _stage(job_dir,'reviewing creative output',progress=99)
-    technical=inspect_export(output,width=1080,height=1920,fps=30,duration=duration,target_lufs=None)
+    technical=inspect_talking_export(output,duration=duration)
+    _stage(job_dir, 'checking export', technical_qc=technical)
+    if not required(direction):
+        return
     report=review_export(output,direction,job_dir/'talking_reel_work/creative_review',
         duration=duration,moments=moments)
     _stage(job_dir,'reviewing creative output',progress=99,creative_review=report,
         technical_qc=technical,candidate_output=f'exports/{output.name}')
     enforce(report)
 
+
+
+def published_outputs(state: dict) -> list[str]:
+    """Only exports that crossed the publish gate belong in version history."""
+    if 'published_outputs' in state:
+        return list(dict.fromkeys(state['published_outputs']))
+    output = state.get('output')
+    report = state.get('creative_review') or {}
+    approved = state.get('quality_accepted_by_user') or (
+        report.get('status') in {None, 'passed'} and (state.get('visual_qc') or {}).get('passed', True))
+    return [output] if output and state.get('status') == 'done' and approved else []
 
 def user_media(job_dir: Path) -> list[Path]:
     folder = job_dir / MEDIA_DIR
@@ -1114,65 +1134,33 @@ def _run_split(job_dir: Path, video: Path, style: str, *, regenerate: bool) -> N
         beats = build_visual_beats(visual_plan, decisions, transcript)
         if not beats:
             raise RuntimeError("The visual planner produced no usable motion beats")
-        # Authored motion: the Motion Designer writes a real scene for each beat (creative/motion.py). Beats it
-        # cannot author, or a project HyperFrames rejects, fall back to the built-in templates; never a failure.
-        from creative import motion as creative_motion
-        if creative_motion.enabled():
-            _stage(job_dir, "designing motion scenes", progress=76)
-            try:
-                creative_motion.compose(beats, creative_motion.plan_from_public(load(job_dir).get("creative_plan")), transcript["sentences"],
-                                        cache=job_dir / "talking_reel_work" / "authored_scenes.json",
-                                        cached_only=bool(load(job_dir).get('cached_render_only')))
-                if any(b.layout == 'top_panel' and not b.custom for b in beats):
-                    raise RuntimeError('طراحی پنل‌های توضیحی کامل نشده؛ خروجی قالبی جایگزین نشد.')
-                from creative.review import required
-                if required(load(job_dir).get('creative_plan')) and any(not b.custom for b in beats):
-                    raise RuntimeError('طراحی اختصاصی بعضی صحنه‌ها کامل نشده است؛ جایگزینی با قالب نیازمند تأیید شماست.')
-            except Exception as exc:
-                from creative.review import required
-                if any(b.layout == 'top_panel' for b in beats) or load(job_dir).get('cached_render_only') or required(load(job_dir).get('creative_plan')):
-                    raise
-                log.warning("motion designer failed for %s: %s", job_dir.name, str(exc)[:200])
-                for beat in beats:
-                    beat.custom = None
         _stage(job_dir, "building motion graphics", progress=78,
-               visual_beats=[{**beat.model_dump(exclude={"custom"}), "authored": bool(beat.custom)} for beat in beats])
+               renderer="hyperframes", visual_beats=[beat.model_dump() for beat in beats])
         project = job_dir / "talking_reel_work" / "hyperframes"
         from engine.probe import probe
         render_duration=float(probe(rough)['format']['duration'])
         build_project(project, rough, beats, duration=render_duration)
         _stage(job_dir, "rendering motion graphics", progress=82)
-        try:
-            render_project(
-                project, out,
-                on_progress=lambda pct: _stage(job_dir, "rendering motion graphics", progress=pct),
-            )
-        except Exception as exc:
-            from creative.review import required
-            if any(b.layout == 'top_panel' for b in beats) or required(load(job_dir).get('creative_plan')):
-                raise  # Do not silently downgrade a creative render to generic cards.
-            if not any(beat.custom for beat in beats):
-                raise
-            log.warning("authored motion failed to render for %s (%s); using templates", job_dir.name, str(exc)[:200])
-            for beat in beats:
-                beat.custom = None
-            build_project(project, rough, beats, duration=render_duration)
-            render_project(
-                project, out,
-                on_progress=lambda pct: _stage(job_dir, "rendering motion graphics", progress=pct),
-            )
+        _stage(job_dir, "rendering motion graphics", candidate_output=f"exports/{out.name}")
+        render_project(
+            project, out,
+            on_progress=lambda pct: _stage(job_dir, "rendering motion graphics", progress=pct),
+        )
         from engine.hyperframes.quality import review_render
         review = review_render(out, beats, job_dir / "talking_reel_work")
-        _stage(job_dir, "reviewing motion graphics", progress=99, visual_qc=review)
+        _stage(job_dir, "reviewing motion graphics", progress=99, visual_qc=review,
+               candidate_output=f"exports/{out.name}")
         if not review["passed"]:
             # A hard-coded rotation of templates is not a creative repair.
             # Keep the candidate and request a targeted, approved correction.
-            raise ValueError('بازبینی موشن نیازمند اصلاح است؛ رندر تکراری خودکار انجام نشد: '+
+            raise QualityReviewRequired('بازبینی موشن نیازمند اصلاح است؛ رندر تکراری خودکار انجام نشد: '+
                 '; '.join(review['problems']))
+    _stage(job_dir, "checking export", candidate_output=f"exports/{out.name}")
     _apply_effects(job_dir, out, render_settings)
     _review_creative_output(job_dir,out,
         [(b.start+b.end)/2 for b in beats] if hyperframes else None)
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}",
+                 published_outputs=[*published_outputs(state), f"exports/{out.name}"],
                  duration=round(plan.duration, 2), shots=len(plan.shots))
     save(job_dir, state)

@@ -48,7 +48,7 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
       {output ? <AuthenticatedMedia as="video" controls playsInline preload="metadata" src={output} className="rc-video"/> : <>
         {sourceUrl ? <AuthenticatedMedia as="video" muted playsInline preload="metadata" src={sourceUrl} className="rc-backdrop" aria-hidden="true" tabIndex={-1}/> : <div className="rc-backdrop skeleton" aria-hidden="true"/>}
         <div className="rc-overlay">
-          {view.phase === "failed" ? <Icon name="alert" size={28}/> : <span className="spinner rc-spinner" aria-hidden="true"/>}
+          {view.phase === "failed" || view.review ? <Icon name="alert" size={28}/> : <span className="spinner rc-spinner" aria-hidden="true"/>}
           {view.phase !== "rendering" ? <strong>{view.stageLabel}</strong> : null}
           {view.phase === "failed" ? <p dir="auto" className="bidi wrap-safe">{friendlyFailure(view.message)}</p> : null}
           {busy && typeof shownPercent === "number" ? <span className="rc-pct" aria-hidden="true">{shownPercent}%</span> : null}
@@ -56,10 +56,14 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
       </>}
     </div>}
 
+    {view.review ? <div className="notice" dir="rtl" role="status">{view.stageLabel}<p>{view.message}</p>
+      {project.state?.technical_qc?.renderer ? <p>موتور رندر: {String(project.state.technical_qc.renderer)}</p> : null}
+      {project.state?.technical_qc?.renderer_failure ? <p>دلیل تغییر موتور: {String(project.state.technical_qc.renderer_failure)}</p> : null}
+    </div> : null}
     {busy ? <RenderProgress project={project} hideLabel={title}/> : null}
 
-    {view.phase === "done" && output ? <div className="rc-actions">
-      <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(output, `${project.title || "video"}.mp4`)}><Icon name="download" size={15}/>Download</button>
+    {(view.phase === "done" || view.phase === "needs_review") && output ? <div className="rc-actions">
+      {!view.review ? <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(output, `${project.title || "video"}.mp4`)}><Icon name="download" size={15}/>Download</button> : null}
       <button className="btn btn-sm btn-secondary" onClick={onOpenPreview}><Icon name="eye" size={15}/>Open in Preview</button>
       <button className="btn btn-sm btn-ghost" onClick={onEditAgain}><Icon name="edit" size={15}/>Edit again</button>
     </div> : null}

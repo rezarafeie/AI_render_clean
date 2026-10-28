@@ -2,18 +2,6 @@ from types import SimpleNamespace
 
 from engine.talking_styles import talking_2, talking_4
 from engine.hyperframes.builder import build_visual_beats, _timeline_script
-from creative.motion import SceneSpec, DesignSystem, build_prompt
-
-
-def test_owned_css_repair_keeps_strict_scope_validation():
-    from engine.hyperframes.scenes import scope_owned_selectors, validate_scene
-    body='<h2 id="beat-0-title">سلام</h2>'
-    css=scope_owned_selectors('beat-0',body,'#beat-0-title{color:white} .outside{color:red}')
-    assert '#beat-0 #beat-0-title{' in css
-    errors=validate_scene('beat-0',body,css,'tl.set($("h2"),{opacity:1},T);','full')
-    assert any('.outside' in p for p in errors)
-    assert not any('beat-0-title' in p for p in errors)
-    assert scope_owned_selectors('beat-0',body,'#beat-0-unknown{color:red}').startswith('#beat-0-unknown{')
 
 
 def test_plain_panel_reuse_does_not_invalidate_every_cached_shot(tmp_path):
@@ -27,13 +15,6 @@ def test_plain_panel_reuse_does_not_invalidate_every_cached_shot(tmp_path):
     talking_2.plain_panel(path)
     with Image.open(path) as restored:
         assert restored.size == (int(talking_2.W*1.12),int(talking_2.SPLIT_Y*1.12))
-
-
-def test_scene_js_is_parsed_not_just_pattern_matched():
-    from engine.hyperframes.scenes import validate_scene
-    errors=validate_scene('beat-0','<h2>سلام</h2>','#beat-0{color:white}',
-        'tl.to($("h2"),{opacity:1},T); t l;','full')
-    assert any('SyntaxError' in e for e in errors)
 
 
 def test_check_error_summary_keeps_real_blocker_not_warning_tail(tmp_path):
@@ -63,7 +44,6 @@ def test_groups_cover_edited_timeline_and_all_sentences():
     assert beats[0].start == 0 and beats[-1].end == 33
     assert all(a.end == b.start for a,b in zip(beats, beats[1:]))
     assert all(b.layout == 'top_panel' and b.spoken for b in beats)
-    beats[0].custom = {'js':'tl.set($(".title"),{opacity:1},T);', 'speaker':'pip'}
     assert '#speaker-stage' not in _timeline_script(beats)
 
 
@@ -95,13 +75,6 @@ def test_reference_screenshots_are_existing_project_revision(monkeypatch):
     assert _resolved_intent('قاب رو کامل کن با talking 2',[{'kind':'image'}],current)=='modify'
     assert _resolved_intent('صحبتی یک استفاده کن',[],current)=='modify'
     assert _resolved_intent('صحبتی یک',[{'kind':'video'}],current)=='talking'
-
-
-def test_motion_author_receives_panel_geometry_and_complete_group():
-    spec=SceneSpec(id='beat-0',start=0,end=16,layout='top_panel',spoken='گفتار واقعی')
-    prompt=build_prompt(spec,DesignSystem())
-    assert '1080x888' in prompt and 'ALL supplied sentences' in prompt
-    assert 'speaker="full"' in prompt
 
 
 def test_panel_project_excludes_speaker_and_has_half_canvas(tmp_path, monkeypatch):

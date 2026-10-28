@@ -175,8 +175,9 @@ def _render_split_panel(project: Path, output: Path, meta: dict, *, timeout, on_
     temporary = output.with_name(output.stem+'.split-partial.mp4')
     process = subprocess.Popen(['ffmpeg','-hide_banner','-v','error','-y','-threads','1','-i',str(source),
         '-threads','1','-i',str(panel_output),'-filter_complex_threads','1','-filter_complex',
-        '[0:v][1:v]overlay=0:0:eof_action=pass:repeatlast=0,format=yuv420p[v]',
-        '-map','[v]','-map','0:a:0','-c:v','libx264','-threads','2','-preset','veryfast','-crf','17',
+        '[0:v]scale=1080:1920,fps=30[base];[1:v]fps=30[panel];'
+        '[base][panel]overlay=0:0:eof_action=pass:repeatlast=0,format=yuv420p[v]',
+        '-map','[v]','-map','0:a:0?','-r','30','-c:v','libx264','-threads','2','-preset','veryfast','-crf','17',
         '-c:a','copy','-movflags','+faststart',str(temporary)], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     started = time.monotonic()
     while True:
@@ -221,7 +222,7 @@ def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=No
     env = {**os.environ, 'NO_COLOR':'1'}
     command = (
         [*cli_command(), "render", ".",
-         "--output", str(output.resolve()), "--quality", "standard", "--workers", "1", "--sdr"]
+         "--output", str(output.resolve()), "--quality", "standard", "--workers", "1", "--fps", "30", "--sdr"]
     )
     process = subprocess.Popen(
         command, cwd=project_dir, env=env, text=True,

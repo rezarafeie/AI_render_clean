@@ -613,7 +613,7 @@ async def accept_output(request: Request, project_id: str, body: AcceptOutputReq
     job = jobstore.get(project.get('external_ref'))
     state = talking_reel.load(job.dir) if job else {}
     candidate = state.get('candidate_output')
-    if not candidate or candidate != body.candidate or state.get('status') not in {'error', 'done', 'awaiting_confirmation'}:
+    if not candidate or candidate != body.candidate or state.get('status') not in {'error', 'done', 'awaiting_confirmation', 'needs_review'}:
         raise HTTPException(409, 'Output changed or rendering is still active')
     path = (job.dir / candidate).resolve()
     if not path.is_relative_to((job.dir / 'exports').resolve()) or not path.is_file():
@@ -622,6 +622,7 @@ async def accept_output(request: Request, project_id: str, body: AcceptOutputReq
     if not report:
         raise HTTPException(409, 'No quality review to override')
     # Preserve the reviewer verdict. User acceptance is not a fabricated QC pass.
+    state['published_outputs'] = [*talking_reel.published_outputs(state), candidate]
     state.update(output=candidate, status='done', stage='', message='', progress=100,
                  quality_accepted_by_user=True)
     talking_reel.save(job.dir, state)
@@ -648,13 +649,16 @@ async def project_output(request: Request, project_id: str, candidate: bool = Fa
         if file:
             if not re.fullmatch(r'talking_reel_v[0-9]+\.mp4', file):
                 raise HTTPException(404, 'version not found')
+            if 'exports/' + file not in talking_reel.published_outputs(state):
+                raise HTTPException(404, 'version is held for review')
             relative = 'exports/' + file
         path = (job.dir / relative).resolve() if job and relative else None
         if path and not path.is_relative_to((job.dir / 'exports').resolve()):
             raise HTTPException(404, 'output not found')
     elif project["engine"] == "motion" and ref:
         job = jobstore.get(ref)
-        path = job.dir / "exports" / job.render.output if job and job.render.output else None
+        name = job.render.candidate_output if job and candidate else job.render.output if job else None
+        path = job.dir / "exports" / name if job and name else None
     if not path or not path.is_file(): raise HTTPException(404, "output is not ready")
     return FileResponse(path, media_type="video/mp4", filename=path.name)
 
@@ -665,8 +669,10 @@ async def project_outputs(request: Request, project_id: str):
     except KeyError: raise HTTPException(404, 'project not found')
     job = jobstore.get(project.get('external_ref')) if project['engine'] == 'talking' else None
     if not job: return []
+    from app import talking_reel
+    published = talking_reel.published_outputs(talking_reel.load(job.dir))
     files = [p for p in (job.dir/'exports').glob('talking_reel_v*.mp4')
-             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
+             if 'exports/' + p.name in published and re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
              and p.resolve().is_relative_to((job.dir/'exports').resolve())]
     return [{'file': p.name, 'version': int(re.search(r'_v([0-9]+)', p.name)[1])}
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]
@@ -707,8 +713,10 @@ async def project_outputs(request: Request, project_id: str):
     except KeyError: raise HTTPException(404, 'project not found')
     job = jobstore.get(project.get('external_ref')) if project['engine'] == 'talking' else None
     if not job: return []
+    from app import talking_reel
+    published = talking_reel.published_outputs(talking_reel.load(job.dir))
     files = [p for p in (job.dir/'exports').glob('talking_reel_v*.mp4')
-             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
+             if 'exports/' + p.name in published and re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
              and p.resolve().is_relative_to((job.dir/'exports').resolve())]
     return [{'file': p.name, 'version': int(re.search(r'_v([0-9]+)', p.name)[1])}
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]

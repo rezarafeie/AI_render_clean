@@ -142,7 +142,7 @@ test("renderView is truthful about each phase", () => {
 
 test('a rendered candidate needing QC review is not a render failure', () => {
   const view=renderView(project({candidate_output:'exports/v1.mp4',creative_review:{status:'needs_attention',summary:'review'},last_observed:{status:'error'}},'error'));
-  assert.equal(view.phase,'done');assert.equal(view.review,true);
+  assert.equal(view.phase,'needs_review');assert.equal(view.review,true);
   assert.equal(view.output,'exports/v1.mp4');
 });
 
@@ -219,4 +219,12 @@ test('the card of a finished render waiting for review is also the last item, af
   const events = [ev(1, 'render.started', 1, { project_id: 'p1' })];
   const items = buildTimeline({ messages, events, projects: [finished], processing: false });
   assert.equal(items[items.length - 1].kind, 'render');
+});
+
+
+test('held export wins over stale published output and never shows completion', () => {
+  const held=renderView(project({candidate_output:'v2.mp4',last_observed:{status:'needs_review',output:'v1.mp4',message:'review required'}},'awaiting_confirmation'));
+  assert.equal(held.phase,'needs_review');assert.equal(held.output,'v2.mp4');assert.equal(held.review,true);
+  const missing=renderView(project({last_observed:{status:'needs_review',message:'renderer failed'}},'awaiting_confirmation'));
+  assert.equal(missing.phase,'needs_review');assert.equal(missing.output,undefined);
 });

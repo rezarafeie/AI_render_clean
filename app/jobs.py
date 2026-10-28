@@ -40,10 +40,13 @@ def _ensure_jobs_root() -> None:
 
 @dataclass
 class RenderState:
-    status: str = "idle"          # idle | queued | running | done | error
+    status: str = "idle"          # idle | queued | running | needs_review | done | error
     progress: int = 0
     message: str = ""
     output: Optional[str] = None
+    candidate_output: Optional[str] = None
+    renderer: Optional[str] = None
+    renderer_failure: Optional[str] = None
     preview: bool = False
     loudnorm: bool = False
     started_at: Optional[float] = None
@@ -155,7 +158,7 @@ def _database_loop() -> asyncio.AbstractEventLoop:
 def _job_status(job: Job) -> tuple[str, str, str, int]:
     """Flatten the active operation for indexed list/detail queries."""
     for name, state in (("render", job.render), ("generate", job.generate), ("qc", job.qc)):
-        if state.status in {"queued", "running", "error"}:
+        if state.status in {"queued", "running", "needs_review", "error"}:
             return state.status, getattr(state, "stage", "") or name, state.message, getattr(state, "progress", 0)
     if job.render.status == "done":
         return "done", "render", job.render.message, job.render.progress
@@ -295,12 +298,16 @@ def _recover_local_folder(folder: Path, user_id: Optional[str]) -> Optional[Job]
             output = state.get("output")
             if state.get("status") == "done" and output and (folder / output).is_file():
                 job.render = RenderState(status="done", progress=100, output=Path(output).name)
+            if state.get("status") == "needs_review":
+                candidate = state.get("candidate_output")
+                job.render = RenderState(status="needs_review", message=state.get("message", ""),
+                    candidate_output=Path(candidate).name if candidate else None,
+                    renderer=state.get("renderer"), technical_qc=state.get("technical_qc"))
             if state.get("analysis_ready"):
                 job.generate.status = "done"
         except (OSError, ValueError):
             pass
-    job.versions = sorted(path.name for path in (folder / "exports").glob("*.mp4")) \
-        if (folder / "exports").is_dir() else []
+    job.versions = [job.render.output] if job.render.status == "done" and job.render.output else []
     return job
 
 
@@ -1169,6 +1176,10 @@ def _run_auto_correct(job: Job, transcript: dict, style: str) -> None:
 def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: bool = False) -> None:
     try:
         job.render.status = "running"
+        job.render.technical_qc = None
+        job.render.candidate_output = None
+        job.render.renderer = None
+        job.render.renderer_failure = None
         job.render.message = "building MLT"
         _write_status(job)
 
@@ -1199,7 +1210,8 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
         )
         build_premiere(plan, job.dir, base_dir=job.dir, attached_music=attached_music(job))
 
-        version_n = len(job.versions) + 1
+        version_n = max([0] + [int(p.stem.split("_")[0][1:]) for p in (job.dir / "exports").glob("v*.mp4")
+                               if p.stem.split("_")[0][1:].isdigit()]) + 1
         suffix = "_preview" if preview else ""
         out_name = f"v{version_n}{suffix}.mp4"
         out_path = job.dir / "exports" / out_name
@@ -1213,6 +1225,10 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
         if CELERY_AVAILABLE:
             _write_status(job)
         motion_config = (data.get("generation_meta") or {}).get("remotion")
+        job.render.output = None
+        job.render.candidate_output = None
+        job.render.renderer_failure = None
+        job.render.renderer = "native"
         if motion_config:
             from engine.remotion_renderer import render as render_motion
             job.render.message = "rendering motion scenes"
@@ -1227,10 +1243,15 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                     from engine.hyperframes import product_reel
                     from engine.remotion_renderer import prepare_reel_config
                     product_reel.render(prepare_reel_config(motion_config, job.dir), out_path, job_dir=job.dir, on_progress=report)
+                    job.render.renderer = "hyperframes"
                     rendered = True
                 except Exception as exc:
-                    logger.warning("HyperFrames reel failed (%s); falling back to Remotion", str(exc)[:300])
+                    job.render.renderer_failure = str(exc)[:600]
+                    _write_status(job)
+                    logger.warning("HyperFrames reel failed; falling back to Remotion")
             if not rendered:
+                job.render.renderer = "remotion"
+                _write_status(job)
                 render_motion(motion_config, out_path, job_dir=job.dir, on_progress=report)
         else:
             run_render(
@@ -1239,6 +1260,8 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                 on_progress=report, apply_loudnorm=loudnorm,
             )
 
+        job.render.candidate_output = out_name
+        _write_status(job)
         if plan.poster and not motion_config:
             job.render.message = "adding poster to video"
             poster_path = out_path.with_name(out_path.stem + "_poster.jpg")
@@ -1276,6 +1299,7 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             target_lufs=float(render_cfg.get("loudness_lufs", -14)) if loudnorm and not motion_config else None,
         )
 
+        job.render.technical_qc.update(renderer=job.render.renderer, renderer_failure=job.render.renderer_failure)
         from creative.review import required as creative_review_required, review_export
         creative_direction=(data.get('generation_meta') or {}).get('creative_plan')
         creative_v2=creative_review_required(creative_direction)
@@ -1309,7 +1333,8 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             _write_status(job)
             # A video that exists is shown to the user with the reviewer's notes, never discarded: the notes are the starting point for the next edit.
             if report.get('status')!='passed':
-                job.render.message=(report.get('summary') or '')[:600]
+                from creative.review import QualityReviewRequired
+                raise QualityReviewRequired(report.get('summary') or 'Creative review is unresolved')
 
         if motion_config and not creative_v2:
             from brain.qc_pipeline import run_qc
@@ -1327,10 +1352,15 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             if quality.status != "done" or any(
                 issue.get("severity") == "error" for rd in quality.rounds for issue in rd.issues
             ):
-                raise ValueError("Motion quality review needs attention: " + quality.message)
+                from creative.review import QualityReviewRequired
+                raise QualityReviewRequired("Motion quality review needs attention: " + quality.message)
 
+        if job.render.renderer_failure:
+            from creative.review import QualityReviewRequired
+            raise QualityReviewRequired("Renderer changed after HyperFrames failure: " + job.render.renderer_failure)
         job.render.output = out_name
         job.render.plan_sha256 = render_plan_sha256
+        job.render.candidate_output = None
         job.versions.append(out_name)
         job.render.status = "done"
         job.render.progress = 100
@@ -1341,7 +1371,12 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             job.music.started_at = time.time()
             _run_mix(job)
     except Exception as e:
-        job.render.status = "error"
+        job.render.status = "needs_review"
+        if "out_path" in locals() and out_path.is_file():
+            job.render.candidate_output = out_path.name
+        job.render.output = None
+        job.render.technical_qc = {**(job.render.technical_qc or {}), "renderer": job.render.renderer,
+                                   "renderer_failure": job.render.renderer_failure, "hold_reason": str(e)[:800]}
         job.render.message = "Render failed. Check server logs." if settings.APP_ENV == "production" else str(e)
         job.render.finished_at = time.time()
         _write_status(job)

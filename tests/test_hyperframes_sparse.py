@@ -18,6 +18,8 @@ def test_windows_are_frame_aligned_and_overlaps_merge():
 
 @pytest.mark.skipif(not shutil.which('ffmpeg'), reason='ffmpeg required')
 def test_sparse_identity_preserves_real_video_audio_and_reuses_browser_render(tmp_path, monkeypatch):
+    # This fixture has no ASS captions; use the system encoder even on libass-free hosts.
+    monkeypatch.setattr('engine.talking_styles.talking_1.ass_burner_ffmpeg', lambda: shutil.which('ffmpeg'))
     source = tmp_path/'native.mp4'
     subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','testsrc2=s=64x96:r=30:d=42',
         '-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=42',

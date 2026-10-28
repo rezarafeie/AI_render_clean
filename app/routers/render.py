@@ -34,6 +34,9 @@ def render_status(job_id: str, request: Request, db: AsyncSession = Depends(get_
         "output": job.render.output,
         "preview": job.render.preview,
         "technical_qc": job.render.technical_qc,
+        "candidate_output": job.render.candidate_output,
+        "renderer": job.render.renderer,
+        "renderer_failure": job.render.renderer_failure,
         "versions": job.versions,
     }
 

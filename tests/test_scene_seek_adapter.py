@@ -1,32 +1,21 @@
+"""The removed authored-code adapter is replaced by the owned template timeline."""
 import json
 import shutil
 import subprocess
-
 import pytest
+from engine.hyperframes.builder import _timeline_script
+from engine.hyperframes.schema import VisualBeat
 
-from engine.hyperframes.scenes import scene_script
 
-
-def test_scene_adapter_forces_seek_safe_from_to_and_preserves_chains():
+def test_owned_timeline_is_paused_and_seekable():
     if not shutil.which('node'):
-        pytest.skip('Node is required for JavaScript adapter test')
-    code = scene_script('beat-a', 40, 60, '''
-tl.fromTo('a',{opacity:0,svgOrigin:null},{opacity:1,duration:1,svgOrigin:null},T+1)
-  .fromTo('b',{x:0},{x:20,duration:1,immediateRender:true},T+2);
-tl.set('a',{opacity:0},T);
-''', 'full')
-    harness = '''const calls=[];
-const document={getElementById:()=>({querySelectorAll:()=>[]})};
-const tl={fromTo(...args){calls.push(['fromTo',...args]);return this},
-set(...args){calls.push(['set',...args]);return this},
-to(...args){calls.push(['to',...args]);return this}};
-'''
-    result = subprocess.run(['node', '-e', harness+code+'\nconsole.log(JSON.stringify(calls));'],
-                            capture_output=True, text=True, check=True)
-    calls = json.loads(result.stdout)
-    tweens = [call for call in calls if call[0]=='fromTo']
-    assert len(tweens)==2
-    assert all(tween[3]['immediateRender'] is False for tween in tweens)
-    assert 'svgOrigin' not in tweens[0][2] and 'svgOrigin' not in tweens[0][3]
-    assert [tween[4] for tween in tweens]==[41,42]
-    assert calls[2]==['set','a',{'opacity':0},40]
+        pytest.skip('Node required')
+    code=_timeline_script([VisualBeat(id='a',start=0,end=3,title='۱۲ گام',visual_type='kinetic_type')])
+    harness = """const window={}; const calls=[];
+    const fakeTimeline={fromTo(...a){calls.push(['fromTo',...a]);return this},to(...a){calls.push(['to',...a]);return this},seek(t){calls.push(['seek',t])}};
+    const gsap={timeline(options){if(!options.paused)throw Error('not paused');return fakeTimeline}};
+    """
+    result=subprocess.run(['node','-e',harness+code+';console.log(JSON.stringify(calls))'],capture_output=True,text=True,check=True)
+    calls=json.loads(result.stdout)
+    assert calls[-1]==['seek',0]
+    assert all(c[3].get('immediateRender') is False for c in calls if c[0]=='fromTo' and c[1]=='#a .beat-inner')
