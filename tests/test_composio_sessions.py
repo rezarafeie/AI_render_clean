@@ -250,7 +250,7 @@ def test_a_relay_url_is_used_only_when_it_is_https(monkeypatch):
     monkeypatch.setattr(service.settings, "COMPOSIO_RELAY_SECRET", "s")
     with service.sdk():
         pass
-    assert captured["base_url"] == "https://relay.example/api/composio" and captured["default_headers"] == {"x-relay-secret": "s"}
+    assert captured["base_url"] == "https://relay.example/api/composio" and captured["http_client"].headers["x-relay-secret"] == "s"
     monkeypatch.setattr(service.settings, "COMPOSIO_BASE_URL", "http://relay.example")
     with pytest.raises(HTTPException) as bad:
         with service.sdk():
