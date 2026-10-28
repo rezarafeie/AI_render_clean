@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from hermes.security import current_user
-from hermes.services import agent, skills
+from hermes.services import agent, composio_sessions as sessions, skills
 
 router = APIRouter(prefix="/api/hermes/agent", tags=["hermes-agent"])
 _running: dict[str, asyncio.Task] = {}
@@ -64,3 +64,22 @@ async def ask(body: AskBody, user=Depends(current_user)):
     if body.skill not in skills.SKILLS:
         raise HTTPException(404, detail={"code": "SKILL_NOT_FOUND"})
     return await skills.run(str(user.id), body.skill, body.text, body.language, {})
+
+
+async def _connected(uid: str) -> bool:
+    status = await sessions.status(uid)
+    if not (status["configured"] and status["enabled"] and "instagram" in status["applications"]):
+        return False
+    apps = (await sessions.connections(uid))["applications"]
+    return any(item["application"] == "instagram" and item["connected"] for item in apps)
+
+
+@router.get("/connection")
+async def connection(user=Depends(current_user)):
+    """Is Instagram connected through Composio? Never waits longer than 20 s: Composio can be slow from the server, and the page must not hang on it."""
+    try:
+        return {"connected": await asyncio.wait_for(_connected(str(user.id)), 20)}
+    except asyncio.TimeoutError:
+        return {"connected": None, "slow": True}
+    except HTTPException as exc:
+        return {"connected": None, "error": exc.detail.get("code") if isinstance(exc.detail, dict) else str(exc.detail)}

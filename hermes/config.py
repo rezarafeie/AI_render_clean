@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     INSTAGRAM_GRAPH_VERSION: str = "v25.0"
     COMPOSIO_API_KEY: str = ""
+    COMPOSIO_BASE_URL: str = ""          # optional: an HTTPS relay (deploy/composio-relay) when the server reaches Composio badly
+    COMPOSIO_RELAY_SECRET: str = ""
     COMPOSIO_INSTANCE_ID: str = ""
     COMPOSIO_TOOLKITS: str = "instagram"
     COMPOSIO_CALLBACK_URL: str = ""
