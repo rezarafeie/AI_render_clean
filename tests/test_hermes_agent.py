@@ -43,13 +43,33 @@ def test_a_full_agent_pass_stores_findings_questions_and_proposals(store, monkey
     state = asyncio.run(agent.load("7"))
     assert state["run"]["status"] == "done" and state["analysis"]["profile"]["score"] == 61
     assert [q["id"] for q in state["questions"]] == ["competitors"]
-    assert len(state["proposals"]) == 1 and state["proposals"][0]["status"] == "proposed" and state["proposals"][0]["engine"] == "talking"
+    assert [p["engine"] for p in state["proposals"]] == ["talking", "explainer"] and all(p["status"] == "proposed" for p in state["proposals"])   # 50 % talking by default
     # an answer removes its question and saves competitor handles
     asyncio.run(agent.answer("7", "competitors", "@a, b"))
     state = asyncio.run(agent.load("7"))
     assert state["competitors"] == ["a", "b"] and not state["questions"]
     item = asyncio.run(agent.set_status("7", state["proposals"][0]["id"], "in_production", conversation_id="c1"))
     assert item["status"] == "in_production" and item["conversation_id"] == "c1"
+
+
+def test_the_talking_share_splits_the_ideas_between_the_engines():
+    assert [agent._split(4, share) for share in (0, 25, 50, 75, 100)] == [(0, 4), (1, 3), (2, 2), (3, 1), (4, 0)]
+    assert agent._share({}) == 50 and agent._share({"prefs": {"talking_share": 999}}) == 100 and agent._share({"prefs": {"talking_share": "x"}}) == 50
+
+
+def test_a_zero_share_asks_only_for_produced_ideas_and_the_share_is_saved(store, monkeypatch):
+    asked = []
+
+    def llm(system, user, model):
+        asked.append("talking" if "TALKING reels" in system else "explainer")
+        return {"proposals": [{"title": "t", "script": "متن", "concept": "c", "style": "s", "mood": "m", "scenes": [{"seconds": 3, "visual": "v", "on_screen_text": "x", "narration": "n"}]}]}
+    monkeypatch.setattr(agent.skills, "_complete", llm)
+    asyncio.run(agent.set_prefs("9", 0))
+    state = asyncio.run(agent.load("9"))
+    assert state["prefs"]["talking_share"] == 0 and agent.public(state)["prefs"]["talking_share"] == 0
+    asyncio.run(agent.propose("9", state, 4))
+    assert asked == ["explainer"] and [p["engine"] for p in state["proposals"]] == ["explainer"]
+    assert state["proposals"][0]["style"] == "s" and state["proposals"][0]["scenes"][0]["narration"] == "n"
 
 
 def test_a_failed_connection_is_recorded_not_raised(store, monkeypatch):

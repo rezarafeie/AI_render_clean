@@ -50,6 +50,7 @@ export const hermesApi = {
   chatAgent: (message, page, history) => request('/agent/chat', { method: 'POST', body: { message, page, history } }),
   getAgent: () => request('/agent'),
   runAgent: (steps, count = 4) => request('/agent/run', { method: 'POST', body: steps ? { steps, count } : { count } }),
+  setAgentPrefs: (talkingShare) => request('/agent/prefs', { method: 'POST', body: { talking_share: talkingShare } }),
   answerAgent: (key, value) => request('/agent/answer', { method: 'POST', body: { key, value } }),
   setProposalStatus: (id, status, conversationId) => request(`/agent/proposals/${id}`, { method: 'POST', body: { status, conversation_id: conversationId } }),
   askAgent: (skill, text, language = 'fa') => request('/agent/ask', { method: 'POST', body: { skill, text, language } }),

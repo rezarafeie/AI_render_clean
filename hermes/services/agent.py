@@ -32,7 +32,7 @@ STEPS = ("sync", "analyze", "propose")
 
 
 def _empty() -> dict:
-    return {"version": 1, "answers": {}, "competitors": [], "profile": None, "media": [], "analysis": None, "questions": [], "proposals": [],
+    return {"version": 1, "answers": {}, "competitors": [], "profile": None, "media": [], "analysis": None, "questions": [], "proposals": [], "prefs": {"talking_share": 50},
             "run": {"status": "idle", "step": None, "error": None, "started_at": None, "finished_at": None}, "history": []}
 
 
@@ -55,7 +55,7 @@ async def save(user_id: str, state: dict) -> None:
 
 def public(state: dict) -> dict:
     """What the page needs; the raw media snapshot is trimmed."""
-    return {**{k: state.get(k) for k in ("answers", "competitors", "profile", "analysis", "questions", "proposals", "run", "history")},
+    return {**{k: state.get(k) for k in ("answers", "competitors", "profile", "analysis", "questions", "proposals", "run", "history", "prefs")},
             "media": (state.get("media") or [])[:12], "engines": ENGINES}
 
 
@@ -106,34 +106,78 @@ async def analyze(user_id: str, state: dict) -> None:
     state["questions"] = keep + [q for q in (result.get("questions") or []) if isinstance(q, dict) and q.get("id") and q["id"] not in answered][:5]
 
 
-PROPOSE_SCHEMA = ('{"proposals": [{"title": str, "engine": "talking|explainer", "format": "reel", "why": str, "hook": str, "script": str, "caption": str, '
-                  '"hashtags": [str], "editor_brief": str, "length_seconds": int}]}')
+TALKING_SCHEMA = ('{"proposals": [{"title": str, "why": str, "hook": str, "script": str, "on_screen": [str], "shooting_tips": [str], "caption": str, "hashtags": [str], '
+                  '"length_seconds": int}]}')
+EXPLAINER_SCHEMA = ('{"proposals": [{"title": str, "concept": str, "why": str, "hook": str, "style": str, "mood": str, "music": str, '
+                    '"scenes": [{"seconds": number, "visual": str, "on_screen_text": str, "narration": str}], "script": str, "cta": str, "caption": str, '
+                    '"hashtags": [str], "editor_brief": str, "length_seconds": int}]}')
+
+
+def _share(state: dict) -> int:
+    try:
+        return max(0, min(100, int((state.get("prefs") or {}).get("talking_share", 50))))
+    except (TypeError, ValueError):
+        return 50
+
+
+def _split(count: int, share: int) -> tuple[int, int]:
+    talking = round(count * share / 100)
+    return talking, count - talking
+
+
+def _context(state: dict, count: int) -> dict:
+    earlier = [{"title": p["title"], "status": p["status"]} for p in state.get("proposals", [])][-12:]
+    return {"profile": state.get("profile"), "analysis": state.get("analysis"), "answers": state.get("answers"), "earlier": earlier,
+            "recent_posts": (state.get("media") or [])[:15], "count": count}
+
+
+TALKING_SYSTEM = ("You are Hermes writing TALKING reels for an Instagram creator who will film themselves. Base every idea on the analysis and the person's answers (niche, "
+                  "audience, what worked, what to stop). `script` is the COMPLETE spoken text, word for word, ready to read to camera: natural Persian speech, short sentences, "
+                  "no machine phrasing, opening with the hook and ending with one clear call to action; target the length_seconds at about 150 words per minute. `hook` is the "
+                  "first line only. `on_screen` lists the few key words/phrases to show as captions or panels. `shooting_tips` are 2-3 concrete tips (framing, energy, pauses). "
+                  "Use the hook formulas and structure of this skill. Do not repeat earlier proposals.\n\n=== ig-reel ===\n")
+
+EXPLAINER_SYSTEM = ("You are Hermes, a creative director for viral Instagram reels that EditorGPT PRODUCES from scratch (no one films anything): voiced explainer / story / "
+                    "motion videos with a narrator, animated visuals, on-screen text and music. Each idea must be scroll-stopping, emotionally engaging and shareable, not a dry "
+                    "explainer. For every idea give: `concept` (the one-sentence big idea and the twist that makes people watch to the end); `hook` (what is said AND shown in the "
+                    "first 2 seconds, a pattern interrupt or a bold claim); `style` (a concrete visual language: e.g. bold kinetic typography on warm paper texture, cinematic "
+                    "macro product shots, hand-drawn infographic, split-screen comparison; name colors, type, motion feel); `mood` (the feeling, e.g. urgent, curious, nostalgic, "
+                    "reflective, triumphant); `music` (genre and energy curve); `scenes` (5-9 beats, each with seconds, what we SEE, the exact on-screen text in Persian, and the "
+                    "narration line); `script` (the complete narration, Persian, spoken-natural, short sentences, built around ONE story or tension with a payoff, ending on a "
+                    "loop or a call to action); `cta`; `editor_brief` (a paragraph a video editor can produce from: topic, angle, structure, tone, pacing, look). Vary the styles "
+                    "and moods between ideas. Use the hook formulas and structure of this skill. Do not repeat earlier proposals.\n\n=== ig-reel ===\n")
+
+
+async def _propose_batch(state: dict, engine: str, count: int) -> list[dict]:
+    if count <= 0:
+        return []
+    system = (TALKING_SYSTEM if engine == "talking" else EXPLAINER_SYSTEM) + skills._skill_text("reel")[:9000] \
+        + f"\n\nReturn ONLY JSON: {TALKING_SCHEMA if engine == 'talking' else EXPLAINER_SCHEMA} with exactly {count} proposals."
+    result = await asyncio.to_thread(_json, system, _context(state, count))
+    return [item for item in (result.get("proposals") or [])[:count] if isinstance(item, dict) and item.get("title") and (item.get("script") or item.get("editor_brief"))]
 
 
 async def propose(user_id: str, state: dict, count: int = 4) -> None:
-    system = ("You are Hermes writing Instagram reel proposals for EditorGPT's production engines. Base every proposal on the analysis and the person's answers (their "
-              "niche, audience, what worked, what to stop). Each proposal names the engine that should make it: " + "; ".join(f"{k} = {v}" for k, v in ENGINES.items())
-              + ". Use the hook formulas and structure of this skill, and write Persian spoken script (short sentences, no machine phrasing). editor_brief is one "
-              "paragraph the editor can produce the video from (topic, angle, structure, tone, call to action). Do not repeat earlier proposals.\n\n=== ig-reel ===\n"
-              + skills._skill_text("reel")[:9000] + f"\n\nReturn ONLY JSON: {PROPOSE_SCHEMA} with exactly {count} proposals.")
-    earlier = [{"title": p["title"], "status": p["status"]} for p in state.get("proposals", [])][-12:]
-    result = await asyncio.to_thread(_json, system, {"profile": state.get("profile"), "analysis": state.get("analysis"), "answers": state.get("answers"),
-                                                    "earlier": earlier, "recent_posts": (state.get("media") or [])[:15]})
-    for item in (result.get("proposals") or [])[:count]:
-        if not isinstance(item, dict) or not item.get("title") or not (item.get("script") or item.get("editor_brief")):
+    talking, produced = _split(count, _share(state))
+    batches = await asyncio.gather(_propose_batch(state, "talking", talking), _propose_batch(state, "explainer", produced), return_exceptions=True)
+    if all(isinstance(b, Exception) for b in batches):
+        raise batches[0]                                            # nothing could be written: the run reports why
+    for engine, items in zip(("talking", "explainer"), batches):
+        if isinstance(items, Exception):
+            log.warning("proposal batch %s failed: %s", engine, type(items).__name__)
             continue
-        checks = {}
-        try:
-            from hermes.services.instagram_quality import evaluate
-            if item.get("hook"):
-                checks["hook"] = evaluate("hook", str(item["hook"]), "fa")
-            if item.get("script"):
-                checks["beats"] = evaluate("beats", str(item["script"]), "fa", wpm=150)
-        except Exception:
-            pass
-        state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks,
-                                   "engine": item.get("engine") if item.get("engine") in ENGINES else "talking",
-                                   **{k: item.get(k) for k in ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds")}})
+        for item in items:
+            checks = {}
+            try:
+                from hermes.services.instagram_quality import evaluate
+                if item.get("hook"):
+                    checks["hook"] = evaluate("hook", str(item["hook"]), "fa")
+                if item.get("script"):
+                    checks["beats"] = evaluate("beats", str(item["script"]), "fa", wpm=150)
+            except Exception:
+                pass
+            keys = ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds", "on_screen", "shooting_tips", "concept", "style", "mood", "music", "scenes", "cta")
+            state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks, "engine": engine, **{k: item.get(k) for k in keys}})
     state["proposals"] = state["proposals"][-MAX_PROPOSALS:]
 
 
@@ -170,6 +214,13 @@ async def set_status(user_id: str, proposal_id: str, status: str, **extra) -> di
             await save(user_id, state)
             return item
     raise HTTPException(404, detail={"code": "PROPOSAL_NOT_FOUND"})
+
+
+async def set_prefs(user_id: str, talking_share: int) -> dict:
+    state = await load(user_id)
+    state["prefs"] = {**(state.get("prefs") or {}), "talking_share": max(0, min(100, int(talking_share)))}
+    await save(user_id, state)
+    return state
 
 
 async def answer(user_id: str, key: str, value) -> dict:

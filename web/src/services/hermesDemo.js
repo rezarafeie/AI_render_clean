@@ -3,7 +3,7 @@
 const now = Date.now();
 const day = 86400000;
 const agent = {
-  answers: {}, competitors: [],
+  answers: {}, competitors: [], prefs: { talking_share: 50 },
   profile: { username: 'sample.page', followers: 12840, follows: 410, media_count: 187, ig_user_id: '1' },
   analysis: {
     at: new Date(now).toISOString(),
@@ -14,8 +14,17 @@ const agent = {
   },
   questions: [{ id: 'competitors', kind: 'handles', text: 'سه رقیب اصلی‌ات را با @ بنویس' }],
   proposals: [
-    { id: 'p1', status: 'proposed', engine: 'talking', title: 'چرا فروش دیجیتال از فیزیکی ساده‌تر است؟', hook: 'فروش فیزیکی یعنی انبار؛ فروش دیجیتال یعنی گوشی.', why: 'ادامه‌ی ریلز پرفروش قبلی با زاویه‌ی مقایسه', script: 'سلام. اگر فکر می‌کنی برای فروش باید انبار داشته باشی…', caption: 'کپشن نمونه', hashtags: ['#فروش', '#دیجیتال'], length_seconds: 35 },
-    { id: 'p2', status: 'in_production', engine: 'explainer', conversation_id: 'demo', title: 'سه مرحله‌ی ساخت اولین محصول دیجیتال', hook: 'سه قدم تا اولین محصول.', why: 'قالب فهرستی که قبلاً جواب داده', script: '…', caption: '', hashtags: [], length_seconds: 40 },
+    { id: 'p1', status: 'proposed', engine: 'talking', title: 'چرا فروش دیجیتال از فیزیکی ساده‌تر است؟', hook: 'فروش فیزیکی یعنی انبار؛ فروش دیجیتال یعنی گوشی.', why: 'ادامه‌ی ریلز پرفروش قبلی با زاویه‌ی مقایسه',
+      script: 'فروش فیزیکی یعنی انبار؛ فروش دیجیتال یعنی گوشی.\nاگر فکر می‌کنی برای فروش باید انبار و پیک و موجودی داشته باشی، این ریلز را تا آخر ببین.\nمحصول دیجیتال یک‌بار ساخته می‌شود و هزار بار فروخته می‌شود. بدون هزینه‌ی ارسال، بدون موجودی.\nاگر می‌خواهی اولین محصول دیجیتالت را بسازی، زیر همین ریلز بنویس «شروع».',
+      on_screen: ['انبار؟', 'گوشی', 'یک‌بار بساز'], shooting_tips: ['کادر نزدیک، نور از روبه‌رو', 'بعد از هوک نیم‌ثانیه مکث کن'], caption: 'کپشن نمونه', hashtags: ['#فروش', '#دیجیتال'], length_seconds: 35 },
+    { id: 'p3', status: 'proposed', engine: 'explainer', title: 'روزی که انبارم را بستم', concept: 'داستان یک انبارِ پر که با یک فایل خالی شد؛ و چرا این بهترین تصمیم بود.',
+      hook: 'تصویر انبار پر از کارتن با متن «۳۲۰ میلیون خوابیده».', why: 'روایت شخصی با تضاد بصری، قالبی که ذخیره و اشتراک می‌گیرد', style: 'تایپوگرافی درشت روی بافت کاغذ گرم، برش‌های سریع، اکشن‌های دستی', mood: 'تأمل‌برانگیز و امیدوار',
+      music: 'پیانوی ملایم که در نیمه‌ی ویدیو به ضرب تند می‌رسد',
+      scenes: [{ seconds: 3, visual: 'انبار پر از کارتن، دوربین عقب می‌رود', on_screen_text: '۳۲۰ میلیون خوابیده', narration: 'این انبار، سه‌صد و بیست میلیون سرمایه‌ی خوابیده بود.' },
+        { seconds: 5, visual: 'کارتن‌ها یکی‌یکی محو می‌شوند', on_screen_text: 'و اگر خالی شود؟', narration: 'تا روزی که فهمیدم فروش واقعی به کارتن نیاز ندارد.' },
+        { seconds: 6, visual: 'صفحه‌ی لپ‌تاپ با یک فایل ساده', on_screen_text: 'یک فایل', narration: 'یک فایل، هزار بار فروش، بدون یک روز موجودی.' }],
+      script: 'این انبار، سه‌صد و بیست میلیون سرمایه‌ی خوابیده بود. تا روزی که فهمیدم فروش واقعی به کارتن نیاز ندارد.', cta: 'اگر می‌خواهی بدانی چطور شروع کنم، «انبار» را کامنت کن', caption: '', hashtags: [], length_seconds: 30 },
+    { id: 'p2', status: 'in_production', engine: 'explainer', conversation_id: 'demo', title: 'سه مرحله‌ی ساخت اولین محصول دیجیتال', hook: 'سه قدم تا اولین محصول.', why: 'قالب فهرستی که قبلاً جواب داده', concept: 'سه گام ساده', style: 'اینفوگرافیک دست‌کشیده', mood: 'روشن', script: '…', caption: '', hashtags: [], length_seconds: 40 },
   ],
   media: [{ id: 'm1', caption: '۳ اشتباه فروش آنلاین', likes: 1240, comments: 86 }, { id: 'm2', caption: 'معرفی دوره‌ی جدید', likes: 210, comments: 9 }],
   run: { status: 'done', step: null, error: null }, history: [], engines: {},
@@ -32,6 +41,7 @@ const routes = [
   [/^\/agent\/chat/, (body) => ({ reply: `درباره‌ی «${(body?.page?.title || 'این صفحه')}»: ${String(body?.page?.text || '').slice(0, 60) ? 'محتوای صفحه را دیدم و می‌توانم کمک کنم.' : 'صفحه خالی است.'}`, suggestions: ['یک ایده‌ی ریلز بده', 'تحلیل جدید'], activity: [{ label: 'خواندن محتوای صفحه‌ی باز', tool: 'page' }, { label: 'بررسی اطلاعات پیج و تحلیل ذخیره‌شده', tool: 'account' }], action: null })],
   [/^\/agent\/run/, () => ({ status: 'started' })],
   [/^\/agent\/answer/, () => agent],
+  [/^\/agent\/prefs/, (body) => { agent.prefs = { talking_share: body.talking_share }; return agent; }],
   [/^\/agent\/proposals/, () => ({})],
   [/^\/agent/, () => agent],
   [/^\/auth\/accounts/, () => [account]],

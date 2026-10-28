@@ -15,6 +15,10 @@ class AnswerBody(BaseModel):
     value: str = Field(max_length=2000)
 
 
+class PrefsBody(BaseModel):
+    talking_share: int = Field(ge=0, le=100)
+
+
 class RunBody(BaseModel):
     steps: list[str] = Field(default_factory=lambda: list(agent.STEPS))
     count: int = Field(default=4, ge=1, le=8)
@@ -56,6 +60,11 @@ async def run(body: RunBody, user=Depends(current_user)):
 @router.post("/answer")
 async def answer(body: AnswerBody, user=Depends(current_user)):
     return agent.public(await agent.answer(str(user.id), body.key, body.value))
+
+
+@router.post("/prefs")
+async def prefs(body: PrefsBody, user=Depends(current_user)):
+    return agent.public(await agent.set_prefs(str(user.id), body.talking_share))
 
 
 @router.post("/proposals/{proposal_id}")

@@ -116,3 +116,39 @@
   .ov-stat { padding: 14px 16px; } .ov-stat strong { font-size: 24px; }
   .ov { gap: 22px; }
 }
+
+/* Talking ideas: the script to read and a place for the filmed video; produced ideas: the creative direction */
+.idea-need { font-size: 12px; color: var(--warning, #b7791f); }
+.idea-need.is-ok { color: var(--success); }
+.idea-tag[data-engine="talking"] { background: color-mix(in srgb, #dd2a7b 22%, transparent); color: var(--text); }
+.idea-tag[data-engine="explainer"] { background: color-mix(in srgb, #4f8cff 22%, transparent); color: var(--text); }
+.idea-script { display: grid; gap: 4px; }
+.idea-label { font-size: 12px; color: var(--text-2); }
+.idea-script pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 15px; line-height: 2; padding: 12px 14px; border-radius: 12px; background: var(--elevated); }
+.idea-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.idea-chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--elevated); color: var(--text-2); }
+.idea-tips { margin: 0; padding-inline-start: 18px; display: grid; gap: 2px; font-size: 13px; color: var(--text-2); line-height: 1.8; }
+.idea-scenes { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: s; }
+.idea-scenes li { display: grid; gap: 1px; padding-inline-start: 30px; position: relative; font-size: 13px; line-height: 1.7; counter-increment: s; }
+.idea-scenes li::before { content: counter(s); position: absolute; inset-inline-start: 0; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--elevated); display: grid; place-items: center; font-size: 11px; color: var(--text-2); }
+.idea-scenes li span { color: var(--text-2); }
+.idea-upload { display: grid; gap: 8px; }
+.idea-drop { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; border-radius: 12px; border: 1.5px dashed var(--border); background: transparent; color: var(--text-2); font: inherit; font-size: 14px; cursor: pointer; }
+.idea-drop:hover { border-color: var(--ink); color: var(--text); }
+.idea-file { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--elevated); font-size: 14px; }
+.idea-file span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Settings: idea mix */
+.mix { display: grid; gap: 10px; padding: 16px; border-radius: 14px; background: var(--active); margin-bottom: 18px; }
+.mix h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.mix-note { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.7; }
+.mix-range { width: 100%; height: 6px; border-radius: 3px; -webkit-appearance: none; appearance: none; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--ink) var(--v), var(--border) var(--v)); }
+.mix-range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); border: 3px solid var(--bg); box-shadow: 0 0 0 1px var(--border); }
+.mix-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); border: 3px solid var(--bg); }
+.mix-legend { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.mix-legend span { display: grid; gap: 1px; }
+.mix-legend span:last-child { text-align: end; }
+.mix-legend b { font-size: 20px; font-weight: 600; }
+.mix-legend small { color: var(--text-2); font-size: 12px; }
+.mix-state { color: var(--text-2); }
