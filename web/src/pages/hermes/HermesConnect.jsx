@@ -19,6 +19,17 @@ export default function HermesConnect() {
     setBusy(true); setError(''); setNotice('');
     try {
       const before = accounts.length;
+      // Composio first: the person authorizes Instagram on Composio's own page, no Meta developer app of their own is needed.
+      const composio = await hermesApi.getComposioSettings().catch(() => null);
+      if (composio?.configured) {
+        if (!composio.enabled) await hermesApi.setComposioEnabled(true);
+        const { redirect_url: link } = await hermesApi.connectComposioApp('instagram');
+        const target = new URL(link);
+        if (target.protocol !== 'https:' || target.username || target.password) throw new Error('The authorization link is invalid.');
+        setNotice('Opening Instagram authorization through Composio…');
+        window.location.assign(target.href);
+        return;
+      }
       const { authorization_url: url } = await hermesApi.connectInstagram();
       const popup = window.open(url, 'hermes-instagram-connect', 'popup,width=600,height=760');
       if (!popup) { setNotice('Pop-up blocked. Opened Instagram authorization in this tab.'); window.location.assign(url); return; }
