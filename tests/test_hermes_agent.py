@@ -43,7 +43,7 @@ def test_a_full_agent_pass_stores_findings_questions_and_proposals(store, monkey
     state = asyncio.run(agent.load("7"))
     assert state["run"]["status"] == "done" and state["analysis"]["profile"]["score"] == 61
     assert [q["id"] for q in state["questions"]] == ["competitors"]
-    assert [p["engine"] for p in state["proposals"]] == ["talking", "explainer"] and all(p["status"] == "proposed" for p in state["proposals"])   # 50 % talking by default
+    assert sorted(p["engine"] for p in state["proposals"]) == ["explainer", "talking"] and state["run"]["ideas"] == 2 and state["run"]["posts"] == 1 and all(p["status"] == "proposed" for p in state["proposals"])   # 50 % talking by default
     # an answer removes its question and saves competitor handles
     asyncio.run(agent.answer("7", "competitors", "@a, b"))
     state = asyncio.run(agent.load("7"))
@@ -125,3 +125,34 @@ def test_chats_are_stored_listed_titled_and_deleted(store, monkeypatch):
         asyncio.run(chats.get("6", created["id"]))
     asyncio.run(chats.remove("5", created["id"]))
     assert asyncio.run(chats.list_chats("5")) == []
+
+
+def test_a_review_whose_writer_is_gone_stops_blocking_the_button(store):
+    from datetime import datetime, timedelta, timezone
+    old = (datetime.now(timezone.utc) - timedelta(minutes=agent.STALE_AFTER // 60 + 1)).isoformat()
+    fresh = datetime.now(timezone.utc).isoformat()
+    state = agent._empty()
+    state["run"] = {"status": "running", "step": "propose", "started_at": old, "updated_at": old}
+    agent._expire(state)
+    assert state["run"]["status"] == "error" and state["run"]["error"] == "AGENT_INTERRUPTED"
+    state["run"] = {"status": "running", "step": "propose", "started_at": old, "updated_at": fresh}
+    agent._expire(state)
+    assert state["run"]["status"] == "running"
+
+
+def test_each_kind_of_idea_is_saved_as_soon_as_it_is_written(store, monkeypatch):
+    seen = []
+
+    async def batch(state, engine, count):
+        return [{"title": engine, "script": "متن"}] * count
+    monkeypatch.setattr(agent, "_propose_batch", batch)
+    real_save = agent.save
+
+    async def spy(user_id, state):
+        seen.append(len(state["proposals"]))
+        await real_save(user_id, state)
+    monkeypatch.setattr(agent, "save", spy)
+    state = agent._empty()
+    state["run"] = {"status": "running", "ideas": 0}
+    asyncio.run(agent.propose("5", state, 4))
+    assert seen == [2, 4] and state["run"]["ideas"] == 4

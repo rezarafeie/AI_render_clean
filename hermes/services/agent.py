@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -36,12 +37,30 @@ def _empty() -> dict:
             "run": {"status": "idle", "step": None, "error": None, "started_at": None, "finished_at": None}, "history": []}
 
 
+STALE_AFTER = 600          # seconds without a write: the process that ran the review is gone (a restart), not slow
+
+
+def _age(stamp) -> float:
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(str(stamp))).total_seconds()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _expire(state: dict) -> None:
+    """A review recorded as running whose writer stopped (the service was restarted) must not block the button forever."""
+    run = state.get("run") or {}
+    if run.get("status") == "running" and _age(run.get("updated_at") or run.get("started_at")) > STALE_AFTER:
+        state["run"] = {**run, "status": "error", "error": "AGENT_INTERRUPTED", "finished_at": utcnow()}
+
+
 async def load(user_id: str) -> dict:
     row = await get_row("settings", settings_row_id(user_id, PROVIDER))
     if row and str(row["user_id"]) != str(user_id):
         raise HTTPException(404, detail={"code": "AGENT_NOT_FOUND"})
     state = _empty()
     state.update((row or {}).get("encrypted_credentials") or {})
+    _expire(state)
     return state
 
 
@@ -49,6 +68,8 @@ async def save(user_id: str, state: dict) -> None:
     row_id = settings_row_id(user_id, PROVIDER)
     row = await get_row("settings", row_id)
     now = utcnow()
+    if (state.get("run") or {}).get("status") == "running":
+        state["run"]["updated_at"] = now
     await save_row("settings", {"id": row_id, "user_id": int(user_id) if str(user_id).isdigit() else user_id, "provider": PROVIDER,
                                 "encrypted_credentials": state, "created_at": row["created_at"] if row else now, "updated_at": now})
 
@@ -157,34 +178,39 @@ async def _propose_batch(state: dict, engine: str, count: int) -> list[dict]:
     return [item for item in (result.get("proposals") or [])[:count] if isinstance(item, dict) and item.get("title") and (item.get("script") or item.get("editor_brief"))]
 
 
+async def _write_batch(user_id: str, state: dict, engine: str, count: int) -> None:
+    """One kind of idea: written, stored and saved as soon as it is ready, so the page shows it while the other kind is still being written."""
+    for item in await _propose_batch(state, engine, count):
+        checks = {}
+        try:
+            from hermes.services.instagram_quality import evaluate
+            if item.get("hook"):
+                checks["hook"] = evaluate("hook", str(item["hook"]), "fa")
+            if item.get("script"):
+                checks["beats"] = evaluate("beats", str(item["script"]), "fa", wpm=150)
+        except Exception:
+            pass
+        keys = ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds", "on_screen", "shooting_tips", "concept", "style", "mood", "music", "scenes", "cta")
+        state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks, "engine": engine, **{k: item.get(k) for k in keys}})
+        state["run"]["ideas"] = state["run"].get("ideas", 0) + 1
+    state["proposals"] = state["proposals"][-MAX_PROPOSALS:]
+    await save(user_id, state)
+
+
 async def propose(user_id: str, state: dict, count: int = 4) -> None:
     talking, produced = _split(count, _share(state))
-    batches = await asyncio.gather(_propose_batch(state, "talking", talking), _propose_batch(state, "explainer", produced), return_exceptions=True)
-    if all(isinstance(b, Exception) for b in batches):
-        raise batches[0]                                            # nothing could be written: the run reports why
-    for engine, items in zip(("talking", "explainer"), batches):
-        if isinstance(items, Exception):
-            log.warning("proposal batch %s failed: %s", engine, type(items).__name__)
-            continue
-        for item in items:
-            checks = {}
-            try:
-                from hermes.services.instagram_quality import evaluate
-                if item.get("hook"):
-                    checks["hook"] = evaluate("hook", str(item["hook"]), "fa")
-                if item.get("script"):
-                    checks["beats"] = evaluate("beats", str(item["script"]), "fa", wpm=150)
-            except Exception:
-                pass
-            keys = ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds", "on_screen", "shooting_tips", "concept", "style", "mood", "music", "scenes", "cta")
-            state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks, "engine": engine, **{k: item.get(k) for k in keys}})
-    state["proposals"] = state["proposals"][-MAX_PROPOSALS:]
+    results = await asyncio.gather(_write_batch(user_id, state, "talking", talking), _write_batch(user_id, state, "explainer", produced), return_exceptions=True)
+    for engine, result in zip(("talking", "explainer"), results):
+        if isinstance(result, Exception):
+            log.warning("proposal batch %s failed: %s", engine, type(result).__name__)
+    if all(isinstance(r, Exception) for r in results):
+        raise results[0]                                            # nothing could be written: the run reports why
 
 
 async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> None:
     """One agent pass; progress and the failing step are written to the state after every step so the page can show them."""
     state = await load(user_id)
-    state["run"] = {"status": "running", "step": steps[0], "error": None, "started_at": utcnow(), "finished_at": None}
+    state["run"] = {"status": "running", "step": steps[0], "error": None, "started_at": utcnow(), "finished_at": None, "ideas": 0, "ideas_total": count if "propose" in steps else 0}
     await save(user_id, state)
     try:
         for step in steps:
@@ -192,10 +218,12 @@ async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> N
             await save(user_id, state)
             if step == "sync":
                 await sync(user_id, state)
+                state["run"]["posts"] = len(state.get("media") or [])
             elif step == "analyze":
                 await analyze(user_id, state)
             elif step == "propose":
                 await propose(user_id, state, count)
+            await save(user_id, state)                 # whatever this step produced is on the page before the next one starts
         state["run"].update(status="done", step=None, finished_at=utcnow())
         state["history"] = (state.get("history") or [])[-19:] + [{"at": utcnow(), "steps": list(steps)}]
     except HTTPException as exc:

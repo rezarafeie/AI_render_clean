@@ -39,8 +39,17 @@ const routes = [
   [/^\/agent\/chats/, () => ({ chats: chats.map(({ messages, ...c }) => c), ...chats[0], id: 'c1' })],
   [/^\/agent\/connection/, () => ({ connected: true })],
   [/^\/agent\/chat/, (body) => ({ reply: `درباره‌ی «${(body?.page?.title || 'این صفحه')}»: ${String(body?.page?.text || '').slice(0, 60) ? 'محتوای صفحه را دیدم و می‌توانم کمک کنم.' : 'صفحه خالی است.'}`, suggestions: ['یک ایده‌ی ریلز بده', 'تحلیل جدید'], activity: [{ label: 'خواندن محتوای صفحه‌ی باز', tool: 'page' }, { label: 'بررسی اطلاعات پیج و تحلیل ذخیره‌شده', tool: 'account' }], action: null })],
-  [/^\/agent\/run/, () => ({ status: 'started' })],
   [/^\/agent\/answer/, () => agent],
+  [/^\/agent\/run/, () => {                                         // a pretend review that fills in step by step
+    if (agent.run.status === 'running') return { status: 'running' };
+    const started = new Date().toISOString();
+    agent.run = { status: 'running', step: 'sync', error: null, started_at: started, ideas: 0, ideas_total: 4 };
+    setTimeout(() => { agent.run = { ...agent.run, step: 'analyze', posts: 25 }; }, 3000);
+    setTimeout(() => { agent.run = { ...agent.run, step: 'propose' }; }, 6000);
+    setTimeout(() => { agent.proposals.push({ id: `n${Date.now()}`, status: 'proposed', engine: 'talking', title: 'ایده‌ی تازه‌ی صحبتی', hook: 'هوک تازه', script: 'متن', length_seconds: 30 }); agent.run.ideas = 1; }, 9000);
+    setTimeout(() => { agent.proposals.push({ id: `m${Date.now()}`, status: 'proposed', engine: 'explainer', title: 'ایده‌ی تازه‌ی اکسپلینر', concept: 'مفهوم تازه', script: 'متن' }); agent.run = { ...agent.run, ideas: 2, status: 'done', step: null }; }, 12000);
+    return { status: 'started' };
+  }],
   [/^\/agent\/prefs/, (body) => { agent.prefs = { talking_share: body.talking_share }; return agent; }],
   [/^\/agent\/proposals/, () => ({})],
   [/^\/agent/, () => agent],

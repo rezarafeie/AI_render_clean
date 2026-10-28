@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import hermesApi from '../../services/hermesApi';
 import { Icon } from '../../components/Icon';
@@ -9,6 +10,40 @@ import AgentInsights from './AgentInsights';
 
 const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
 
+const STEPS = [['sync', 'Reading your profile and posts'], ['analyze', 'Analyzing the page'], ['propose', 'Writing ideas for the editor']];
+const REASON = { HERMES_AI_UNAVAILABLE: 'The AI models did not answer. Try again in a minute.', AGENT_NO_ACCOUNT: 'No Instagram account is connected.', AGENT_INTERRUPTED: 'The last review was interrupted. Start a new one.' };
+const reasonFor = (code) => REASON[code] || (String(code || '').startsWith('COMPOSIO') ? 'Instagram could not be read right now. Try again.' : 'The review stopped before it finished.');
+
+function useSeconds(from, active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { if (!active) return undefined; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [active]);
+  const start = from ? Date.parse(from) : now;
+  return Math.max(0, Math.round((now - start) / 1000));
+}
+
+/** What the agent is doing right now, step by step; whatever a step produces appears below as soon as it is saved. */
+function RunProgress({ agent, running, error, onRetry }) {
+  const run = agent?.run || {};
+  const seconds = useSeconds(run.status === 'running' ? run.started_at : null, running);
+  const current = run.status === 'running' ? Math.max(0, STEPS.findIndex(([key]) => key === run.step)) : 0;
+  const failed = !running && (run.status === 'error' || error);
+  if (!running && !failed) return null;
+  const detail = (key) => {
+    if (key === 'sync') return run.posts != null ? `${run.posts} posts read` : agent?.profile ? 'Profile read' : '';
+    if (key === 'analyze') return agent?.analysis && current > 1 ? 'Analysis ready' : '';
+    return run.ideas_total ? `${run.ideas || 0} of ${run.ideas_total} ideas ready` : '';
+  };
+  return <section className="ov-run" data-failed={failed || undefined} role="status" aria-live="polite">
+    <div className="ov-run-head"><strong>{failed ? 'The review did not finish' : 'Reviewing your page'}</strong>{running ? <small>{seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`}</small> : null}</div>
+    {failed ? <p className="ov-run-error">{error || reasonFor(run.error)}</p> : <ol className="ov-run-steps">
+      {STEPS.map(([key, label], i) => <li key={key} data-state={i < current ? 'done' : i === current ? 'active' : 'todo'}>
+        <span className="ov-run-mark" aria-hidden="true">{i < current ? <Icon name="check" size={13}/> : null}</span>
+        <span>{label}{detail(key) ? <small>{detail(key)}</small> : null}</span></li>)}
+    </ol>}
+    {failed ? <button className="btn btn-sm" type="button" onClick={onRetry}>Try again</button> : null}
+  </section>;
+}
+
 const compact = (value) => (value == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value));
 
 function Stat({ label, value, ring }) {
@@ -17,7 +52,7 @@ function Stat({ label, value, ring }) {
 
 /** The home page's account summary: a compact profile line, three numbers and short lists, in the manner of an app, not a dashboard. */
 export default function HermesOverview() {
-  const { agent, runAgent } = useHermes();
+  const { agent, runAgent, running, runError } = useHermes();
   const posts = useHermesData('posts', () => hermesApi.getPosts());
   const list = array(posts.data);
   const upcoming = list.filter((p) => p.status === 'scheduled' && new Date(p.scheduled_at) > new Date()).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)).slice(0, 3);
@@ -25,7 +60,6 @@ export default function HermesOverview() {
   const analysis = agent?.analysis;
   const media = array(agent?.media).slice(0, 4);
   const score = analysis?.profile?.score;
-  const running = agent?.run?.status === 'running';
   const found = analysis && (array(analysis.content?.do_more).length || array(analysis.content?.stop).length || analysis.strategy);
   return <div className="ov">
     <section className="ov-profile">
@@ -36,6 +70,8 @@ export default function HermesOverview() {
       </div>
       <button className="icon-btn" type="button" onClick={() => runAgent()} disabled={running} aria-label={running ? 'Reviewing' : 'New review'} data-tip={running ? 'Reviewing…' : 'New review'} data-busy={running || undefined}><Icon name="refresh" size={19}/></button>
     </section>
+
+    <RunProgress agent={agent} running={running} error={runError} onRetry={() => runAgent()} />
 
     <section className="ov-stats" aria-label="Account">
       <Stat label="Followers" value={compact(profile?.followers)} />

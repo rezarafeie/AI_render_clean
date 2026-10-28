@@ -16,10 +16,9 @@ const TITLES = { content: 'Content', analytics: 'Analytics', settings: 'Settings
 /** Content, Analytics and Settings (a layout route, so the agent panel stays put while only the page changes): the page on the left, the agent in the Studio's side panel on the right. */
 export default function HermesFrame() {
   const title = TITLES[useLocation().pathname.split('/')[2]] || 'Instagram';
-  const { agent, runAgent, connected, updating } = useHermes();
+  const { agent, runAgent, running, connected, updating } = useHermes();
   const panel = useAgentPanel('frame');
   const [tab, setTab] = useState('chat');
-  const running = agent?.run?.status === 'running';
   const pending = array(agent?.proposals).filter((p) => p.status === 'proposed').length;
   const open = Boolean(connected) && panel.visible;
   return <div className="studio hermes" ref={panel.studioRef} data-layout={panel.layout} data-ws={open ? 'open' : 'closed'} data-resizing={panel.resizing || undefined}
