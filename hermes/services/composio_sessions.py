@@ -44,10 +44,19 @@ def sdk():
         from composio import Composio
     except ImportError as exc:
         raise HTTPException(503, detail={"code": "COMPOSIO_SDK_NOT_INSTALLED"}) from exc
-    with httpx.Client(timeout=20, follow_redirects=False) as client:
-        yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=20, max_retries=0,
+    extra: dict = {}
+    base = (settings.COMPOSIO_BASE_URL or "").rstrip("/")
+    if base:
+        parsed = urlsplit(base)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise HTTPException(503, detail={"code": "COMPOSIO_RELAY_URL_INVALID"})
+        extra["base_url"] = base
+        if settings.COMPOSIO_RELAY_SECRET:
+            extra["default_headers"] = {"x-relay-secret": settings.COMPOSIO_RELAY_SECRET}
+    with httpx.Client(timeout=30 if base else 20, follow_redirects=False) as client:
+        yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=30 if base else 20, max_retries=1 if base else 0,
                        allow_tracking=False, http_client=client, file_upload_dirs=False,
-                       dangerously_allow_auto_upload_download_files=False)
+                       dangerously_allow_auto_upload_download_files=False, **extra)
 
 
 log = logging.getLogger(__name__)

@@ -235,3 +235,24 @@ def test_composio_instagram_is_listed_as_a_read_only_account(setup, monkeypatch)
     row = asyncio.run(account.account("1"))
     assert row["id"] == account.VIRTUAL_ID and row["username"] == "someone" and row["followers"] == 1234 and row["source"] == "composio"
     account.forget("1")
+
+
+def test_a_relay_url_is_used_only_when_it_is_https(monkeypatch):
+    captured = {}
+
+    class Fake:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+    import composio
+    monkeypatch.setattr(composio, "Composio", Fake)
+    monkeypatch.setattr(service.settings, "COMPOSIO_API_KEY", "k")
+    monkeypatch.setattr(service.settings, "COMPOSIO_BASE_URL", "https://relay.example/api/composio/")
+    monkeypatch.setattr(service.settings, "COMPOSIO_RELAY_SECRET", "s")
+    with service.sdk():
+        pass
+    assert captured["base_url"] == "https://relay.example/api/composio" and captured["default_headers"] == {"x-relay-secret": "s"}
+    monkeypatch.setattr(service.settings, "COMPOSIO_BASE_URL", "http://relay.example")
+    with pytest.raises(HTTPException) as bad:
+        with service.sdk():
+            pass
+    assert bad.value.status_code == 503

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/api/composio/:path*", "destination": "/api/composio?path=:path*" }],
+  "functions": { "api/composio.js": { "maxDuration": 60 } }
+}
