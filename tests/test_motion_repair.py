@@ -21,3 +21,13 @@ def test_infinite_repeat_becomes_the_finite_count_that_covers_the_clip():
     fixed = repair_js('tl.to(".spin", {rotation: 360, duration: 2, repeat: -1, ease: "none"}, 0);', 12)
     assert "repeat: 7" in fixed and "-1" not in fixed
     assert "repeat: 13" in repair_js('tl.to(".x", {y: 5, repeat: -1}, 0);', 12)        # no duration given: one second per loop
+
+
+def test_every_scene_gets_its_start_and_length_as_variables():
+    from creative import motion_graphic as mg
+    plan = mg.MotionPlan(title="t", summary="s", format="vertical", duration=10, palette=mg.Palette(bg="#fff", ink="#000", accent="#f00"),
+                         scenes=[mg.ScenePlan(headline="a", idea="x", start=0, end=4), mg.ScenePlan(headline="b", idea="y", start=4, end=10)])
+    drafts = [mg.SceneDraft(html="<p>a</p>", css="", build_js='tl.to("#s1 p", {y: 0}, T + .5);'), mg.SceneDraft(html="<p>b</p>", css="", build_js='tl.to("#s2 p", {y: 0}, T + D - .3);')]
+    page = mg.assemble_scenes(plan, drafts)
+    assert "(function (T, D) {\ntl.to(\"#s1 p\", {y: 0}, T + .5);\n})(0, 4);" in page.build_js
+    assert "(function (T, D) {\ntl.to(\"#s2 p\", {y: 0}, T + D - .3);\n})(4, 6);" in page.build_js

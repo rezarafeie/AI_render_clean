@@ -463,7 +463,7 @@ THE CONTRACT
   <br>, <script>, <style>, forms, remote URLs.
 - css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
   "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
-- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below); its entrance transition (a growing diamond) is added by the
+- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works); its entrance transition (a growing diamond) is added by the
   platform, so start your content tweens at T+0.15 or later, using ABSOLUTE times (T + offset) as the last argument, and finish them by T+D-0.3. Use
   tl.fromTo/tl.from/tl.to/tl.set or the HM helpers; never gsap.* directly, timers, Date, Math.random, window, fetch. Anything that appears later must start
   hidden through its own entrance tween.
@@ -689,8 +689,11 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft]) -> MotionPage:
         if n > 1:
             x, y = corners[(n - 1) % len(corners)]
             build.append(f'HM.wipe("#s{n}", {max(0.0, scene.start - 0.9):g}, {{band: "{palette.accent}", x: {int(x)}, y: {int(y)}}});')
-        build.append(f"(function () {{\n{draft.build_js}\n}})();")
+        # T and D (the scene's start and length) are real variables in its code: the designer's prompt names them, and a scene that writes T + 0.5
+        # must not crash the page with "T is not defined".
+        span = f"{scene.start:g}, {round(scene.end - scene.start, 3):g}"
+        build.append(f"(function (T, D) {{\n{draft.build_js}\n}})({span});")
         if draft.update_js.strip():
-            update.append(f"(function (t) {{\n{draft.update_js}\n}})(t);")
+            update.append(f"(function (t, T, D) {{\n{draft.update_js}\n}})(t, {span});")
     return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration,
                       scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update))
