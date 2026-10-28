@@ -80,6 +80,7 @@ def test_disabled_user_cannot_use_other_users_session(setup):
     async def scenario():
         await service.set_enabled("1", True)
         await service.session_id("1")
+        await service.set_enabled("2", False)          # enabled by default; an explicit disable still blocks
         with pytest.raises(HTTPException) as error:
             await service.connections("2")
         assert error.value.status_code == 409

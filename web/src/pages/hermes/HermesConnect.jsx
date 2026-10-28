@@ -10,8 +10,18 @@ export default function HermesConnect() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [composio, setComposio] = useState({ configured: false, connected: [] });
   const poll = useRef(null);
   const load = useCallback(async () => { const list = await hermesApi.getAccounts(); setAccounts(array(list)); setLoading(false); return array(list); }, []);
+  useEffect(() => {
+    let alive = true;
+    hermesApi.getComposioSettings().then(async (st) => {
+      if (!alive || !st?.configured) return;
+      const checked = await hermesApi.getComposioConnections().catch(() => null);
+      if (alive) setComposio({ configured: true, connected: (checked?.applications || []).filter((item) => item.connected) });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   useEffect(() => { load().catch((e) => { setError(message(e)); setLoading(false); }); return () => clearInterval(poll.current); }, [load]);
   const accountIds = accounts.map((account) => account.id).join(',');
   useEffect(() => { if (!accountIds) return; let alive = true; Promise.allSettled(accounts.map((account) => hermesApi.getAccountAnalytics(account.id))).then((results) => { if (alive) setFollowers(Object.fromEntries(accounts.map((account, index) => [account.id, results[index].status === 'fulfilled' ? results[index].value?.followers : null]))); }); return () => { alive = false; }; }, [accountIds]);
@@ -20,9 +30,9 @@ export default function HermesConnect() {
     try {
       const before = accounts.length;
       // Composio first: the person authorizes Instagram on Composio's own page, no Meta developer app of their own is needed.
-      const composio = await hermesApi.getComposioSettings().catch(() => null);
-      if (composio?.configured) {
-        if (!composio.enabled) await hermesApi.setComposioEnabled(true);
+      const viaComposio = await hermesApi.getComposioSettings().catch(() => null);
+      if (viaComposio?.configured) {
+        if (viaComposio.enabled === false) await hermesApi.setComposioEnabled(true);
         const { redirect_url: link } = await hermesApi.connectComposioApp('instagram');
         const target = new URL(link);
         if (target.protocol !== 'https:' || target.username || target.password) throw new Error('The authorization link is invalid.');
@@ -55,7 +65,8 @@ export default function HermesConnect() {
     {error && <div className="hm-alert" role="alert">{error}</div>}{notice && <div className="hm-notice" role="status">{notice}</div>}
     {busy && <div className="hm-loading" role="status">Updating Instagram accounts…</div>}
     <div className="hm-connect-banner hm-panel"><div className="hm-connect-symbol">◎</div><div><h3>Publish with confidence</h3><p>Connect an Instagram professional account through Meta's authorization flow. Hermes stores a renewable connection token and keeps your posts in one place.</p></div><button className="hm-btn hm-btn-quiet" disabled={busy} title={(busy) ? "Wait for the current action to finish." : undefined} onClick={refreshList}>Refresh list</button></div>
-    <div className="hm-section-title"><div><h3>Connected accounts</h3><p>Token status and account details</p></div><span>{accounts.length} total</span></div>
+    <div className="hm-section-title"><div><h3>Connected accounts</h3><p>Token status and account details</p></div><span>{accounts.length + composio.connected.length} total</span></div>
+    {composio.connected.map((item) => <div className="hm-panel hm-stack" key={item.application}><strong>{item.name || item.application} · Composio</strong><p className="hm-tiny">Connected through Composio. EditorGPT reads it with read-only tools; publishing from this connection is not enabled yet.</p></div>)}
     {loading ? <div className="hm-loading" role="status">Loading accounts…</div> : accounts.length ? <div className="hm-stack">{accounts.map((account) => <AccountCard key={account.id} account={account} followers={followers[account.id]} actions={<div className="hm-account-actions"><button className="hm-text-button" onClick={() => refresh(account)} disabled={busy} title={(busy) ? "Wait for the current action to finish." : undefined}>Refresh token</button><button className="hm-text-button" disabled title="Hermes does not provide a disconnect endpoint yet">Disconnect unavailable</button></div>} />)}</div> : <div className="hm-empty hm-panel">No Instagram accounts connected. Use the button above to begin.</div>}
     <p className="hm-footnote">Disconnect is unavailable because the Hermes API does not expose account removal yet.</p>
   </div>;
