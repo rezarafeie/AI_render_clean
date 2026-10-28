@@ -21,7 +21,7 @@ export default function AgentIdeas({ limit = 0, embedded = false }) {
     setWorking(item.id); setError('');
     try {
       const conversation = await api.createStudioConversation(item.title || 'ریلز اینستاگرام');
-      await api.sendStudioMessage(conversation.id, `یک ریلز اینستاگرام (عمودی، فارسی، سبک ${ENGINE[item.engine] || 'صحبتی'}) بساز. این پیشنهاد را ایجنت اینستاگرام از تحلیل پیج کاربر ساخته و کاربر تأیید کرده است.\n\n${item.editor_brief || item.title}${item.hook ? `\n\nهوک: ${item.hook}` : ''}${item.script ? `\n\nمتن گفتاری پیشنهادی:\n${item.script}` : ''}${item.caption ? `\n\nکپشن برای انتشار:\n${item.caption}\n${array(item.hashtags).join(' ')}` : ''}`, [], {});
+      await api.sendStudioMessage(conversation.id, `[موتور: ${ENGINE[item.engine] || 'صحبتی'}]\nیک ریلز اینستاگرام (عمودی، فارسی، سبک ${ENGINE[item.engine] || 'صحبتی'}) بساز. این پیشنهاد را ایجنت اینستاگرام از تحلیل پیج کاربر ساخته و کاربر تأیید کرده است.\n\n${item.editor_brief || item.title}${item.hook ? `\n\nهوک: ${item.hook}` : ''}${item.script ? `\n\nمتن گفتاری پیشنهادی:\n${item.script}` : ''}${item.caption ? `\n\nکپشن برای انتشار:\n${item.caption}\n${array(item.hashtags).join(' ')}` : ''}`, [], {});
       await hermesApi.setProposalStatus(item.id, 'in_production', conversation.id);
       navigate(`/studio/${conversation.id}`);
     } catch (e) { setError(message(e)); setWorking(''); }

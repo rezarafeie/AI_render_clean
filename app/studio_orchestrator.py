@@ -62,6 +62,15 @@ def _style(text: str) -> str | None:
     return f'talking_{normalized.strip()}' if re.fullmatch(r'\s*[1-4]\s*', normalized) else None
 
 
+_ENGINE_MARKER = re.compile(r"^\s*\[موتور:\s*(اکسپلینر|صحبتی)\]")
+
+
+def _engine_marker(text: str) -> str | None:
+    """Instagram GPT hands a proposal over with its engine named: "[موتور: اکسپلینر]" (a voiced video made from the script) or "[موتور: صحبتی]"."""
+    found = _ENGINE_MARKER.match(text or "")
+    return {"اکسپلینر": "explainer", "صحبتی": "talking"}.get(found[1]) if found else None
+
+
 def _wants_discovery(lower: str) -> bool:
     """"Find the reels in this podcast", "separate every useful point of this class": content discovery in a long video."""
     asks = ("دربیار", "دربیاور", "استخراج", "پیدا کن", "جدا کن", "پیشنهاد بده", "بررسی کن", "کشف", "extract", "find all", "discover")
@@ -652,7 +661,15 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             if latest.get('title') == original_title:
                 run(repo.set_conversation(conversation_id, user_key, title=title))
                 _emit(conversation_id, 'conversation.updated', title=title)
-        forced = (conversation.get('state') or {}).get('forced_intent') if not current else None
+        marker = _engine_marker(text)
+        if marker:
+            text = _ENGINE_MARKER.sub("", text, count=1).lstrip()       # the brief itself, without the routing tag
+        if marker == "talking" and not any(a["kind"] == "video" for a in attachments):
+            # A talking reel is edited from the person's own footage; nothing can be made from a script alone.
+            _assistant(conversation_id, user_key, "این ایده برای ریلز صحبتی است و به ویدیوی خودتان نیاز دارد. متن گفتاری و هوک پیشنهادی را همین‌جا در پیام قبلی دارید؛ "
+                       "ضبطش کنید و فایل ویدیو را همین‌جا بفرستید تا تدوین، زیرنویس و موشن را روی آن بسازم.")
+            return
+        forced = "motion" if marker == "explainer" and not current else (conversation.get('state') or {}).get('forced_intent') if not current else None
         motion_context = _motion_summary(user_key, conversation)
         history = [{"role": m["role"], "text": m["content"][:300]} for m in conversation.get("messages", [])[-5:-1]]
         intent = completed_manual['engine'] if completed_manual else (forced or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
