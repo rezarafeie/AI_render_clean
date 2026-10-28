@@ -6,6 +6,7 @@ import PostCard from '../../components/hermes/PostCard';
 import StatsCard from '../../components/hermes/StatsCard';
 import { array, message, number, percent } from './hermesUtils';
 import HermesSettings from './HermesSettings';
+import HermesOnboarding from './HermesOnboarding';
 
 export default function HermesDashboard() {
   const [accounts, setAccounts] = useState([]);
@@ -31,6 +32,7 @@ export default function HermesDashboard() {
   const followerCount = followerValues.length ? followerValues.reduce((sum, value) => sum + value, 0) : null;
   const engagementValues = postInsights.map((item) => item.engagement_rate).filter((value) => typeof value === 'number');
   const engagement = engagementValues.length ? engagementValues.reduce((sum, value) => sum + value, 0) / engagementValues.length : null;
+  if (!loading && !error && !accounts.length) return <HermesOnboarding />;
   return <div className="hm-page hm-rise">
     <div className="hm-page-head"><div><span className="hm-eyebrow">WORKSPACE OVERVIEW</span><h2>Your publishing command center</h2><p>Everything happening across your connected Instagram accounts.</p></div><Link className="hm-btn hm-btn-primary" to="/hermes/post/new">＋ New post</Link></div>
     {error && <div className="hm-alert" role="alert">{error}</div>}
