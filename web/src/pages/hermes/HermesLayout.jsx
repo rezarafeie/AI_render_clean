@@ -5,7 +5,7 @@ import { HermesSettingsModal } from './HermesSettings';
 import './hermes.css';
 
 const links = [
-  ['Overview', '/hermes', '◫'], ['Studio', '/hermes/studio', '✧'], ['Accounts', '/hermes/connect', '◎'],
+  ['Agent', '/hermes', '✧'], ['Overview', '/hermes/overview', '◫'], ['Accounts', '/hermes/connect', '◎'],
   ['Scheduler', '/hermes/scheduler', '▦'], ['Analytics', '/hermes/analytics', '◴'],
   ['AI Advisor', '/hermes/advisor', '✦'], ['Content Plan', '/hermes/content-plan', '▤'],
   ['Settings', '/hermes/settings', '⚙'],

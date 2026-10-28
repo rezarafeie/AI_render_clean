@@ -21,7 +21,7 @@ configure_structured_logging()
 from hermes.config import settings
 from hermes.database import init_db
 from hermes.routers import advisor, analytics, auth, posts, scheduler, settings as settings_router
-from hermes.routers import connected_apps, content_tools, skills as skills_router
+from hermes.routers import agent as agent_router, connected_apps, content_tools, skills as skills_router
 from hermes.security import current_user
 from hermes.services.scheduler_service import local_schedule_loop
 
@@ -148,6 +148,7 @@ for router in (auth.router, posts.router, scheduler.router, analytics.router, ad
     app.include_router(router)
 app.include_router(content_tools.router)
 app.include_router(skills_router.router)
+app.include_router(agent_router.router)
 
 
 @app.get("/health")
