@@ -351,6 +351,7 @@ def author(brief: str, *, context: str = "", previous: MotionPage | None = None,
         page = llm.ask(MotionPage, GUIDE, user, route=route, tokens=12000, attempts=2, used=used)
         if page.asks():
             return page
+        page.build_js, page.update_js = repair_js(page.build_js, page.duration), repair_js(page.update_js, page.duration)
         problems = validate_page(page)
         if not problems:
             return page
@@ -362,6 +363,7 @@ def repair(page: MotionPage, failure: str, *, brief: str = "", used: list[str] |
     """A page that passed static validation but failed the browser checks or the render: ask for a corrected full page."""
     request = build_request(brief or page.title, previous=page, change="The renderer rejected this page. Fix exactly what it reports and change nothing else:\n" + failure[:1800])
     corrected = llm.ask(MotionPage, GUIDE, request, route=REPAIR_ROUTE, tokens=12000, attempts=2, used=used)
+    corrected.build_js, corrected.update_js = repair_js(corrected.build_js, corrected.duration), repair_js(corrected.update_js, corrected.duration)
     problems = validate_page(corrected)
     if corrected.asks() or problems:
         raise CreativeUnavailable("the corrected page did not pass validation: " + "; ".join(problems[:3] or ["it asked a question"]))
@@ -582,6 +584,57 @@ _EXPLAIN = (
 )
 
 
+def _close(code: str, open_at: int) -> tuple[int, int]:
+    """Index of the parenthesis closing the one at ``open_at`` and the number of top-level arguments, skipping strings; (-1, 0) when unbalanced."""
+    depth, args, i, quote = 0, 1, open_at, ""
+    while i < len(code):
+        ch = code[i]
+        if quote:
+            if ch == "\\":
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in "\"'`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                return i, args
+        elif ch == "," and depth == 1:
+            args += 1
+        i += 1
+    return -1, 0
+
+
+_ARGS = {"to": 2, "from": 2, "set": 2, "fromTo": 3}
+
+
+def repair_js(code: str, duration: float) -> str:
+    """Rewrite the two mistakes models keep making instead of rejecting a scene for them: gsap.to/from/fromTo/set(...) outside the timeline becomes
+    tl.to(..., 0) (it would start at time 0 anyway), and repeat:-1 becomes the finite count that covers the clip. Anything else is left for the validator."""
+    position = 0
+    while True:
+        found = re.compile(r"\bgsap\.(to|from|fromTo|set)\s*\(").search(code, position)
+        if not found:
+            break
+        end, args = _close(code, found.end() - 1)
+        if end < 0 or args != _ARGS[found[1]]:
+            position = found.end()                                   # not a shape we can move safely
+            continue
+        code = code[:found.start()] + f"tl.{found[1]}" + code[found.end() - 1:end] + ", 0)" + code[end + 1:]
+        position = found.start() + 3
+
+    def finite(match: re.Match) -> str:
+        left, right = code.rfind("{", 0, match.start()), code.find("}", match.end())
+        span = code[left if left >= 0 else 0:right if right >= 0 else len(code)]
+        each = re.search(r"\bduration\s*:\s*(\d+(?:\.\d+)?)", span)
+        length = float(each[1]) if each and float(each[1]) > 0 else 1.0
+        return f"repeat: {min(60, max(1, int(duration / length + 1)))}"
+    return re.sub(r"\brepeat\s*:\s*-1\b", finite, code)
+
+
 def explain_problem(text: str) -> str:
     """A validator or check message as one short Persian phrase for the person watching (the technical text is a fallback)."""
     for pattern, phrase in _EXPLAIN:
@@ -600,6 +653,7 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous answer was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems[:8])
         draft = llm.ask(SceneDraft, guide, user, route=SCENE_ROUTE if attempt == 0 else REPAIR_ROUTE, tokens=7000, attempts=2, used=used)
+        draft.build_js, draft.update_js = repair_js(draft.build_js, plan.duration), repair_js(draft.update_js, plan.duration)
         problems = validate_page(_scene_page(n, draft, plan))
         problems += [f"every id must start with s{n}-: {i}" for i in dict.fromkeys(re.findall(r'\bid="(?!s%d-)([^"]+)"' % n, draft.html))][:3]
         if not problems:
