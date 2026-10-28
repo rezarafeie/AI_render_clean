@@ -111,6 +111,8 @@ function NewProject({ onCreated }: { onCreated: (p: LocalizeProject) => void }) 
 function ProjectEditor({ id, onChanged }: { id: string; onChanged: () => void }) {
   const [project, setProject] = React.useState<LocalizeProject | null>(null);
   const [draft, setDraft] = React.useState<LocalizeProject | null>(null);
+  const [voices, setVoices] = React.useState<Awaited<ReturnType<typeof api.localizeVoices>> | null>(null);
+  React.useEffect(() => { api.localizeVoices().then(setVoices).catch(() => setVoices(null)); }, []);
   const [error, setError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
@@ -145,7 +147,7 @@ function ProjectEditor({ id, onChanged }: { id: string; onChanged: () => void })
     try {
       const saved = await api.editLocalize(id, {
         title: draft.title, title_emojis: draft.title_emojis, cta_number: draft.cta_number, music: draft.music,
-        voice_provider: draft.voice_provider,
+        voice_provider: draft.voice_provider, voice_id: draft.voice_id ?? "", voice_style: draft.voice_style ?? "",
         caption_box: draft.caption_box ?? null, title_box: draft.title_box ?? null,
         end_card: draft.end_card ?? true, end_card_seconds: draft.end_card_seconds ?? 3.5,
         lines: draft.lines.map(l => ({ i: l.i, fa: l.fa, kind: l.kind })),
@@ -214,6 +216,16 @@ function ProjectEditor({ id, onChanged }: { id: string; onChanged: () => void })
             <label>صدای فارسی
               <select value={draft.voice_provider} disabled={busy} onChange={e => setDraft({ ...draft, voice_provider: e.target.value as LocalizeProject["voice_provider"] })}>
                 <option value="elevenlabs">ElevenLabs</option>
+              </select>
+            </label>
+            <label>گوینده
+              <select value={draft.voice_id ?? ""} disabled={busy} onChange={e => setDraft({ ...draft, voice_id: e.target.value })}>
+                {(voices?.voices ?? [{ id: "", name: "پیش‌فرض استودیو", note: "" }]).map(v => <option key={v.id} value={v.id}>{v.name}{v.note && v.id ? ` · ${v.note}` : ""}</option>)}
+              </select>
+            </label>
+            <label>حالت صدا
+              <select value={draft.voice_style ?? ""} disabled={busy} onChange={e => setDraft({ ...draft, voice_style: e.target.value })}>
+                {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
               </select>
             </label>
             <label>رنگ کادر متن‌ها

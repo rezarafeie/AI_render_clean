@@ -455,6 +455,8 @@ export interface LocalizeProject {
   cta_number: string;
   music: string | null;
   voice_provider: "elevenlabs";
+  voice_id?: string;
+  voice_style?: string;
   caption_box?: LocalizeBoxColour | null;
   title_box?: LocalizeBoxColour | null;
   end_card?: boolean;
@@ -945,7 +947,11 @@ export const api = {
     if (music) fd.append("music", music);
     return uploadWithProgress(`${BASE}/localize`, fd, onProgress);
   },
-  async editLocalize(id: string, body: Partial<Pick<LocalizeProject, "title" | "title_emojis" | "cta_number" | "music" | "voice_provider" | "caption_box" | "title_box" | "end_card" | "end_card_seconds">>
+  /** Narrators and speaking styles the person can pick for a Persian voice-over. */
+  async localizeVoices(): Promise<{ voices: { id: string; name: string; note: string }[]; styles: { id: string; label: string }[] }> {
+    return j(await authFetch(`${BASE}/localize/voices`));
+  },
+  async editLocalize(id: string, body: Partial<Pick<LocalizeProject, "title" | "title_emojis" | "cta_number" | "music" | "voice_provider" | "voice_id" | "voice_style" | "caption_box" | "title_box" | "end_card" | "end_card_seconds">>
     & { lines?: { i: number; fa?: string; kind?: LocalizeLine["kind"] }[] }): Promise<LocalizeProject> {
     return j(await authFetch(`${BASE}/localize/${id}`, {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),

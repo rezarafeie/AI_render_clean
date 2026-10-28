@@ -110,6 +110,8 @@ def create(user_id: str, filename: str, src, cta_number: str, music: Optional[st
         "cta_number": (cta_number or "").strip() or DEFAULT_CTA_NUMBER,
         "music": music or DEFAULT_LOCALIZE_MUSIC,
         "voice_provider": default_voice_provider(),
+        "voice_id": "",
+        "voice_style": "",
         "status": "queued", "stage": "", "message": "", "progress": 0,
         "title": "", "title_emojis": "", "title_layout": None, "lines": [],
         "output": None, "cost_usd": 0.0,
@@ -158,6 +160,16 @@ def update(project_id: str, changes: dict) -> dict:
             if changes["voice_provider"] not in VOICE_PROVIDERS:
                 raise ValueError("voice provider must be elevenlabs")
             state["voice_provider"] = changes["voice_provider"]
+        if "voice_id" in changes:
+            from brain.localize import narrator_ids
+            if (changes["voice_id"] or "") not in narrator_ids():
+                raise ValueError("narrator is not in the list")
+            state["voice_id"] = changes["voice_id"] or ""
+        if "voice_style" in changes:
+            from brain.localize import VOICE_STYLES
+            if (changes["voice_style"] or "") not in VOICE_STYLES:
+                raise ValueError("voice style is not in the list")
+            state["voice_style"] = changes["voice_style"] or ""
         for key in ("caption_box", "title_box"):
             if key in changes:
                 from engine.localize import BOX_STYLES
@@ -456,10 +468,11 @@ def _render(project_id: str) -> None:
     # and resumed renders now use Localize's canonical ElevenLabs pipeline.
     provider = text.default_voice_provider()
     state["voice_provider"] = provider
-    text.check_voice_budget([l["fa"] for l in spoken], provider, root / "tts")
+    narrator, style = state.get("voice_id") or "", state.get("voice_style") or ""
+    text.check_voice_budget([l["fa"] for l in spoken], provider, root / "tts", narrator, style)
     if provider == "elevenlabs":
         # One take for the whole narration, cut per line by character timings.
-        pieces = text.synthesize_narration([l["fa"] for l in spoken], root / "tts")
+        pieces = text.synthesize_narration([l["fa"] for l in spoken], root / "tts", narrator, style)
         clips = {line["i"]: clip for line, clip in zip(spoken, pieces) if clip[1] > 0}
         _stage(project_id, "generating voice", progress=40)
     else:

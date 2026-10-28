@@ -297,7 +297,7 @@ def localize_fingerprint(state: dict) -> str:
         "placements": [(p.get("i"), p.get("start"), p.get("end"), p.get("tempo")) for p in state.get("placements") or []],
         **({"caption_looks": state["caption_looks"]} if state.get("caption_looks") else {}),   # absent when unedited: old fingerprints stay valid
         **{k: state.get(k) for k in ("title", "title_layout", "title_emojis", "title_box", "caption_box", "end_card",
-                                      "end_card_seconds", "cta_number", "music", "voice_provider")},
+                                      "end_card_seconds", "cta_number", "music", "voice_provider", "voice_id", "voice_style")},
     }
     return hashlib.sha256(json.dumps(relevant, sort_keys=True, default=str).encode()).hexdigest()[:16]
 

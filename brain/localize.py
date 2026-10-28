@@ -430,6 +430,37 @@ def audio_duration(path: Path) -> float:
 
 VOICE_PROVIDERS = ("elevenlabs",)
 
+# Narrators the person can pick per project (ElevenLabs premade voices, each checked to speak Persian through eleven_v3).
+# "" is the studio's own casting (the Persian catalogue voice); any other id is used as chosen.
+NARRATORS = (
+    ("", "پیش‌فرض استودیو", "گوینده‌ی فارسیِ ثبت‌شده در تنظیمات"),
+    ("TX3LPaxmHKxFdv7VOQHJ", "Liam", "مرد، جوان و گرم"),
+    ("JBFqnCBsd6RMkjVDRZzb", "George", "مرد، قصه‌گو و گرم"),
+    ("onwK4e9ZLuTAKqWW03F9", "Daniel", "مرد، عمیق و رسمی"),
+    ("pNInz6obpgDQGcFmaJgB", "Adam", "مرد، بم و جدی"),
+    ("pqHfZKP75CvOlQylNhV4", "Bill", "مرد، مسن و مستندگو"),
+    ("cjVigY5qzO86Huf0OWal", "Eric", "مرد، آرام و قابل‌اعتماد"),
+    ("IKne3meq5aSn9XLyUdCD", "Charlie", "مرد، صمیمی و روزمره"),
+    ("N2lVS1w4EtoT3dr4eOWO", "Callum", "مرد، گرفته و پرشدت"),
+    ("iP95p4xoKVk53GoZ742B", "Chris", "مرد، صمیمی و جذاب"),
+    ("EXAVITQu4vr4xnSDxMaL", "Sarah", "زن، نرم و جوان"),
+    ("Xb7hH8MSUJpSbSDYk0k2", "Alice", "زن، مطمئن و آموزگار"),
+    ("XrExE9yKIg1WjnnlVkGX", "Matilda", "زن، دوستانه و بانشاط"),
+)
+
+# How the narrator should sound. eleven_v3 reads bracketed audio tags as direction, not as words.
+VOICE_STYLES = {
+    "": ("طبیعی", ""),
+    "reflective": ("تأمل‌برانگیز، احساسی و تأثیرگذار", "[thoughtful] [emotional] "),
+    "calm": ("آرام و صمیمی", "[calm] [softly] "),
+    "serious": ("جدی و قاطع", "[serious] "),
+    "energetic": ("پرانرژی", "[excited] "),
+}
+
+
+def narrator_ids() -> set[str]:
+    return {voice for voice, _, _ in NARRATORS}
+
 
 def default_voice_provider() -> str:
     return "elevenlabs"
@@ -451,12 +482,12 @@ def elevenlabs_characters_left() -> Optional[int]:
         return None
 
 
-def check_voice_budget(texts: list[str], provider: str, cache_dir: Path) -> None:
+def check_voice_budget(texts: list[str], provider: str, cache_dir: Path, voice: str = "", style: str = "") -> None:
     """Fail before rendering when ElevenLabs cannot voice the uncached lines."""
     if provider != "elevenlabs":
         return
-    full, _ = narration_script(texts)
-    needed = 0 if _narration_paths(full, cache_dir)[1].is_file() else len(full)
+    full, _ = narration_script(texts, style)
+    needed = 0 if _narration_paths(full, cache_dir, voice)[1].is_file() else len(full)
     left = elevenlabs_characters_left()
     if needed and left is not None and left < needed:
         raise RuntimeError(
@@ -524,15 +555,18 @@ def _synthesize_once(text: str, out_dir: Path, provider: str) -> tuple[Path, flo
 _SENTENCE_END = ".!?؟…"
 
 
-def narration_script(texts: list[str]) -> tuple[str, list[tuple[int, int]]]:
+def narration_script(texts: list[str], style: str = "") -> tuple[str, list[tuple[int, int]]]:
     """Join lines into one speakable text; returns (text, [(start, end) char span per line])."""
     parts: list[str] = []
     spans: list[tuple[int, int]] = []
     pos = 0
+    tags = VOICE_STYLES.get(style, VOICE_STYLES[""])[1]
     for raw in texts:
         piece = speakable(raw).strip().rstrip("،,")
         if piece and piece[-1] not in _SENTENCE_END:
             piece += "."
+        if piece and tags:
+            piece = tags + piece
         if parts:
             pos += 1  # the joining space
         spans.append((pos, pos + len(piece)))
@@ -541,9 +575,16 @@ def narration_script(texts: list[str]) -> tuple[str, list[tuple[int, int]]]:
     return " ".join(parts), spans
 
 
-def _narration_paths(full: str, out_dir: Path) -> tuple[Path, Path]:
+def _cast(text: str, voice: str = "") -> tuple[str, str]:
+    """The person's own pick from NARRATORS is used as chosen; otherwise the studio's Persian casting."""
+    if voice and voice in narrator_ids():
+        return voice, "eleven_v3"
     from .speech_policy import eleven_cast
-    voice, model = eleven_cast(full, tts_voice(), tts_model(), language="fa", context="narration educational")
+    return eleven_cast(text, tts_voice(), tts_model(), language="fa", context="narration educational")
+
+
+def _narration_paths(full: str, out_dir: Path, voice: str = "") -> tuple[Path, Path]:
+    voice, model = _cast(full, voice)
     digest = hashlib.sha256(f"casting-v1|{voice}|{model}|{full}".encode()).hexdigest()[:16]
     base = out_dir / f"narration_{digest}"
     return base.with_suffix(".mp3"), base.with_suffix(".json")
@@ -553,7 +594,7 @@ from brain.lm_gateway import observe_specialized
 
 
 @observe_specialized("audio", "elevenlabs-vercel-relay", "v1/text-to-speech/with-timestamps")
-def _elevenlabs_with_timestamps(text: str) -> tuple[bytes, dict]:
+def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict]:
     import base64
 
     import httpx
@@ -562,8 +603,7 @@ def _elevenlabs_with_timestamps(text: str) -> tuple[bytes, dict]:
     key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not key:
         raise RuntimeError("ElevenLabs API key is not set")
-    from .speech_policy import eleven_cast
-    voice, model = eleven_cast(text, tts_voice(), tts_model(), language="fa", context="narration educational")
+    voice, model = _cast(text, voice)
     response = httpx.post(
         elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"),
         headers={"xi-api-key": key},
@@ -601,17 +641,17 @@ def split_by_alignment(alignment: dict, spans: list[tuple[int, int]], total: flo
     return cuts
 
 
-def synthesize_narration(texts: list[str], out_dir: Path) -> list[tuple[Path, float]]:
+def synthesize_narration(texts: list[str], out_dir: Path, voice: str = "", style: str = "") -> list[tuple[Path, float]]:
     """Voice all ``texts`` in ONE ElevenLabs request and cut it per line.
 
     Returns (clip path, seconds) per text. The full take and its alignment
     are cached, so re-renders of unchanged text spend no credit.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    full, spans = narration_script(texts)
-    audio, timing = _narration_paths(full, out_dir)
+    full, spans = narration_script(texts, style)
+    audio, timing = _narration_paths(full, out_dir, voice)
     if not (audio.is_file() and timing.is_file()):
-        data, alignment = _elevenlabs_with_timestamps(full)
+        data, alignment = _elevenlabs_with_timestamps(full, voice)
         audio.write_bytes(data)
         timing.write_text(json.dumps(alignment, ensure_ascii=False))
     alignment = json.loads(timing.read_text())

@@ -48,6 +48,13 @@ def create_project(
     return store.public(store.load(state["id"]))
 
 
+@router.get("/voices")
+def narrator_options():
+    from brain.localize import NARRATORS, VOICE_STYLES
+    return {"voices": [{"id": i, "name": n, "note": d} for i, n, d in NARRATORS],
+            "styles": [{"id": k, "label": v[0]} for k, v in VOICE_STYLES.items()]}
+
+
 @router.get("/{project_id}")
 def get_project(request: Request, project_id: str):
     return store.public(_owned(request, project_id))
@@ -65,6 +72,8 @@ class ProjectEdit(BaseModel):
     cta_number: Optional[str] = None
     music: Optional[str] = None
     voice_provider: Optional[str] = None
+    voice_id: Optional[str] = None
+    voice_style: Optional[str] = None
     caption_box: Optional[str] = None
     title_box: Optional[str] = None
     end_card: Optional[bool] = None

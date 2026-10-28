@@ -21,6 +21,12 @@ function useMusicTracks() {
   return tracks;
 }
 
+function useNarrators() {
+  const [voices, setVoices] = React.useState<Awaited<ReturnType<typeof api.localizeVoices>> | null>(null);
+  React.useEffect(() => { api.localizeVoices().then(setVoices).catch(() => setVoices(null)); }, []);
+  return voices;
+}
+
 /** Localize settings and Persian lines for the studio's Edit tab (the standalone page keeps its own editor). */
 export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => void }) {
   const [project, setProject] = React.useState<LocalizeProject | null>(null);
@@ -28,6 +34,7 @@ export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => v
   const [error, setError] = React.useState("");
   const [busyAction, setBusyAction] = React.useState("");
   const tracks = useMusicTracks();
+  const voices = useNarrators();
 
   const load = React.useCallback(async () => {
     try {
@@ -56,7 +63,7 @@ export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => v
     setBusyAction("save"); setError("");
     try {
       const saved = await api.editLocalize(id, {
-        title: draft.title, title_emojis: draft.title_emojis, cta_number: draft.cta_number, music: draft.music, voice_provider: draft.voice_provider,
+        title: draft.title, title_emojis: draft.title_emojis, cta_number: draft.cta_number, music: draft.music, voice_provider: draft.voice_provider, voice_id: draft.voice_id ?? "", voice_style: draft.voice_style ?? "",
         caption_box: draft.caption_box ?? null, title_box: draft.title_box ?? null, end_card: draft.end_card ?? true, end_card_seconds: draft.end_card_seconds ?? 3.5,
         lines: draft.lines.map(line => ({ i: line.i, fa: line.fa, kind: line.kind })),
       });
@@ -105,13 +112,21 @@ export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => v
         </EditGrid>
       </EditCard>
 
-      <EditCard title="صدا و موسیقی" summary={`${draft.music ? draft.music.split("/").pop() : "بدون موسیقی"} · ElevenLabs`}>
+      <EditCard title="صدا و موسیقی" summary={`${draft.music ? draft.music.split("/").pop() : "بدون موسیقی"} · ${voices?.voices.find(voice => voice.id === (draft.voice_id ?? ""))?.name ?? "ElevenLabs"}`}>
         <div className="field"><label htmlFor="loc-music">موسیقی زیر صدا</label>
           <select id="loc-music" className="input" disabled={locked} value={draft.music || ""} onChange={event => set({ music: event.target.value || null })}>
             <option value="">بدون موسیقی</option>{tracks.map(track => <option key={track.path} value={track.path}>{track.filename}</option>)}</select></div>
         <div className="field"><label htmlFor="loc-voice">صدای فارسی</label>
           <select id="loc-voice" className="input" disabled={locked} value={draft.voice_provider} onChange={event => set({ voice_provider: event.target.value as LocalizeProject["voice_provider"] })}>
             <option value="elevenlabs">ElevenLabs</option></select></div>
+        <EditGrid>
+          <div className="field"><label htmlFor="loc-narrator">گوینده</label>
+            <select id="loc-narrator" className="input" disabled={locked} value={draft.voice_id ?? ""} onChange={event => set({ voice_id: event.target.value })}>
+              {(voices?.voices ?? [{ id: "", name: "پیش‌فرض استودیو", note: "" }]).map(voice => <option key={voice.id} value={voice.id}>{voice.name}{voice.note && voice.id ? ` · ${voice.note}` : ""}</option>)}</select></div>
+          <div className="field"><label htmlFor="loc-voice-style">حالت صدا</label>
+            <select id="loc-voice-style" className="input" disabled={locked} value={draft.voice_style ?? ""} onChange={event => set({ voice_style: event.target.value })}>
+              {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(style => <option key={style.id} value={style.id}>{style.label}</option>)}</select></div>
+        </EditGrid>
       </EditCard>
 
       <EditCard title="ظاهر کادرها و صفحهٔ پایانی" summary={draft.end_card === false ? "بدون صفحهٔ پایانی" : `صفحهٔ پایانی ${draft.end_card_seconds ?? 3.5} ثانیه`}>
