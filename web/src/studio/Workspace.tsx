@@ -178,7 +178,7 @@ function EditPane({ project, onSaved, superseding = false }: { project?: StudioP
  * with CSS, which works everywhere (embedded browsers and iPhones refuse the Fullscreen API); the browser's own
  * fullscreen is requested on top of it when it is available.
  */
-function usePanelFullscreen() {
+export function usePanelFullscreen() {
   const node = React.useRef<HTMLElement | null>(null);
   const [active, setActive] = React.useState(false);
   const native = React.useRef(false);

@@ -200,4 +200,6 @@ async def chat(user_id: str, message: str, page: dict | None, history: list[dict
                "history": [{"role": h.get("role"), "text": str(h.get("text") or "")[:1500]} for h in (history or [])[-8:]], "message": message[:4000]}
     result = await asyncio.to_thread(lambda: skills._complete(system, json.dumps(payload, ensure_ascii=False), route="hermes_chat", tokens=2500))
     action = result.get("action") if isinstance(result.get("action"), dict) and result["action"].get("type") in ("run_agent", "open_tab") else None
-    return {"reply": str(result.get("reply") or "")[:4000], "suggestions": [str(x)[:120] for x in (result.get("suggestions") or [])][:4], "action": action}
+    consulted = [{"label": "خواندن محتوای صفحه‌ی باز", "tool": "page"}] if payload["page"]["text"] else []
+    consulted.append({"label": "بررسی اطلاعات پیج و تحلیل ذخیره‌شده", "tool": "account"})
+    return {"activity": consulted, "reply": str(result.get("reply") or "")[:4000], "suggestions": [str(x)[:120] for x in (result.get("suggestions") or [])][:4], "action": action}

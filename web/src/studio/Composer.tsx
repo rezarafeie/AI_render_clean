@@ -21,6 +21,8 @@ interface ComposerProps {
   autoFocus?: boolean; placeholder?: string; variant?: "home" | "dock";
   textareaRef?: React.RefObject<HTMLTextAreaElement>;
   manual?: boolean; onManualChange?: () => void;
+  /** No attachments or templates: for chats that only exchange text (the Hermes agent). */
+  textOnly?: boolean;
   agentMode?: AgentMode; onAgentModeChange?: (mode: AgentMode) => void;
 }
 
@@ -66,6 +68,7 @@ export function Composer(props: ComposerProps) {
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
 
       <div className="composer-bar">
+        {props.textOnly ? null : (
         <Menu label={templateMenu ? "Templates" : "Add to message"} side="top" trigger={triggerProps => <button type="button" className="icon-btn" {...triggerProps} onClick={() => { setTemplateMenu(false); triggerProps.onClick(); }} aria-label="Attach or choose a template" data-tip="Attach or choose a template" data-tip-pos="top"><Icon name="plus" size={20}/></button>}>
           {close => <>
             {templateMenu ? <>
@@ -79,6 +82,7 @@ export function Composer(props: ComposerProps) {
             </>}
           </>}
         </Menu>
+        )}
         <input ref={fileInput} type="file" multiple hidden accept="video/*,image/*,audio/*" onChange={event => { const picked = Array.from(event.target.files || []); event.target.value = ""; if (picked.length) void onFiles(picked); }}/>
         {props.onAgentModeChange ? <AgentModeSelector value={props.agentMode || "lite"} onChange={props.onAgentModeChange}/> : null}
         <span className="grow"/>

@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom';
 import hermesApi from '../../services/hermesApi';
+import { Icon } from '../../components/Icon';
 import { array, number } from './hermesUtils';
 import { useHermesData } from './hermesCache';
 import { useHermes } from './HermesContext';
 
-function Stat({ label, value, note }) {
-  return <div className="hs-stat"><span className="hs-muted">{label}</span><strong>{value}</strong>{note && <small className="hs-muted">{note}</small>}</div>;
+const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
+
+function Stat({ icon, label, children, note }) {
+  return <div className="ov-stat"><div className="ov-stat-top"><span>{label}</span><Icon name={icon} size={16}/></div>{children}{note ? <small className="ov-sub">{note}</small> : null}</div>;
 }
 
 export default function HermesOverview() {
@@ -16,36 +19,61 @@ export default function HermesOverview() {
   const profile = agent?.profile;
   const analysis = agent?.analysis;
   const proposals = array(agent?.proposals);
-  const waiting = proposals.filter((p) => p.status === 'proposed').length;
+  const ideas = proposals.filter((p) => p.status === 'proposed');
   const making = proposals.filter((p) => p.status === 'in_production').length;
-  const media = array(agent?.media).slice(0, 6);
-  return <div className="hs-page">
-    <section className="hs-stats">
-      <Stat label="Followers" value={profile?.followers != null ? number(profile.followers) : '—'} note={profile ? `@${profile.username}` : undefined} />
-      <Stat label="Posts" value={profile?.media_count != null ? number(profile.media_count) : '—'} />
-      <Stat label="Profile score" value={analysis?.profile?.score != null ? `${analysis.profile.score}/100` : '—'} note={analysis ? 'from the agent' : 'agent is reading your page'} />
-      <Stat label="Ideas waiting" value={number(waiting)} note={making ? `${making} in production` : undefined} />
+  const media = array(agent?.media).slice(0, 5);
+  const score = analysis?.profile?.score;
+  const running = agent?.run?.status === 'running';
+  return <>
+    <section className="ov-hero">
+      <div className="ov-avatar" aria-hidden="true">{(profile?.username || '?').slice(0, 1).toUpperCase()}</div>
+      <div className="ov-who">
+        <strong dir="ltr">{profile ? `@${profile.username}` : 'Reading your page…'}</strong>
+        <span className="ov-sub">{profile ? [profile.followers != null && `${number(profile.followers)} followers`, profile.follows != null && `${number(profile.follows)} following`, profile.media_count != null && `${number(profile.media_count)} posts`].filter(Boolean).join(' · ') : 'The agent is connecting to your account'}</span>
+        <span className="ov-pill">Connected · read-only</span>
+      </div>
+      <div className="hs-seg-row">
+        <button className="btn btn-secondary btn-sm" type="button" onClick={() => runAgent()} disabled={running}><Icon name="refresh" size={15}/>{running ? 'Reviewing…' : 'New review'}</button>
+        <Link className="btn btn-sm" to="/hermes/post/new"><Icon name="plus" size={15}/>New post</Link>
+      </div>
     </section>
-    <section className="hs-grid">
-      <div className="hs-card" dir="auto">
-        <div className="hs-card-head"><strong>What the agent found</strong><button className="btn btn-ghost btn-sm" type="button" onClick={openAgent}>Open agent</button></div>
+
+    <section className="ov-stats">
+      <Stat icon="user" label="Followers"><strong>{profile?.followers != null ? number(profile.followers) : '—'}</strong></Stat>
+      <Stat icon="film" label="Posts"><strong>{profile?.media_count != null ? number(profile.media_count) : '—'}</strong></Stat>
+      <Stat icon="spark" label="Profile score" note={analysis ? 'from the agent’s review' : 'review in progress'}>
+        <div className="hs-seg-row"><strong>{score != null ? `${score}` : '—'}</strong>{score != null ? <div className="ov-ring" style={{ '--v': score }}><span>{score}</span></div> : null}</div></Stat>
+      <Stat icon="wand" label="Ideas waiting" note={making ? `${making} in production` : undefined}><strong>{number(ideas.length)}</strong></Stat>
+    </section>
+
+    <section className="ov-grid">
+      <div className="ov-card" dir="auto">
+        <h3>What the agent found <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAgent('insights')}>Details</button></h3>
         {analysis ? <>
-          {analysis.strategy && <p>{[analysis.strategy.niche, analysis.strategy.audience].filter(Boolean).join(' · ')}</p>}
-          {array(analysis.content?.do_more).length > 0 && <p><strong>Do more:</strong> {array(analysis.content.do_more).slice(0, 3).join('، ')}</p>}
-          {array(analysis.content?.stop).length > 0 && <p><strong>Stop:</strong> {array(analysis.content.stop).slice(0, 3).join('، ')}</p>}
-          {array(analysis.data_gaps).length > 0 && <p className="hs-muted">{array(analysis.data_gaps).slice(0, 2).join('؛ ')}</p>}
-        </> : <p className="hs-muted">The agent is reading your profile and recent posts. This takes a few minutes the first time.</p>}
-        <div className="hs-row"><button className="btn btn-secondary btn-sm" type="button" onClick={() => runAgent()}>Run a new review</button></div>
+          {analysis.strategy ? <p>{[analysis.strategy.niche, analysis.strategy.audience].filter(Boolean).join(' · ')}</p> : null}
+          {array(analysis.content?.do_more).length ? <div><span className="ov-sub">Do more</span><div className="ov-chips">{array(analysis.content.do_more).slice(0, 4).map((x) => <span key={x} className="ov-chip is-good">{x}</span>)}</div></div> : null}
+          {array(analysis.content?.stop).length ? <div><span className="ov-sub">Stop</span><div className="ov-chips">{array(analysis.content.stop).slice(0, 4).map((x) => <span key={x} className="ov-chip is-bad">{x}</span>)}</div></div> : null}
+          {array(analysis.data_gaps).length ? <span className="ov-sub">{array(analysis.data_gaps).slice(0, 2).join('؛ ')}</span> : null}
+        </> : <p className="ov-sub">The agent is reading your profile and recent posts. The first review takes a few minutes.</p>}
       </div>
-      <div className="hs-card">
-        <div className="hs-card-head"><strong>Up next</strong><Link className="btn btn-ghost btn-sm" to="/hermes/content">Open content</Link></div>
-        {upcoming.length ? <ul className="hs-plain">{upcoming.map((p) => <li key={p.id}><span dir="auto">{(p.caption || 'Untitled').slice(0, 60)}</span><small className="hs-muted">{new Date(p.scheduled_at).toLocaleString()}</small></li>)}</ul>
-          : <p className="hs-muted">Nothing scheduled. Approve an idea from the agent, then make it in the editor.</p>}
+      <div className="ov-card">
+        <h3>Ideas for the editor <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAgent('ideas')}>Open</button></h3>
+        {ideas.length ? ideas.slice(0, 2).map((p) => <div key={p.id} className="ov-idea" dir="auto"><strong>{p.title}</strong><span className="ov-sub">{ENGINE[p.engine] || p.engine}{p.hook ? ` · «${p.hook}»` : ''}</span></div>)
+          : <p className="ov-sub">New ideas and scripts appear here after a review. Approve one and the editor makes it.</p>}
       </div>
     </section>
-    {media.length > 0 && <section className="hs-card">
-      <div className="hs-card-head"><strong>Recent posts</strong></div>
-      <ul className="hs-plain">{media.map((m) => <li key={m.id}><span dir="auto">{(m.caption || '(no caption)').slice(0, 90)}</span><small className="hs-muted">{m.likes ?? '?'} likes · {m.comments ?? '?'} comments</small></li>)}</ul>
-    </section>}
-  </div>;
+
+    <section className="ov-grid">
+      <div className="ov-card">
+        <h3>Up next <Link className="btn btn-ghost btn-sm" to="/hermes/content">Open content</Link></h3>
+        {upcoming.length ? <ul className="ov-list">{upcoming.map((p) => <li key={p.id}><span dir="auto">{(p.caption || 'Untitled').slice(0, 56)}</span><small className="ov-sub">{new Date(p.scheduled_at).toLocaleDateString()}</small></li>)}</ul>
+          : <p className="ov-sub">Nothing scheduled yet.</p>}
+      </div>
+      <div className="ov-card">
+        <h3>Recent posts</h3>
+        {media.length ? <ul className="ov-list">{media.map((m) => <li key={m.id}><span dir="auto">{(m.caption || '(no caption)').slice(0, 56)}</span><small className="ov-sub">{m.likes ?? '?'} ♥ · {m.comments ?? '?'} 💬</small></li>)}</ul>
+          : <p className="ov-sub">Posts appear after the first review.</p>}
+      </div>
+    </section>
+  </>;
 }

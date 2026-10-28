@@ -7,14 +7,14 @@ import HermesContentPlan from './HermesContentPlan';
 export default function HermesContent() {
   const [view, setView] = useState(() => { try { return localStorage.getItem('hermes:content') || 'calendar'; } catch { return 'calendar'; } });
   const pick = (next) => { setView(next); try { localStorage.setItem('hermes:content', next); } catch { /* optional */ } };
-  return <div className="hs-page">
-    <div className="hs-row hs-between">
-      <div className="hs-seg hs-seg-inline" role="tablist">
-        <button type="button" role="tab" aria-selected={view === 'calendar'} className={view === 'calendar' ? 'is-on' : ''} onClick={() => pick('calendar')}>Calendar & queue</button>
-        <button type="button" role="tab" aria-selected={view === 'plan'} className={view === 'plan' ? 'is-on' : ''} onClick={() => pick('plan')}>Content plan</button>
+  return <>
+    <div className="hs-seg-row">
+      <div className="tabs-bar" role="tablist">
+        <button type="button" role="tab" aria-selected={view === 'calendar'} className="tab" onClick={() => pick('calendar')}>Calendar & queue</button>
+        <button type="button" role="tab" aria-selected={view === 'plan'} className="tab" onClick={() => pick('plan')}>Content plan</button>
       </div>
       <Link className="btn btn-sm" to="/hermes/post/new">New post</Link>
     </div>
     {view === 'calendar' ? <HermesScheduler /> : <HermesContentPlan />}
-  </div>;
+  </>;
 }

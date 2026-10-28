@@ -16,9 +16,10 @@ const SIDEBAR_BOUNDS = { min: 200, max: 420 };
 export { Icon } from "./components/Icon";
 export type { IconName } from "./components/Icon";
 
-type RouteKind = "studio" | "page" | "legacy";
+type RouteKind = "studio" | "page" | "legacy" | "workspace";
 function routeKind(pathname: string): RouteKind {
   if (pathname === "/" || pathname.startsWith("/studio")) return "studio";
+  if (pathname === "/hermes" || pathname.startsWith("/hermes/")) return "workspace";   // laid out like the Studio chat: a page column and a side panel
   if (/^\/(projects|templates|settings)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
   return "legacy";
 }

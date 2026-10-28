@@ -77,7 +77,7 @@
 .content-col { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
 .topbar { grid-row: 1; }
 .main { grid-row: 2; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.main[data-route="studio"] { overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.main[data-route="studio"], .main[data-route="workspace"] { overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .topbar, .bottom-nav { display: none; }
 .bottom-nav { grid-row: 3; }
 
