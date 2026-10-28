@@ -72,7 +72,8 @@ async def save_state(user_id: str, values: dict):
 async def status(user_id: str) -> dict:
     values = await state(user_id)
     return {"configured": bool(settings.COMPOSIO_API_KEY and settings.COMPOSIO_INSTANCE_ID),
-            "enabled": values.get("enabled") == "true", "applications": allowed_toolkits(),
+            "enabled": values.get("enabled") != "false",       # on by default; only an explicit disable turns it off
+            "applications": allowed_toolkits(),
             "session_saved": bool(values.get("session_id")), "external_actions_enabled": False}
 
 
@@ -85,7 +86,7 @@ async def set_enabled(user_id: str, enabled: bool):
 
 async def session_id(user_id: str) -> str:
     values = await state(user_id)
-    if values.get("enabled") != "true":
+    if values.get("enabled") == "false":
         raise HTTPException(409, detail={"code": "COMPOSIO_DISABLED"})
     if values.get("session_id"):
         # Fail closed after an administrator changes namespace or tool policy.
