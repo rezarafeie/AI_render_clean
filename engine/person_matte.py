@@ -17,9 +17,9 @@ def _hf_cli() -> list[str] | None:
     """The installed HyperFrames CLI, when it has `remove-background` (HyperFrames >= 0.8)."""
     import os
     import shutil
-    cli = os.environ.get("HYPERFRAMES_CLI")
-    if cli and Path(cli).is_file() and shutil.which("node"):
-        return ["node", cli]
+    for cli in (os.environ.get("HYPERFRAMES_CLI"), "/opt/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs"):   # the second is the server image's install
+        if cli and Path(cli).is_file() and shutil.which("node"):
+            return ["node", cli]
     return None
 
 
