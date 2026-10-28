@@ -11,6 +11,7 @@ from hermes.services import composio_read as read, composio_sessions as sessions
 
 VIRTUAL_ID = "composio-instagram"
 PROFILE_TOOL, MEDIA_TOOL = "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_IG_USER_MEDIA"
+MEDIA_FIELDS = "id,caption,media_type,permalink,timestamp,like_count,comments_count,view_count,saved_count,shares_count,total_like_count,total_comments_count,total_views_count"
 _cache: dict[str, tuple[float, dict | None]] = {}
 TTL = 90.0
 
@@ -81,15 +82,19 @@ async def posts(user_id: str, strict: bool = False) -> list:
     if MEDIA_TOOL not in read.permitted_slugs():
         return []
     try:
-        result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25}, max_chars=400_000)   # a page of posts is large; only a few fields are kept below
+        result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 50, "fields": MEDIA_FIELDS}, max_chars=400_000)   # explicit fields: the default set has no like_count
     except HTTPException:                                   # the page still works with the profile numbers
         if strict:
             raise
         return []
     items = (result.get("data") or {}).get("data") if isinstance(result.get("data"), dict) else None
     items = items if isinstance(items, list) else _find_list(result.get("data"))
-    return [{"id": str(m.get("id")), "ig_post_id": str(m.get("id")), "likes": m.get("like_count"), "comments": m.get("comments_count"),
-             "caption": (m.get("caption") or "")[:200], "permalink": m.get("permalink"), "timestamp": m.get("timestamp"), "source": "composio"}
+
+    def first(m, *keys):
+        return next((m[k] for k in keys if m.get(k) is not None), None)
+    return [{"id": str(m.get("id")), "ig_post_id": str(m.get("id")), "type": m.get("media_type"), "likes": first(m, "like_count", "total_like_count"),
+             "comments": first(m, "comments_count", "total_comments_count"), "views": first(m, "view_count", "total_views_count"), "saves": m.get("saved_count"),
+             "shares": m.get("shares_count"), "caption": (m.get("caption") or "")[:300], "permalink": m.get("permalink"), "timestamp": m.get("timestamp"), "source": "composio"}
             for m in (items or []) if isinstance(m, dict)]
 
 
