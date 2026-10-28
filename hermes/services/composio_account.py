@@ -80,7 +80,10 @@ async def insights(user_id: str) -> dict:
 async def posts(user_id: str) -> list:
     if MEDIA_TOOL not in read.permitted_slugs():
         return []
-    result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25})
+    try:
+        result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25})
+    except HTTPException:                                   # the page still works with the profile numbers
+        return []
     items = (result.get("data") or {}).get("data") if isinstance(result.get("data"), dict) else None
     items = items if isinstance(items, list) else _find_list(result.get("data"))
     return [{"id": str(m.get("id")), "ig_post_id": str(m.get("id")), "likes": m.get("like_count"), "comments": m.get("comments_count"),

@@ -6,6 +6,7 @@ Encrypted Hermes settings are the persistence layer, not another user database.
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import contextmanager
 import hashlib
 import json
@@ -47,6 +48,9 @@ def sdk():
         yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=20, max_retries=0,
                        allow_tracking=False, http_client=client, file_upload_dirs=False,
                        dangerously_allow_auto_upload_download_files=False)
+
+
+log = logging.getLogger(__name__)
 
 
 async def state(user_id: str) -> dict:
@@ -121,7 +125,8 @@ async def remote(call):
     except Exception as exc:
         if getattr(exc, "status_code", None) == 429:
             raise HTTPException(429, detail={"code": "COMPOSIO_RATE_LIMITED"}, headers={"Retry-After": "30"}) from None
-        # Never send raw SDK exception text, URLs, headers or response bodies.
+        # Never send raw SDK exception text, URLs, headers or response bodies; the log keeps the type and the SDK's status code only.
+        log.warning("composio call failed: %s status=%s", type(exc).__name__, getattr(exc, "status_code", None))
         raise HTTPException(502, detail={"code": "COMPOSIO_CONNECTION_FAILED"}) from None
 
 
