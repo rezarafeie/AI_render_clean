@@ -22,7 +22,12 @@ const agent = {
 };
 const posts = [{ id: 'a', status: 'scheduled', caption: 'ریلز چهارشنبه: مقایسه‌ی فروش', scheduled_at: new Date(now + 2 * day).toISOString() }, { id: 'b', status: 'draft', caption: 'پیش‌نویس کاروسل', scheduled_at: null }];
 const account = { id: 'composio-instagram', username: 'sample.page', source: 'composio', followers: 12840 };
+const chats = [{ id: 'c1', title: 'ایده برای ریلز فروش', updated_at: new Date(now - day).toISOString(), created_at: new Date(now - day).toISOString(),
+  messages: [{ role: 'user', text: 'یک ایده‌ی ریلز برای فروش بده', at: now - day }, { role: 'assistant', text: 'پیشنهاد من: مقایسه‌ی فروش فیزیکی و دیجیتال با هوک «انبار یا گوشی؟».', at: now - day, activity: [{ label: 'بررسی اطلاعات پیج و تحلیل ذخیره‌شده', tool: 'account' }], suggestions: ['متنش را بنویس'] }] }];
 const routes = [
+  [/^\/agent\/chats\/[^/]+\/messages/, (body) => ({ chat: { id: 'c1', title: 'گفتگو', updated_at: new Date().toISOString() }, reply: { role: 'assistant', text: `جواب نمونه به: ${String(body?.message || '').slice(0, 40)}`, at: Date.now(), activity: [{ label: 'خواندن محتوای صفحه‌ی باز', tool: 'page' }, { label: 'بررسی اطلاعات پیج و تحلیل ذخیره‌شده', tool: 'account' }], suggestions: ['ادامه بده'] } })],
+  [/^\/agent\/chats\/[^/]+/, () => chats[0]],
+  [/^\/agent\/chats/, () => ({ chats: chats.map(({ messages, ...c }) => c), ...chats[0], id: 'c1' })],
   [/^\/agent\/connection/, () => ({ connected: true })],
   [/^\/agent\/chat/, (body) => ({ reply: `درباره‌ی «${(body?.page?.title || 'این صفحه')}»: ${String(body?.page?.text || '').slice(0, 60) ? 'محتوای صفحه را دیدم و می‌توانم کمک کنم.' : 'صفحه خالی است.'}`, suggestions: ['یک ایده‌ی ریلز بده', 'تحلیل جدید'], activity: [{ label: 'خواندن محتوای صفحه‌ی باز', tool: 'page' }, { label: 'بررسی اطلاعات پیج و تحلیل ذخیره‌شده', tool: 'account' }], action: null })],
   [/^\/agent\/run/, () => ({ status: 'started' })],

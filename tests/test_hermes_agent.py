@@ -79,3 +79,29 @@ def test_the_agent_chats_about_the_open_page(store, monkeypatch):
     monkeypatch.setattr(agent.skills, "_complete", fake)
     out = asyncio.run(agent.chat("9", "اینجا چی می‌بینم؟", {"title": "Overview", "text": "۰ پست زمان‌بندی‌شده"}, [{"role": "user", "text": "سلام"}]))
     assert out["reply"] and out["action"] == {"type": "open_tab", "tab": "content"} and seen["route"] == "hermes_chat" and "زمان‌بندی‌شده" in seen["user"]
+
+
+def test_chats_are_stored_listed_titled_and_deleted(store, monkeypatch):
+    from hermes.services import chats
+    rows = {}
+
+    async def get(table, key): return rows.get(key)
+    async def save(table, row): rows[row["id"]] = row
+    async def listing(table): return list(rows.values())
+    async def delete(table, key): rows.pop(key, None)
+    for name, fn in (("get_row", get), ("save_row", save), ("list_rows", listing), ("delete_row", delete)):
+        monkeypatch.setattr(chats, name, fn)
+
+    async def fake_chat(user_id, message, page, history):
+        return {"reply": "جواب", "suggestions": ["بعدی"], "activity": [{"label": "x", "tool": "page"}], "action": None}
+    monkeypatch.setattr(chats.agent, "chat", fake_chat)
+    created = asyncio.run(chats.create("5"))
+    out = asyncio.run(chats.send("5", created["id"], "سلام، یک ایده بده", {"title": "Overview", "text": "x"}))
+    assert out["chat"]["title"].startswith("سلام") and out["reply"]["role"] == "assistant"
+    again = asyncio.run(chats.get("5", created["id"]))
+    assert [m["role"] for m in again["messages"]] == ["user", "assistant"]
+    assert len(asyncio.run(chats.list_chats("5"))) == 1 and asyncio.run(chats.list_chats("6")) == []
+    with pytest.raises(HTTPException):
+        asyncio.run(chats.get("6", created["id"]))
+    asyncio.run(chats.remove("5", created["id"]))
+    assert asyncio.run(chats.list_chats("5")) == []

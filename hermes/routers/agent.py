@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from hermes.security import current_user
-from hermes.services import agent, composio_sessions as sessions, skills
+from hermes.services import agent, chats, composio_sessions as sessions, skills
 
 router = APIRouter(prefix="/api/hermes/agent", tags=["hermes-agent"])
 _running: dict[str, asyncio.Task] = {}
@@ -94,3 +94,37 @@ async def connection(user=Depends(current_user)):
 @router.post("/chat")
 async def chat(body: ChatBody, user=Depends(current_user)):
     return await agent.chat(str(user.id), body.message, body.page, body.history)
+
+
+class NewChat(BaseModel):
+    title: str = Field(default="", max_length=80)
+
+
+class ChatMessage(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    page: dict = Field(default_factory=dict)
+
+
+@router.get("/chats")
+async def list_chats(user=Depends(current_user)):
+    return {"chats": await chats.list_chats(str(user.id))}
+
+
+@router.post("/chats", status_code=201)
+async def new_chat(body: NewChat, user=Depends(current_user)):
+    return await chats.create(str(user.id), body.title)
+
+
+@router.get("/chats/{chat_id}")
+async def get_chat(chat_id: str, user=Depends(current_user)):
+    return await chats.get(str(user.id), chat_id)
+
+
+@router.delete("/chats/{chat_id}", status_code=204)
+async def delete_chat(chat_id: str, user=Depends(current_user)):
+    await chats.remove(str(user.id), chat_id)
+
+
+@router.post("/chats/{chat_id}/messages")
+async def chat_message(chat_id: str, body: ChatMessage, user=Depends(current_user)):
+    return await chats.send(str(user.id), chat_id, body.message, body.page)

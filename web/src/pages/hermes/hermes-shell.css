@@ -2,8 +2,6 @@
    same resizer, full screen and hide), the agent's chat is the Studio thread and composer. This file only adds what Hermes needs. */
 .hermes.studio { height: 100%; min-height: 0; }
 .hermes .chat-head { gap: 12px; }
-.hs-nav { max-width: 100%; overflow-x: auto; }
-.hs-nav .tab { text-decoration: none; }
 .hs-updating { font-size: 12px; color: var(--text-3); animation: hs-pulse 1.2s ease-in-out infinite; }
 @keyframes hs-pulse { 50% { opacity: .4; } }
 .hs-content { width: min(100%, 1040px); margin-inline: auto; padding: var(--space-6) var(--space-4) calc(var(--space-8) + var(--safe-bottom)); display: grid; gap: var(--space-5); container-type: inline-size; container-name: hs; min-width: 0; }
@@ -68,3 +66,26 @@
   .hm-plan-edit-grid, .hm-plan-fields { grid-template-columns: minmax(0, 1fr) !important; }
 }
 @media (prefers-reduced-motion: reduce) { .hs-updating { animation: none; } }
+
+/* the agent panel header: tabs shrink to icons before anything leaves the container */
+.hs-ws-head { gap: 6px; padding-inline: var(--space-3); container-type: inline-size; container-name: wshead; min-width: 0; }
+.hs-ws-tabs { min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.hs-ws-tabs .tab { min-width: 0; padding-inline: 10px; }
+.hs-badge { margin-inline-start: 6px; font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--ink); color: var(--on-ink); }
+@container wshead (max-width: 440px) { .hs-tab-text { display: none; } .hs-ws-tabs .tab { padding-inline: 12px; } }
+.hs-ws-head .icon-btn { flex: none; }
+.agent-embedded { display: grid; gap: var(--space-3); }
+
+/* home: the Studio's home page with the overview beneath the input */
+.hermes-home .home-inner { width: min(100%, 980px); }
+.hs-home-overview { margin-top: var(--space-8); display: grid; gap: var(--space-4); text-align: start; container-type: inline-size; container-name: hs; }
+
+/* phones: the agent takes the whole screen */
+.hermes[data-layout="mobile"] .workspace { position: fixed; inset: 0; z-index: 60; width: 100%; max-width: none; transform: translateX(100%); visibility: hidden; border: 0; transition: transform .2s ease, visibility 0s linear .2s; }
+[dir="rtl"] .hermes[data-layout="mobile"] .workspace { transform: translateX(-100%); }
+.hermes[data-layout="mobile"][data-ws="open"] .workspace { transform: none; visibility: visible; transition-delay: 0s; }
+.hermes[data-layout="mobile"] .hs-content { padding-inline: var(--space-3); }
+.hermes[data-layout="mobile"] .chat-head .btn { margin-inline-start: auto; }
+.hermes[data-layout="mobile"] .ws-backdrop { display: none; }
+@media (prefers-reduced-motion: reduce) { .hermes[data-layout="mobile"] .workspace { transition: none; } }
+.hermes-home.studio-home { align-content: start; padding-top: clamp(var(--space-6), 8vh, var(--space-9, 72px)); }

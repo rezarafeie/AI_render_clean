@@ -1,6 +1,8 @@
 import React from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api, StudioConversation } from "./api";
+import hermesApi from "./services/hermesApi";
+import { peekCache, writeCache } from "./pages/hermes/hermesCache";
 import { Icon } from "./components/Icon";
 import { ProjectStatusDot } from "./components/ProjectStatusDot";
 import { Resizer, usePanelWidth } from "./components/Resizer";
@@ -35,6 +37,7 @@ export default function EditorShell() {
   const [searching, setSearching] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [conversations, setConversations] = React.useState<StudioConversation[]>([]);
+  const [hermesChats, setHermesChats] = React.useState<{ id: string; title: string; updated_at: string }[]>(() => (peekCache("chats") as any) || []);
   const [pageTitle, setPageTitle] = React.useState("");
   const [topbarAction, setTopbarAction] = React.useState<TopbarAction | null>(null);
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -53,6 +56,13 @@ export default function EditorShell() {
     if (authenticated) void api.listStudioConversations().then(setConversations).catch(() => undefined);
     else setConversations([]);
   }, [authenticated]);
+  const hermesMode = routeKind(location.pathname) === "workspace";
+  const refreshHermes = React.useCallback(() => {
+    if (!authenticated || !hermesMode) return;
+    void hermesApi.listChats().then((out: any) => { const list = out?.chats || []; writeCache("chats", list); setHermesChats(list); }).catch(() => undefined);
+  }, [authenticated, hermesMode]);
+  React.useEffect(() => { refreshHermes(); }, [refreshHermes, location.pathname]);
+  React.useEffect(() => { window.addEventListener("hermes:chats-updated", refreshHermes); return () => window.removeEventListener("hermes:chats-updated", refreshHermes); }, [refreshHermes]);
   React.useEffect(() => { setDrawer(false); }, [location.pathname]);
   React.useEffect(() => { refreshChats(); }, [refreshChats, location.pathname]);
   React.useEffect(() => {
@@ -76,30 +86,44 @@ export default function EditorShell() {
     return [...conversations].sort((a, b) => parseTime(b.updated_at) - parseTime(a.updated_at)).filter(item => !needle || (item.title || "").toLocaleLowerCase().includes(needle));
   }, [conversations, query]);
 
+  const visibleHermes = React.useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    return [...hermesChats].sort((a, b) => parseTime(b.updated_at) - parseTime(a.updated_at)).filter(item => !needle || (item.title || "").toLocaleLowerCase().includes(needle));
+  }, [hermesChats, query]);
+
   const startSearch = () => { if (collapsed && !isMobile) setCollapsed(false); setSearching(true); };
   const rail = collapsed && !isMobile;
   const tip = (label: string) => rail ? { "data-tip": label, className: "nav-item rail-tip" } : { className: "nav-item" };
-  const topTitle = ROUTE_TITLES[location.pathname] || pageTitle || "EditorGPT";
+  const topTitle = ROUTE_TITLES[location.pathname] || pageTitle || (routeKind(location.pathname) === "workspace" ? "InstaGPT" : "EditorGPT");
   const initial = user?.name?.trim()?.[0]?.toUpperCase();
   const settingsActive = /^\/(settings|new|my-effects|library|style-library|style-learner|fonts|hermes|content|localize|talking)/.test(location.pathname);
 
   return <ShellContext.Provider value={shellValue}>
     <div className="app" data-collapsed={collapsed || undefined} data-resizing={resizing || undefined}
-      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-hide-bottom-nav={kind === "studio" || undefined} data-bare={kind === "studio" || undefined}>
+      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-hide-bottom-nav={kind === "studio" || kind === "workspace" || undefined} data-bare={kind === "studio" || undefined}>
       <a className="skip-link" href="#main-content">Skip to content</a>
 
       <aside ref={sidebarRef} className="sidebar" data-open={drawer || undefined} aria-label="Main navigation" tabIndex={-1}>
         <div className="sb-head">
-          <NavLink to="/studio" className="brand" aria-label="EditorGPT home"><span className="brand-mark"><Icon name="spark" size={18}/></span><span className="brand-name">EditorGPT</span></NavLink>
+          <NavLink to={hermesMode ? "/hermes" : "/studio"} className="brand" aria-label={hermesMode ? "InstaGPT home" : "EditorGPT home"}><span className="brand-mark"><Icon name="spark" size={18}/></span><span className="brand-name">{hermesMode ? "InstaGPT" : "EditorGPT"}</span></NavLink>
           <button className="icon-btn sb-collapse rail-tip" data-tip={collapsed ? "Open sidebar" : "Close sidebar"} onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? "Open sidebar" : "Close sidebar"} aria-expanded={!collapsed}><Icon name="panel" size={19}/></button>
           {isMobile ? <button className="icon-btn" onClick={() => setDrawer(false)} aria-label="Close navigation"><Icon name="close" size={19}/></button> : null}
         </div>
 
         <nav className="sb-nav" aria-label="Primary">
+          {hermesMode ? <>
+            <NavLink to="/studio" {...tip("Back to editor")} aria-label="Back to editor"><Icon name="chevronLeft"/><span>Back to editor</span></NavLink>
+            <NavLink to="/hermes" end {...tip("New chat")} aria-label="New chat"><Icon name="edit"/><span>New chat</span></NavLink>
+            <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
+            <NavLink to="/hermes/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
+            <NavLink to="/hermes/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
+            <NavLink to="/hermes/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink>
+          </> : <>
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
           <NavLink to="/templates" {...tip("Templates")}><Icon name="templates"/><span>Templates</span></NavLink>
+          </>}
         </nav>
 
         <section className="sb-history" aria-label="Chat history">
@@ -107,8 +131,8 @@ export default function EditorShell() {
             <div className="sb-section-title">Recent</div>
             {searching ? <div className="sb-search"><input ref={searchRef} className="input" type="search" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} placeholder="Search chats" aria-label="Search chats"/></div> : null}
             <div className="sb-list">
-              {visible.map(chat => <NavLink key={chat.id} to={`/studio/${chat.id}`} className="sb-chat" title={chat.title}>{displayTitle(chat.title, 48)}</NavLink>)}
-              {!visible.length ? <p className="sb-empty">{query ? "No chats match your search." : "Your chats will appear here."}</p> : null}
+              {(hermesMode ? visibleHermes : visible).map(chat => <NavLink key={chat.id} to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}>{displayTitle(chat.title, 48)}</NavLink>)}
+              {!(hermesMode ? visibleHermes : visible).length ? <p className="sb-empty">{query ? "No chats match your search." : "Your chats will appear here."}</p> : null}
             </div>
           </> : <div className="sb-guest">
             <p>Log in to save your chats and keep projects in sync.</p>
@@ -119,7 +143,7 @@ export default function EditorShell() {
         <div className="sb-spacer"/>
 
         <div className="sb-foot">
-          <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>
+          {hermesMode ? null : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
           {authenticated ? <div className="account">
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>
             <span className="account-copy"><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>

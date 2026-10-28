@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import hermesApi from '../../services/hermesApi';
 import { Composer } from '../../studio/Composer';
 import { Thread } from '../../studio/Thread';
 import { array, message } from './hermesUtils';
-import { peekCache, writeCache } from './hermesCache';
+import { peekCache, useHermesData, writeCache } from './hermesCache';
 import { useHermes } from './HermesContext';
 
 const STEPS = [['sync', 'خواندن پروفایل و پست‌ها', 'account'], ['analyze', 'تحلیل پیج و محتوای قبلی', 'creative'], ['propose', 'ساخت پیشنهاد محتوا برای موتورهای ادیتور', 'script']];
@@ -12,18 +12,24 @@ const TAB_FOR = { overview: '', content: 'content', analytics: 'analytics', sett
 const CHIPS = ['این صفحه را برایم توضیح بده', 'بهترین زمان انتشار چیست؟', 'یک ایده‌ی ریلز بده', 'برنامه‌ی این هفته را بچین'];
 
 const step = (key, label, tool, status, at) => ({ key, label, status, startedAt: at, endedAt: at, tool, events: [], notes: [] });
+const fromStored = (m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text, at: typeof m.at === 'number' ? m.at : Date.parse(m.at) || Date.now(), activity: m.activity, suggestions: m.suggestions });
 
-/** The agent's conversation, drawn with the Studio chat's own components (Thread, activity timeline, Composer). */
-export default function AgentChat({ title }) {
+/** The agent's conversation drawn with the Studio chat's own components (Thread, activity timeline, Composer).
+ *  With `chatId` it is a stored chat (sidebar history); without, a light assistant for the page being viewed. */
+export default function AgentChat({ title, chatId }) {
   const navigate = useNavigate();
   const { agent, runAgent } = useHermes();
-  const [log, setLog] = useState(() => peekCache('chat2') || []);
+  const stored = useHermesData(`chat:${chatId}`, () => hermesApi.getChat(chatId), { enabled: Boolean(chatId) });
+  const [local, setLocal] = useState(() => (chatId ? [] : peekCache('assistant') || []));
+  const [pending, setPending] = useState([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const scroll = useRef(null);
   const run = agent?.run;
+  const sentFirst = useRef(false);
 
+  const log = useMemo(() => (chatId ? [...array(stored.data?.messages).map(fromStored), ...pending] : local), [chatId, stored.data, pending, local]);
   const items = useMemo(() => {
     const out = [];
     log.forEach((m, i) => {
@@ -36,34 +42,53 @@ export default function AgentChat({ title }) {
       out.push({ kind: 'activity', id: 'run', live: true, steps: STEPS.map(([key, label, tool], k) => step(key, label, tool, k < current ? 'done' : 'active', at)).slice(0, Math.max(current, 0) + 1) });
     }
     const last = log[log.length - 1];
-    const choices = last?.role === 'assistant' && array(last.suggestions).length ? last.suggestions : !log.length ? CHIPS : [];
-    if (choices.length) out.push({ kind: 'question', id: 'choices', question: '', style: false, seq: 0, choices: choices.map((c) => ({ label: c, value: c })) });
+    const choices = last?.role === 'assistant' && array(last.suggestions).length ? last.suggestions : !log.length && !stored.loading ? CHIPS : [];
+    if (choices.length && !busy) out.push({ kind: 'question', id: 'choices', question: '', style: false, seq: 0, choices: choices.map((c) => ({ label: c, value: c })) });
     return out;
-  }, [log, run?.status, run?.step]);
+  }, [log, run?.status, run?.step, busy, stored.loading]);
 
   useEffect(() => { const node = scroll.current; if (node) node.scrollTop = node.scrollHeight; }, [items.length, busy]);
 
-  async function send(raw) {
+  const act = useCallback((action) => {
+    if (action?.type === 'open_tab' && action.tab in TAB_FOR) navigate(`/hermes${TAB_FOR[action.tab] ? `/${TAB_FOR[action.tab]}` : ''}`);
+    if (action?.type === 'run_agent') void runAgent();
+  }, [navigate, runAgent]);
+
+  const send = useCallback(async (raw) => {
     const value = (raw ?? text).trim();
     if (!value || busy) return;
-    const history = log.slice(-8).map((m) => ({ role: m.role === 'assistant' ? 'agent' : 'user', text: m.text }));
-    const next = [...log, { role: 'user', text: value, at: Date.now() }];
-    setLog(next); setText(''); setBusy(true); setError('');
+    setText(''); setBusy(true); setError('');
     const page = { title, text: (document.querySelector('[data-hermes-main]')?.innerText || '').slice(0, 6000) };   // what the person is looking at
+    const mine = { role: 'user', text: value, at: Date.now() };
     try {
-      const out = await hermesApi.chatAgent(value, page, history);
-      const done = [...next, { role: 'assistant', text: out.reply || '…', at: Date.now(), activity: out.activity, suggestions: out.suggestions }].slice(-60);
-      setLog(done); writeCache('chat2', done);
-      if (out.action?.type === 'open_tab' && out.action.tab in TAB_FOR) navigate(`/hermes${TAB_FOR[out.action.tab] ? `/${TAB_FOR[out.action.tab]}` : ''}`);
-      if (out.action?.type === 'run_agent') void runAgent();
-    } catch (e) { setError(message(e)); } finally { setBusy(false); }
-  }
+      if (chatId) {
+        setPending([mine]);
+        const out = await hermesApi.sendChatMessage(chatId, value, page);
+        await stored.reload();
+        window.dispatchEvent(new Event('hermes:chats-updated'));
+        act(out.reply?.action);
+      } else {
+        const history = local.slice(-8).map((m) => ({ role: m.role === 'assistant' ? 'agent' : 'user', text: m.text }));
+        setLocal((prev) => [...prev, mine]);
+        const out = await hermesApi.chatAgent(value, page, history);
+        const done = [...local, mine, { role: 'assistant', text: out.reply || '…', at: Date.now(), activity: out.activity, suggestions: out.suggestions }].slice(-60);
+        setLocal(done); writeCache('assistant', done);
+        act(out.action);
+      }
+    } catch (e) { setError(message(e)); } finally { setPending([]); setBusy(false); }
+  }, [text, busy, title, chatId, local, stored, act]);
+
+  useEffect(() => {          // a chat started from the home page carries its first message
+    if (!chatId || sentFirst.current) return;
+    let first = null;
+    try { first = sessionStorage.getItem(`hermes:first:${chatId}`); } catch { /* optional */ }
+    if (first) { sentFirst.current = true; try { sessionStorage.removeItem(`hermes:first:${chatId}`); } catch { /* optional */ } void send(first); }
+  }, [chatId, send]);
 
   return <div className="chat-col agent-chat">
     <div className="chat-scroll" ref={scroll}>
       <div className="chat-inner">
-        {!log.length && !items.length ? null : null}
-        {!log.length ? <p className="agent-hello" dir="auto">درباره‌ی هر چیزی که روی صفحه می‌بینید بپرسید؛ ایجنت محتوای همین صفحه و اطلاعات پیج شما را می‌بیند.</p> : null}
+        {!log.length && !stored.loading ? <p className="agent-hello" dir="auto">درباره‌ی هر چیزی که روی صفحه می‌بینید بپرسید؛ ایجنت محتوای همین صفحه و اطلاعات پیج شما را می‌بیند.</p> : null}
         <Thread items={items} events={[]} conversation={null} projects={[]} thinking={busy ? 'در حال بررسی…' : undefined}
           onOpenPreview={() => {}} onEditAgain={() => {}} onChoice={(choice) => void send(choice)} onRetryMessage={() => {}} compactRender/>
       </div>

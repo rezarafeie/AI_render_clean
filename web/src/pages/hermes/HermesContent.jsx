@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import HermesScheduler from './HermesScheduler';
 import HermesContentPlan from './HermesContentPlan';
 
@@ -13,7 +12,6 @@ export default function HermesContent() {
         <button type="button" role="tab" aria-selected={view === 'calendar'} className="tab" onClick={() => pick('calendar')}>Calendar & queue</button>
         <button type="button" role="tab" aria-selected={view === 'plan'} className="tab" onClick={() => pick('plan')}>Content plan</button>
       </div>
-      <Link className="btn btn-sm" to="/hermes/post/new">New post</Link>
     </div>
     {view === 'calendar' ? <HermesScheduler /> : <HermesContentPlan />}
   </>;

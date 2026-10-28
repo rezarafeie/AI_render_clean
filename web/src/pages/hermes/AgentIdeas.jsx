@@ -10,12 +10,13 @@ const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
 const STATUS = { proposed: 'پیشنهاد', in_production: 'در حال ساخت', produced: 'ساخته شد', queued: 'در صف انتشار', rejected: 'رد شد' };
 
 /** Ideas the agent proposes for the editor's engines; approving one opens an editor project with its script. */
-export default function AgentIdeas() {
+export default function AgentIdeas({ limit = 0, embedded = false }) {
   const navigate = useNavigate();
   const { agent, reloadAgent, runAgent } = useHermes();
   const [working, setWorking] = useState('');
   const [error, setError] = useState('');
-  const list = array(agent?.proposals).filter((p) => p.status !== 'rejected').slice().reverse();
+  const all = array(agent?.proposals).filter((p) => p.status !== 'rejected').slice().reverse();
+  const list = limit ? all.slice(0, limit) : all;
   async function approve(item) {
     setWorking(item.id); setError('');
     try {
@@ -26,7 +27,7 @@ export default function AgentIdeas() {
     } catch (e) { setError(message(e)); setWorking(''); }
   }
   async function reject(item) { await hermesApi.setProposalStatus(item.id, 'rejected').catch((e) => setError(message(e))); void reloadAgent(); }
-  return <div className="agent-tab">
+  return <div className={embedded ? 'agent-embedded' : 'agent-tab'}>
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
     {!list.length ? <div className="ws-empty"><span className="empty-icon"><Icon name="spark" size={24}/></span><h2>هنوز ایده‌ای نیست</h2><p>ایجنت بعد از تحلیل پیج، ایده و سناریو پیشنهاد می‌دهد.</p>
       <button className="btn btn-secondary btn-sm" type="button" onClick={() => runAgent()}>بررسی جدید</button></div> : null}

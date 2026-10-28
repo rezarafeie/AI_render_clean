@@ -37,10 +37,12 @@ const ForgotPassword = React.lazy(() => import("./ForgotPassword"));
 const ResetPassword = React.lazy(() => import("./ResetPassword"));
 const HermesLayout = React.lazy(() => import("./pages/hermes/HermesLayout.jsx"));
 const HermesPostEditor = React.lazy(() => import("./pages/hermes/HermesPostEditor.jsx"));
-const HermesAnalytics = React.lazy(() => import("./pages/hermes/HermesAnalytics.jsx"));
-const HermesOverview = React.lazy(() => import("./pages/hermes/HermesOverview.jsx"));
-const HermesContent = React.lazy(() => import("./pages/hermes/HermesContent.jsx"));
-const HermesSettingsPage = React.lazy(() => import("./pages/hermes/HermesSettingsPage.jsx"));
+const HermesHome = React.lazy(() => import("./pages/hermes/HermesHome.jsx"));
+const HermesChat = React.lazy(() => import("./pages/hermes/HermesChat.jsx"));
+const HermesContentPage = React.lazy(() => import("./pages/hermes/HermesContentPage.jsx"));
+const HermesAnalyticsPage = React.lazy(() => import("./pages/hermes/HermesAnalyticsPage.jsx"));
+const HermesSettingsFrame = React.lazy(() => import("./pages/hermes/HermesSettingsFrame.jsx"));
+const HermesFrame = React.lazy(() => import("./pages/hermes/HermesFrame.jsx"));
 const HermesSettings = React.lazy(() => import("./pages/hermes/HermesSettings"));
 
 function LoadingSpinner() { return <div className="boot" role="status" aria-label="Loading EditorGPT"><span className="spinner"/></div>; }
@@ -87,7 +89,7 @@ function App() {
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
       <Route path="my-effects" element={<RequireAuth><MyEffects/></RequireAuth>}/><Route path="library" element={<RequireAuth><Library/></RequireAuth>}/><Route path="style-library" element={<RequireAuth><StyleLibrary/></RequireAuth>}/><Route path="style-learner" element={<RequireAuth><StyleLearner/></RequireAuth>}/><Route path="fonts" element={<Navigate to="/style-library#fonts" replace/>}/>
-      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesOverview/>}/><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<HermesSettingsPage/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/><Route path="connect" element={<Navigate to="/hermes/settings" replace/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
+      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesHome/>}/><Route path="chat/:chatId" element={<HermesChat/>}/><Route path="content" element={<HermesContentPage/>}/><Route path="analytics" element={<HermesAnalyticsPage/>}/><Route path="settings" element={<HermesSettingsFrame/>}/><Route path="post/new" element={<HermesFrame title="Post"><HermesPostEditor/></HermesFrame>}/><Route path="post/:id" element={<HermesFrame title="Post"><HermesPostEditor/></HermesFrame>}/><Route path="connect" element={<Navigate to="/hermes/settings" replace/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
       <Route path="*" element={<Navigate to="/studio" replace/>}/>
     </Route>
   </Routes></React.Suspense><ToastHost/></JobCacheProvider></AuthProvider></SessionBootstrap></AppErrorBoundary></BrowserRouter>;

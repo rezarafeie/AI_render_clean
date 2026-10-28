@@ -5,13 +5,13 @@ import { array } from './hermesUtils';
 import { useHermes } from './HermesContext';
 
 /** What the agent understood about the page, and the questions it still has. */
-export default function AgentInsights() {
+export default function AgentInsights({ embedded = false }) {
   const { agent, reloadAgent } = useHermes();
   const [values, setValues] = useState({});
   const a = agent?.analysis;
   const open = array(agent?.questions).filter((q) => q.kind !== 'info');
   async function answer(key) { await hermesApi.answerAgent(key, values[key]).catch(() => {}); await hermesApi.runAgent(['analyze', 'propose']).catch(() => {}); void reloadAgent(); }
-  return <div className="agent-tab" dir="rtl">
+  return <div className={embedded ? 'agent-embedded' : 'agent-tab'} dir="rtl">
     {array(agent?.questions).filter((q) => q.kind === 'info').map((q) => <div key={q.id} className="notice" data-tone="info">{q.text}</div>)}
     {open.map((q) => <section key={q.id} className="action-card"><h3>{q.text}</h3>
       <div className="agent-ask"><input className="input" dir="rtl" value={values[q.id] || ''} onChange={(e) => setValues({ ...values, [q.id]: e.target.value })} placeholder={q.kind === 'handles' ? '@نام‌کاربری‌ها با ویرگول' : ''} />

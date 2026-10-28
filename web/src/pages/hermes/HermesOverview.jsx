@@ -4,6 +4,8 @@ import { Icon } from '../../components/Icon';
 import { array, number } from './hermesUtils';
 import { useHermesData } from './hermesCache';
 import { useHermes } from './HermesContext';
+import AgentIdeas from './AgentIdeas';
+import AgentInsights from './AgentInsights';
 
 const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
 
@@ -12,7 +14,7 @@ function Stat({ icon, label, children, note }) {
 }
 
 export default function HermesOverview() {
-  const { agent, openAgent, runAgent } = useHermes();
+  const { agent, runAgent } = useHermes();
   const posts = useHermesData('posts', () => hermesApi.getPosts());
   const list = array(posts.data);
   const upcoming = list.filter((p) => p.status === 'scheduled' && new Date(p.scheduled_at) > new Date()).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)).slice(0, 5);
@@ -46,21 +48,19 @@ export default function HermesOverview() {
       <Stat icon="wand" label="Ideas waiting" note={making ? `${making} in production` : undefined}><strong>{number(ideas.length)}</strong></Stat>
     </section>
 
-    <section className="ov-grid">
-      <div className="ov-card" dir="auto">
-        <h3>What the agent found <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAgent('insights')}>Details</button></h3>
-        {analysis ? <>
-          {analysis.strategy ? <p>{[analysis.strategy.niche, analysis.strategy.audience].filter(Boolean).join(' · ')}</p> : null}
-          {array(analysis.content?.do_more).length ? <div><span className="ov-sub">Do more</span><div className="ov-chips">{array(analysis.content.do_more).slice(0, 4).map((x) => <span key={x} className="ov-chip is-good">{x}</span>)}</div></div> : null}
-          {array(analysis.content?.stop).length ? <div><span className="ov-sub">Stop</span><div className="ov-chips">{array(analysis.content.stop).slice(0, 4).map((x) => <span key={x} className="ov-chip is-bad">{x}</span>)}</div></div> : null}
-          {array(analysis.data_gaps).length ? <span className="ov-sub">{array(analysis.data_gaps).slice(0, 2).join('؛ ')}</span> : null}
-        </> : <p className="ov-sub">The agent is reading your profile and recent posts. The first review takes a few minutes.</p>}
-      </div>
-      <div className="ov-card">
-        <h3>Ideas for the editor <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAgent('ideas')}>Open</button></h3>
-        {ideas.length ? ideas.slice(0, 2).map((p) => <div key={p.id} className="ov-idea" dir="auto"><strong>{p.title}</strong><span className="ov-sub">{ENGINE[p.engine] || p.engine}{p.hook ? ` · «${p.hook}»` : ''}</span></div>)
-          : <p className="ov-sub">New ideas and scripts appear here after a review. Approve one and the editor makes it.</p>}
-      </div>
+    <section className="ov-card" dir="auto">
+      <h3>What the agent found</h3>
+      {analysis ? <>
+        {analysis.strategy ? <p>{[analysis.strategy.niche, analysis.strategy.audience].filter(Boolean).join(' · ')}</p> : null}
+        {array(analysis.content?.do_more).length ? <div><span className="ov-sub">Do more</span><div className="ov-chips">{array(analysis.content.do_more).slice(0, 4).map((x) => <span key={x} className="ov-chip is-good">{x}</span>)}</div></div> : null}
+        {array(analysis.content?.stop).length ? <div><span className="ov-sub">Stop</span><div className="ov-chips">{array(analysis.content.stop).slice(0, 4).map((x) => <span key={x} className="ov-chip is-bad">{x}</span>)}</div></div> : null}
+        <details><summary className="ov-sub">Full review and questions</summary><AgentInsights embedded /></details>
+      </> : <p className="ov-sub">The agent is reading your profile and recent posts. The first review takes a few minutes.</p>}
+    </section>
+
+    <section className="ov-card">
+      <h3>Ideas for the editor</h3>
+      <AgentIdeas limit={3} embedded />
     </section>
 
     <section className="ov-grid">
