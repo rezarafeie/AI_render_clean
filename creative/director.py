@@ -201,6 +201,10 @@ def direct_product(facts: dict | None, request: str, *, image_count: int = 0, du
 def direct_idea(request: str, *, image_count: int = 0, duration_s: int = 30, budget_s: float = DEFAULT_BUDGET_S,
                 assets: list[dict] | None = None, reference: ReferenceProfile | None = None, depth: str = "fast",
                 excerpt: str = "") -> CreativePlan:
+    from . import handoff
+    adopted = None if image_count else handoff.adopt(request, duration_s)
+    if adopted:                                             # an idea approved in Instagram GPT arrives with its script: produce it, do not rewrite it
+        return adopted
     kind = "images" if image_count else "idea"
     source = (f"The brief: {request}\nTarget length: {duration_s} seconds. Images supplied by the user: {image_count}.\n"
               f"Visually inspected assets (only listed indices may be used):\n{llm.dumps(assets or [])}")
