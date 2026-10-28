@@ -69,6 +69,8 @@ async def current_user(request: Request):
 
 async def owned_account(account_id, user):
     from hermes.database import get_row
+    if account_id == "composio-instagram":                      # connected through Composio: read-only, nothing to publish with
+        raise HTTPException(409, detail={"code": "COMPOSIO_ACCOUNT_READ_ONLY"})
     account = await get_row("accounts", account_id)
     if not account or str(account["user_id"]) != str(user.id):
         raise HTTPException(404, detail={"code": "ACCOUNT_NOT_FOUND"})

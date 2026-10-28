@@ -213,3 +213,25 @@ def test_rate_limit_is_explicit_and_not_retried():
     assert error.value.status_code == 429
     assert error.value.headers["Retry-After"] == "30"
     assert calls == [True]
+
+
+def test_composio_instagram_is_listed_as_a_read_only_account(setup, monkeypatch):
+    from hermes.services import composio_account as account
+    from hermes.config import settings as config
+    account.forget("1")
+    monkeypatch.setattr(config, "COMPOSIO_READ_TOOLS", "INSTAGRAM_GET_USER_INFO")
+
+    async def fake_status(user_id):
+        return {"configured": True, "enabled": True, "applications": ["instagram"]}
+
+    async def fake_connections(user_id):
+        return {"applications": [{"application": "instagram", "name": "Instagram", "connected": True, "status": "ACTIVE"}]}
+
+    async def fake_execute(user_id, toolkit, slug, arguments):
+        return {"data": {"data": {"username": "someone", "followers_count": 1234, "id": "17841"}}}
+    monkeypatch.setattr(account.sessions, "status", fake_status)
+    monkeypatch.setattr(account.sessions, "connections", fake_connections)
+    monkeypatch.setattr(account.read, "execute", fake_execute)
+    row = asyncio.run(account.account("1"))
+    assert row["id"] == account.VIRTUAL_ID and row["username"] == "someone" and row["followers"] == 1234 and row["source"] == "composio"
+    account.forget("1")

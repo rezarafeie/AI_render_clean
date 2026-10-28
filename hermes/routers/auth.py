@@ -131,5 +131,8 @@ async def refresh(body: RefreshRequest, user=Depends(current_user)):
 
 @router.get("/accounts")
 async def accounts(user=Depends(current_user)):
-    return [{key: value for key, value in row.items() if key != "access_token"}
+    from hermes.services import composio_account
+    rows = [{key: value for key, value in row.items() if key != "access_token"}
             for row in await list_rows("accounts") if str(row["user_id"]) == str(user.id)]
+    linked = await composio_account.account(str(user.id))          # an account connected through Composio, read-only
+    return rows + ([linked] if linked else [])
