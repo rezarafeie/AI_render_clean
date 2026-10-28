@@ -5,16 +5,17 @@ import hermesApi from '../../services/hermesApi';
 import ScheduleCalendar from '../../components/hermes/ScheduleCalendar';
 import PostCard from '../../components/hermes/PostCard';
 import { array, message } from './hermesUtils';
+import { peekCache, writeCache } from './hermesCache';
 
 export default function HermesScheduler() {
   const navigate = useNavigate();
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState('month');
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState(() => array(peekCache('schedule')));
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => peekCache('schedule') == null);
   const [dayOpen, setDayOpen] = useState(false);
-  useEffect(() => { let alive = true; hermesApi.getSchedule().then((items) => alive && setPosts(array(items))).catch((e) => alive && setError(message(e))).finally(() => alive && setLoading(false)); return () => { alive = false; }; }, []);
+  useEffect(() => { let alive = true; hermesApi.getSchedule().then((items) => { writeCache('schedule', array(items)); if (alive) setPosts(array(items)); }).catch((e) => alive && setError(message(e))).finally(() => alive && setLoading(false)); return () => { alive = false; }; }, []);
   const selected = posts.filter((post) => post.scheduled_at && format(new Date(post.scheduled_at), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
   function move(direction) { setDate((current) => view === 'month' ? addMonths(current, direction) : addWeeks(current, direction)); }
   return <div className="hm-page hm-rise"><div className="hm-page-head"><div><span className="hm-eyebrow">PUBLISHING CALENDAR</span><h2>Schedule your story</h2><p>Give every idea its moment.</p></div><Link className="hm-btn hm-btn-primary" to={`/hermes/post/new?date=${format(date, 'yyyy-MM-dd')}`}>＋ New post</Link></div>

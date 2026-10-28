@@ -5,6 +5,7 @@ import hermesApi from '../../services/hermesApi';
 import EngagementChart from '../../components/hermes/EngagementChart';
 import StatsCard from '../../components/hermes/StatsCard';
 import { array, message, number, percent } from './hermesUtils';
+import { peekCache, writeCache } from './hermesCache';
 
 const snapshotKey = (id) => `hermes_analytics_snapshots_${id}`;
 function snapshots(id) { try { return array(JSON.parse(localStorage.getItem(snapshotKey(id)))); } catch { return []; } }
@@ -17,8 +18,8 @@ function saveSnapshot(id, insight) {
 }
 
 export default function HermesAnalytics() {
-  const [accounts, setAccounts] = useState([]);
-  const [accountId, setAccountId] = useState('');
+  const [accounts, setAccounts] = useState(() => array(peekCache('accounts')));
+  const [accountId, setAccountId] = useState(() => array(peekCache('accounts'))[0]?.id || '');
   const [insight, setInsight] = useState(null);
   const [postInsights, setPostInsights] = useState([]);
   const [posts, setPosts] = useState([]);
@@ -28,14 +29,16 @@ export default function HermesAnalytics() {
   const [customEnd, setCustomEnd] = useState('');
   const [sort, setSort] = useState('engagement_rate');
   const [busy, setBusy] = useState(false);
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(() => peekCache('accounts') == null);
   const [error, setError] = useState('');
-  useEffect(() => { hermesApi.getAccounts().then((items) => { setAccounts(array(items)); setAccountId(items?.[0]?.id || ''); }).catch((e) => setError(message(e))).finally(() => setLoadingAccounts(false)); }, []);
+  useEffect(() => { hermesApi.getAccounts().then((items) => { writeCache('accounts', array(items)); setAccounts(array(items)); setAccountId(items?.[0]?.id || ''); }).catch((e) => setError(message(e))).finally(() => setLoadingAccounts(false)); }, []);
   const load = useCallback(async (force = false) => {
     if (!accountId) return;
+    const cached = peekCache(`analytics:${accountId}`);
+    if (cached && !force) { setInsight(cached.insight); setPostInsights(cached.posts); setPosts(cached.own); }
     setBusy(true); setError('');
     try { const [data, postData, ownPosts] = await Promise.all([force ? hermesApi.refreshAnalytics(accountId) : hermesApi.getAccountAnalytics(accountId), force ? Promise.resolve(null) : hermesApi.getPostAnalytics(accountId), hermesApi.getPosts()]);
-      const current = force ? data.account : data; setInsight(current); setPostInsights(array(force ? data.posts : postData)); setPosts(array(ownPosts)); setHistory(saveSnapshot(accountId, current));
+      const current = force ? data.account : data; setInsight(current); setPostInsights(array(force ? data.posts : postData)); setPosts(array(ownPosts)); writeCache(`analytics:${accountId}`, { insight: current, posts: array(force ? data.posts : postData), own: array(ownPosts) }); setHistory(saveSnapshot(accountId, current));
     } catch (e) { setError(message(e)); } finally { setBusy(false); }
   }, [accountId]);
   useEffect(() => { load(); }, [load]);

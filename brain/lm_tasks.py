@@ -93,6 +93,12 @@ TASKS = {
     "creative_critic": _task("Creative Critic", "chat", POWER, "editing_agent"),
     "creative_revision": _task("Creative Revision", "chat", STORY, "editing_agent"),
     "creative_motion": _task("Creative Motion Designer", "chat", POWER, "editing_agent"),
+    # Hermes (Instagram agent): Jarvis first with the strongest Claude, then Sonnet 5.5 on Jarvis, then ArvanCloud's Claude (the operator order Jarvis > Arvan);
+    # the gateway's direct fallbacks apply after these. The models are changed in the AI settings.
+    "hermes_agent": _task("Hermes · Instagram Agent (analysis, proposals, skills)", "chat",
+                          [("jarvis", "CLAUDE_OPUS_5_5"), ("jarvis", "CLAUDE_SONNET_5_5"), ("arvancloud", "Claude-Opus-4.7")], "editing_agent"),
+    "hermes_chat": _task("Hermes · Agent Chat", "chat",
+                         [("jarvis", "CLAUDE_SONNET_5_5"), ("jarvis", "CLAUDE_OPUS_5_5"), ("arvancloud", "Claude-Sonnet-4.6")], "general_chat"),
     "segment_analysis": _task("Segment Analysis", "chat", LIGHT, "editing_agent"),
     "transcript_correction": _task("Transcript Correction", "chat", LIGHT, "subtitles"),
     # Long-video discovery (creative/discovery.py): one card per stage so each can be tuned on its own.

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { addDays, format } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import hermesApi from '../../services/hermesApi';
+import { peekCache, writeCache } from './hermesCache';
 import { array, fromInputDateTime, message, tags } from './hermesUtils';
 
 function plannedDate(item) {
@@ -19,17 +20,17 @@ function plannedDate(item) {
 
 export default function HermesContentPlan() {
   const navigate = useNavigate();
-  const [accounts, setAccounts] = useState([]);
-  const [accountId, setAccountId] = useState('');
+  const [accounts, setAccounts] = useState(() => array(peekCache('accounts')));
+  const [accountId, setAccountId] = useState(() => array(peekCache('accounts'))[0]?.id || '');
   const [topic, setTopic] = useState('');
   const [audience, setAudience] = useState('');
   const [frequency, setFrequency] = useState(5);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(() => peekCache('accounts') == null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  useEffect(() => { hermesApi.getAccounts().then((list) => { setAccounts(array(list)); setAccountId(list?.[0]?.id || ''); }).catch((e) => setError(message(e))).finally(() => setLoadingAccounts(false)); }, []);
+  useEffect(() => { hermesApi.getAccounts().then((list) => { writeCache('accounts', array(list)); setAccounts(array(list)); setAccountId(list?.[0]?.id || ''); }).catch((e) => setError(message(e))).finally(() => setLoadingAccounts(false)); }, []);
   async function generate() {
     if (!accountId || !topic.trim()) { setError('Connect an account and enter a content niche.'); return; }
     setBusy(true); setError(''); setNotice('');

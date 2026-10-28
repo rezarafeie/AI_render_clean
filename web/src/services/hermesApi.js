@@ -40,6 +40,7 @@ export const hermesApi = {
   deleteInstagramSettings: () => request('/settings/instagram', { method: 'DELETE' }),
   testInstagramConnection: () => request('/settings/instagram/test', { method: 'POST' }),
   getAgentConnection: () => request('/agent/connection'),
+  chatAgent: (message, page, history) => request('/agent/chat', { method: 'POST', body: { message, page, history } }),
   getAgent: () => request('/agent'),
   runAgent: (steps, count = 4) => request('/agent/run', { method: 'POST', body: steps ? { steps, count } : { count } }),
   answerAgent: (key, value) => request('/agent/answer', { method: 'POST', body: { key, value } }),

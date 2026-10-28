@@ -68,3 +68,14 @@ def test_instagram_briefs_get_the_skill_playbook_in_the_editors_engines():
     guide = pb.add_to("GUIDE", "ریلز اینستاگرام درباره فروش")
     assert guide.startswith("GUIDE") and "Hook formulas" in guide and "Cost Confession" in guide
     assert pb.add_to("GUIDE", "ویدیوی محصول") == "GUIDE"
+
+
+def test_the_agent_chats_about_the_open_page(store, monkeypatch):
+    seen = {}
+
+    def fake(system, user, *args, **kwargs):
+        seen["user"], seen["route"] = user, kwargs.get("route")
+        return {"reply": "این صفحه خالی است.", "suggestions": ["بررسی جدید"], "action": {"type": "open_tab", "tab": "content"}}
+    monkeypatch.setattr(agent.skills, "_complete", fake)
+    out = asyncio.run(agent.chat("9", "اینجا چی می‌بینم؟", {"title": "Overview", "text": "۰ پست زمان‌بندی‌شده"}, [{"role": "user", "text": "سلام"}]))
+    assert out["reply"] and out["action"] == {"type": "open_tab", "tab": "content"} and seen["route"] == "hermes_chat" and "زمان‌بندی‌شده" in seen["user"]

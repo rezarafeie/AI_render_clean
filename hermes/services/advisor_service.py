@@ -32,7 +32,7 @@ async def advise(account_id, kind, input_data):
         input_data["recent_account_insights"] = sorted(insights, key=lambda row: row["fetched_at"], reverse=True)[:7]
         input_data["recent_post_performance"] = sorted(analytics, key=lambda row: row.get("posted_at") or "", reverse=True)[:30]
     hermes_model = os.environ.get("HERMES_LLM_MODEL")
-    result, _usage = await asyncio.to_thread(chat_json, PROMPTS[kind], json.dumps(input_data, ensure_ascii=False), max_tokens=1500, model=hermes_model)
+    result, _usage = await asyncio.to_thread(chat_json, PROMPTS[kind], json.dumps(input_data, ensure_ascii=False), max_tokens=1500, model=hermes_model, route="hermes_chat")
     if not isinstance(result, dict):
         raise ValueError("ADVISOR_INVALID_RESPONSE")
     await save_row("advisor_logs", {

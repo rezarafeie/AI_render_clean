@@ -14,7 +14,6 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from brain.llm import chat_json
 from hermes.services import composio_account
 
 SKILL_DIR = Path(__file__).resolve().parents[2] / "vendor" / "instagram-agent-skill" / "skills"
@@ -92,18 +91,18 @@ def _checks(skill: str, result: dict, language: str) -> dict:
     return out
 
 
-def _complete(system: str, user: str, model: str | None):
-    """The platform's LM gateway (the route the creative director uses) first, then the Hermes advisor's own provider."""
+HERMES_ROUTE = "hermes_agent"      # brain/lm_tasks.py: the models and their order are set in the application's AI settings
+
+
+def _complete(system: str, user: str, model: str | None = None, *, route: str = HERMES_ROUTE, tokens: int = 6000):
+    """Through the platform's LM router (the Hermes tasks of the AI settings, then the gateway's direct fallbacks); no model is chosen here."""
+    from brain.llm import gateway_json
     try:
-        from brain.llm import gateway_json
-        from creative import llm as creative_llm
-        if creative_llm.configured():
-            data, _usage = gateway_json(system, user, creative_llm.DIRECTOR_ROUTE, 6000)
-            if isinstance(data, dict):
-                return data
-    except Exception:
-        pass
-    data, _usage = chat_json(system, user, max_tokens=4500, temperature=0.4, model=model)
+        data, _usage = gateway_json(system, user, route, tokens)
+    except Exception as exc:
+        raise HTTPException(502, detail={"code": "HERMES_AI_UNAVAILABLE"}) from exc
+    if not isinstance(data, dict):
+        raise HTTPException(502, detail={"code": "SKILL_INVALID_RESPONSE"})
     return data
 
 
@@ -119,8 +118,7 @@ async def run(user_id: str, skill: str, text: str, language: str = "fa", options
               f"Write for the person in {voice}. Use only the facts given; never invent metrics, quotes or results. If account data is absent, say what is missing. "
               f"Return ONLY JSON in this shape: {SCHEMA}. For this skill fill ONLY these keys: {KEYS[skill]} (leave every other key out).")
     user = json.dumps({"request": text[:12_000], "options": options or {}, "account": context}, ensure_ascii=False)
-    model = os.environ.get("HERMES_LLM_MODEL")
-    result = await asyncio.to_thread(_complete, system, user, model)
+    result = await asyncio.to_thread(_complete, system, user)
     if not isinstance(result, dict):
         raise HTTPException(502, detail={"code": "SKILL_INVALID_RESPONSE"})
     return {"skill": skill, "result": result, "checks": await asyncio.to_thread(_checks, skill, result, language), "account_used": bool(context),

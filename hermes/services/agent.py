@@ -180,3 +180,24 @@ async def answer(user_id: str, key: str, value) -> dict:
     state["questions"] = [q for q in state["questions"] if q.get("id") != key]
     await save(user_id, state)
     return state
+
+
+CHAT_SCHEMA = '{"reply": str, "suggestions": [str], "action": null | {"type": "run_agent"|"open_tab", "tab": "overview|content|analytics|settings"}}'
+
+
+async def chat(user_id: str, message: str, page: dict | None, history: list[dict] | None) -> dict:
+    """The agent talks with the person about what is on their screen. It sees the agent state and the text the open page gave it (page.title / page.text)."""
+    state = await load(user_id)
+    brief = {"profile": state.get("profile"), "strategy": (state.get("analysis") or {}).get("strategy"), "profile_score": ((state.get("analysis") or {}).get("profile") or {}).get("score"),
+             "data_gaps": (state.get("analysis") or {}).get("data_gaps"), "open_questions": [q.get("text") for q in state.get("questions", []) if q.get("kind") != "info"],
+             "proposals": [{"title": p.get("title"), "engine": p.get("engine"), "status": p.get("status")} for p in state.get("proposals", [])[-8:]],
+             "recent_posts": [{"caption": (m.get("caption") or "")[:100], "likes": m.get("likes"), "comments": m.get("comments")} for m in (state.get("media") or [])[:10]]}
+    system = ("You are Hermes, the Instagram agent inside EditorGPT's Instagram studio. Talk Persian, short and concrete. The person is looking at the page described in PAGE; "
+              "answer about what they see first, using AGENT (what you know about their account) for context. Never invent numbers or posts; say what is missing. "
+              "You can suggest running a new analysis (action run_agent) or opening a tab (action open_tab), only when it helps. "
+              f"Return ONLY JSON: {CHAT_SCHEMA}")
+    payload = {"agent": brief, "page": {"title": str((page or {}).get("title") or "")[:120], "text": str((page or {}).get("text") or "")[:6000]},
+               "history": [{"role": h.get("role"), "text": str(h.get("text") or "")[:1500]} for h in (history or [])[-8:]], "message": message[:4000]}
+    result = await asyncio.to_thread(lambda: skills._complete(system, json.dumps(payload, ensure_ascii=False), route="hermes_chat", tokens=2500))
+    action = result.get("action") if isinstance(result.get("action"), dict) and result["action"].get("type") in ("run_agent", "open_tab") else None
+    return {"reply": str(result.get("reply") or "")[:4000], "suggestions": [str(x)[:120] for x in (result.get("suggestions") or [])][:4], "action": action}

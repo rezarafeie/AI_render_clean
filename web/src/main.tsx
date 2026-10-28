@@ -36,14 +36,11 @@ const Signup = React.lazy(() => import("./Signup"));
 const ForgotPassword = React.lazy(() => import("./ForgotPassword"));
 const ResetPassword = React.lazy(() => import("./ResetPassword"));
 const HermesLayout = React.lazy(() => import("./pages/hermes/HermesLayout.jsx"));
-const HermesDashboard = React.lazy(() => import("./pages/hermes/HermesDashboard.jsx"));
-const HermesConnect = React.lazy(() => import("./pages/hermes/HermesConnect.jsx"));
-const HermesScheduler = React.lazy(() => import("./pages/hermes/HermesScheduler.jsx"));
 const HermesPostEditor = React.lazy(() => import("./pages/hermes/HermesPostEditor.jsx"));
 const HermesAnalytics = React.lazy(() => import("./pages/hermes/HermesAnalytics.jsx"));
-const HermesAgent = React.lazy(() => import("./pages/hermes/HermesAgent.jsx"));
-const HermesAdvisor = React.lazy(() => import("./pages/hermes/HermesAdvisor.jsx"));
-const HermesContentPlan = React.lazy(() => import("./pages/hermes/HermesContentPlan.jsx"));
+const HermesOverview = React.lazy(() => import("./pages/hermes/HermesOverview.jsx"));
+const HermesContent = React.lazy(() => import("./pages/hermes/HermesContent.jsx"));
+const HermesSettingsPage = React.lazy(() => import("./pages/hermes/HermesSettingsPage.jsx"));
 const HermesSettings = React.lazy(() => import("./pages/hermes/HermesSettings"));
 
 function LoadingSpinner() { return <div className="boot" role="status" aria-label="Loading EditorGPT"><span className="spinner"/></div>; }
@@ -90,7 +87,7 @@ function App() {
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
       <Route path="my-effects" element={<RequireAuth><MyEffects/></RequireAuth>}/><Route path="library" element={<RequireAuth><Library/></RequireAuth>}/><Route path="style-library" element={<RequireAuth><StyleLibrary/></RequireAuth>}/><Route path="style-learner" element={<RequireAuth><StyleLearner/></RequireAuth>}/><Route path="fonts" element={<Navigate to="/style-library#fonts" replace/>}/>
-      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesAgent/>}/><Route path="connect" element={<HermesConnect/>}/><Route path="overview" element={<HermesDashboard/>}/><Route path="scheduler" element={<HermesScheduler/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="advisor" element={<HermesAdvisor/>}/><Route path="content-plan" element={<HermesContentPlan/>}/><Route path="settings" element={<HermesSettings/>}/></Route>
+      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesOverview/>}/><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<HermesSettingsPage/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/><Route path="connect" element={<Navigate to="/hermes/settings" replace/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
       <Route path="*" element={<Navigate to="/studio" replace/>}/>
     </Route>
   </Routes></React.Suspense><ToastHost/></JobCacheProvider></AuthProvider></SessionBootstrap></AppErrorBoundary></BrowserRouter>;

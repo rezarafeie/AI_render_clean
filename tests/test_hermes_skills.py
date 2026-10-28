@@ -16,16 +16,16 @@ def test_all_thirteen_skills_have_a_definition_and_a_group():
 def test_a_skill_runs_with_the_account_and_checks_what_it_wrote(monkeypatch):
     seen = {}
 
-    def fake_chat(system, user, **kwargs):
+    def fake_chat(system, user, *args, **kwargs):
         seen["system"], seen["user"] = system, user
-        return {"title": "ریلز", "hooks": ["چرا فروش نمی‌کنی؟"], "script": "سلام. امروز می‌گویم چرا فروش نمی‌کنی.", "caption": "کپشن کوتاه"}, None
+        return {"title": "ریلز", "hooks": ["چرا فروش نمی‌کنی؟"], "script": "سلام. امروز می‌گویم چرا فروش نمی‌کنی.", "caption": "کپشن کوتاه"}
 
     async def fake_account(user_id):
         return {"username": "someone", "followers": 10, "follows": 2, "media_count": 3}
 
     async def fake_posts(user_id):
         return [{"id": "1", "caption": "x", "likes": 5, "comments": 1}]
-    monkeypatch.setattr(skills, "chat_json", fake_chat)
+    monkeypatch.setattr(skills, "_complete", fake_chat)
     monkeypatch.setattr(skills.composio_account, "account", fake_account)
     monkeypatch.setattr(skills.composio_account, "posts", fake_posts)
     out = asyncio.run(skills.run("1", "reel", "ایده: فروش محصول دیجیتال", "fa"))

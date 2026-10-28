@@ -26,6 +26,12 @@ class AskBody(BaseModel):
     language: str = Field(default="fa", pattern=r"^(fa|en)$")
 
 
+class ChatBody(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    page: dict = Field(default_factory=dict)
+    history: list[dict] = Field(default_factory=list, max_length=20)
+
+
 class StatusBody(BaseModel):
     status: str = Field(pattern=r"^(approved|rejected|in_production|produced|queued)$")
     conversation_id: str | None = Field(default=None, max_length=64)
@@ -83,3 +89,8 @@ async def connection(user=Depends(current_user)):
         return {"connected": None, "slow": True}
     except HTTPException as exc:
         return {"connected": None, "error": exc.detail.get("code") if isinstance(exc.detail, dict) else str(exc.detail)}
+
+
+@router.post("/chat")
+async def chat(body: ChatBody, user=Depends(current_user)):
+    return await agent.chat(str(user.id), body.message, body.page, body.history)

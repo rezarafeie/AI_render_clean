@@ -14,7 +14,7 @@ def test_rejects_injected_scope(mid):
 
 
 def test_policy_is_not_activation_evidence():
-    assert len(TASKS) == 43
+    assert len(TASKS) == 45
     assert TASKS['conversation_response']['parent'] == 'general_chat'
     for task in TASKS.values():
         assert "verified" not in task and "enabled" not in task

@@ -2,17 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import hermesApi from '../../services/hermesApi';
 import AccountCard from '../../components/hermes/AccountCard';
 import { array, message } from './hermesUtils';
+import { peekCache, writeCache } from './hermesCache';
 
 export default function HermesConnect() {
-  const [accounts, setAccounts] = useState([]);
+  const [accounts, setAccounts] = useState(() => array(peekCache('accounts')));
   const [followers, setFollowers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => peekCache('accounts') == null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [composio, setComposio] = useState({ configured: false, connected: [] });
   const poll = useRef(null);
-  const load = useCallback(async () => { const list = await hermesApi.getAccounts(); setAccounts(array(list)); setLoading(false); return array(list); }, []);
+  const load = useCallback(async () => { const list = await hermesApi.getAccounts(); writeCache('accounts', array(list)); setAccounts(array(list)); setLoading(false); return array(list); }, []);
   useEffect(() => {
     let alive = true;
     hermesApi.getComposioSettings().then(async (st) => {
