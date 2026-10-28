@@ -51,9 +51,8 @@ def sdk():
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise HTTPException(503, detail={"code": "COMPOSIO_RELAY_URL_INVALID"})
         extra["base_url"] = base
-        if settings.COMPOSIO_RELAY_SECRET:
-            extra["default_headers"] = {"x-relay-secret": settings.COMPOSIO_RELAY_SECRET}
-    with httpx.Client(timeout=30 if base else 20, follow_redirects=False) as client:
+    relay_headers = {"x-relay-secret": settings.COMPOSIO_RELAY_SECRET} if base and settings.COMPOSIO_RELAY_SECRET else {}
+    with httpx.Client(timeout=30 if base else 20, follow_redirects=False, headers=relay_headers) as client:   # the SDK ignores default_headers, the client carries the secret
         yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=30 if base else 20, max_retries=1 if base else 0,
                        allow_tracking=False, http_client=client, file_upload_dirs=False,
                        dangerously_allow_auto_upload_download_files=False, **extra)
