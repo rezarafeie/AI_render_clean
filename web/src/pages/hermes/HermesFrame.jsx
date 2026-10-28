@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import PaneSkeleton from '../../components/PaneSkeleton';
 import { Icon } from '../../components/Icon';
 import { array } from './hermesUtils';
 import { useHermes } from './HermesContext';
@@ -9,8 +11,11 @@ import AgentIdeas from './AgentIdeas';
 import AgentInsights from './AgentInsights';
 import HermesOnboarding from './HermesOnboarding';
 
-/** Content, Analytics and Settings: the page on the left, the agent in the Studio's side panel on the right. */
-export default function HermesFrame({ title, children }) {
+const TITLES = { content: 'Content', analytics: 'Analytics', settings: 'Settings', post: 'Post' };
+
+/** Content, Analytics and Settings (a layout route, so the agent panel stays put while only the page changes): the page on the left, the agent in the Studio's side panel on the right. */
+export default function HermesFrame() {
+  const title = TITLES[useLocation().pathname.split('/')[2]] || 'Instagram';
   const { agent, runAgent, connected, updating } = useHermes();
   const panel = useAgentPanel('frame');
   const [tab, setTab] = useState('chat');
@@ -25,7 +30,7 @@ export default function HermesFrame({ title, children }) {
         {updating ? <span className="hs-updating" role="status">Updating…</span> : null}
         {connected && !open ? <button type="button" className="btn btn-sm btn-secondary" onClick={panel.open}><Icon name="panelRight" size={16}/>Agent{pending ? ` · ${pending}` : ''}</button> : null}
       </header>
-      <div className="chat-scroll"><div className="hs-content" data-hermes-main>{connected === false ? <HermesOnboarding /> : children}</div></div>
+      <div className="chat-scroll"><div className="hs-content" data-hermes-main>{connected === false ? <HermesOnboarding /> : <Suspense fallback={<PaneSkeleton />}><Outlet /></Suspense>}</div></div>
     </section>
     {panel.layout !== 'desktop' && panel.overlay ? <button className="ws-backdrop" onClick={panel.closeOverlay} aria-label="Close agent" tabIndex={-1}/> : null}
     {connected ? <AgentWorkspace panel={panel} label="Agent" tab={tab} onTab={setTab}

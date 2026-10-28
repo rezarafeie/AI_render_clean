@@ -11,6 +11,8 @@ import { useFocusTrap, useMediaQuery, useVisualViewportHeight } from "./componen
 import { useAuth } from "./auth/AuthContext";
 import { isLocalDevelopment } from "./auth";
 import { displayTitle, parseTime } from "./format";
+import PaneSkeleton from "./components/PaneSkeleton";
+import { preloadEditor, preloadHermes } from "./routeLoaders";
 
 const SIDEBAR_BOUNDS = { min: 200, max: 420 };
 
@@ -63,6 +65,13 @@ export default function EditorShell() {
   }, [authenticated, hermesMode]);
   React.useEffect(() => { refreshHermes(); }, [refreshHermes, location.pathname]);
   React.useEffect(() => { window.addEventListener("hermes:chats-updated", refreshHermes); return () => window.removeEventListener("hermes:chats-updated", refreshHermes); }, [refreshHermes]);
+  React.useEffect(() => {   // both apps are fetched in the background, so the switch between them is instant
+    if (!authenticated) return;
+    const run = () => { void preloadHermes(); void preloadEditor(); };
+    const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: object) => number);
+    const id = idle ? idle(run, { timeout: 3000 }) : window.setTimeout(run, 1200);
+    return () => { if (idle) (window as any).cancelIdleCallback?.(id); else window.clearTimeout(id); };
+  }, [authenticated]);
   React.useEffect(() => { setDrawer(false); }, [location.pathname]);
   React.useEffect(() => { refreshChats(); }, [refreshChats, location.pathname]);
   React.useEffect(() => {
@@ -100,7 +109,7 @@ export default function EditorShell() {
 
   return <ShellContext.Provider value={shellValue}>
     <div className="app" data-collapsed={collapsed || undefined} data-resizing={resizing || undefined}
-      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-hide-bottom-nav={kind === "studio" || kind === "workspace" || undefined} data-bare={kind === "studio" || undefined}>
+      style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-bare={kind === "studio" || undefined}>
       <a className="skip-link" href="#main-content">Skip to content</a>
 
       <aside ref={sidebarRef} className="sidebar" data-open={drawer || undefined} aria-label="Main navigation" tabIndex={-1}>
@@ -112,13 +121,14 @@ export default function EditorShell() {
 
         <nav className="sb-nav" aria-label="Primary">
           {hermesMode ? <>
-            <NavLink to="/studio" {...tip("Back to editor")} aria-label="Back to editor"><Icon name="chevronLeft"/><span>Back to editor</span></NavLink>
+            <NavLink to="/studio" {...tip("Switch to EditorGPT")} aria-label="Switch to EditorGPT" onPointerEnter={() => void preloadEditor()}><Icon name="video"/><span>EditorGPT</span></NavLink>
             <NavLink to="/hermes" end {...tip("New chat")} aria-label="New chat"><Icon name="edit"/><span>New chat</span></NavLink>
             <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
             <NavLink to="/hermes/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/hermes/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
             <NavLink to="/hermes/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink>
           </> : <>
+          <NavLink to="/hermes" {...tip("Switch to InstaGPT")} aria-label="Switch to InstaGPT" onPointerEnter={() => void preloadHermes()}><Icon name="instagram"/><span>InstaGPT</span></NavLink>
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
@@ -161,15 +171,24 @@ export default function EditorShell() {
           <button className="icon-btn icon-btn-lg" onClick={() => setDrawer(true)} aria-label="Open navigation" aria-expanded={drawer}><Icon name="menu"/></button>
           <div className="topbar-title">{topTitle}</div>
           {topbarAction?.status ? <ProjectStatusDot status={topbarAction.status}/> : null}
-          {topbarAction ? <button className="icon-btn icon-btn-lg" onClick={topbarAction.onClick} aria-pressed={topbarAction.active} aria-label={topbarAction.active ? "Exit full screen" : "Full screen"}><Icon name={topbarAction.active ? "fullscreenExit" : "fullscreen"}/></button> : <button className="icon-btn icon-btn-lg" onClick={() => navigate("/studio")} aria-label="New edit"><Icon name="edit"/></button>}
+          {topbarAction ? <button className="icon-btn icon-btn-lg" onClick={topbarAction.onClick} aria-pressed={topbarAction.active} aria-label={topbarAction.active ? "Exit full screen" : "Full screen"}><Icon name={topbarAction.active ? "fullscreenExit" : "fullscreen"}/></button> : null}
+          <NavLink to={hermesMode ? "/studio" : "/hermes"} className="switch-btn" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
+            <Icon name={hermesMode ? "video" : "instagram"} size={17}/><span>{hermesMode ? "EditorGPT" : "InstaGPT"}</span></NavLink>
         </header>
         <main id="main-content" className={`main${kind === "legacy" ? " eg-legacy" : ""}`} data-route={kind} tabIndex={-1}>
-          {kind === "legacy" ? <div className="legacy-frame"><Outlet/></div> : <Outlet/>}
+          <React.Suspense fallback={<PaneSkeleton/>}>{kind === "legacy" ? <div className="legacy-frame"><Outlet/></div> : <Outlet/>}</React.Suspense>
         </main>
-        <nav className="bottom-nav" aria-label="Mobile navigation">
-          <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
-          <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>
-          <NavLink to="/templates"><Icon name="templates"/><span>Templates</span></NavLink>
+        <nav className="bottom-nav" aria-label="Mobile navigation" style={{ ["--tabs" as string]: hermesMode ? 4 : 3 }}>
+          {hermesMode ? <>
+            <NavLink to="/hermes" end><Icon name="edit"/><span>New chat</span></NavLink>
+            <NavLink to="/hermes/content"><Icon name="film"/><span>Content</span></NavLink>
+            <NavLink to="/hermes/analytics"><Icon name="list"/><span>Analytics</span></NavLink>
+            <NavLink to="/hermes/settings"><Icon name="settings"/><span>Settings</span></NavLink>
+          </> : <>
+            <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
+            <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>
+            <NavLink to="/templates"><Icon name="templates"/><span>Templates</span></NavLink>
+          </>}
         </nav>
       </div>
     </div>
