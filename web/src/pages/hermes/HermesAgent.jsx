@@ -74,9 +74,18 @@ export default function HermesAgent() {
   const [asked, setAsked] = useState(null);
   const started = useRef(false);
   const refresh = useCallback(async () => { const next = await hermesApi.getAgent(); setState(next); return next; }, []);
-  useEffect(() => {
-    hermesApi.getSkillAccount().then((a) => setConnected(!!a.connected)).catch((e) => { setError(message(e)); setConnected(false); });
+  const [slow, setSlow] = useState(false);
+  const check = useCallback(async () => {
+    setSlow(false); setConnected(null);
+    try {
+      const saved = await hermesApi.getAgent();                      // from the database: instant; an account already read counts as connected
+      if (saved.profile) { setState(saved); setConnected(true); return; }
+      const result = await hermesApi.getAgentConnection();
+      if (result.connected === null) { setSlow(true); setConnected(false); return; }
+      setConnected(!!result.connected);
+    } catch (e) { setError(message(e)); setConnected(false); }
   }, []);
+  useEffect(() => { void check(); }, [check]);
   useEffect(() => { if (connected) refresh().catch((e) => setError(message(e))); }, [connected, refresh]);
   useEffect(() => {
     if (!state || !connected || started.current) return;
@@ -88,7 +97,7 @@ export default function HermesAgent() {
     return () => clearInterval(timer);
   }, [state?.run?.status, refresh]);
   if (connected === null) return <div className="hm-page hm-rise"><div className="hm-loading" role="status">Loading Hermes…</div></div>;
-  if (!connected) return <HermesOnboarding />;
+  if (!connected) return <>{slow && <div className="hm-page"><div className="hm-alert" role="alert">بررسی اتصال از Composio خیلی طول کشید (اتصال سرور ناپایدار است). <button className="hm-btn hm-btn-quiet" type="button" onClick={() => void check()}>دوباره بررسی کن</button></div></div>}<HermesOnboarding /></>;
   const running = state?.run?.status === 'running';
   const profile = state?.profile;
 
