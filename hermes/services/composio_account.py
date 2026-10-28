@@ -39,10 +39,10 @@ async def profile(user_id: str) -> dict | None:
             "media_count": _find(data, "media_count"), "ig_user_id": _find(data, "id") or _find(data, "user_id")}
 
 
-async def account(user_id: str) -> dict | None:
+async def account(user_id: str, fresh: bool = False) -> dict | None:
     """The Composio Instagram connection of this user as an account row, or None (not configured, not enabled, not connected)."""
     now = time.monotonic()
-    hit = _cache.get(user_id)
+    hit = None if fresh else _cache.get(user_id)
     if hit and now - hit[0] < TTL:
         return hit[1]
     row = None
@@ -77,12 +77,14 @@ async def insights(user_id: str) -> dict:
     return {"account_id": VIRTUAL_ID, "followers": row["followers"], "follows": row["follows"], "media_count": row["media_count"], "source": "composio"}
 
 
-async def posts(user_id: str) -> list:
+async def posts(user_id: str, strict: bool = False) -> list:
     if MEDIA_TOOL not in read.permitted_slugs():
         return []
     try:
         result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25})
     except HTTPException:                                   # the page still works with the profile numbers
+        if strict:
+            raise
         return []
     items = (result.get("data") or {}).get("data") if isinstance(result.get("data"), dict) else None
     items = items if isinstance(items, list) else _find_list(result.get("data"))

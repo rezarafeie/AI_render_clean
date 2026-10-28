@@ -129,7 +129,8 @@ def _direct(kind: str, understand_system: str, source_text: str, caps: str, *, b
             reference: ReferenceProfile | None = None, depth: str = "fast") -> CreativePlan:
     started = time.monotonic()
     used: list[str] = []
-    guide = prompts.STRUCTURE_GUIDE[kind]
+    from . import instagram_playbook
+    guide = instagram_playbook.add_to(prompts.STRUCTURE_GUIDE[kind], source_text)       # Instagram briefs get the skill's hook formulas and reel rules
     if reference is not None:
         source_text += "\n\n" + scriptwriter.reference_digest(reference)
 
