@@ -31,15 +31,18 @@ export default function AgentIdeas({ limit = 0, embedded = false }) {
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
     {!list.length ? <div className="ws-empty"><span className="empty-icon"><Icon name="spark" size={24}/></span><h2>هنوز ایده‌ای نیست</h2><p>ایجنت بعد از تحلیل پیج، ایده و سناریو پیشنهاد می‌دهد.</p>
       <button className="btn btn-secondary btn-sm" type="button" onClick={() => runAgent()}>بررسی جدید</button></div> : null}
-    {list.map((p) => <article key={p.id} className="action-card" dir="rtl">
-      <div className="agent-card-head"><h3>{p.title}</h3><span className="agent-tag">{ENGINE[p.engine] || p.engine}</span></div>
-      {p.hook ? <p className="agent-hook">«{p.hook}»</p> : null}
-      {p.why ? <p className="muted-text">{p.why}</p> : null}
-      <details><summary>متن و کپشن</summary>{p.script ? <pre className="agent-pre">{p.script}</pre> : null}{p.caption ? <pre className="agent-pre">{p.caption}</pre> : null}</details>
-      <div className="action-buttons">
-        {p.status === 'proposed' ? <><button className="btn btn-sm" type="button" disabled={!!working} onClick={() => approve(p)}><Icon name="check" size={15}/>{working === p.id ? 'در حال ساخت…' : 'تأیید و ساخت در ادیتور'}</button>
-          <button className="btn btn-secondary btn-sm" type="button" disabled={!!working} onClick={() => reject(p)}>رد</button></> : <span className="muted-text">{STATUS[p.status] || p.status}</span>}
-        {p.conversation_id ? <Link className="btn btn-secondary btn-sm" to={`/studio/${p.conversation_id}`}>باز کردن در ادیتور</Link> : null}
+    <div className="ideas">
+    {list.map((p) => <article key={p.id} className="idea" dir="rtl">
+      <div className="idea-top"><span className="idea-tag" data-engine={p.engine}>{ENGINE[p.engine] || p.engine}</span>{p.status !== 'proposed' ? <span className="idea-status">{STATUS[p.status] || p.status}</span> : null}</div>
+      <h3 className="idea-title" dir="auto">{p.title}</h3>
+      {p.hook ? <p className="idea-hook" dir="auto">«{p.hook}»</p> : null}
+      {p.why ? <p className="idea-why" dir="auto">{p.why}</p> : null}
+      {p.script || p.caption ? <details className="idea-more"><summary>Script and caption</summary>{p.script ? <pre className="agent-pre" dir="auto">{p.script}</pre> : null}{p.caption ? <pre className="agent-pre" dir="auto">{p.caption}</pre> : null}</details> : null}
+      <div className="idea-actions">
+        {p.status === 'proposed' ? <><button className="btn btn-sm" type="button" disabled={!!working} onClick={() => approve(p)}>{working === p.id ? 'Building…' : 'Build in editor'}</button>
+          <button className="btn btn-ghost btn-sm" type="button" disabled={!!working} onClick={() => reject(p)}>Skip</button></> : null}
+        {p.conversation_id ? <Link className="btn btn-secondary btn-sm" to={`/studio/${p.conversation_id}`}>Open in editor</Link> : null}
       </div></article>)}
+    </div>
   </div>;
 }

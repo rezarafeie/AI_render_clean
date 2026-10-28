@@ -126,7 +126,6 @@ export default function EditorShell() {
             <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
             <NavLink to="/hermes/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/hermes/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
-            <NavLink to="/hermes/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink>
           </> : <>
           <NavLink to="/hermes" {...tip("Switch to InstaGPT")} aria-label="Switch to InstaGPT" onPointerEnter={() => void preloadHermes()}><Icon name="instagram"/><span>InstaGPT</span></NavLink>
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
@@ -153,7 +152,7 @@ export default function EditorShell() {
         <div className="sb-spacer"/>
 
         <div className="sb-foot">
-          {hermesMode ? null : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
+          {hermesMode ? <NavLink to="/hermes/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
           {authenticated ? <div className="account">
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>
             <span className="account-copy"><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
@@ -178,12 +177,11 @@ export default function EditorShell() {
         <main id="main-content" className={`main${kind === "legacy" ? " eg-legacy" : ""}`} data-route={kind} tabIndex={-1}>
           <React.Suspense fallback={<PaneSkeleton/>}>{kind === "legacy" ? <div className="legacy-frame"><Outlet/></div> : <Outlet/>}</React.Suspense>
         </main>
-        <nav className="bottom-nav" aria-label="Mobile navigation" style={{ ["--tabs" as string]: hermesMode ? 4 : 3 }}>
+        <nav className="bottom-nav" aria-label="Mobile navigation" style={{ ["--tabs" as string]: 3 }}>
           {hermesMode ? <>
             <NavLink to="/hermes" end><Icon name="edit"/><span>New chat</span></NavLink>
             <NavLink to="/hermes/content"><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/hermes/analytics"><Icon name="list"/><span>Analytics</span></NavLink>
-            <NavLink to="/hermes/settings"><Icon name="settings"/><span>Settings</span></NavLink>
           </> : <>
             <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
             <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>
