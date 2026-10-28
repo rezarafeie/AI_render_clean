@@ -68,7 +68,7 @@ def clean_result(value, depth=0):
     return "[unsupported value]"
 
 
-async def execute(user_id: str, toolkit: str, slug: str, arguments: dict):
+async def execute(user_id: str, toolkit: str, slug: str, arguments: dict, max_chars: int = 40_000):
     try:
         ReadInput(application=toolkit, tool=slug, arguments=arguments)
     except ValueError:
@@ -91,7 +91,7 @@ async def execute(user_id: str, toolkit: str, slug: str, arguments: dict):
                 raise HTTPException(502, detail={"code": "COMPOSIO_READ_FAILED"})
             data = clean_result(result.data)
             try:
-                if len(json.dumps(data, allow_nan=False)) > 40_000:
+                if len(json.dumps(data, allow_nan=False)) > max_chars:
                     raise ValueError("Too much data")
             except (TypeError, ValueError):
                 raise HTTPException(502, detail={"code": "COMPOSIO_RESULT_TOO_LARGE"}) from None

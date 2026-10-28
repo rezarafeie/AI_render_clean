@@ -227,7 +227,7 @@ def test_composio_instagram_is_listed_as_a_read_only_account(setup, monkeypatch)
     async def fake_connections(user_id):
         return {"applications": [{"application": "instagram", "name": "Instagram", "connected": True, "status": "ACTIVE"}]}
 
-    async def fake_execute(user_id, toolkit, slug, arguments):
+    async def fake_execute(user_id, toolkit, slug, arguments, max_chars=40_000):
         return {"data": {"data": {"username": "someone", "followers_count": 1234, "id": "17841"}}}
     monkeypatch.setattr(account.sessions, "status", fake_status)
     monkeypatch.setattr(account.sessions, "connections", fake_connections)

@@ -81,7 +81,7 @@ async def posts(user_id: str, strict: bool = False) -> list:
     if MEDIA_TOOL not in read.permitted_slugs():
         return []
     try:
-        result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25})
+        result = await read.execute(user_id, "instagram", MEDIA_TOOL, {"ig_user_id": "me", "limit": 25}, max_chars=400_000)   # a page of posts is large; only a few fields are kept below
     except HTTPException:                                   # the page still works with the profile numbers
         if strict:
             raise
