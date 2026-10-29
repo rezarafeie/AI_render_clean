@@ -517,6 +517,34 @@ def _scenes_in(problems: list[str], count: int) -> list[int]:
     return found
 
 
+def _isolate(directory: Path, work: Path, build, page, problems: list[str], notes: list[str]):
+    """The page fails and no finding names a scene: swap one scene at a time for its plain version until the check passes; if no single swap does,
+    every scene becomes plain. Returns the page to check again."""
+    from creative import motion_graphic as mg
+    from engine.hyperframes import standalone
+    key = directory.name
+    count = len(build.plan.scenes)
+    _note(directory, "check", f"مشکل اجرا پیدا شد ({mg.explain_problem(problems[0])}). دارم صحنهٔ مشکل‌دار را پیدا می‌کنم", "active")
+    for n in range(1, count + 1):
+        trial = dict(build.drafts)
+        trial[n] = mg.fallback_scene(build.plan, n)
+        candidate = mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)])
+        mg.write_project(work, candidate)
+        result = standalone.check(work, should_cancel=lambda: _cancelled(key))
+        if _cancelled(key):
+            raise _Cancelled()
+        if not result.blocking:
+            build.drafts = trial
+            headline = build.plan.scenes[n - 1].headline
+            notes.append(f"صحنهٔ {n} («{headline}») با طرح ساده جایگزین شد چون در اجرا خطا می‌داد")
+            _note(directory, f"scene{n}", f"صحنهٔ {n} با طرح ساده جایگزین شد", "done")
+            return candidate
+    build.drafts = {i: mg.fallback_scene(build.plan, i) for i in range(1, count + 1)}
+    notes.append("چند صحنه در اجرا خطا می‌دادند؛ همهٔ صحنه‌ها با طرح ساده ساخته شد")
+    _note(directory, "check", "صحنه‌ها با طرح ساده ساخته شدند تا ویدیو حتماً کامل شود", "done")
+    return mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, count + 1)])
+
+
 def _prepare_and_render(directory: Path, page, brief: str, change: str, used: list[str], build=None):
     from creative import motion_graphic as mg
     from engine.hyperframes import standalone
@@ -526,6 +554,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     work.mkdir(parents=True)
     notes: list[str] = []
     repairs_left = 2
+    isolated = 0
     stats = _stats()
     while True:
         mg.write_project(work, page)
@@ -545,10 +574,18 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                      + [q[:220] for q in result.quality[:4]] + result.notes)[:8]
             break
         reasons = "؛ ".join(dict.fromkeys(mg.explain_problem(p) for p in problems[:3]))
+        hit = _scenes_in(problems, len(build.plan.scenes)) if build else []
+        if build and (repairs_left <= 0 or not hit):
+            # The findings do not name a scene (or the targeted fixes ran out): find the scene that breaks the page by swapping them for plain ones one at a
+            # time. The clip is always finished; only the scene that cannot be made to work loses its design.
+            if isolated >= 2:
+                raise RuntimeError("did not pass validation: " + problems[0])
+            isolated += 1
+            page = _isolate(directory, work, build, page, problems, notes)
+            continue
         if repairs_left <= 0:
             raise RuntimeError("did not pass validation: " + problems[0])
         repairs_left -= 1
-        hit = _scenes_in(problems, len(build.plan.scenes)) if build else []
         if build and hit:
             # Rebuild only the scenes the findings point at (small requests); a scene that cannot be fixed is replaced by a plain one.
             for n in hit:

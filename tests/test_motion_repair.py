@@ -68,3 +68,22 @@ def test_unknown_kit_helpers_are_reported():
     from creative.motion_graphic import unknown_helpers
     assert unknown_helpers('HM.set(".a", {opacity: 0}, 0); HM.rise(".b", 1);') == []
     assert unknown_helpers('HM.explode(".a"); HM.rise(".b", 1); const s = "HM.nope";') == ["explode"]
+
+
+def test_isolate_replaces_only_the_scene_that_breaks_the_page(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from app import motion_graphic as app_mg
+    from creative import motion_graphic as mg
+    from engine.hyperframes import standalone
+    plain = SimpleNamespace(tag="plain")
+    plan = SimpleNamespace(scenes=[SimpleNamespace(headline=f"h{i}") for i in range(3)])
+    build = SimpleNamespace(plan=plan, drafts={1: "a", 2: "BAD", 3: "c"})
+    monkeypatch.setattr(mg, "fallback_scene", lambda p, n: "plain")
+    monkeypatch.setattr(mg, "assemble_scenes", lambda p, drafts: list(drafts))
+    monkeypatch.setattr(mg, "write_project", lambda work, page: setattr(build, "written", page))
+    monkeypatch.setattr(standalone, "check", lambda work, should_cancel=None: SimpleNamespace(blocking=["x"] if "BAD" in build.written else []))
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    monkeypatch.setattr(app_mg, "_cancelled", lambda key: False)
+    notes: list[str] = []
+    page = app_mg._isolate(tmp_path, tmp_path, build, None, ["page_error: boom"], notes)
+    assert page == ["a", "plain", "c"] and len(notes) == 1
