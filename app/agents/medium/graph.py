@@ -112,7 +112,8 @@ def _execute(cid, user, record):
             message = "اتصال مدل برای این مسیر در Gateway لوکال آماده نیست؛ فهرست مدل‌ها را همگام‌سازی و قابلیت متن مدل انتخاب‌شده را آزمایش کنید. اجرا متوقف شد و موتور Medium تغییر نکرد."
         elif isinstance(exc, httpx.TransportError) or (isinstance(exc, GatewayError) and (exc.status == 504 or "RemoteProtocolError" in str(exc))):
             message = "سرویس مدل در Gateway پاسخ را کامل نداد یا اتصال را قطع کرد. مراحل ذخیره شده‌اند؛ از همین اجرا دوباره تلاش کنید. موتور Medium و مدل انتخاب‌شده خودکار تغییر نکردند."
-        run(store.update(rid, user, status="cancelled" if stopped else "failed", patch={"error": message}))
+        detail = f"{type(exc).__name__}: {str(exc)[:600]}"            # kept on the run (not shown to the person) so the cause survives a container restart
+        run(store.update(rid, user, status="cancelled" if stopped else "failed", patch={"error": message, "error_detail": detail}))
         nodes.event(record, "message.stopped" if stopped else "tool.failed", message=message)
         run(repo.add_message(cid, user, "assistant", message, agent_mode="medium"))
     finally:
