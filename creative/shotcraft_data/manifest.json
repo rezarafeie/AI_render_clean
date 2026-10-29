@@ -1,0 +1,113 @@
+{
+  "repository": "https://github.com/Vincentwei1021/video-shotcraft",
+  "revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+  "license": "Apache-2.0",
+  "usage": "reference-only; TSX is not executed by HyperFrames",
+  "cards": [
+    {
+      "name": "bezier-source-converge-merge",
+      "recipe": "references/shots/ui-entrance/bezier-source-converge-merge.md",
+      "demos": [
+        "demos/ui-entrance/bezier-source-converge-merge/BezierSourceConvergeMerge.tsx"
+      ],
+      "styles": [
+        "bezier-source-converge-merge"
+      ]
+    },
+    {
+      "name": "text-column-converge",
+      "recipe": "references/shots/typography/text-column-converge.md",
+      "demos": [
+        "demos/typography/text-column-converge/TextColumnConverge.tsx"
+      ],
+      "styles": [
+        "text-column-converge"
+      ]
+    },
+    {
+      "name": "card-stack",
+      "recipe": "references/shots/ui-entrance/card-stack.md",
+      "demos": [
+        "demos/ui-entrance/card-stack/CardStack.tsx"
+      ],
+      "styles": [
+        "card-stack"
+      ]
+    },
+    {
+      "name": "title-demote-to-label",
+      "recipe": "references/shots/typography/title-demote-to-label.md",
+      "demos": [
+        "demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx"
+      ],
+      "styles": [
+        "title-demote-to-label"
+      ]
+    },
+    {
+      "name": "card-flip-reveal",
+      "recipe": "references/shots/transition/card-flip-reveal.md",
+      "demos": [
+        "demos/transition/card-flip-reveal/CardFlipReveal.tsx"
+      ],
+      "styles": [
+        "card-flip-reveal"
+      ]
+    },
+    {
+      "name": "before-after-slider-scrub",
+      "recipe": "references/shots/data/before-after-slider-scrub.md",
+      "demos": [
+        "demos/data/before-after-slider-scrub/BeforeAfterSliderScrub.tsx"
+      ],
+      "styles": [
+        "before-after-slider-scrub"
+      ]
+    },
+    {
+      "name": "chart-live-moves",
+      "recipe": "references/shots/data/chart-live-moves.md",
+      "demos": [
+        "demos/data/chart-live-moves/AxisRescaleShockV2.tsx",
+        "demos/data/chart-live-moves/OscilloscopeStreamV2.tsx",
+        "demos/data/chart-live-moves/UnitDotSwarmRegroupV2.tsx"
+      ],
+      "styles": [
+        "oscilloscope-stream",
+        "unit-dot-swarm-regroup",
+        "axis-rescale-shock"
+      ]
+    },
+    {
+      "name": "circle-match-iris",
+      "recipe": "references/shots/transition/circle-match-iris.md",
+      "demos": [
+        "demos/transition/circle-match-iris/CircleMatchIris.tsx"
+      ],
+      "styles": [
+        "circle-match-iris"
+      ]
+    }
+  ],
+  "sha256": {
+    "LICENSE": "b2ce9877a55547ada9b870150664d1468ff777e67cc9888806a73927d31c5771",
+    "demos/data/before-after-slider-scrub/BeforeAfterSliderScrub.tsx": "ce1f3ada646c2649c2029a1fb1abbd9436667f328b40baf1ebcdc88d4a8b1f0d",
+    "demos/data/chart-live-moves/AxisRescaleShockV2.tsx": "30d6c0f033f23b8ba801107560c8af95d50e6affd19ef01652466bd2cd53e863",
+    "demos/data/chart-live-moves/OscilloscopeStreamV2.tsx": "e50a149f034ff84ba90828fc7297b37a6c1abc8cbb2bad7817ecc937dcd4bdec",
+    "demos/data/chart-live-moves/UnitDotSwarmRegroupV2.tsx": "74a158876239314dbd9c633219b37b86a7a40a915ee12613b6d09d6fb08c9330",
+    "demos/transition/card-flip-reveal/CardFlipReveal.tsx": "14b2c471993adb40100e41d3c817d9fc566e379ec88876b51e195682f44bca4e",
+    "demos/transition/circle-match-iris/CircleMatchIris.tsx": "a9b0104f0fd70e310ea1e1cbccab54f665f240a7abbaa79ec0865b121562de25",
+    "demos/typography/text-column-converge/TextColumnConverge.tsx": "e7611863d8f195f5c3e0e16aa012bead142f7135b71df8d7a13eec3e88722feb",
+    "demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx": "5448cdf76c9eb57ebc4de46ae0f2e9bd399275e9600181afb26fe5dfbf0eeff5",
+    "demos/ui-entrance/bezier-source-converge-merge/BezierSourceConvergeMerge.tsx": "c35a9bebbb71eb73fb77db49cafba4a96a963b4a2749946a39ba5295d8bf130f",
+    "demos/ui-entrance/card-stack/CardStack.tsx": "c02e6c060cee3145384f151eaed89018a60275a1430bd34d31aecac9b33a5a7d",
+    "references/shots/data/before-after-slider-scrub.md": "af4fbfb90c9d69d1951397c732852f9383d789c6ceca2f9ed659a865ea64d2f3",
+    "references/shots/data/chart-live-moves.md": "2aa7cefcc4b98450717a43d92a53aba9ec8910e3e25b92cd11154d53147dfc01",
+    "references/shots/transition/card-flip-reveal.md": "40d36c15ac82ed0dace8c931940a3513512acea495942ab336ec67d806bcf40f",
+    "references/shots/transition/circle-match-iris.md": "dff013d6789e25fb2be1e687922d7a42b54f4390bad5952d76f93c8ed8c31778",
+    "references/shots/typography/text-column-converge.md": "d05c33be140216544c35f999b8fe546299b240132f372bfd14f2227254c6e2da",
+    "references/shots/typography/title-demote-to-label.md": "4e01c04c76d9f6a3f1b18e9c75ac1502cb1aefe1ac08ef47426b8628ea9fa08f",
+    "references/shots/ui-entrance/bezier-source-converge-merge.md": "5ccbbe0970128584b45014cac204da862fde611932470bbba869d3bdb7d44c8e",
+    "references/shots/ui-entrance/card-stack.md": "3f6bdc5c5b10e4c9d6a6d844feecc3451d38d858abce893e8a3df56f51ac5a63"
+  }
+}

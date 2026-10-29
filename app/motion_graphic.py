@@ -445,7 +445,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     context = record.get("context", "")
     style = record.get("style", "")
-    plan_fp = _fingerprint(brief, context, style)
+    plan_fp = _fingerprint("motion-local-clock-shotcraft-v1", brief, context, style)
     saved_plan = directory / "plan.json"
     plan = None
     try:

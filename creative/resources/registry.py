@@ -6,13 +6,13 @@ import json
 import re
 
 from .models import Resource
-from .providers import existing_effect_resources, existing_recipe_resources, existing_transition_resources, hyperframes_resources
+from .providers import existing_effect_resources, existing_recipe_resources, existing_transition_resources, hyperframes_resources, shotcraft_resources
 
 
 @lru_cache(maxsize=1)
 def _snapshot() -> dict[str, Resource]:
     rows = {}
-    for provider in (hyperframes_resources, existing_effect_resources, existing_transition_resources, existing_recipe_resources):
+    for provider in (hyperframes_resources, existing_effect_resources, existing_transition_resources, existing_recipe_resources, shotcraft_resources):
         for item in provider():
             if item.id in rows:
                 raise ValueError(f"Duplicate creative resource ID: {item.id}")

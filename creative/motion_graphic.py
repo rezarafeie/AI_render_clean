@@ -46,6 +46,7 @@ class MotionPage(BaseModel):
     build_js: str = ""
     update_js: str = ""
     audio: list[dict] = Field(default_factory=list)            # narration clips: {"path": local file, "start": seconds, "duration": seconds}
+    resource_receipts: list[dict] = Field(default_factory=list)
 
     @field_validator("questions")
     @classmethod
@@ -61,7 +62,7 @@ class MotionPage(BaseModel):
 
     def public(self) -> dict:
         return {"title": self.title, "summary": self.summary, "format": self.format, "duration": self.duration,
-                "width": self.size[0], "height": self.size[1]}
+                "width": self.size[0], "height": self.size[1], "resource_receipts": self.resource_receipts}
 
 
 # ── validation ───────────────────────────────────────────────────────────────
@@ -440,6 +441,15 @@ class ScenePlan(BaseModel):
     start: float
     end: float
     narration: str = ""                # the line spoken while the scene is on screen (Persian, as it is read aloud)
+    shotcraft_id: str = ""
+
+    @field_validator("shotcraft_id")
+    @classmethod
+    def _known_shot(cls, value):
+        from .shotcraft import catalog
+        if value and value not in {row["id"] for row in catalog()}:
+            raise ValueError("Use an exact Shotcraft resource ID from the supplied catalog")
+        return value
 
 
 class MotionPlan(BaseModel):
@@ -451,6 +461,7 @@ class MotionPlan(BaseModel):
     duration: float = 15.0
     palette: Palette = Field(default_factory=Palette)
     signature: str = ""                # the one memorable device that repeats through the clip
+    design_direction: str = Field(default="", max_length=2500)
     scenes: list[ScenePlan] = Field(default_factory=list)
 
     @field_validator("questions")
@@ -464,6 +475,7 @@ class MotionPlan(BaseModel):
 
 class SceneDraft(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    timebase: Literal["absolute", "local"] = "absolute"  # old saved drafts retain their timing
     html: str
     css: str = ""
     build_js: str
@@ -497,6 +509,11 @@ PLAN
   for word: the headline is the short on-screen punch, the narration is the explanation. The first scene's narration is the hook. Up to 60 seconds in total;
   20-40 seconds is typical when the request carries a script.
 - When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
+- Include design_direction: one shared visual system for the whole film (grid, typography hierarchy, framing, illustration/material language,
+  whitespace, foreground/background relationship, motion energy and a reason for the transition). Palette alone is not a design system.
+- Each scene may include shotcraft_id from the supplied catalog. Select the recipe by its explanatory meaning, not its name or visual noise.
+  Vary the visual mechanism across scenes; do not choose data charts unless verified numerical facts are supplied. Use the supplied source reference
+  as a design recipe, not an executable Remotion tool. Do not promise unsupported runtime capabilities.
 """
 
 _SCENE_INTRO = """You are a senior motion designer. You build ONE scene of a clip that a creative director planned; other designers build the other scenes at
@@ -554,7 +571,8 @@ def validate_plan(plan: MotionPlan) -> list[str]:
 
 
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "") -> str:
-    parts = [f"REQUEST:\n{brief.strip()}"]
+    from .shotcraft import catalog
+    parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False)]
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
     if brand:
@@ -575,14 +593,19 @@ def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
     if not data:
         return plan
     cursor, scenes = 0.0, []
-    for line in data["lines"][:6]:
+    if len(data["lines"]) > 8:
+        raise CreativeUnavailable("این سناریو بیش از ۸ صحنه دارد؛ برای حفظ همهٔ صحنه‌ها آن را به چند ویدیو تقسیم کنید.")
+    for line in data["lines"]:
         length = max(2.6, float(line["seconds"]), speech.speech_seconds(line["say"]) * speech.MARGIN + 0.5)
+        original = plan.scenes[len(scenes)] if len(scenes) < len(plan.scenes) else None
         scenes.append(ScenePlan(headline=line["title"].strip() or line["say"][:40], narration=line["say"].strip(), idea=(line["see"] or plan.summary).strip(),
-                                start=round(cursor, 2), end=round(cursor + length, 2)))
+                                start=round(cursor, 2), end=round(cursor + length, 2), shotcraft_id=original.shotcraft_id if original else ""))
         cursor += length
     if len(scenes) < 2:
         return plan
-    return plan.model_copy(update={"scenes": scenes, "duration": round(min(MAX_SECONDS, cursor), 2)})
+    if cursor > MAX_SECONDS:
+        raise CreativeUnavailable("نریشن سناریوی تأییدشده از سقف مدت موشن طولانی‌تر است؛ متن را کوتاه یا به چند ویدیو تقسیم کنید. هیچ صحنه‌ای حذف نشد.")
+    return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
 
 
 def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
@@ -626,7 +649,10 @@ def _scene_page(n: int, draft: SceneDraft, plan: MotionPlan) -> MotionPage:
 def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style: str = "") -> str:
     scene = plan.scenes[n - 1]
     outline = [{"scene": i, "headline": sc.headline, "idea": sc.idea, "from": sc.start, "to": sc.end} for i, sc in enumerate(plan.scenes, 1)]
-    parts = [f"YOU BUILD SCENE s{n} (N = {n}). T = {scene.start:g}, D = {round(scene.end - scene.start, 2):g} (it is on screen from {scene.start:g} s to {scene.end:g} s).",
+    parts = [f"YOU BUILD SCENE s{n} (N = {n}). LOCAL CLOCK: T = 0, D = {round(scene.end - scene.start, 2):g}. "
+             "The assembler applies the global start ONCE. Never add a global offset. Every tween uses an explicit numeric LOCAL position from 0 to D; "
+             "all tween durations, delays, repeats and staggers must finish before D. HM.pop from is a NUMBER, never a direction string. "
+             "Keep the main content readable through the final frame; the assembler owns scene transitions.",
              f"THIS SCENE\nheadline (exact words, Persian): {scene.headline}\nidea: {scene.idea}"
              + (f"\nnarration spoken over this scene (the viewer HEARS it; the visuals must illustrate it and the on-screen text must support it, not duplicate it): {scene.narration}" if scene.narration else ""),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
@@ -636,6 +662,11 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
         parts.append("FACTS you may use (the only ones besides the request):\n" + context.strip()[:5000])
     if style:
         parts.append("REFERENCE STYLE to echo (rhythm, type treatment, transitions, density):\n" + style.strip()[:900])
+    if plan.design_direction:
+        parts.append("SHARED DESIGN BIBLE (all scenes must follow, not invent their own system):\n" + plan.design_direction)
+    if scene.shotcraft_id:
+        from .shotcraft import scene_reference
+        parts.append(scene_reference(scene.shotcraft_id))
     parts.append("Palette background and ink are already applied to #s%d; use accent colours for emphasis." % n)
     return "\n\n".join(parts)
 
@@ -720,11 +751,12 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     """One validated scene. Rejections are fed back to the model (``on_retry(next_attempt, problems)`` tells the caller); ``feedback`` starts the
     conversation with problems an earlier check found in this scene. The caller falls back to a plain scene when this raises."""
     request = scene_request(plan, n, brief, context, style)
-    guide = SCENE_GUIDE.replace("sN", f"s{n}")
+    guide = SCENE_GUIDE.replace("sN", f"s{n}").replace("using ABSOLUTE times (T + offset)", "using LOCAL times (T=0, offset)")
     problems: list[str] = list(feedback or [])
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous answer was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems[:8])
         draft = llm.ask(SceneDraft, guide, user, route=SCENE_ROUTE if attempt == 0 else REPAIR_ROUTE, tokens=7000, attempts=2, used=used)
+        draft.timebase = "local"
         draft.build_js, draft.update_js = repair_js(draft.build_js, plan.duration), repair_js(draft.update_js, plan.duration)
         problems = validate_page(_scene_page(n, draft, plan))
         problems += [f"every id must start with s{n}-: {i}" for i in dict.fromkeys(re.findall(r'\bid="(?!s%d-)([^"]+)"' % n, draft.html))][:3]
@@ -764,8 +796,18 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
         # T and D (the scene's start and length) are real variables in its code: the designer's prompt names them, and a scene that writes T + 0.5
         # must not crash the page with "T is not defined".
         span = f"{scene.start:g}, {round(scene.end - scene.start, 3):g}"
-        build.append(f"(function (T, D) {{\n{draft.build_js}\n}})({span});")
+        if draft.timebase == "local":
+            build.append(f"HM._scene(tl, {span}, function (tl, T, D) {{\n{draft.build_js}\n}});")
+        else:
+            build.append(f"(function (T, D) {{\n{draft.build_js}\n}})({span});")
         if draft.update_js.strip():
-            update.append(f"(function (t, T, D) {{\n{draft.update_js}\n}})(t, {span});")
+            if draft.timebase == "local":
+                update.append(f"(function (t, T, D) {{\n{draft.update_js}\n}})(t - {scene.start:g}, 0, {round(scene.end - scene.start, 3):g});")
+            else:
+                update.append(f"(function (t, T, D) {{\n{draft.update_js}\n}})(t, {span});")
+    from .shotcraft import REVISION
+    receipts = [{"scene": n, "resource_id": scene.shotcraft_id, "source_revision": REVISION,
+                 "integration": "reference-guided-authoring", "native_remotion_execution": False}
+                for n, scene in enumerate(plan.scenes, 1) if scene.shotcraft_id]
     return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration,
-                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []))
+                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts)

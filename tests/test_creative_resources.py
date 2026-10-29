@@ -153,7 +153,8 @@ def test_snapshot_indexes_existing_sources_without_claiming_execution():
     from engine.effects_v4 import EFFECT_CATALOG_V4
     from engine.motion_recipes import RECIPES
     summary = registry.registry_summary()
-    assert summary["total"] == len(load_catalog()["items"]) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES)
+    from creative.shotcraft import catalog as shotcraft_catalog
+    assert summary["total"] == len(load_catalog()["items"]) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES) + len(shotcraft_catalog())
     rows = registry.search_resources(limit=100)["items"]
     assert len({r["id"] for r in rows}) == len(rows)
     assert all(r["render_time_ms"] is None and r["peak_memory_mb"] is None for r in rows)

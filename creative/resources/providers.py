@@ -1,7 +1,7 @@
 """Read-only adapters over committed, versioned sources. No network/install calls."""
 from urllib.parse import urlsplit
 
-from .models import Capabilities, Parameter, Resource
+from .models import Capabilities, License, Parameter, Resource
 
 
 def _preview_url(value):
@@ -92,4 +92,17 @@ def existing_recipe_resources():
             availability="existing-pipeline", contexts=("talking_2",), legacy_id=recipe.id,
             recommended_for=(recipe.best_for,), avoid_when=(recipe.avoid_when,),
             limitations=("Existing recipe adapter only; portrait_safe is an authored policy, not a per-resource render certification.",),
+        )
+
+
+def shotcraft_resources():
+    from creative.shotcraft import catalog, REVISION
+    for item in catalog():
+        yield Resource(
+            id=item["id"], name=item["id"].split(":", 1)[1], description=item["intent"],
+            type="motion-reference", category="explainer", provider="video-shotcraft",
+            source_url="https://github.com/Vincentwei1021/video-shotcraft", source_version=REVISION,
+            engine="hyperframes", integration_status="port-required", availability="catalog-only",
+            contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
+            limitations=("Pinned recipe and TSX guide scene authoring. TSX is not executed; no certified native port or automatic Remotion fallback.",),
         )

@@ -29,7 +29,7 @@
 
   /* ── entrances / exits ─────────────────────────────────────────── */
   HM.rise = function (targets, at, o) {   // <span class="hm-mask"><span class="hm-rise">text</span></span>
-    return T().fromTo(list(targets), { yPercent: 115 }, { yPercent: 0, duration: opt(o, "duration", .8), ease: "power3.out", stagger: opt(o, "stagger", .1) }, at);
+    return T().fromTo(list(targets), { opacity: 0, yPercent: 115 }, { opacity: 1, yPercent: 0, duration: opt(o, "duration", .8), ease: "power3.out", stagger: opt(o, "stagger", .1) }, at);
   };
   HM.sink = function (targets, at, o) {
     return T().to(list(targets), { yPercent: -115, duration: opt(o, "duration", .6), ease: "power3.in", stagger: opt(o, "stagger", .06) }, at);
@@ -42,7 +42,38 @@
     return T().to(list(targets), { opacity: 0, duration: opt(o, "duration", .45), ease: "power2.in", stagger: opt(o, "stagger", 0) }, at);
   };
   HM.pop = function (targets, at, o) {    // scale-in with a small overshoot
-    return T().fromTo(list(targets), { opacity: 0, scale: opt(o, "from", .6) }, { opacity: 1, scale: 1, duration: opt(o, "duration", .6), ease: "back.out(1.6)", stagger: opt(o, "stagger", .08) }, at);
+    var from = opt(o, "from", .6);
+    if (typeof from !== "number" || !Number.isFinite(from) || from < 0) throw new Error("HM.pop: from must be a non-negative numeric scale");
+    return T().fromTo(list(targets), { opacity: 0, scale: from }, { opacity: 1, scale: 1, duration: opt(o, "duration", .6), ease: "back.out(1.6)", stagger: opt(o, "stagger", .08) }, at);
+  };
+
+  // Local scene clock, one master timeline. Legacy absolute-time drafts do not use this adapter.
+  // Explicit numeric positions only: a model cannot accidentally add a global scene start twice.
+  HM._scene = function (master, start, duration, build) {
+    var prior = HM._tl, proxy = {};
+    ["to", "from", "fromTo", "set"].forEach(function (method) {
+      proxy[method] = function () {
+        var args = Array.prototype.slice.call(arguments), posIndex = method === "fromTo" ? 3 : 2;
+        var at = args[posIndex];
+        if (typeof at !== "number" || !Number.isFinite(at) || at < 0 || at > duration)
+          throw new Error("Scene animation position outside local duration: " + at);
+        var vars = args[method === "fromTo" ? 2 : 1] || {};
+        var seconds = method === "set" ? 0 : (vars.duration === undefined ? .5 : vars.duration);
+        var repeats = vars.repeat || 0, delay = vars.delay || 0, repeatDelay = vars.repeatDelay || 0, stagger = vars.stagger || 0;
+        var targets = list(args[0]);
+        if (![seconds, repeats, delay, repeatDelay].every(function (v) { return typeof v === "number" && Number.isFinite(v) && v >= 0; }) || !Number.isInteger(repeats))
+          throw new Error("Scene duration, delay and repeat must be bounded non-negative numbers");
+        var tail = typeof stagger === "number" ? Math.abs(stagger) * Math.max(0, targets.length - 1) :
+          (stagger && typeof stagger.amount === "number" ? Math.abs(stagger.amount) : NaN);
+        if (!Number.isFinite(tail) || at + delay + seconds * (repeats + 1) + repeatDelay * repeats + tail > duration + .001)
+          throw new Error("Scene animation extends beyond its scene");
+        args[posIndex] = start + at;
+        master[method].apply(master, args);
+        return proxy;
+      };
+    });
+    HM._tl = proxy;
+    try { build(proxy, 0, duration); } finally { HM._tl = prior; }
   };
   HM.slide = function (targets, at, o) {  // horizontal entrance; dir "right" (default, RTL reading side) or "left"
     var x = opt(o, "x", 140) * (opt(o, "dir", "right") === "left" ? -1 : 1);
