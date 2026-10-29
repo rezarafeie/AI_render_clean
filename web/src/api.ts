@@ -1308,6 +1308,7 @@ export const api = {
     return j(await authFetch(`${BASE}/studio/profile/logo`, { method: "POST", body: form }));
   },
   brandLogoUrl(): string { return `${BASE}/studio/profile/logo`; },
+  studioSceneAudioUrl(id: string, index: number): string { return `${BASE}/studio/projects/${id}/scenes/${index}/audio`; },
   studioOutputUrl(id: string): string { return `${BASE}/studio/projects/${id}/output`; },
   async prepareMediaPlayback(): Promise<void> {
     await j(await authFetch(`${BASE}/studio/media-session`, {method:"POST", credentials:"same-origin"}));

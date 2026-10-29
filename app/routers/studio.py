@@ -449,6 +449,24 @@ async def update_storyboard(request: Request, project_id: str, body: StoryboardU
     return _public_project(await repo.update_project(project_id, user_key, state=state, source="user_ui"))
 
 
+@router.get("/projects/{project_id}/scenes/{index}/audio")
+async def scene_audio(request: Request, project_id: str, index: int):
+    """The narration already generated for one scene of a storyboard video (nothing is generated or paid for here)."""
+    try: project = await repo.get_project(project_id, _user(request))
+    except KeyError: raise HTTPException(404, "project not found")
+    job = jobstore.get(project["external_ref"]) if project["engine"] == "motion" and project.get("external_ref") else None
+    if not job: raise HTTPException(404, "render job not found")
+    try: records = json.loads((job.dir / "generated" / "generation_checkpoint.json").read_text()).get("narration", [])
+    except (OSError, ValueError): records = []
+    root = job.dir.resolve()
+    for record in records:
+        if isinstance(record, dict) and record.get("scene_index") == index:
+            path = Path(str(record.get("file_path", ""))).resolve()
+            if path.is_file() and root in path.parents:
+                return FileResponse(path, media_type="audio/mpeg")
+    raise HTTPException(404, "the narration of this scene is not ready yet")
+
+
 @router.post("/actions/{action_id}/confirm")
 async def confirm(request: Request, action_id: str):
     try: return await asyncio.to_thread(confirm_action, action_id, _user(request))

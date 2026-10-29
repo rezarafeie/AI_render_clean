@@ -91,6 +91,15 @@ function PreviewPane({ project, conversation, sourceAttachment, onCancel }: { pr
   </div>;
 }
 
+/** Listen to the narration already generated for one scene (loaded only when asked: it is a separate download). */
+function SceneVoice({ projectId, index, revision }: { projectId: string; index: number; revision: string }) {
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => setOpen(false), [projectId, index, revision]);
+  return open
+    ? <AuthenticatedMedia as="audio" controls autoPlay src={api.studioSceneAudioUrl(projectId, index)} style={{ width: "100%" }}/>
+    : <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(true)}>شنیدن صدای این صحنه</button>;
+}
+
 function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSaved: () => void }) {
   const [scenes, setScenes] = React.useState<any[]>(project.state.storyboard.scenes || []);
   const [saving, setSaving] = React.useState(false);
@@ -125,6 +134,7 @@ function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSave
       <div className="scene-body">
         <div className="field"><label htmlFor={`s-text-${index}`}>متن روی تصویر</label><input id={`s-text-${index}`} className="input bidi" dir="auto" value={scene.text_overlay || ""} onChange={event => update(index, { text_overlay: event.target.value })}/></div>
         <div className="field"><label htmlFor={`s-nar-${index}`}>نریشن</label><textarea id={`s-nar-${index}`} className="input bidi" dir="auto" rows={3} value={scene.narration_text || ""} onChange={event => update(index, { narration_text: event.target.value })}/></div>
+        {scene.narration_text ? <SceneVoice projectId={project.id} index={index} revision={`${project.updated_at}:${narrator}:${voiceStyle}`}/> : null}
         <div className="field"><label htmlFor={`s-dur-${index}`}>مدت صحنه (ثانیه)</label><input id={`s-dur-${index}`} className="input" type="number" min="0.5" max="30" step="0.5" value={scene.duration_s} onChange={event => update(index, { duration_s: Number(event.target.value) })}/></div>
         <div className="field"><label htmlFor={`s-engine-${index}`}>روش ساخت تصویر</label>
           <select id={`s-engine-${index}`} className="input" value={scene.motion_engine || "default"} onChange={event => update(index, { motion_engine: event.target.value })}>
