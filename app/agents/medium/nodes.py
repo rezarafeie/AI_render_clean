@@ -154,6 +154,7 @@ def approval(record, state):
 
 
 def tool(record, state):
+    from creative.schemas import CreativeUnavailable
     step = state["plan"]["steps"][state["index"]]
     key = f'{state.get("rounds", 1)}:{state["index"]}:{step["tool"]}'
     current = run(store.get_run(record["id"], record["user_key"]))
@@ -168,7 +169,7 @@ def tool(record, state):
         event(record, "tool.started", tool=step["tool"], message=step["label"])
         try:
             result = tools.execute(record, step)
-        except (tools.PreflightUnavailable, ValueError):          # rejected before anything was submitted (incl. pydantic validation): safe to retry
+        except (tools.PreflightUnavailable, ValueError, CreativeUnavailable):          # rejected before anything was submitted (incl. pydantic validation): safe to retry
             ledger[key] = {"status": "failed", "tool": step["tool"], "safe_to_retry": True}
             run(store.update(record["id"], record["user_key"], patch={"operations": ledger}))
             raise

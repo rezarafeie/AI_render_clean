@@ -5,6 +5,8 @@ generation here. Invalid direction stops before paid production.
 """
 from __future__ import annotations
 
+import math
+
 from . import speech
 from .schemas import CreativePlan, CreativeUnavailable
 
@@ -15,12 +17,15 @@ def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, styl
     beats = plan.chosen.beats
     if not 3 <= len(beats) <= 10 or not 10 <= duration <= 90:
         raise CreativeUnavailable('برنامهٔ خلاقانه هنوز صحنه‌های اجرایی کافی یا مدت معتبر ندارد.')
-    frames = round(duration*30)
     # Time follows the real length of the spoken line: a scene is never shorter than its narration, and the total speech
-    # must fit the video (estimated from Persian letters and pauses, not from a word count).
+    # must fit the video (estimated from Persian letters and pauses, not from a word count). An approved script that is
+    # longer than the requested length makes the video longer (up to the 90 s limit) instead of failing the build.
     needs = [speech.speech_seconds(b.narration)*speech.MARGIN if b.narration else 0.0 for b in beats]
     if sum(needs) > duration:
-        raise CreativeUnavailable(f'نریشن حدود {sum(needs):.1f} ثانیه طول می‌کشد و در {duration:g} ثانیه جا نمی‌شود؛ پیش از تولید باید کوتاه شود.')
+        duration = float(math.ceil(sum(needs) + 1))
+        if duration > 90:
+            raise CreativeUnavailable(f'نریشن حدود {sum(needs):.1f} ثانیه طول می‌کشد و در بیشینهٔ ۹۰ ثانیه جا نمی‌شود؛ پیش از تولید باید کوتاه شود.')
+    frames = round(duration*30)
     weights = [b.duration_weight for b in beats]
     seconds_each = _allocate(duration, weights, [max(n, .5) for n in needs])
     lengths = [round(sec*30) for sec in seconds_each[:-1]]
