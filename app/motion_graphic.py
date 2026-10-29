@@ -237,7 +237,10 @@ def start(directory: Path, *, change: str = "") -> None:
         run_id = int(record.get("run") or 0) + 1
         record["run"] = run_id
         record["error"] = None
+        record.update(status="queued", stage="queued", progress=0, message="دارم شروع می‌کنم…")   # the card must leave "failed" the moment the person presses retry
         save(directory, record)
+    _emit(record["conversation_id"], "motion.progress", motion_id=key, status="queued", stage="queued", progress=0, message="دارم شروع می‌کنم…")
+    _emit(record["conversation_id"], "work.state", busy=True)
     thread = threading.Thread(target=_guard, args=(directory, change, run_id), daemon=True, name=f"motion-{key}")
     _RUNNING[key] = thread
     thread.start()

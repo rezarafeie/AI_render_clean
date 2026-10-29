@@ -37,6 +37,14 @@ export function MotionGraphicCard({ motionId, events }: { motionId: string; even
 
   const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(friendlyError(e, "load the motion graphic"))), [motionId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
+  const [watching, setWatching] = React.useState(false);          // after a retry/change: poll until the new run shows up, even if the stream is late
+  React.useEffect(() => { if (motion?.active) setWatching(false); }, [motion?.active]);
+  React.useEffect(() => {
+    if (!watching) return;
+    const timer = window.setInterval(() => void refresh(), 1200);
+    const stop = window.setTimeout(() => setWatching(false), 30000);
+    return () => { window.clearInterval(timer); window.clearTimeout(stop); };
+  }, [watching, refresh]);
   React.useEffect(() => {
     if (!motion?.active) return;
     const timer = window.setInterval(() => void refresh(), 2500);
@@ -47,7 +55,7 @@ export function MotionGraphicCard({ motionId, events }: { motionId: string; even
   if (!motion) return <section className="mg" dir="rtl">{error ? <div className="notice" data-tone="error" role="alert">{error}</div> : <div className="tl-loading" role="status"><span className="spinner"/>در حال بارگذاری موشن‌گرافیک…</div>}</section>;
 
   const shown = motion.versions.find(v => v.n === (version ?? motion.current)) ?? motion.versions[motion.versions.length - 1];
-  const act = async (task: () => Promise<unknown>) => { setBusy(true); try { await task(); await refresh(); } catch (e) { setError(friendlyError(e, "update the motion graphic")); } finally { setBusy(false); } };
+  const act = async (task: () => Promise<unknown>) => { setBusy(true); try { await task(); setWatching(true); await refresh(); } catch (e) { setError(friendlyError(e, "update the motion graphic")); } finally { setBusy(false); } };
   const ratio = shown ? `${shown.width} / ${shown.height}` : "9 / 16";
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
