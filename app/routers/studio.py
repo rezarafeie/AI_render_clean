@@ -109,7 +109,7 @@ class MessageCreate(BaseModel):
     execution_mode: Literal["auto", "manual"] | None = None
     manual_question_id: str | None = Field(default=None, max_length=64)
     render_target: Literal["server", "browser"] | None = None
-    agent_mode: Literal["lite", "medium"] = "lite"  # old API clients remain Lite
+    agent_mode: Literal["lite", "medium"] | None = None  # omitted: the chat's own engine (set from the person's default when it was created)
 
 
 class StoryboardUpdate(BaseModel):
@@ -329,11 +329,12 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
     user_key = _user(request)
     try:
         conversation = await repo.get_conversation(conversation_id, user_key)
+        agent_mode = body.agent_mode or ("medium" if (conversation.get("state") or {}).get("agent_mode") == "medium" else "lite")
         from app.agents.dispatcher import ensure_available
         from app.agents import store as agent_store
-        try: ensure_available(body.agent_mode)
+        try: ensure_available(agent_mode)
         except ValueError as exc: raise HTTPException(503, str(exc))
-        if body.agent_mode == "medium":
+        if agent_mode == "medium":
             active = await agent_store.runs(conversation_id, user_key)
             if any(r["agent_mode"] == "medium" and r["status"] in {"queued", "running", "waiting_approval", "waiting_job"} for r in active):
                 raise HTTPException(409, "Medium در همین گفتگو یک اجرای فعال دارد؛ آن را ادامه دهید یا متوقف کنید. انتخاب موتور پیام جدید محفوظ است.")
@@ -345,7 +346,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
                 if (current["state"].get("render_started") and current["status"] == "running") or (active_job and active_job.render.status in {"queued", "running"}):
                     raise HTTPException(409, "A backend render is active. Stop it explicitly before switching to this device.")
                 await repo.update_project(current_id, user_key, state={**current["state"], "render_target": "browser"})
-        preferences = {"agent_mode": body.agent_mode}
+        preferences = {"agent_mode": agent_mode}
         if body.execution_mode: preferences["execution_mode"] = body.execution_mode
         if body.render_target: preferences["render_target"] = body.render_target
         if preferences:
@@ -358,9 +359,9 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
             spec = question(session)
             selected = next((c for c in spec['choices'] if c['value'] == display), None)
             if selected: display = spec['title'] + ': ' + selected['label']
-        message = await repo.add_message(conversation_id, user_key, "user", display, body.attachment_ids, agent_mode=body.agent_mode)
+        message = await repo.add_message(conversation_id, user_key, "user", display, body.attachment_ids, agent_mode=agent_mode)
         from app.studio_flags import generation
-        record = await agent_store.create_run(conversation_id, user_key, message["id"], body.agent_mode,
+        record = await agent_store.create_run(conversation_id, user_key, message["id"], agent_mode,
             {"text": body.content.strip(), "attachment_ids": body.attachment_ids, "manual_question_id": body.manual_question_id,
              "initial_project_id": conversation.get("state", {}).get("current_project_id")})
         await agent_store.update(record["id"], user_key, patch={"stop_generation": generation(user_key, conversation_id)})

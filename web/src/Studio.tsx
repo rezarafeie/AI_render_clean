@@ -284,6 +284,22 @@ export default function Studio() {
   const projectRunning = projects.some(project => project.status === "running");
   const busyOnServer = serverBusy(events, conversation?.busy);
   const processing = isProcessing({ sending, messages, events, project: current, now }) || motionActive || discoveryActive || projectRunning || busyOnServer === true;
+  // The live stream can be held back by a proxy or a mobile network (nothing arrives until a reload): also ask for new events every few seconds.
+  React.useEffect(() => {
+    if (!activeId) return;
+    let alive = true;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const history = await api.studioEventHistory(activeId, cursorRef.current, new AbortController().signal);
+        if (!alive || !history.length) return;
+        cursorRef.current = Math.max(cursorRef.current, ...history.map(event => event.seq));
+        setEvents(value => [...value, ...history.filter(event => !value.some(item => item.seq === event.seq))]);
+        void refresh(activeId, true);
+      } catch { /* the stream or the next poll will catch up */ }
+    }, processing ? 2000 : 4000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [activeId, processing, refresh]);
   const items = React.useMemo(() => buildTimeline({ messages, events, projects, pending, processing, discoveryId: conversation?.state?.discovery?.analysis_id, motionId: conversation?.state?.motion?.motion_id }), [messages, events, projects, pending, processing, conversation?.state?.discovery?.analysis_id, conversation?.state?.motion?.motion_id]);
   // A live render card is its own progress indicator; otherwise show what the assistant is doing.
   const renderLive = items.some(item => item.kind === "render" && ["queued", "rendering", "finalizing"].includes(renderView(projects.find(p => p.id === item.projectId)).phase));
