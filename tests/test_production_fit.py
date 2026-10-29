@@ -8,8 +8,8 @@ from creative.schemas import CreativeUnavailable
 
 def _plan(words: int, scenes: int = 4):
     line = " ".join(["کلمه"] * words)
-    beats = [SimpleNamespace(narration=line, duration_weight=1.0, title="t", visual="v", role="r", source_asset_index=None, motion_engine=None,
-                             visual_type="x", motion="m", line_id="l", why_visual="w", emotion="e", focus="f", link_prev=False, reference_trait="") for _ in range(scenes)]
+    beats = [SimpleNamespace(narration=line, duration_weight=1.0, title="t", visual="v", role="r", source_asset_index=None, motion_engine="default",
+                             visual_type="x", motion="m", line_id="l", why_visual="w", emotion="e", focus="f", link_prev="", reference_trait="") for _ in range(scenes)]
     return SimpleNamespace(chosen=SimpleNamespace(beats=beats), models=["m"])
 
 
