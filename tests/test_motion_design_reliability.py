@@ -56,6 +56,23 @@ def test_approved_handoff_does_not_drop_seventh_scene():
     assert len(adopted.scenes) == 7 and adopted.scenes[-1].headline == 'صحنه 7'
 
 
+def test_approved_seven_scene_plan_is_adopted_before_validation(monkeypatch):
+    brief = '\n'.join(f'{n}. (2s) تصویر: مسیر | متن روی صفحه: صحنه {n} | روایت: این یک مسیر برای شروع بهتر است.' for n in range(1, 8))
+    calls = []
+    def ask(*args, **kwargs):
+        calls.append(1)
+        return mg.MotionPlan(duration=14, scenes=[mg.ScenePlan(
+            headline='نباید جایگزین شود', idea='تصویر', narration='متن دیگر',
+            start=i*2, end=(i+1)*2) for i in range(7)])
+    monkeypatch.setattr(mg.llm, 'ask', ask)
+    result = mg.plan(brief)
+    assert len(calls) == 1 and len(result.scenes) == 7
+    assert result.scenes[0].headline == 'صحنه 1'
+    assert result.scenes[0].narration == 'این یک مسیر برای شروع بهتر است.'
+    assert not mg.validate_plan(result, max_scenes=8)
+    assert mg.validate_plan(result)  # unapproved generation still has its old limit
+
+
 def test_local_clock_rejects_double_offset_and_pop_strings_and_rise_reveals_opacity():
     kit = Path(mg.KIT) / 'kit.js'
     script = r'''

@@ -543,12 +543,12 @@ def _between(text: str, start: str, end: str) -> str:
 SCENE_GUIDE = (_SCENE_INTRO + "\n" + _between(GUIDE, "KIT (global HM", "DESIGN") + "\n" + _between(GUIDE, "DESIGN", "- Do not add branding").replace("\n- Hook:", "\n- (Hook, applies to the clip) ", 1))
 
 
-def validate_plan(plan: MotionPlan) -> list[str]:
+def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     problems: list[str] = []
     if not MIN_SECONDS <= plan.duration <= MAX_SECONDS:
         problems.append(f"duration must be between {MIN_SECONDS:g} and {MAX_SECONDS:g} seconds")
-    if not 2 <= len(plan.scenes) <= 6:
-        problems.append(f"plan 2-6 scenes (got {len(plan.scenes)})")
+    if not 2 <= len(plan.scenes) <= max_scenes:
+        problems.append(f"plan 2-{max_scenes} scenes (got {len(plan.scenes)})")
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
@@ -610,6 +610,12 @@ def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
 
 def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
     """The plan (or the questions to ask first). A plan that does not tile the duration is sent back with the reasons."""
+    from . import handoff
+    approved = handoff.parse(brief)
+    # Reject unsupported handoffs before spending on planning. Apply the exact
+    # approved words and speech-safe timing BEFORE judging a model's proposal.
+    if approved:
+        apply_handoff(MotionPlan(), brief)
     request = plan_request(brief, context=context, brand=brand, style=style)
     problems: list[str] = []
     for attempt in range(repairs + 1):
@@ -617,7 +623,9 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         result = llm.ask(MotionPlan, PLAN_GUIDE, user, route=PLAN_ROUTE, tokens=3500, attempts=2, used=used)
         if result.asks():
             return result
-        problems = validate_plan(result)
+        if approved:
+            result = apply_handoff(result, brief)
+        problems = validate_plan(result, max_scenes=8 if approved else 6)
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
