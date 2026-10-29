@@ -288,6 +288,11 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
     finally:
         if _RUNNING.get(key) is threading.current_thread():
             _RUNNING.pop(key, None)
+            try:
+                if _is_current(key) and load(directory)["status"] not in ACTIVE:     # the last "busy" signal the chat saw is now out of date
+                    _emit(load(directory)["conversation_id"], "work.state", busy=False)
+            except (OSError, ValueError, KeyError):
+                pass
 
 
 def _is_current(key: str) -> bool:

@@ -381,7 +381,8 @@ export function buildTimeline({ messages, events, projects, pending, processing,
 export function serverBusy(events: StudioEvent[], fallback?: boolean): boolean | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].type === "work.state") return Boolean(events[i].data.busy);
-    if (events[i].type === "message.stopped") return false;
+    if (events[i].type === "message.stopped" || events[i].type === "job.failed" || events[i].type === "motion.completed" || events[i].type === "motion.questions") return false;
+    if (events[i].type === "motion.progress" && ["failed", "completed"].includes(String(events[i].data.status))) return false;   // the job ended after the last "busy"
   }
   return fallback;
 }

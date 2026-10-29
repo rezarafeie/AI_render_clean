@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeChoices, friendlyFailure, buildTimeline, isProcessing, renderView, stepDetails, thinkingLabel } from "../src/studio/model.ts";
+import { serverBusy, normalizeChoices, friendlyFailure, buildTimeline, isProcessing, renderView, stepDetails, thinkingLabel } from "../src/studio/model.ts";
 
 const T0 = Date.parse("2026-10-20T10:00:00Z");
 const at = s => new Date(T0 + s * 1000).toISOString();
@@ -219,4 +219,13 @@ test('the card of a finished render waiting for review is also the last item, af
   const events = [ev(1, 'render.started', 1, { project_id: 'p1' })];
   const items = buildTimeline({ messages, events, projects: [finished], processing: false });
   assert.equal(items[items.length - 1].kind, 'render');
+});
+
+test('a motion job that failed after the last busy signal is not busy any more', () => {
+  const busy = ev(1, 'work.state', 0, { busy: true });
+  assert.equal(serverBusy([busy], false), true);
+  assert.equal(serverBusy([busy, ev(2, 'job.failed', 5)], false), false);
+  assert.equal(serverBusy([busy, ev(2, 'motion.progress', 5, { status: 'failed' })], true), false);
+  assert.equal(serverBusy([busy, ev(2, 'motion.completed', 5)], true), false);
+  assert.equal(serverBusy([ev(1, 'job.failed', 1), ev(2, 'work.state', 2, { busy: true })], false), true);
 });
