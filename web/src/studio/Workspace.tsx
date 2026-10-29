@@ -91,13 +91,30 @@ function PreviewPane({ project, conversation, sourceAttachment, onCancel }: { pr
   </div>;
 }
 
-/** Listen to the narration already generated for one scene (loaded only when asked: it is a separate download). */
-function SceneVoice({ projectId, index, revision }: { projectId: string; index: number; revision: string }) {
+/** Listen to one scene: the narration already generated (free), or a short sample in the narrator and style chosen above (a few ElevenLabs characters). */
+function SceneVoice({ projectId, index, revision, text, narrator, voiceStyle }: { projectId: string; index: number; revision: string; text: string; narrator: string; voiceStyle: string }) {
   const [open, setOpen] = React.useState(false);
-  React.useEffect(() => setOpen(false), [projectId, index, revision]);
-  return open
-    ? <AuthenticatedMedia as="audio" controls autoPlay src={api.studioSceneAudioUrl(projectId, index)} style={{ width: "100%" }}/>
-    : <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(true)}>شنیدن صدای این صحنه</button>;
+  const [sample, setSample] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => { setOpen(false); setSample(null); setError(""); }, [projectId, index, revision, text]);
+  React.useEffect(() => () => { if (sample) URL.revokeObjectURL(sample); }, [sample]);
+  const preview = async () => {
+    setLoading(true); setError(""); setOpen(false);
+    try { setSample(await api.previewStudioVoice(projectId, { text: text.slice(0, 200), narrator, voice_style: voiceStyle })); }
+    catch (e) { setError(friendlyError(e, "preview this voice")); }
+    finally { setLoading(false); }
+  };
+  return <div className="scene-voice">
+    <div className="ec-actions">
+      <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setSample(null); setOpen(true); }}>شنیدن صدای ساخته‌شده</button>
+      <button type="button" className="btn btn-sm btn-secondary" disabled={loading} onClick={() => void preview()}>{loading ? "در حال ساخت نمونه…" : "پیش‌نمایش با گوینده انتخابی"}</button>
+    </div>
+    <small className="field-hint">پیش‌نمایش چند حرف از اعتبار ElevenLabs مصرف می‌کند؛ شنیدن صدای ساخته‌شده رایگان است.</small>
+    {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
+    {open ? <AuthenticatedMedia as="audio" controls autoPlay src={api.studioSceneAudioUrl(projectId, index)} style={{ width: "100%" }}/> : null}
+    {sample ? <audio controls autoPlay src={sample} style={{ width: "100%" }}/> : null}
+  </div>;
 }
 
 function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSaved: () => void }) {
@@ -134,7 +151,7 @@ function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSave
       <div className="scene-body">
         <div className="field"><label htmlFor={`s-text-${index}`}>متن روی تصویر</label><input id={`s-text-${index}`} className="input bidi" dir="auto" value={scene.text_overlay || ""} onChange={event => update(index, { text_overlay: event.target.value })}/></div>
         <div className="field"><label htmlFor={`s-nar-${index}`}>نریشن</label><textarea id={`s-nar-${index}`} className="input bidi" dir="auto" rows={3} value={scene.narration_text || ""} onChange={event => update(index, { narration_text: event.target.value })}/></div>
-        {scene.narration_text ? <SceneVoice projectId={project.id} index={index} revision={`${project.updated_at}:${narrator}:${voiceStyle}`}/> : null}
+        {scene.narration_text ? <SceneVoice projectId={project.id} index={index} revision={project.updated_at} text={scene.narration_text} narrator={narrator} voiceStyle={voiceStyle}/> : null}
         <div className="field"><label htmlFor={`s-dur-${index}`}>مدت صحنه (ثانیه)</label><input id={`s-dur-${index}`} className="input" type="number" min="0.5" max="30" step="0.5" value={scene.duration_s} onChange={event => update(index, { duration_s: Number(event.target.value) })}/></div>
         <div className="field"><label htmlFor={`s-engine-${index}`}>روش ساخت تصویر</label>
           <select id={`s-engine-${index}`} className="input" value={scene.motion_engine || "default"} onChange={event => update(index, { motion_engine: event.target.value })}>

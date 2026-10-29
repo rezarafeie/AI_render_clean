@@ -449,6 +449,39 @@ async def update_storyboard(request: Request, project_id: str, body: StoryboardU
     return _public_project(await repo.update_project(project_id, user_key, state=state, source="user_ui"))
 
 
+class VoicePreview(BaseModel):
+    text: str = Field(min_length=2, max_length=220)
+    narrator: str = Field(default="", max_length=64)
+    voice_style: str = Field(default="", max_length=32)
+
+
+@router.post("/projects/{project_id}/voice-preview")
+async def voice_preview(request: Request, project_id: str, body: VoicePreview):
+    """A short sample in the chosen narrator and style. It spends a few ElevenLabs characters; the same sample again is served from the cache."""
+    try: project = await repo.get_project(project_id, _user(request))
+    except KeyError: raise HTTPException(404, "project not found")
+    job = jobstore.get(project["external_ref"]) if project["engine"] == "motion" and project.get("external_ref") else None
+    if not job: raise HTTPException(404, "render job not found")
+    from brain import localize
+    if body.narrator and body.narrator not in localize.narrator_ids(): raise HTTPException(422, "This narrator is not available")
+    if body.voice_style not in localize.VOICE_STYLES: raise HTTPException(422, "This voice style is not available")
+
+    def make() -> Path:
+        folder = job.dir / "voice_preview"
+        folder.mkdir(exist_ok=True)
+        full, _ = localize.narration_script([body.text], body.voice_style)
+        audio, timing = localize._narration_paths(full, folder, body.narrator)
+        if not audio.is_file():
+            data, alignment = localize._elevenlabs_with_timestamps(full, body.narrator)
+            audio.write_bytes(data)
+            timing.write_text(json.dumps(alignment, ensure_ascii=False))
+        return audio
+    try: path = await asyncio.to_thread(make)
+    except Exception as exc:
+        raise HTTPException(502, "ساخت پیش‌نمایش صدا انجام نشد؛ کمی بعد دوباره تلاش کنید.") from exc
+    return FileResponse(path, media_type="audio/mpeg")
+
+
 @router.get("/projects/{project_id}/scenes/{index}/audio")
 async def scene_audio(request: Request, project_id: str, index: int):
     """The narration already generated for one scene of a storyboard video (nothing is generated or paid for here)."""

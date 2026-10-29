@@ -1308,6 +1308,11 @@ export const api = {
     return j(await authFetch(`${BASE}/studio/profile/logo`, { method: "POST", body: form }));
   },
   brandLogoUrl(): string { return `${BASE}/studio/profile/logo`; },
+  async previewStudioVoice(id: string, body: { text: string; narrator: string; voice_style: string }): Promise<string> {
+    const response = await authFetch(`${BASE}/studio/projects/${id}/voice-preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`${response.status} ${(await response.text().catch(() => "")) || response.statusText}`);
+    return URL.createObjectURL(await response.blob());
+  },
   studioSceneAudioUrl(id: string, index: number): string { return `${BASE}/studio/projects/${id}/scenes/${index}/audio`; },
   studioOutputUrl(id: string): string { return `${BASE}/studio/projects/${id}/output`; },
   async prepareMediaPlayback(): Promise<void> {
