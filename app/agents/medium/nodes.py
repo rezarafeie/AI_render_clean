@@ -162,7 +162,8 @@ def tool(record, state):
     entry = ledger.get(key)
     if entry and entry["status"] == "completed": result = entry["result"]
     else:
-        if entry and step["tool"] not in tools.READ_ONLY and not (entry.get("status") == "failed" and entry.get("safe_to_retry") is True):
+        # create_storyboard only writes text (no render, no paid media): a run that died while it was "started" may repeat it.
+        if entry and step["tool"] not in tools.READ_ONLY and step["tool"] != "create_storyboard" and not (entry.get("status") == "failed" and entry.get("safe_to_retry") is True):
             raise ValueError("نتیجهٔ عملیات قبلی مشخص نیست؛ برای جلوگیری از هزینه یا رندر تکراری، اجرای مجدد خودکار متوقف شد. پروژه را بررسی کنید.")
         ledger[key] = {"status": "started", "tool": step["tool"]}
         run(store.update(record["id"], record["user_key"], patch={"operations": ledger}))

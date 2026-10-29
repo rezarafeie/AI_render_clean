@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ToolInput(BaseModel):
@@ -65,6 +65,15 @@ class ContentInput(ToolInput):
     creative_plan: dict | None = None
     asset_catalog: list[dict] | None = None
     duration: float = Field(default=30, ge=15, le=90)
+
+    @field_validator("duration", mode="before")
+    @classmethod
+    def _fit_duration(cls, value):
+        """A plan that asks for 5 s or 120 s gets the nearest length the engine supports instead of failing the whole build."""
+        try:
+            return min(90.0, max(15.0, float(value)))
+        except (TypeError, ValueError):
+            return 30.0
 
 
 class ProjectRefInput(ToolInput):

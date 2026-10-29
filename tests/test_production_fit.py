@@ -24,3 +24,11 @@ def test_narration_longer_than_requested_length_extends_the_video():
 def test_narration_beyond_ninety_seconds_is_still_rejected():
     with pytest.raises(CreativeUnavailable):
         production.storyboard_from_plan(_plan(400), prompt="p", language="fa", style="s", duration=30, asset_indices=set())
+
+
+def test_content_duration_is_clamped_not_rejected():
+    from app.studio_tools import ContentInput
+    base = {"prompt": "abc", "user_key": "1", "provider": "p"}
+    assert ContentInput.model_validate({**base, "duration": 5}).duration == 15
+    assert ContentInput.model_validate({**base, "duration": 400}).duration == 90
+    assert ContentInput.model_validate({**base, "duration": 42}).duration == 42
