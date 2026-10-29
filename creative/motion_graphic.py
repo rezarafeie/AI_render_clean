@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -123,6 +124,19 @@ def _strip_strings(code: str) -> str:
     return re.sub(r"([\"'`])(?:\\.|(?!\1).)*\1", '""', code, flags=re.S)
 
 
+def js_syntax_error(code: str) -> str:
+    """The parser's complaint about ``code`` as a function body ("" when it parses or node is unavailable): the browser check would only report it
+    as an opaque lint failure after the whole scene was already built."""
+    if not code.strip():
+        return ""
+    probe = 'let s=require("fs").readFileSync(0,"utf8");try{new Function("tl","HM","t","T","D",s)}catch(e){console.log(e.message);process.exit(1)}'
+    try:
+        done = subprocess.run(["node", "-e", probe], input=code, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip()[:200] if done.returncode == 1 else ""
+
+
 def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
     """Human-readable problems (empty list = ready to assemble). They are sent back to the model verbatim."""
     problems: list[str] = []
@@ -168,6 +182,10 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         for pattern, label in _FORBIDDEN_JS:
             if re.search(pattern, code):
                 problems.append(f"{field}: {label} is not allowed")
+    for field in ("build_js", "update_js"):
+        broken = js_syntax_error(getattr(page, field))
+        if broken:
+            problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS")
     if re.search(r"</?\s*script", page.build_js + page.update_js, re.I):
         problems.append("do not include <script> tags in build_js/update_js: they are function bodies")
     if not re.search(r"\btl\s*\.|\bHM\s*\.", _strip_strings(page.build_js)):

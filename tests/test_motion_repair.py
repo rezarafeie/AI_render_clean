@@ -31,3 +31,9 @@ def test_every_scene_gets_its_start_and_length_as_variables():
     page = mg.assemble_scenes(plan, drafts)
     assert "(function (T, D) {\ntl.to(\"#s1 p\", {y: 0}, T + .5);\n})(0, 4);" in page.build_js
     assert "(function (T, D) {\ntl.to(\"#s2 p\", {y: 0}, T + D - .3);\n})(4, 6);" in page.build_js
+
+
+def test_js_syntax_error_reports_broken_scene_code():
+    from creative.motion_graphic import js_syntax_error
+    assert js_syntax_error('tl.to(".a", {x: 1}, 0);') == ""
+    assert "missing" in js_syntax_error('tl.to(".a", {x: 1}, 0')
