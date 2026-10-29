@@ -114,6 +114,8 @@ class MessageCreate(BaseModel):
 
 class StoryboardUpdate(BaseModel):
     scenes: list[dict] = Field(min_length=1, max_length=20)
+    narrator: str | None = Field(default=None, max_length=64)
+    voice_style: str | None = Field(default=None, max_length=32)
 
 
 class LegacyProjectOpen(BaseModel):
@@ -441,7 +443,7 @@ async def update_storyboard(request: Request, project_id: str, body: StoryboardU
     job = jobstore.get(project["external_ref"])
     if not job: raise HTTPException(404, "render job not found")
     from brain.content_creator import update_storyboard
-    try: storyboard = update_storyboard(job, body.scenes)
+    try: storyboard = update_storyboard(job, body.scenes, body.narrator, body.voice_style)
     except ValueError as exc: raise HTTPException(422, str(exc))
     state = {**project["state"], "storyboard": storyboard}
     return _public_project(await repo.update_project(project_id, user_key, state=state, source="user_ui"))

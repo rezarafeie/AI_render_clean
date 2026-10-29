@@ -32,3 +32,11 @@ def test_content_duration_is_clamped_not_rejected():
     assert ContentInput.model_validate({**base, "duration": 5}).duration == 15
     assert ContentInput.model_validate({**base, "duration": 400}).duration == 90
     assert ContentInput.model_validate({**base, "duration": 42}).duration == 42
+
+
+def test_storyboard_keeps_narrator_and_style_through_a_round_trip():
+    from brain.storyboard import Storyboard
+    data = {"prompt": "p", "content_type": "reel", "language": "fa", "style": "s", "scenes": [], "narrator": "abc", "voice_style": "calm"}
+    board = Storyboard.from_dict(data)
+    assert (board.narrator, board.voice_style) == ("abc", "calm")
+    assert board.to_dict()["narrator"] == "abc" and Storyboard.from_dict({**data, "narrator": None}).narrator == ""

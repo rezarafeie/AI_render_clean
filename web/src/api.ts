@@ -1228,8 +1228,8 @@ export const api = {
   async resumeStudioProject(id: string, retryConfirmed: boolean = false): Promise<any> {
     return j(await authFetch(`${BASE}/studio/projects/${id}/resume`, { method: "POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({retry_confirmed:retryConfirmed}) }));
   },
-  async updateStudioStoryboard(id: string, scenes: any[]): Promise<StudioProject> {
-    return j(await authFetch(`${BASE}/studio/projects/${id}/storyboard`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenes }) }));
+  async updateStudioStoryboard(id: string, scenes: any[], voice?: { narrator?: string; voice_style?: string }): Promise<StudioProject> {
+    return j(await authFetch(`${BASE}/studio/projects/${id}/storyboard`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenes, ...voice }) }));
   },
   async approveStudioPlan(id: string, versionId: string): Promise<StudioProject> {
     return j(await authFetch(`${BASE}/studio/projects/${id}/plan/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version_id: versionId }) }));

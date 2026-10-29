@@ -96,17 +96,30 @@ function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSave
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [saved, setSaved] = React.useState(false);
+  const [narrator, setNarrator] = React.useState<string>(project.state.storyboard.narrator || "");
+  const [voiceStyle, setVoiceStyle] = React.useState<string>(project.state.storyboard.voice_style || "");
+  const [voices, setVoices] = React.useState<Awaited<ReturnType<typeof api.localizeVoices>> | null>(null);
+  React.useEffect(() => { api.localizeVoices().then(setVoices).catch(() => setVoices(null)); }, []);
+  React.useEffect(() => { setNarrator(project.state.storyboard.narrator || ""); setVoiceStyle(project.state.storyboard.voice_style || ""); }, [project.id, project.state.storyboard]);
   React.useEffect(() => setScenes(project.state.storyboard.scenes || []), [project.id, project.current_version, project.state.storyboard]);
   const update = (index: number, patch: any) => { setSaved(false); setScenes(value => value.map((scene, i) => i === index ? { ...scene, ...patch } : scene)); };
   async function save() {
     setSaving(true); setError("");
-    try { await api.updateStudioStoryboard(project.id, scenes); setSaved(true); onSaved(); }
+    try { await api.updateStudioStoryboard(project.id, scenes, { narrator, voice_style: voiceStyle }); setSaved(true); onSaved(); }
     catch { setError("ذخیرهٔ استوری‌بورد انجام نشد. دوباره تلاش کنید."); }
     finally { setSaving(false); }
   }
   const total = scenes.reduce((sum, scene) => sum + (Number(scene.duration_s) || 0), 0);
   return <EditCard title="صحنه‌ها" open summary={`${scenes.length} صحنه · ${Math.round(total)} ثانیه`} hint="متن روی تصویر، نریشن و مدت هر صحنه را اینجا عوض کنید.">
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
+    <div className="ec-grid">
+      <div className="field"><label htmlFor="sb-narrator">گوینده</label>
+        <select id="sb-narrator" className="input" value={narrator} onChange={event => { setSaved(false); setNarrator(event.target.value); }}>
+          {(voices?.voices ?? [{ id: "", name: "پیش‌فرض استودیو", note: "" }]).map(voice => <option key={voice.id} value={voice.id}>{voice.name}{voice.note && voice.id ? ` · ${voice.note}` : ""}</option>)}</select></div>
+      <div className="field"><label htmlFor="sb-voice-style">حالت صدا</label>
+        <select id="sb-voice-style" className="input" value={voiceStyle} onChange={event => { setSaved(false); setVoiceStyle(event.target.value); }}>
+          {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(style => <option key={style.id} value={style.id}>{style.label}</option>)}</select></div>
+    </div>
     {scenes.map((scene, index) => <details className="scene" key={scene.index ?? index}>
       <summary><span className="scene-n">{index + 1}</span><b className="wrap-safe bidi" dir="auto">{scene.text_overlay || `صحنهٔ ${index + 1}`}</b><small>{scene.duration_s} ث</small><Icon name="chevronDown" size={16} className="scene-chev"/></summary>
       <div className="scene-body">

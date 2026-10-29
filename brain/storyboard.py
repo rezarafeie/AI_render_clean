@@ -66,6 +66,8 @@ class Storyboard:
     usage: Optional[dict] = None
     is_fallback: bool = False
     fallback_reason: Optional[str] = None
+    narrator: str = ""          # a voice id from brain.localize.NARRATORS ("" = the studio's own casting)
+    voice_style: str = ""       # a key of brain.localize.VOICE_STYLES ("" = natural)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -87,6 +89,8 @@ class Storyboard:
             usage=data.get("usage"),
             is_fallback=bool(data.get("is_fallback", False)),
             fallback_reason=data.get("fallback_reason"),
+            narrator=str(data.get("narrator") or ""),
+            voice_style=str(data.get("voice_style") or ""),
         )
 
 

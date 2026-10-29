@@ -209,7 +209,7 @@ def get_storyboard(job_id: str) -> Optional[dict]:
     return json.loads(sb_path.read_text())
 
 
-def update_storyboard(job, scenes: list[dict]) -> Optional[dict]:
+def update_storyboard(job, scenes: list[dict], narrator: Optional[str] = None, voice_style: Optional[str] = None) -> Optional[dict]:
     sb_path = job.dir / "storyboard.json"
     if not sb_path.exists():
         return None
@@ -237,6 +237,15 @@ def update_storyboard(job, scenes: list[dict]) -> Optional[dict]:
         raise ValueError("A post must contain one 5-second scene")
     if preset["max_duration"] and sum(s["duration_s"] for s in scenes) > preset["max_duration"]:
         raise ValueError(f"Total duration must not exceed {preset['max_duration']} seconds")
+    from .localize import VOICE_STYLES, narrator_ids
+    if narrator is not None:
+        if narrator and narrator not in narrator_ids():
+            raise ValueError("This narrator is not available")
+        sb_data["narrator"] = narrator
+    if voice_style is not None:
+        if voice_style not in VOICE_STYLES:
+            raise ValueError("This voice style is not available")
+        sb_data["voice_style"] = voice_style
     sb_data["scenes"] = scenes
     sb_data["total_duration_s"] = round(sum(s.get("duration_s", 0) for s in scenes), 2)
     sb_data["estimated_total_cost"] = round(sum(s.get("estimated_cost", 0) for s in scenes), 4)
@@ -351,9 +360,12 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
         from .speech_policy import identity as casting_identity
         casting_context = f"{content_type} {storyboard.style} {sb_data.get('title', '')} {storyboard.creative_brief}"
         spoken_script = " ".join(s.narration_text or "" for s in storyboard.scenes)
-        voice_signature = (casting_identity(spoken_script,
+        from .localize import VOICE_STYLES, narrator_ids
+        chosen_voice = storyboard.narrator if storyboard.narrator in narrator_ids() else ""
+        style_tags = VOICE_STYLES.get(storyboard.voice_style, VOICE_STYLES[""])[1]
+        voice_signature = ((casting_identity(spoken_script,
                            _default_elevenlabs_voice(storyboard.language), tts_model(),
-                           language=storyboard.language, context=casting_context)
+                           language=storyboard.language, context=casting_context) + (f"|{chosen_voice}|{style_tags}" if chosen_voice or style_tags else ""))
                            if spoken_script.strip() else "no-narration")
         from creative.reuse import media_identity, reusable, fingerprint
         media_pool=list(checkpoint.get('media',[]))
@@ -465,13 +477,13 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
                         record = reuse
                     else:
                         voice_kwargs = {
-                            "voice_id": _default_elevenlabs_voice(storyboard.language),
-                            "model_id": tts_model(),
+                            "voice_id": chosen_voice or _default_elevenlabs_voice(storyboard.language),
+                            "model_id": "eleven_v3" if chosen_voice else tts_model(),     # the person's pick is used as chosen (eleven_v3 understands the style tags)
                         }
                         if not voice_kwargs["voice_id"]:
                             raise ValueError("Set an ElevenLabs voice ID for generated narration.")
                         tts_result = generate_narration(
-                            scene.narration_text, gen_dir, provider="elevenlabs", language=storyboard.language,
+                            (style_tags + scene.narration_text) if style_tags else scene.narration_text, gen_dir, provider="elevenlabs", language=storyboard.language,
                             context=casting_context, **voice_kwargs,
                         )
                         record = {
