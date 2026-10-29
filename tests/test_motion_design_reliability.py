@@ -7,6 +7,17 @@ import pytest
 from creative import motion_graphic as mg, shotcraft
 
 
+def test_checker_deadline_is_not_a_scene_failure():
+    from engine.hyperframes.standalone import _findings
+    deadline = {'code': 'check_runtime_failure', 'severity': 'error',
+                'message': 'Check did not finish within its deadline.'}
+    blocking, _, notes = _findings({'runtime': {'findings': [deadline]}})
+    assert not blocking and notes
+    blocking, _, _ = _findings({'runtime': {'findings': [deadline, {
+        'code': 'javascript_error', 'severity': 'error', 'message': 'TypeError: timeout is undefined'}]}})
+    assert len(blocking) == 1 and 'javascript_error' in blocking[0]
+
+
 def test_shotcraft_pinned_references_are_complete_and_hash_verified():
     data = shotcraft.manifest()
     assert len(data['cards']) == 8
