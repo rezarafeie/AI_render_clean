@@ -37,3 +37,11 @@ def test_js_syntax_error_reports_broken_scene_code():
     from creative.motion_graphic import js_syntax_error
     assert js_syntax_error('tl.to(".a", {x: 1}, 0);') == ""
     assert "missing" in js_syntax_error('tl.to(".a", {x: 1}, 0')
+
+
+def test_hand_written_stroke_styles_are_rejected():
+    import re
+    from creative.motion_graphic import _FORBIDDEN_JS
+    bad = ['p.style.strokeDasharray = "5"', 'document.querySelectorAll(".a").style.opacity = 0']
+    assert all(any(re.search(pattern, code) for pattern, _ in _FORBIDDEN_JS) for code in bad)
+    assert not any(re.search(pattern, 'tl.to(".a", {strokeDashoffset: 0}, 0)') for pattern, _ in _FORBIDDEN_JS)

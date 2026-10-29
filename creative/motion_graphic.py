@@ -77,6 +77,8 @@ _FORBIDDEN_JS = (
     (r"\bwindow\b|\bglobalThis\b", "window/globalThis"), (r"\.split\(\s*(?:\"\"|'')\s*\)", "splitting text into letters"),
     (r"\binnerHTML\b|\binsertAdjacentHTML\b|\bouterHTML\b", "injecting markup from JS (write it in scenes_html)"),
     (r"\bvw\b|\bvh\b|innerWidth|innerHeight", "viewport units"),
+    (r"\.style\s*\.\s*stroke|\.style\s*\.\s*setProperty\s*\(\s*[\"']stroke", "setting stroke styles by hand (draw SVG lines with HM.draw, or tl.fromTo(path, {strokeDashoffset: len}, {strokeDashoffset: 0}))"),
+    (r"(?:querySelectorAll|getElementsBy\w+)\s*\([^)]*\)\s*\.style\b", "a list of elements has no .style (loop over it or hand the selector to tl/HM)"),
 )
 _FORBIDDEN_CSS = (
     (r"@import", "@import"), (r"@keyframes", "@keyframes"), (r"\banimation(?:-[a-z-]+)?\s*:", "CSS animation"),
@@ -299,7 +301,8 @@ KIT (global HM; build helpers add to the timeline at the given time in seconds)
   HM.slide(targets, at, {x, dir:"right"|"left"}).
 - HM.wipe(scene, at, {x, y, band, duration}) reveals a .hm-scene with a growing diamond from (x, y) (default: centre); band is a colour that
   leads the edge; it also hides the scenes it covers. If you reveal a scene by your own tween, call HM.hide(earlierScene, at) once covered.
-  HM.draw(svgPaths, at, {duration, stagger}) strokes SVG paths drawing themselves (give them stroke, fill none).
+  HM.draw(svgPaths, at, {duration, stagger}) strokes SVG paths drawing themselves (give them stroke, fill none). Never write el.style.strokeDasharray
+  or any .style by hand: the element may not exist yet and the page crashes; tween with tl/HM and a selector string instead.
 - HM.words(element) wraps whole words in spans for HM.stream. Call it in build_js.
 - In update_js: HM.type(el, text, start, charsPerSecond, t); HM.stream(spans, start, wordsPerSecond, t); HM.counter(el, value, start, duration, t,
   {prefix, suffix, decimals, persian}); HM.progress(barEl, percent, start, duration, t); HM.fa(n) Persian digits; HM.clamp, HM.easeOut(p),
