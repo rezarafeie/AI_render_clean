@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from . import llm
+from . import llm, speech
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ REPAIR_ROUTE = "motion_graphic_repair"
 ROOT = Path(__file__).resolve().parents[1]
 KIT = Path(__file__).resolve().parent / "motion_kit"       # inside the code layer: /app/presets is a host mount on the server
 FORMATS = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080)}
-MIN_SECONDS, MAX_SECONDS = 4.0, 30.0
+MIN_SECONDS, MAX_SECONDS = 4.0, 60.0
 LIMITS = {"scenes_html": 40_000, "css": 24_000, "build_js": 20_000, "update_js": 8_000}
 COMPOSITION_ID = "main"
 
@@ -45,6 +45,7 @@ class MotionPage(BaseModel):
     css: str = ""
     build_js: str = ""
     update_js: str = ""
+    audio: list[dict] = Field(default_factory=list)            # narration clips: {"path": local file, "start": seconds, "duration": seconds}
 
     @field_validator("questions")
     @classmethod
@@ -227,6 +228,8 @@ def assemble(page: MotionPage) -> str:
         f"tl.to(__clock, {{ t: {duration}, duration: {duration}, ease: 'none', onUpdate() {{ __update(__clock.t); }} }}, 0);\n"
         f"__update(0);\n" if update else ""
     )
+    audio_tags = "\n".join(f'<audio id="vo{i}" src="assets/vo{i}.{Path(str(clip["path"])).suffix.lstrip(".") or "wav"}" data-start="{float(clip["start"]):g}" '
+                           f'data-duration="{float(clip["duration"]):g}" data-track-index="1"></audio>' for i, clip in enumerate(page.audio, 1))
     return f"""<!doctype html>
 <html lang="fa">
 <head>
@@ -246,6 +249,7 @@ def assemble(page: MotionPage) -> str:
 <div id="stage">
 {page.scenes_html}
 </div>
+{audio_tags}
 </div>
 <script>
 const tl = gsap.timeline({{ paused: true }});
@@ -270,6 +274,10 @@ def write_project(directory: Path, page: MotionPage) -> Path:
     shutil.copy2(KIT / "kit.js", assets / "kit.js")
     for target, source in FONT_FILES.items():
         shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
+    for i, clip in enumerate(page.audio, 1):
+        source = Path(str(clip["path"]))
+        if source.is_file():
+            shutil.copy2(source, assets / f"vo{i}{source.suffix or '.wav'}")
     (directory / "index.html").write_text(assemble(page), encoding="utf-8")
     (directory / "page.json").write_text(page.model_dump_json(indent=1), encoding="utf-8")
     return directory / "index.html"
@@ -431,6 +439,7 @@ class ScenePlan(BaseModel):
     idea: str                          # what happens visually, in one or two sentences (the user's language)
     start: float
     end: float
+    narration: str = ""                # the line spoken while the scene is on screen (Persian, as it is read aloud)
 
 
 class MotionPlan(BaseModel):
@@ -465,7 +474,7 @@ PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics
 scene designers can build each scene on their own. Return ONE JSON object and nothing else:
 {"questions": [], "title": "...", "summary": "...", "format": "vertical|horizontal|square", "duration": 15,
  "palette": {"bg": "#RRGGBB", "surface": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "accent2": "#RRGGBB"},
- "signature": "...", "scenes": [{"headline": "...", "idea": "...", "start": 0, "end": 4}]}
+ "signature": "...", "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
 
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
@@ -475,7 +484,7 @@ in the request or in the page content provided. Defaults: vertical, 15-20 second
 
 PLAN
 - 2-6 scenes that tile the whole duration without gaps (the first starts at 0, each starts where the previous ends, the last ends at duration), each
-  at least 2.5 s; the last scene holds still for 1.5 s+ (name, call to action). 4-30 seconds in total.
+  at least 2.5 s; the last scene holds still for 1.5 s+ (name, call to action). 4-60 seconds in total.
 - headline: the exact Persian words shown as that scene's main line (short: 2-7 words; whole words only). idea: what moves and how, concretely
   (a counter climbing, a diagram drawing itself, cards stacking...), specific to this content and different from the neighbours.
 - palette: 3-5 colours chosen from the subject; ink must read clearly on bg (contrast 4.5:1+), accent must be vivid. signature: ONE memorable
@@ -483,6 +492,11 @@ PLAN
 - When PAGE CONTENT is provided, build the scenes from its real facts: use its exact names, platforms, benefits, numbers, offers and address, quoted as
   written; never replace them with generic claims. Leave out what the page does not state.
 - Do not add branding for any company that is not the subject of the request.
+- narration: the sentence a human narrator speaks over that scene, in natural spoken Persian (conversational, complete sentences, no list syntax). The clip is
+  voiced: one or two sentences per scene, about 2.6 spoken words per second of the scene's length minus half a second. It must not repeat the headline word
+  for word: the headline is the short on-screen punch, the narration is the explanation. The first scene's narration is the hook. Up to 60 seconds in total;
+  20-40 seconds is typical when the request carries a script.
+- When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
 """
 
 _SCENE_INTRO = """You are a senior motion designer. You build ONE scene of a clip that a creative director planned; other designers build the other scenes at
@@ -527,6 +541,12 @@ def validate_plan(plan: MotionPlan) -> list[str]:
             problems.append(f"scene {index} is shorter than 2.5 seconds")
         if not scene.headline.strip():
             problems.append(f"scene {index} has no headline")
+        if not scene.narration.strip():
+            problems.append(f"scene {index} has no narration (every scene is voiced)")
+        else:
+            need = speech.speech_seconds(scene.narration) * speech.MARGIN
+            if need > (scene.end - scene.start) - 0.4:
+                problems.append(f"scene {index}: the narration needs about {need:.1f} s but the scene lasts {scene.end - scene.start:.1f} s: shorten the narration or lengthen the scene")
         cursor = scene.end
     if abs(cursor - plan.duration) > 0.3:
         problems.append(f"the last scene must end at the duration ({plan.duration:g}), not {cursor:g}")
@@ -545,6 +565,24 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
 
 
 PLAN_ROUTE = "motion_graphic_planner"
+
+
+def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
+    """An approved script (from Instagram GPT) fixes the scenes: their on-screen text, narration and picture notes are used exactly; the planner keeps the
+    palette, the signature device and the title. Times follow the idea's own seconds (the narration is measured and the scenes retimed afterwards)."""
+    from . import handoff
+    data = handoff.parse(brief)
+    if not data:
+        return plan
+    cursor, scenes = 0.0, []
+    for line in data["lines"][:6]:
+        length = max(2.6, float(line["seconds"]), speech.speech_seconds(line["say"]) * speech.MARGIN + 0.5)
+        scenes.append(ScenePlan(headline=line["title"].strip() or line["say"][:40], narration=line["say"].strip(), idea=(line["see"] or plan.summary).strip(),
+                                start=round(cursor, 2), end=round(cursor + length, 2)))
+        cursor += length
+    if len(scenes) < 2:
+        return plan
+    return plan.model_copy(update={"scenes": scenes, "duration": round(min(MAX_SECONDS, cursor), 2)})
 
 
 def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
@@ -589,7 +627,8 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
     scene = plan.scenes[n - 1]
     outline = [{"scene": i, "headline": sc.headline, "idea": sc.idea, "from": sc.start, "to": sc.end} for i, sc in enumerate(plan.scenes, 1)]
     parts = [f"YOU BUILD SCENE s{n} (N = {n}). T = {scene.start:g}, D = {round(scene.end - scene.start, 2):g} (it is on screen from {scene.start:g} s to {scene.end:g} s).",
-             f"THIS SCENE\nheadline (exact words, Persian): {scene.headline}\nidea: {scene.idea}",
+             f"THIS SCENE\nheadline (exact words, Persian): {scene.headline}\nidea: {scene.idea}"
+             + (f"\nnarration spoken over this scene (the viewer HEARS it; the visuals must illustrate it and the on-screen text must support it, not duplicate it): {scene.narration}" if scene.narration else ""),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
              f"ORIGINAL REQUEST:\n{brief.strip()[:1500]}"]
@@ -710,7 +749,7 @@ def fallback_scene(plan: MotionPlan, n: int) -> SceneDraft:
         build_js=f'HM.fadeUp("#s{n} .s{n}-bar", {scene.start + 0.15:g});\nHM.rise("#s{n} .hm-rise", {scene.start + 0.35:g});')
 
 
-def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft]) -> MotionPage:
+def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict] | None = None) -> MotionPage:
     """The clip: every scene in its own layer, entrance wipes added here, each scene's code isolated in its own function."""
     width, height = FORMATS[plan.format]
     palette = plan.palette
@@ -729,4 +768,4 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft]) -> MotionPage:
         if draft.update_js.strip():
             update.append(f"(function (t, T, D) {{\n{draft.update_js}\n}})(t, {span});")
     return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration,
-                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update))
+                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []))

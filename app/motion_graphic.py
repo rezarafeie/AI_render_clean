@@ -130,13 +130,14 @@ def _assistant(conversation_id: str, user_key: str, text: str) -> None:
 
 # ── records ──────────────────────────────────────────────────────────────────
 
-def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "") -> dict:
+def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "") -> dict:
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
     directory.mkdir(parents=True, exist_ok=True)
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
-              "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": []}
+              "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
+              "voice_id": voice_id, "voice_style": voice_style}
     return save(directory, record)
 
 
@@ -395,6 +396,46 @@ def _fingerprint(*parts: str) -> str:
     return hashlib.sha1("\x00".join(parts).encode()).hexdigest()[:12]
 
 
+def _narrate(directory: Path, record: dict, plan, fp: str):
+    """Voice every scene (one ElevenLabs request, cut per scene), then retime the plan so each scene lasts as long as its narration plus a breath.
+    Returns (plan, clips, notes). A narration that cannot be made leaves the clip silent and says so; it never stops the build."""
+    from creative import motion_graphic as mg
+    voice_id, voice_style = record.get("voice_id", ""), record.get("voice_style", "")
+    saved = directory / "voice.json"
+    try:
+        cached = json.loads(saved.read_text())
+        if cached.get("fp") == f"{fp}|{voice_id}|{voice_style}":
+            return mg.MotionPlan.model_validate(cached["plan"]), cached["audio"], cached.get("notes", [])
+    except (OSError, ValueError):
+        pass
+    texts = [scene.narration for scene in plan.scenes]
+    if not any(text.strip() for text in texts):
+        return plan, [], []
+    _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
+    try:
+        from brain import localize
+        clips = localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style)
+    except Exception as exc:
+        log.warning("motion narration could not be made: %s", str(exc)[:200])
+        _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
+        return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
+    cursor, scenes, audio = 0.0, [], []
+    for index, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips)):
+        last = index == len(plan.scenes) - 1
+        length = max(scene.end - scene.start, seconds + 0.7 + (1.0 if last else 0.0))
+        scenes.append(scene.model_copy(update={"start": round(cursor, 2), "end": round(cursor + length, 2)}))
+        if seconds > 0:
+            audio.append({"path": str(path), "start": round(cursor + 0.25, 2), "duration": round(seconds, 2)})
+        cursor += length
+    if cursor > mg.MAX_SECONDS:
+        _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
+        return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
+    retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
+    saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": []}, ensure_ascii=False))
+    _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
+    return retimed, audio, []
+
+
 def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], scene_notes: list[str]):
     """Plan the clip, then design its scenes in parallel while telling the person what is really being worked on. Returns (page, build) or None
     when it asked questions. Finished work is kept on disk: a retry continues from the plan and the scenes that already exist."""
@@ -404,12 +445,12 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     context = record.get("context", "")
     style = record.get("style", "")
-    fingerprint = _fingerprint(brief, context, style)
+    plan_fp = _fingerprint(brief, context, style)
     saved_plan = directory / "plan.json"
     plan = None
     try:
         cached = json.loads(saved_plan.read_text())
-        if cached.get("fp") == fingerprint:
+        if cached.get("fp") == plan_fp:
             plan = mg.MotionPlan.model_validate(cached["plan"])
     except (OSError, ValueError):
         pass
@@ -421,12 +462,14 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         plan = mg.plan(brief, context=context, style=style, used=used)
         if _cancelled(key):
             raise _Cancelled()
+        if not plan.asks():
+            plan = mg.apply_handoff(plan, brief)          # an approved script from Instagram GPT fixes the scenes' words
         if plan.asks():
             _note(directory, "plan", "برای ادامه به چند اطلاعات نیاز دارم.", "done")
             _ask(directory, record, plan.questions)
             return None
         _learn("plan_s", time.monotonic() - started)
-        saved_plan.write_text(json.dumps({"fp": fingerprint, "plan": plan.model_dump()}, ensure_ascii=False))
+        saved_plan.write_text(json.dumps({"fp": plan_fp, "plan": plan.model_dump()}, ensure_ascii=False))
         count = len(plan.scenes)
         _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done")
         outline = "\n".join(f"{i}) {sc.headline} — {sc.idea}" for i, sc in enumerate(plan.scenes, 1))
@@ -437,6 +480,10 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     else:
         count = len(plan.scenes)
         _note(directory, "plan", f"از طرح قبلی ادامه می‌دهم: {count} صحنه، {plan.duration:g} ثانیه", "done")
+    plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
+    count = len(plan.scenes)
+    import hashlib
+    fingerprint = plan_fp + hashlib.sha256(json.dumps([(sc.start, sc.end, sc.narration) for sc in plan.scenes], ensure_ascii=False).encode()).hexdigest()[:8]   # scenes drawn for other timings are not reused
     scenes_dir = directory / "scenes"
     scenes_dir.mkdir(exist_ok=True)
     drafts: dict[int, Any] = {}
@@ -502,8 +549,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
                               eta=_remaining(len(pending) - finished, plan.duration))
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
-    build = SimpleNamespace(plan=plan, drafts=drafts, context=context, style=style, fingerprint=fingerprint, scenes_dir=scenes_dir)
-    return mg.assemble_scenes(plan, [drafts[n] for n in range(1, count + 1)]), build
+    build = SimpleNamespace(plan=plan, drafts=drafts, context=context, style=style, fingerprint=fingerprint, scenes_dir=scenes_dir, audio=audio, voice_notes=voice_notes)
+    return mg.assemble_scenes(plan, [drafts[n] for n in range(1, count + 1)], audio), build
 
 
 def _scenes_in(problems: list[str], count: int) -> list[int]:
@@ -528,7 +575,7 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
     for n in range(1, count + 1):
         trial = dict(build.drafts)
         trial[n] = mg.fallback_scene(build.plan, n)
-        candidate = mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)])
+        candidate = mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)], build.audio)
         mg.write_project(work, candidate)
         result = standalone.check(work, should_cancel=lambda: _cancelled(key))
         if _cancelled(key):
@@ -542,7 +589,7 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
     build.drafts = {i: mg.fallback_scene(build.plan, i) for i in range(1, count + 1)}
     notes.append("چند صحنه در اجرا خطا می‌دادند؛ همهٔ صحنه‌ها با طرح ساده ساخته شد")
     _note(directory, "check", "صحنه‌ها با طرح ساده ساخته شدند تا ویدیو حتماً کامل شود", "done")
-    return mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, count + 1)])
+    return mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, count + 1)], build.audio)
 
 
 def _prepare_and_render(directory: Path, page, brief: str, change: str, used: list[str], build=None):
@@ -552,7 +599,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     work = directory / "work"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    notes: list[str] = []
+    notes: list[str] = list(getattr(build, "voice_notes", []) or [])
     repairs_left = 2
     isolated = 0
     stats = _stats()
@@ -604,7 +651,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                     outcome = f"صحنهٔ {n} با طرح ساده جایگزین شد"
                 build.drafts[n] = draft
                 _note(directory, f"scene{n}", outcome, "done")
-            page = mg.assemble_scenes(build.plan, [build.drafts[n] for n in range(1, len(build.plan.scenes) + 1)])
+            page = mg.assemble_scenes(build.plan, [build.drafts[n] for n in range(1, len(build.plan.scenes) + 1)], build.audio)
             continue
         _progress(directory, "writing", 38, "مشکلی پیدا شد؛ دارم صفحه را اصلاح می‌کنم.", stage="writing",
                   eta=stats["scene_s"] * 2.5 + stats["check_s"] + stats["render_per_s"] * page.duration)

@@ -6,7 +6,7 @@ class Step(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tool: Literal["inspect_media", "inspect_url", "inspect_project", "analyze_talking_reel", "localize_video",
                   "create_storyboard", "modify_project", "render_approved_plan", "check_render_status",
-                  "instagram_content_check", "discover_connected_app_tools", "read_connected_app"]
+                  "instagram_content_check", "discover_connected_app_tools", "read_connected_app", "create_motion_graphic"]
     arguments: dict = Field(default_factory=dict)
     label: str = Field(min_length=1, max_length=180)
 

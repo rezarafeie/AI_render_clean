@@ -669,7 +669,7 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             _assistant(conversation_id, user_key, "این ایده برای ریلز صحبتی است و به ویدیوی خودتان نیاز دارد. متن گفتاری و هوک پیشنهادی را همین‌جا در پیام قبلی دارید؛ "
                        "ضبطش کنید و فایل ویدیو را همین‌جا بفرستید تا تدوین، زیرنویس و موشن را روی آن بسازم.")
             return
-        forced = "motion" if marker == "explainer" and not current else (conversation.get('state') or {}).get('forced_intent') if not current else None
+        forced = "motion_graphic" if marker == "explainer" and not current else (conversation.get('state') or {}).get('forced_intent') if not current else None
         motion_context = _motion_summary(user_key, conversation)
         history = [{"role": m["role"], "text": m["content"][:300]} for m in conversation.get("messages", [])[-5:-1]]
         intent = completed_manual['engine'] if completed_manual else (forced or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
@@ -983,7 +983,8 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
         sources = _gather_sources(conversation_id, user_key, text, attachments or [], max_pages=2)
     if not sources.ok:
         return                                           # the person has been told why nothing could be read, and what to send instead
-    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style)
+    state = conversation.get("state") or {}
+    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style, state.get("voice_id", ""), state.get("voice_style", ""))
     run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "motion": {"motion_id": record["id"]}}))
     basis = " و ".join(part for part in ("سبک رفرنس" if sources.style else "", "محتوای صفحه" if sources.pages else "") if part)
     _assistant(conversation_id, user_key, "شروع کردم: اول طرح و صحنه‌ها را از روی درخواست" + (f" و {basis}" if basis else "")

@@ -77,9 +77,9 @@ def test_isolate_replaces_only_the_scene_that_breaks_the_page(monkeypatch, tmp_p
     from engine.hyperframes import standalone
     plain = SimpleNamespace(tag="plain")
     plan = SimpleNamespace(scenes=[SimpleNamespace(headline=f"h{i}") for i in range(3)])
-    build = SimpleNamespace(plan=plan, drafts={1: "a", 2: "BAD", 3: "c"})
+    build = SimpleNamespace(plan=plan, drafts={1: "a", 2: "BAD", 3: "c"}, audio=[])
     monkeypatch.setattr(mg, "fallback_scene", lambda p, n: "plain")
-    monkeypatch.setattr(mg, "assemble_scenes", lambda p, drafts: list(drafts))
+    monkeypatch.setattr(mg, "assemble_scenes", lambda p, drafts, audio=None: list(drafts))
     monkeypatch.setattr(mg, "write_project", lambda work, page: setattr(build, "written", page))
     monkeypatch.setattr(standalone, "check", lambda work, should_cancel=None: SimpleNamespace(blocking=["x"] if "BAD" in build.written else []))
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
@@ -87,3 +87,47 @@ def test_isolate_replaces_only_the_scene_that_breaks_the_page(monkeypatch, tmp_p
     notes: list[str] = []
     page = app_mg._isolate(tmp_path, tmp_path, build, None, ["page_error: boom"], notes)
     assert page == ["a", "plain", "c"] and len(notes) == 1
+
+
+def test_narration_retimes_scenes_to_the_voice(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    from brain import localize
+    from creative import motion_graphic as mg
+    plan = mg.MotionPlan(title="t", duration=9, scenes=[mg.ScenePlan(headline=f"h{i}", idea="i", start=3 * i, end=3 * i + 3, narration="x") for i in range(3)])
+    monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(tmp_path / f"c{i}.wav", s) for i, s in enumerate((4.0, 1.0, 2.0))])
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    retimed, audio, notes = app_mg._narrate(tmp_path, {"voice_id": "", "voice_style": ""}, plan, "fp")
+    assert [round(s.end - s.start, 2) for s in retimed.scenes] == [4.7, 3.0, 3.7]      # long voice stretches its scene; short ones keep the plan; the last holds 1 s
+    assert retimed.duration == 11.4 and audio[0]["start"] == 0.25 and audio[1]["start"] == 4.95 and notes == []
+
+
+def test_narration_failure_keeps_the_clip_silent_but_alive(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    from brain import localize
+    from creative import motion_graphic as mg
+    plan = mg.MotionPlan(title="t", duration=6, scenes=[mg.ScenePlan(headline="a", idea="i", start=0, end=3, narration="x"), mg.ScenePlan(headline="b", idea="i", start=3, end=6, narration="y")])
+    monkeypatch.setattr(localize, "synthesize_narration", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("quota")))
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    same, audio, notes = app_mg._narrate(tmp_path, {}, plan, "fp")
+    assert same is plan and audio == [] and "بی‌صدا" in notes[0]
+
+
+def test_approved_script_fixes_the_scenes_of_the_plan():
+    from creative import motion_graphic as mg
+    brief = "\n".join(["ایده: سه اشتباه", "1. (3s) تصویر: نقشه | متن روی صفحه: اشتباه اول | روایت: اولین اشتباه نداشتن برنامه است.",
+                       "2. (3s) تصویر: خرج | متن روی صفحه: اشتباه دوم | روایت: دومی خرج بی‌هدف است.", "3. (3s) تصویر: مسیر | متن روی صفحه: شروع کن | روایت: همین امروز شروع کن."])
+    plan = mg.MotionPlan(title="t", duration=15, summary="s", scenes=[mg.ScenePlan(headline="z", idea="i", start=0, end=15, narration="q")])
+    out = mg.apply_handoff(plan, brief)
+    assert [s.headline for s in out.scenes] == ["اشتباه اول", "اشتباه دوم", "شروع کن"] and out.scenes[0].narration.startswith("اولین")
+    assert out.scenes[1].start == out.scenes[0].end
+    assert mg.apply_handoff(plan, "یک درخواست ساده") is plan
+
+
+def test_page_with_narration_has_audio_tracks(tmp_path):
+    from creative import motion_graphic as mg
+    clip = tmp_path / "c.wav"
+    clip.write_bytes(b"RIFF")
+    page = mg.MotionPage(title="t", duration=5, scenes_html='<section class="hm-scene" id="s1"><p id="s1-a">سلام</p></section>', build_js="tl.to('#s1-a',{opacity:1},0)",
+                         audio=[{"path": str(clip), "start": 0.25, "duration": 3.5}])
+    html = mg.assemble(page)
+    assert '<audio id="vo1" src="assets/vo1.wav" data-start="0.25" data-duration="3.5" data-track-index="1">' in html

@@ -590,3 +590,10 @@ def test_rejected_step_stops_after_the_heal_limit(monkeypatch):
     state["heal"] = 0
     healed = nodes.tool(record, state)
     assert healed["heal"] == 1 and healed["heal_tools"] == ["create_storyboard"]
+
+
+def test_medium_can_plan_a_voiced_motion_graphic():
+    from app.agents.medium.state import EditingPlan
+    assert any(item["name"] == "create_motion_graphic" and item["requires_approval"] for item in tools.catalog())
+    plan = EditingPlan.model_validate({"summary": "s", "steps": [{"tool": "create_motion_graphic", "arguments": {"request": "سه اشتباه"}, "label": "ساخت ویدیو"}]})
+    assert plan.steps[0].tool == "create_motion_graphic"
