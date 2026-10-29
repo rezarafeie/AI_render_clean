@@ -26,3 +26,8 @@ class State(TypedDict, total=False):
     approved: bool
     finished: bool
     rounds: int
+    healing: bool                 # the last tool step was rejected before anything was submitted: plan again with its error
+    heal: int                     # how many times this run has replanned after a rejected step
+    failed: list                  # signatures of the errors already seen (the same one twice means a loop: stop)
+    plan_feedback: str | None
+    heal_tools: list | None       # write tools the person already approved; a replan using the same ones is not asked again

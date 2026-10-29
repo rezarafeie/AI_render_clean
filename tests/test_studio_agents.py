@@ -144,7 +144,9 @@ def test_known_preflight_failure_can_retry_but_uncertain_writes_cannot(monkeypat
     step = {"tool": "create_storyboard", "arguments": {}, "label": "طراحی"}
     state = {"plan": {"steps": [step]}, "index": 0, "rounds": 1}
     monkeypatch.setattr(tools, "execute", lambda *a: (_ for _ in ()).throw(tools.PreflightUnavailable("preflight failed")))
-    with pytest.raises(tools.PreflightUnavailable): nodes.tool(record, state)
+    healed = nodes.tool(record, state)                     # a rejected step replans with its error instead of stopping the run
+    assert healed["healing"] is True and "preflight failed" in healed["plan_feedback"]
+    with pytest.raises(tools.PreflightUnavailable): nodes.tool(record, {**state, "failed": healed["failed"]})     # the same error twice: a loop, stop
     entry = call(store.get_run(record["id"], "alice"))["data"]["operations"]["1:0:create_storyboard"]
     assert entry == {"status": "failed", "tool": "create_storyboard", "safe_to_retry": True}
     monkeypatch.setattr(tools, "execute", lambda *a: {"project_id": "real-id"})
@@ -577,3 +579,14 @@ def test_real_job_interrupt_resume_does_not_resubmit_tool(monkeypatch):
         graph.invoke(Command(resume={"job": True}), config(record))
         assert graph.get_state(config(record)).values["finished"]
     assert len(calls) == 1
+
+
+def test_rejected_step_stops_after_the_heal_limit(monkeypatch):
+    record = seed()
+    step = {"tool": "create_storyboard", "arguments": {"duration": 5}, "label": "طراحی"}
+    state = {"plan": {"steps": [step]}, "index": 0, "rounds": 2, "heal": nodes.MAX_HEALS, "approved": True}
+    monkeypatch.setattr(tools, "execute", lambda *a: (_ for _ in ()).throw(ValueError("bad duration")))
+    with pytest.raises(ValueError): nodes.tool(record, state)
+    state["heal"] = 0
+    healed = nodes.tool(record, state)
+    assert healed["heal"] == 1 and healed["heal_tools"] == ["create_storyboard"]

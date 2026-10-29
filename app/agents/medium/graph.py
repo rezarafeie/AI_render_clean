@@ -41,7 +41,7 @@ def build(record, checkpoint, guard=lambda: None):
     graph.add_edge("context", "plan")
     graph.add_conditional_edges("plan", lambda s: "approval" if s["plan"]["steps"] else "finish")
     graph.add_edge("approval", "tool")
-    graph.add_edge("tool", "wait")
+    graph.add_conditional_edges("tool", lambda s: "plan" if s.get("healing") else "wait")
 
     def after_wait(state):
         if state["index"] < len(state["plan"]["steps"]): return "tool"
@@ -84,7 +84,17 @@ def _execute(cid, user, record):
                 payload = None if previous.values else {}
             # Do not export private Studio state to an unrelated tracing service.
             with tracing_context(enabled=False):
-                graph.invoke(payload, cfg, durability="sync")
+                for attempt in range(3):
+                    try:
+                        graph.invoke(payload, cfg, durability="sync")
+                        break
+                    except Exception as exc:
+                        from brain.lm_gateway import GatewayError
+                        flaky = isinstance(exc, httpx.TransportError) or (isinstance(exc, GatewayError) and (exc.status in (429, 502, 503, 504) or "RemoteProtocolError" in str(exc)))
+                        if not flaky or attempt == 2 or studio_flags.generation(user, cid) != generation: raise
+                        nodes.event(record, "tool.progress", tool="medium_retry", message="اتصال به سرویس مدل قطع شد؛ دارم از همان مرحله ادامه می‌دهم.")
+                        time.sleep(4 * (attempt + 1))
+                        payload = None                    # resume from the saved checkpoint: finished steps are never repeated
             snapshot = graph.get_state(cfg)
             interruptions = [i.value for task in snapshot.tasks for i in task.interrupts]
             if interruptions:
