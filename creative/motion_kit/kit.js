@@ -6,10 +6,15 @@
 
   HM._bind = function (tl, info) { HM._tl = tl; HM.duration = info.duration; HM.width = info.width; HM.height = info.height; };
   function T() { if (!HM._tl) throw new Error("HM helpers can only be used inside build()"); return HM._tl; }
-  function list(targets) {
+  function list(targets) {   // a selector, an element, or any (nested) list of them: always a flat array of elements
     if (typeof targets === "string") return Array.prototype.slice.call(document.querySelectorAll(targets));
-    if (targets && targets.length !== undefined && !targets.nodeType) return Array.prototype.slice.call(targets);
-    return targets ? [targets] : [];
+    if (targets && targets.nodeType) return [targets];
+    if (targets && targets.length !== undefined) {
+      var out = [];
+      Array.prototype.forEach.call(targets, function (t) { out = out.concat(list(t)); });
+      return out;
+    }
+    return [];
   }
   function opt(o, k, d) { return o && o[k] !== undefined ? o[k] : d; }
 
@@ -80,6 +85,7 @@
   HM.draw = function (paths, at, o) {
     var items = list(paths), tl = T();
     items.forEach(function (p, i) {
+      if (!p.style) return;
       var len = p.getTotalLength ? Math.ceil(p.getTotalLength()) : 1000;
       p.style.strokeDasharray = len + " " + len;
       tl.fromTo(p, { strokeDashoffset: len }, { strokeDashoffset: 0, duration: opt(o, "duration", 1.2), ease: opt(o, "ease", "power2.inOut") }, at + i * opt(o, "stagger", .15));

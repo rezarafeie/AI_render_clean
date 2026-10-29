@@ -45,3 +45,20 @@ def test_hand_written_stroke_styles_are_rejected():
     bad = ['p.style.strokeDasharray = "5"', 'document.querySelectorAll(".a").style.opacity = 0']
     assert all(any(re.search(pattern, code) for pattern, _ in _FORBIDDEN_JS) for code in bad)
     assert not any(re.search(pattern, 'tl.to(".a", {strokeDashoffset: 0}, 0)') for pattern, _ in _FORBIDDEN_JS)
+
+
+def test_kit_draw_accepts_lists_of_selectors():
+    import shutil, subprocess
+    from pathlib import Path
+    import pytest
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    kit = Path(__file__).resolve().parent.parent / "creative" / "motion_kit" / "kit.js"
+    script = (
+        'const mk=id=>({nodeType:1,id,style:{},getTotalLength:()=>50});const els={"#a":[mk("a")],"#b":[mk("b")]};'
+        'global.document={querySelectorAll:s=>els[s]||[]};global.window=global;eval(require("fs").readFileSync(process.argv[1],"utf8"));'
+        'const calls=[];const tl={fromTo(p){calls.push(p.id);return tl}};HM._bind(tl,{duration:5,width:1080,height:1920});'
+        'HM.draw(["#a","#b"],0,{});HM.draw([1,null],1);console.log(calls.join(","));'
+    )
+    done = subprocess.run(["node", "-e", script, str(kit)], capture_output=True, text=True, timeout=20)
+    assert done.stdout.strip() == "a,b", done.stderr
