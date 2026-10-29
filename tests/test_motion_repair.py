@@ -62,3 +62,9 @@ def test_kit_draw_accepts_lists_of_selectors():
     )
     done = subprocess.run(["node", "-e", script, str(kit)], capture_output=True, text=True, timeout=20)
     assert done.stdout.strip() == "a,b", done.stderr
+
+
+def test_unknown_kit_helpers_are_reported():
+    from creative.motion_graphic import unknown_helpers
+    assert unknown_helpers('HM.set(".a", {opacity: 0}, 0); HM.rise(".b", 1);') == []
+    assert unknown_helpers('HM.explode(".a"); HM.rise(".b", 1); const s = "HM.nope";') == ["explode"]

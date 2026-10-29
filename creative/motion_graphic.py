@@ -126,6 +126,14 @@ def _strip_strings(code: str) -> str:
     return re.sub(r"([\"'`])(?:\\.|(?!\1).)*\1", '""', code, flags=re.S)
 
 
+_KIT_NAMES = frozenset(re.findall(r"\bHM\.(\w+)\s*=", (KIT / "kit.js").read_text(encoding="utf-8")))
+
+
+def unknown_helpers(code: str) -> list[str]:
+    """HM.<name> calls that the kit does not define: the page would die with "HM.x is not a function" in the browser."""
+    return sorted({name for name in re.findall(r"\bHM\.(\w+)", _strip_strings(code)) if name not in _KIT_NAMES})
+
+
 def js_syntax_error(code: str) -> str:
     """The parser's complaint about ``code`` as a function body ("" when it parses or node is unavailable): the browser check would only report it
     as an opaque lint failure after the whole scene was already built."""
@@ -185,6 +193,9 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
             if re.search(pattern, code):
                 problems.append(f"{field}: {label} is not allowed")
     for field in ("build_js", "update_js"):
+        missing = unknown_helpers(getattr(page, field))
+        if missing:
+            problems.append(f"{field}: HM.{', HM.'.join(missing)} does not exist. HM has only: " + ", ".join(sorted(n for n in _KIT_NAMES if not n.startswith("_") and n not in {"width", "height", "duration", "colors"})) + " (anything else: use tl.* with a selector)")
         broken = js_syntax_error(getattr(page, field))
         if broken:
             problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS")
@@ -303,6 +314,7 @@ KIT (global HM; build helpers add to the timeline at the given time in seconds)
   leads the edge; it also hides the scenes it covers. If you reveal a scene by your own tween, call HM.hide(earlierScene, at) once covered.
   HM.draw(svgPaths, at, {duration, stagger}) strokes SVG paths drawing themselves (give them stroke, fill none). Never write el.style.strokeDasharray
   or any .style by hand: the element may not exist yet and the page crashes; tween with tl/HM and a selector string instead.
+- HM.set(targets, vars, at) jumps to a state at a time (HM.set(".a", {opacity: 0}, 0)). These are ALL the HM helpers; never call another one.
 - HM.words(element) wraps whole words in spans for HM.stream. Call it in build_js.
 - In update_js: HM.type(el, text, start, charsPerSecond, t); HM.stream(spans, start, wordsPerSecond, t); HM.counter(el, value, start, duration, t,
   {prefix, suffix, decimals, persian}); HM.progress(barEl, percent, start, duration, t); HM.fa(n) Persian digits; HM.clamp, HM.easeOut(p),

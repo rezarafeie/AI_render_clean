@@ -77,6 +77,10 @@
     return tl;
   };
 
+  HM.set = function (targets, vars, at) {   // jump to a state at a time: HM.set(".a", {opacity: 0}, 0)
+    return T().set(list(targets), vars || {}, at || 0);
+  };
+
   HM.hide = function (targets, at) {   // hide a layer once something opaque covers it (HM.wipe does this by itself)
     return T().set(list(targets), { visibility: "hidden" }, at);
   };
