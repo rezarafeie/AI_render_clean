@@ -562,9 +562,10 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
         if scene.native_component:
-            from .native_motion import SUPPORTED
+            from .native_motion import SUPPORTED, content_problems
             if scene.native_component.resource_id not in SUPPORTED:
                 problems.append(f"scene {index}: component adapter has not passed its browser gate")
+            problems.extend(f"scene {index}: {problem}" for problem in content_problems(scene.native_component, scene.end-scene.start))
             if scene.native_component.resource_id == "hyperframes:notes-typing":
                 p = scene.native_component.parameters
                 required = max(10, len(str(p.get("lines", ""))) * .2 / max(.5, float(p.get("speed", 1))) + 2)
@@ -785,14 +786,12 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     conversation with problems an earlier check found in this scene. The caller falls back to a plain scene when this raises."""
     spec = plan.scenes[n - 1].native_component
     if spec:
-        from .native_motion import SUPPORTED, LEGACY_INPUTS, parameter_schema
+        from .native_motion import SUPPORTED, content_problems
         if spec.resource_id not in SUPPORTED:
             raise CreativeUnavailable("کامپوننت هنوز از آزمون اجرایی عبور نکرده است؛ طراحی ساده جایگزین نمی‌شود.")
-        if spec.resource_id not in LEGACY_INPUTS:
-            required = {k for k, v in parameter_schema(spec.resource_id.split(":")[1]).items() if v.get("role") == "content"}
-            missing = required - spec.parameters.keys()
-            if missing:
-                raise CreativeUnavailable("پارامترهای محتوایی کامپوننت باید صریح باشند تا نمونهٔ انگلیسی وارد ویدیو نشود: " + ", ".join(sorted(missing)))
+        problems = content_problems(spec, plan.scenes[n-1].end-plan.scenes[n-1].start)
+        if problems:
+            raise CreativeUnavailable("پارامترهای محتوایی کامپوننت نیاز به اصلاح دارند: " + "; ".join(problems))
         return SceneDraft(html=f'<div id="s{n}-native-slot"></div>', build_js='tl.to({}, {duration:.001}, 0);', timebase="local", native_component=spec)
     request = scene_request(plan, n, brief, context, style)
     guide = SCENE_GUIDE.replace("sN", f"s{n}").replace("using ABSOLUTE times (T + offset)", "using LOCAL times (T=0, offset)")

@@ -46,7 +46,52 @@ def parameter_schema(name: str):
                 self.variables = json.loads(value)
     parser = Metadata()
     parser.feed((SOURCES / f"{name}.html").read_text())
-    return {v["id"]: v for v in parser.variables}
+    result = {v["id"]: v for v in parser.variables}
+    if name == "overwhelm-surround":
+        result["task_labels"] = {"id":"task_labels", "type":"string", "role":"content", "label":"Task labels",
+                                 "description":"Comma-separated task labels, exactly count entries. Explicit content replaces the original fixed English demo labels."}
+    return result
+
+
+def content_problems(spec, duration=None):
+    """Production-only semantic guards. Demo materialization may use defaults."""
+    if spec.resource_id in LEGACY_INPUTS:
+        return []
+    name = spec.resource_id.split(":")[1]
+    schema, p = parameter_schema(name), spec.parameters
+    missing = {k for k,v in schema.items() if v.get("role") == "content"} - p.keys()
+    if missing:
+        return ["Explicit component content required: " + ", ".join(sorted(missing))]
+    problems = []
+    def parts(key):
+        return [v.strip() for v in str(p.get(key, "")).split(",")]
+    paired_counts = {"beat-timeline":("labels","beatCount"), "multiplayer-cursors":("labels","cursorCount"),
+                     "overwhelm-surround":("task_labels","count")}
+    if name in paired_counts:
+        labels, count = paired_counts[name]
+        expected = p[count]
+        if float(expected) != int(expected) or len(parts(labels)) != expected or not all(parts(labels)):
+            problems.append(f"{labels} must contain exactly {count} nonempty labels; demo fallbacks are forbidden")
+    if name == "tracing-beam" and (len(parts("labels")) != 3 or not all(parts("labels"))):
+        problems.append("tracing-beam requires three explicit nonempty labels")
+    if name == "chart-story":
+        try:
+            values = [float(v) for v in parts("data")]
+            if not 2 <= len(values) <= 12 or not all(math.isfinite(v) and abs(v) <= 1_000_000 for v in values):
+                raise ValueError()
+            if len(parts("labels")) != len(values) or not all(parts("labels")):
+                problems.append("Chart labels must match all explicit data values")
+        except ValueError:
+            problems.append("Chart data requires 2–12 finite bounded comma-separated numbers")
+    if name == "per-word-rise" and p.get("split") == "char" and re.search(r"[\u0600-\u06ff]", str(p.get("text", ""))):
+        problems.append("Persian text requires word splitting to preserve joined glyphs")
+    if name == "cursor-text-select" and p["phrase"] not in p["text"]:
+        problems.append("Selection phrase must exist in the supplied text")
+    if name == "notes-typing" and duration is not None:
+        required = max(10, len(str(p["lines"])) * .2 / max(.5, float(p.get("speed", 1))) + 2)
+        if duration < required:
+            problems.append(f"notes-typing needs at least {required:g} seconds; do not truncate its text")
+    return problems
 
 
 class NativeMotion(BaseModel):
@@ -109,12 +154,14 @@ def catalog():
                        "description":entries.get(name, {}).get("description", name),
                        "best_for":profile.get("best_for", []), "avoid_when":profile.get("avoid_when", []),
                        "inputs":{"resource_id":key,"text":"short exact approved headline", "parameters":{
-                           k: {"type":v["type"], "description":v.get("description", "")[:100],
+                           k: {"type":v["type"], "description":(v.get("description") or v.get("label", ""))[:100],
+                               **({"min":v["min"]} if "min" in v else {}),
+                               **({"max":v["max"]} if "max" in v else {}),
                                **({"options":[o["value"] for o in v["options"]]} if "options" in v else {})}
                            for k,v in parameter_schema(name).items()},
                            "required_content":[k for k,v in parameter_schema(name).items() if v.get("role")=="content"]},
                        "minimum_seconds":10 if name=="notes-typing" else 2.5,
-                       "contract":"Supply all relevant content parameters explicitly; do not retain upstream demo claims, brand names or statistics. Parameters are data, never JS. Native source is not rewritten.",
+                       "contract":"Supply every required_content parameter explicitly, including empty optional copy. Counts must match complete nonempty label lists; charts require finite factual data and one label per datum; tracing-beam needs exactly three labels. Persian per-word-rise must use split=word. Do not retain upstream demo claims, brands or statistics. Data only, never JS; original source executes.",
                        "certification":"Portrait demo browser-checked, not certification of every copy, duration, RTL input or encoded output."})
     return result
 
@@ -142,6 +189,10 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
         if "text" in values:
             values["text"] = spec.text
     values.update(spec.parameters)
+    if name == "overwhelm-surround" and "task_labels" in spec.parameters:
+        text, replaced = re.subn(r'var labels = \[[\s\S]*?\];', 'var labels = String(vars.task_labels).split(",").map(function(v){return v.trim();});', text, count=1)
+        if replaced != 1:
+            raise ValueError("Upstream task label contract changed")
     # Script-safe JSON: user text is data, including </script> and Unicode.
     payload = json.dumps(values, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     text, count = re.subn(r"var vars\s*=\s*window\.__hyperframes[\s\S]*?:\s*\{\};",

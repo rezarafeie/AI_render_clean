@@ -1515,6 +1515,13 @@
           "min": 0.5,
           "max": 2,
           "step": 0.1
+        },
+        {
+          "id": "task_labels",
+          "type": "string",
+          "role": "content",
+          "label": "Task labels",
+          "description": "Comma-separated task labels, exactly count entries. Explicit content replaces the original fixed English demo labels."
         }
       ],
       "poster": "/creative-previews/overwhelm-surround.png",
@@ -1524,19 +1531,9 @@
           "section": "layout",
           "code": "canvas_overflow",
           "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "escaped_container",
-          "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
         }
       ],
-      "poster_sha256": "9ff65a5d1d7c10739ff9529c2ae9ff754b0504269244dab4745c86dadfb6a81a"
+      "poster_sha256": "df1c14897802e872bffb17bb877bc96b572e4b5c327ba86fa18b4ac7584e0feb"
     },
     "hyperframes:radial-surround": {
       "id": "hyperframes:radial-surround",

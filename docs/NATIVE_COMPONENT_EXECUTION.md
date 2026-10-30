@@ -72,8 +72,14 @@ Update, 2026-10-30:
   clearly labelled public demonstration gallery, never certified as user content.
 - Swiss Lemo demo uses original Canvas code and local licensed fonts. Seeking
   12 → 27 → 32 → 12 seconds produced identical pixels for both 12-second captures.
-- 110 focused automated tests passed before additional gallery regression tests.
-  See test output for the latest count. Two existing deprecation warnings remain.
+- 123 focused automated tests passed, including frozen gallery and dependency
+  integrity, required content, chart label consistency and Persian splitting.
+  Two existing deprecation warnings remain.
+- Production validates complete content during planning and before scene
+  execution. Incomplete row lists cannot fall back to English "Beat"/"Guest"
+  labels. The task-surround adapter binds explicit task labels instead of the
+  upstream demo's fixed English tasks. Its corrected Persian example passed the
+  same browser checks and its retained image was replaced.
 - No production deployment, paid provider request or full MP4 certification in
   this update. The local static gallery is not proof that the running API reloaded.
 

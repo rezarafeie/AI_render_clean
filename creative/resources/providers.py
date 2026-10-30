@@ -27,6 +27,12 @@ def hyperframes_resources():
     except (OSError, ValueError):
         gallery = {}
     catalog, profiles = load_catalog(), load_profiles()
+    def native_parameters(name):
+        return tuple(Parameter(name=k, value_type="number" if v["type"] == "number" else "boolean" if v["type"] == "boolean" else "string",
+                               default=v.get("default"), editable=True, description=v.get("description") or v.get("label", ""),
+                               required=v.get("role")=="content", minimum=v.get("min"), maximum=v.get("max"),
+                               options=tuple(o["value"] for o in v.get("options", [])))
+                     for k,v in parameter_schema(name).items())
     # The index owns membership/version. Profiles only enrich matching items;
     # the two snapshots currently have different item counts.
     for item in catalog.get("items", []):
@@ -51,7 +57,7 @@ def hyperframes_resources():
             availability="existing-pipeline" if wired else "catalog-only",
             contexts=(("talking_2",) if talking else ()) + (("motion-graphic",) if motion else ()), legacy_id=key,
             capabilities=Capabilities(supports_preview=True if video or poster else None),
-            parameters=tuple(Parameter(name=str(name), value_type="string")
+            parameters=native_parameters(key) if motion else tuple(Parameter(name=str(name), value_type="string")
                              for name in profile.get("variables", [])),
             recommended_for=tuple(profile.get("best_for", [])),
             avoid_when=tuple(profile.get("avoid_when", [])),
@@ -77,7 +83,7 @@ def hyperframes_resources():
                        integration_status="native" if wired else "adapter-required",
                        availability="existing-pipeline" if wired else "catalog-only",
                        contexts=("motion-graphic",) if wired else (), legacy_id=key,
-                       parameters=tuple(Parameter(name=k, value_type="number" if v["type"] == "number" else "boolean" if v["type"] == "boolean" else "string", default=v.get("default")) for k,v in parameter_schema(key).items()),
+                       parameters=native_parameters(key),
                        preview_poster=poster if local.get("poster") == poster else None,
                        limitations=("Portrait demonstration browser-checked only; not certification of all inputs, RTL, timings or encoded output." if wired else "Adapter check failed; not eligible for production selection.",))
 
@@ -138,7 +144,8 @@ def shotcraft_resources():
             source_url="https://github.com/Vincentwei1021/video-shotcraft", source_version=REVISION,
             engine="hyperframes", integration_status="port-required", availability="catalog-only",
             contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
-            limitations=("Pinned recipe and TSX guide scene authoring. TSX is not executed; no certified native port or automatic Remotion fallback.",),
+            preview_poster="/creative-previews/shotcraft-" + ("chart-axis-rescale" if item["id"] == "shotcraft:chart-live-moves" else item["id"].split(":",1)[1]) + ".png",
+            limitations=("Production uses the pinned recipe as authoring guidance, not native TSX. Gallery executes original TSX demos only; user-content binding is incomplete. No automatic Remotion fallback.",),
         )
 
 

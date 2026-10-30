@@ -35,6 +35,9 @@ def run(args):
             raise ValueError("Use a fresh work directory; QA sources are not overwritten")
         directory.mkdir(parents=True)
         spec = NativeMotion(resource_id="hyperframes:" + name, text="یک شروع متفاوت", button_label="شروع", suffix=" نفر", end_value=320)
+        if name == "overwhelm-surround":
+            spec = NativeMotion(resource_id="hyperframes:"+name,text="کارها",parameters={
+                "count":8,"centerLabel":"شما","task_labels":"ایمیل,ویرایش,بررسی,انتشار,طراحی,صدا,تصویر,متن"})
         page = MotionPage(title="Component demonstration", duration=4,
                          scenes_html='<section class="hm-scene" id="s1"><div id="s1-native-host" class="clip" data-composition-id="s1-native" data-composition-src="compositions/s1-native.html" data-start="0" data-duration="4" data-track-index="2" style="position:absolute;inset:0"></div></section>',
                          build_js='tl.to({}, {duration:4}, 0);')

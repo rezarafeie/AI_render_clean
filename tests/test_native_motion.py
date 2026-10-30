@@ -115,6 +115,30 @@ def test_generic_component_requires_explicit_content_without_calling_model(monke
     assert mg.author_scene(plan, 1, "compare").native_component.parameters["line_b"] == "روش تازه"
 
 
+@pytest.mark.parametrize("name,parameters", [
+    ("beat-timeline", {"beatCount":4,"labels":"یک,دو"}),
+    ("chart-story", {"type":"bars","data":"12,NaN","labels":"الف,ب","emphasize":1,"unit":""}),
+    ("chart-story", {"type":"bars","data":"12,24","labels":"الف","emphasize":1,"unit":""}),
+    ("tracing-beam", {"labels":"یک,دو"}),
+    ("per-word-rise", {"text":"می‌توانیم", "split":"char"}),
+    ("cursor-text-select", {"title":"نمونه", "text":"متن درست", "phrase":"غایب"}),
+])
+def test_production_content_cannot_use_hidden_defaults_or_broken_persian(name, parameters):
+    from creative.native_motion import content_problems
+    assert content_problems(NativeMotion(resource_id="hyperframes:"+name,text="نمونه",parameters=parameters))
+
+
+def test_original_task_animation_uses_explicit_labels(tmp_path):
+    from creative.native_motion import content_problems
+    spec = NativeMotion(resource_id="hyperframes:overwhelm-surround",text="کارها",
+                        parameters={"count":8,"centerLabel":"شما","task_labels":"ایمیل,ویرایش,بررسی,انتشار,طراحی,صدا,تصویر,متن"})
+    assert not content_problems(spec, 4)
+    materialize(tmp_path,spec,"s1-native",4)
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert "var labels = String(vars.task_labels)" in source
+    assert '"Inbox",' not in source
+
+
 @pytest.mark.parametrize("name", __import__("creative.native_motion", fromlist=["source_names"]).source_names())
 def test_every_vendored_component_materializes_with_integrity(tmp_path, name):
     import hashlib

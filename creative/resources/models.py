@@ -29,6 +29,11 @@ class Parameter(ManifestModel):
     default: Any = None
     # A known default is not a validated editing contract.
     editable: bool = False
+    description: str = ""
+    required: bool = False
+    minimum: float | None = None
+    maximum: float | None = None
+    options: tuple[str, ...] = ()
 
 
 class Resource(ManifestModel):

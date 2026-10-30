@@ -8,14 +8,14 @@ function draw(){gallery.replaceChildren();const query=document.querySelector('#s
 for(const item of shown){
 const card=document.createElement('article');
 if(item.poster&&/^\/creative-previews\/[a-z0-9-]+\.png$/.test(item.poster)){
-const image=document.createElement('img');image.src=item.poster;image.loading='lazy';image.alt='نمونهٔ اجرای '+item.name;card.append(image);}
+const image=document.createElement('img');image.src=item.poster;image.loading='lazy';image.alt='نمونهٔ اجرای '+item.name;const link=document.createElement('a');link.href=item.poster;link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','نمایش تصویر کامل '+item.name);link.append(image);card.append(link);}
 const section=document.createElement('section'),title=document.createElement('h2');title.dir='ltr';title.textContent=item.name;section.append(title);
 const state=document.createElement('p');
 state.textContent=item.status==='browser-checked'?'بررسی مرورگر انجام شد · عمودی':item.status==='synthetic-frame-checked'?'اجرای افکت روی ورودی هندسی · رهگیری چهره و ویدیوی کامل آزمون نشده':item.status==='upstream-demo-checked'?'اجرای مستقیم نمونهٔ اصلی · اتصال محتوای کاربر و فارسی/عمودی هنوز تکمیل نشده':'نیازمند اصلاح؛ آمادهٔ انتخاب موتور نیست';
 section.append(state);
 if(item.use){const use=document.createElement('p');use.textContent=item.use;section.append(use);}
 const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent='ورودی‌ها و اطلاعات فنی';
-pre.textContent=JSON.stringify({resource_id:item.id,status:item.status,fixture:item.fixture,tracking_verified:item.tracking_verified,parameters:item.parameters,source_sha256:item.source_sha256,findings:item.findings},null,2);
+pre.textContent=JSON.stringify({resource_id:item.id,status:item.status,fixture:item.fixture,tracking_verified:item.tracking_verified,production_template_ready:item.production_template_ready,source_revision:item.source_revision,backward_seek_verified:item.backward_seek_verified,parameters:item.parameters,source_sha256:item.source_sha256,findings:item.findings},null,2);
 details.append(summary,pre);section.append(details);card.append(section);gallery.append(card);
 }}
 document.querySelector('#search').addEventListener('input',draw);Promise.all(['index.json','claude-effects.json','shotcraft.json','lemo.json'].map(file=>fetch('./'+file,{cache:'no-store'}).then(r=>r.ok?r.json():{items:{}}).catch(()=>({items:{}})))).then(groups=>{items=groups.flatMap(data=>Object.values(data.items));draw()}).catch(()=>{status.textContent='گالری هنوز ساخته نشده یا قابل دسترسی نیست.'});
