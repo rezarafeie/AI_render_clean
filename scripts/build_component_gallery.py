@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from creative.native_motion import NativeMotion, materialize, source_names, parameter_schema
 from creative.motion_graphic import MotionPage, write_project
+from scripts.component_examples import PERSIAN_CONTENT
 
 
 def run(args):
@@ -27,6 +28,7 @@ def run(args):
     manifest_path = output / "index.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"schema_version": 1, "items": {}}
     names = args.only or source_names()
+    failed = []
     for name in names:
         if name not in source_names():
             raise ValueError("Unknown gallery resource")
@@ -38,16 +40,29 @@ def run(args):
         if name == "overwhelm-surround":
             spec = NativeMotion(resource_id="hyperframes:"+name,text="کارها",parameters={
                 "count":8,"centerLabel":"شما","task_labels":"ایمیل,ویرایش,بررسی,انتشار,طراحی,صدا,تصویر,متن"})
-        page = MotionPage(title="Component demonstration", duration=4,
+        duration = 4
+        if args.persian and name in PERSIAN_CONTENT:
+            spec = NativeMotion(resource_id="hyperframes:"+name,text="یک شروع متفاوت",parameters=PERSIAN_CONTENT[name])
+        if name == "notes-typing":
+            duration = 12
+            spec = NativeMotion(resource_id="hyperframes:"+name,text="یادداشت",parameters={"title":"از یک ایده|تا یک ویدیو","lines":"روایت روشن|تصویر هدفمند|حرکت هماهنگ"})
+        page = MotionPage(title="Component demonstration", duration=duration,
                          scenes_html='<section class="hm-scene" id="s1"><div id="s1-native-host" class="clip" data-composition-id="s1-native" data-composition-src="compositions/s1-native.html" data-start="0" data-duration="4" data-track-index="2" style="position:absolute;inset:0"></div></section>',
-                         build_js='tl.to({}, {duration:4}, 0);')
+                         build_js=f'tl.to({{}}, {{duration:{duration}}}, 0);')
+        page.scenes_html = page.scenes_html.replace('data-duration="4"', f'data-duration="{duration}"')
         write_project(directory, page)
-        receipt = materialize(directory, spec, "s1-native", 4)
+        receipt = materialize(directory, spec, "s1-native", duration)
         row = {"id": spec.resource_id, "name": name, "status": "failed", "format": "vertical",
                "demonstration_only": True, "source_sha256": receipt["source_sha256"],
                "parameters": list(parameter_schema(name).values()), "poster": None}
+        row["adapter_version"] = receipt["adapter_version"]
+        row["adapter_sha256"] = receipt["adapter_sha256"]
+        row["materialized_sha256"] = receipt["materialized_sha256"]
+        row["fixture_language"] = "fa" if args.persian or name in {"notes-typing","overwhelm-surround"} else "mixed-demo"
+        row["numeric_values_are_synthetic"] = True
         try:
-            result = subprocess.run(["node", str(args.cli), "check", str(directory), "--at", "0.5,1,2,3", "--snapshots", "--json"],
+            times = "0.5,1,2,3" if duration == 4 else "0.5,3,7,11"
+            result = subprocess.run(["node", str(args.cli), "check", str(directory), "--at", times, "--snapshots", "--json"],
                                     capture_output=True, text=True, timeout=150)
             (directory / "check.log").write_text(result.stdout + "\n" + result.stderr)
             report = json.loads(result.stdout[result.stdout.index("{"):])
@@ -59,7 +74,7 @@ def run(args):
                 row["status"] = "browser-checked"
             pictures = report.get("snapshots", {}).get("files", [])
             if pictures:
-                selected = next((p for p in pictures if "2.0s" in p), pictures[len(pictures)//2])
+                selected = pictures[-1] if duration > 4 else next((p for p in pictures if "2.0s" in p), pictures[len(pictures)//2])
                 frame = directory / selected
                 if frame.resolve().is_relative_to(directory.resolve()) and frame.is_file():
                     shutil.copy2(frame, output / f"{name}.png")
@@ -70,6 +85,10 @@ def run(args):
         manifest["items"][row["id"]] = row
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
         print(json.dumps({"id": row["id"], "status": row["status"], "poster": row["poster"]}), flush=True)
+        if row["status"] != "browser-checked":
+            failed.append(row["id"])
+    if failed:
+        raise SystemExit("Browser checks failed: " + ", ".join(failed))
 
 
 if __name__ == "__main__":
@@ -78,4 +97,5 @@ if __name__ == "__main__":
     parser.add_argument("--gsap", type=Path, required=True)
     parser.add_argument("--cli", type=Path, required=True)
     parser.add_argument("--only", nargs="+")
+    parser.add_argument("--persian", action="store_true", help="Use explicit Persian synthetic test content, never production defaults")
     run(parser.parse_args())

@@ -9,6 +9,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        75,
+        148
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -20,6 +26,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        90,
+        178
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -31,6 +43,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        123,
+        244
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -42,6 +60,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        84,
+        166
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -53,6 +77,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        75,
+        148
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -64,6 +94,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        82,
+        163
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -75,6 +111,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        75,
+        148
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -86,6 +128,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        84,
+        166
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -97,6 +145,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        82,
+        163
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     },
@@ -108,6 +162,12 @@
       "format": "horizontal",
       "demonstration_only": true,
       "production_template_ready": false,
+      "repeated_frame_verified": true,
+      "sampled_frames": [
+        0,
+        96,
+        190
+      ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
       "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
     }

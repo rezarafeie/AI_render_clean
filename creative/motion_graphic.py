@@ -594,8 +594,8 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "") -> str:
     from .shotcraft import catalog
     parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False)]
-    from .native_motion import catalog as native_catalog
-    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + json.dumps(native_catalog(), ensure_ascii=False)
+    from .native_motion import catalog as native_catalog, CATALOG_CONTRACT
+    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps(native_catalog(), ensure_ascii=False, separators=(",", ":"))
                  + "\nUse only for the stated role and vertical format. Keep explanatory scenes custom; do not turn the entire video into titles. Omit native_component when unsuitable. Native text must match the approved headline; never add facts.")
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")

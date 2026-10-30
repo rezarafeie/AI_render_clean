@@ -1,7 +1,7 @@
 // Upstream demo compositions, not production content templates. Original pinned
 // code executes unchanged. Keep this gallery entry separate from user jobs.
 import React from 'react';
-import {Composition, registerRoot} from 'remotion';
+import {Composition, registerRoot, useCurrentFrame, delayRender, continueRender, cancelRender} from 'remotion';
 import {CardStack, CARD_STACK_DURATION} from '../../creative/shotcraft_data/demos/ui-entrance/card-stack/CardStack';
 import {TextColumnConverge, TEXT_COLUMN_CONVERGE_DURATION} from '../../creative/shotcraft_data/demos/typography/text-column-converge/TextColumnConverge';
 import {TitleDemoteToLabel, TITLE_DEMOTE_TO_LABEL_DURATION} from '../../creative/shotcraft_data/demos/typography/title-demote-to-label/TitleDemoteToLabel';
@@ -26,5 +26,41 @@ const entries = [
   ['chart-unit-regroup', UnitDotSwarmRegroupV2, UNIT_DOT_SWARM_REGROUP_V2_DURATION],
 ] as const;
 
-registerRoot(() => <>{entries.map(([name, Component, duration]) =>
-  <Composition key={name} id={'shotcraft-'+name} component={Component} width={1920} height={1080} fps={30} durationInFrames={duration}/>)}</>);
+// CSS background images are not Remotion <Img> nodes. Explicitly await their
+// decoding before capturing each sampled frame; never use an arbitrary sleep.
+const decodedTextures = new Map<string, Promise<void>>();
+const FrameReady: React.FC<React.PropsWithChildren> = ({children}) => {
+  const frame = useCurrentFrame();
+  React.useLayoutEffect(() => {
+    const handle = delayRender('Decode original demo textures and fonts');
+    let released = false;
+    const release = () => {if (!released) {released = true; continueRender(handle);}};
+    const textures: Promise<void>[] = [];
+    for (const element of document.querySelectorAll('*')) {
+      const background = getComputedStyle(element).backgroundImage;
+      for (const match of background.matchAll(/url\((?:"([^"]+)"|'([^']+)'|([^)]*))\)/g)) {
+        const source = match[1] || match[2] || match[3];
+        if (!source.startsWith('data:image/')) {cancelRender(new Error('Unapproved demo texture URL')); release(); return;}
+        if (!decodedTextures.has(source)) {
+          const image = new Image(); image.src = source;
+          decodedTextures.set(source, image.decode());
+        }
+        textures.push(decodedTextures.get(source)!);
+      }
+    }
+    Promise.all([document.fonts.ready, ...textures]).then(release, error => {
+      if (!released) cancelRender(error instanceof Error ? error : new Error('Demo resource decoding failed'));
+      release();
+    });
+    return release;
+  }, [frame]);
+  return <>{children}</>;
+};
+
+// Build wrappers once, not inside a rendering component.
+const readyEntries = entries.map(([name, Component, duration]) => {
+  const ReadyDemo: React.FC = () => <FrameReady><Component/></FrameReady>;
+  return {name, ReadyDemo, duration};
+});
+registerRoot(() => <>{readyEntries.map(({name, ReadyDemo, duration}) =>
+  <Composition key={name} id={'shotcraft-'+name} component={ReadyDemo} width={1920} height={1080} fps={30} durationInFrames={duration}/>)}</>);

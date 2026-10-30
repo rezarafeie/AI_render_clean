@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {bundle} from '@remotion/bundler';
 import {getCompositions, renderStill} from '@remotion/renderer';
@@ -24,20 +25,38 @@ const serveUrl=await bundle({entryPoint:path.join(here,'src/shotcraft-gallery.ts
   webpackOverride:config=>({...config,resolve:{...config.resolve,modules:[nodeModules,...(config.resolve?.modules||[])]}})});
 const browserExecutable=process.env.REMOTION_BROWSER_EXECUTABLE||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const compositions=await getCompositions(serveUrl,{browserExecutable});
-const items={};
-for(const composition of compositions) {
+const only=process.argv[2];
+if(only&&!compositions.some(c=>c.id===only)) throw Error('Unknown gallery composition');
+const items=only?JSON.parse(fs.readFileSync(path.join(output,'shotcraft.json'),'utf8')).items:{};
+for(const composition of compositions.filter(c=>!only||c.id===only)) {
   const name=composition.id;
   try {
-    await renderStill({serveUrl,composition,frame:Math.max(0,composition.durationInFrames-2),
-      output:path.join(output,name+'.png'),browserExecutable,imageFormat:'png'});
+    const sample=Math.floor(composition.durationInFrames/2);
+    let repeated,firstBuffer;
+    for(const frame of [sample,0,composition.durationInFrames-2,sample]) {
+      const {buffer}=await renderStill({serveUrl,composition,frame,output:null,browserExecutable,imageFormat:'png'});
+      if(!buffer) throw Error('Missing rendered frame');
+      const hash=crypto.createHash('sha256').update(buffer).digest('hex');
+      if(frame===sample&&repeated&&hash!==repeated) {
+        const evidence=fs.mkdtempSync(path.join(os.tmpdir(),'shotcraft-determinism-'));
+        fs.writeFileSync(path.join(evidence,'first.png'),firstBuffer);
+        fs.writeFileSync(path.join(evidence,'repeated.png'),buffer);
+        console.log(JSON.stringify({id:name,evidence}));
+        throw Error('Repeated frame is not deterministic');
+      }
+      if(frame===sample) {repeated=hash;firstBuffer=buffer;}
+      if(frame===composition.durationInFrames-2) fs.writeFileSync(path.join(output,name+'.png'),buffer);
+    }
     items[name]={id:name,name,status:'upstream-demo-checked',poster:'/creative-previews/'+name+'.png',
       format:'horizontal',demonstration_only:true,production_template_ready:false,
+      repeated_frame_verified:true,sampled_frames:[0,sample,composition.durationInFrames-2],
       source_revision:'5a2e98daade313c4f376120f38427eb19a108e8c',
       use:'Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.'};
     console.log(JSON.stringify({id:name,status:'upstream-demo-checked'}));
   } catch(error) {
     items[name]={id:name,name,status:'failed',poster:null,error:error.name};
-    console.log(JSON.stringify({id:name,status:'failed',error:error.name}));
+    console.log(JSON.stringify({id:name,status:'failed',error:error.message}));
   }
   fs.writeFileSync(path.join(output,'shotcraft.json'),JSON.stringify({schema_version:1,items},null,2));
 }
+if(Object.values(items).some(item=>item.status==='failed')) process.exitCode=1;

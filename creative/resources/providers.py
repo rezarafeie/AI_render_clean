@@ -31,6 +31,7 @@ def hyperframes_resources():
         return tuple(Parameter(name=k, value_type="number" if v["type"] == "number" else "boolean" if v["type"] == "boolean" else "string",
                                default=v.get("default"), editable=True, description=v.get("description") or v.get("label", ""),
                                required=v.get("role")=="content", minimum=v.get("min"), maximum=v.get("max"),
+                               max_length=v.get("maxLength"),
                                options=tuple(o["value"] for o in v.get("options", [])))
                      for k,v in parameter_schema(name).items())
     # The index owns membership/version. Profiles only enrich matching items;

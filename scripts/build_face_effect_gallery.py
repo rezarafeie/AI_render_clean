@@ -66,6 +66,8 @@ def main():
         manifest["items"][row["id"]] = row
         print(json.dumps({"id":row["id"], "status":row["status"]}), flush=True)
     (output / "claude-effects.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+    if any(row["status"] == "failed" for row in manifest["items"].values()):
+        raise SystemExit("One or more effect compositor checks failed; inspect retained manifest")
 
 
 if __name__ == "__main__":

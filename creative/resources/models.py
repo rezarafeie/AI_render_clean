@@ -33,6 +33,7 @@ class Parameter(ManifestModel):
     required: bool = False
     minimum: float | None = None
     maximum: float | None = None
+    max_length: int | None = None
     options: tuple[str, ...] = ()
 
 

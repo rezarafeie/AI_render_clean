@@ -16,6 +16,33 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "assets/hyperframes_components"
 LEGACY_INPUTS = ("hyperframes:headline-slam", "hyperframes:cta-close", "hyperframes:count-up")
+# Limits taken from the pinned source's text(v, fallback, max) helpers. Reject
+# before those helpers can silently truncate approved copy or insert demo copy.
+TEXT_LIMITS = {
+    "marker-checklist-card":{"top":12,"mid":6,"circled":8,"rest":10,"l1":9,"v1":9,"l2":9,"v2":9,"l3":9,"v3":9},
+    "social-proof-card":{"brand":26,"proof":34,"cta":30,"f1":30,"f2":30,"f3":30},
+    "notes-typing":{"title":60,"lines":240},
+}
+# Visible labels not exposed by the upstream variable declarations. These are
+# adapter-owned content slots, not arbitrary selectors supplied by a model.
+EXTRA_TEXT = {
+    "match-cut": [("result_caption", ".mc-kicker", None)],
+    "pull-back-reveal": [("detail_label", ".pbr-detail-label", None), ("detail_context", ".pbr-detail-context", None),
+                         ("support_a_label", ".pbr-support-label", 0), ("support_a_value", ".pbr-support-value", 0),
+                         ("support_b_label", ".pbr-support-label", 1), ("support_b_value", ".pbr-support-value", 1)],
+    "focus-rack": [("workspace_label", ".fr-kicker", None)],
+    "avatar-cloud": [("community_label", ".ac-kicker", None)],
+    "tracing-beam": [("step_1", ".tb-kicker", 0),("step_2", ".tb-kicker", 1),("step_3", ".tb-kicker", 2)],
+}
+CATALOG_CONTRACT = (
+    'Every entry executes pinned original HyperFrames code, never model-rewritten JS. Vertical only. '
+    'Optional scene field: native_component={"resource_id":"entry.id","text":"exact approved headline","parameters":{...}}. '
+    'Supply every required_content parameter, including explicit empty optional copy. Respect types, options, min/max and maxLength. '
+    'Counts must match complete nonempty labels. Chart data: 2–12 finite factual values and matching labels. Tracing-beam: exactly three labels. '
+    'Persian per-word-rise requires split=word. Never copy upstream demo claims, brands or statistics. Values are data, never JS. '
+    'All entries passed sampled portrait browser checks with synthetic Persian examples, not certification of every input/duration or encoded output. '
+    'These are visual building blocks, not permission to turn an explainer into a sequence of titles.'
+)
 # Explicitly reviewed browser runs; new files/catalog rows never enable themselves.
 SUPPORTED = tuple("hyperframes:" + name for name in (
     "beat-timeline", "chart-story", "conic-progress-ring", "constellation-hub", "count-up",
@@ -50,6 +77,19 @@ def parameter_schema(name: str):
     if name == "overwhelm-surround":
         result["task_labels"] = {"id":"task_labels", "type":"string", "role":"content", "label":"Task labels",
                                  "description":"Comma-separated task labels, exactly count entries. Explicit content replaces the original fixed English demo labels."}
+    if name == "cursor-text-select":
+        result["meta_label"] = {"id":"meta_label", "type":"string", "role":"content", "label":"Document status",
+                                "description":"Small document-status label. Explicit text replaces the original English draft-status demo."}
+    extra = [key for key, _, _ in EXTRA_TEXT.get(name, [])]
+    if name == "pan-stations":
+        extra.append("station_kind")
+    if name == "beat-timeline":
+        extra.extend(["cue_label", "time_unit"])
+    for key in extra:
+        result[key] = {"id":key, "type":"string", "role":"content", "label":key.replace("_", " "),
+                       "description":"Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."}
+    for key, maximum in TEXT_LIMITS.get(name, {}).items():
+        result[key] = {**result[key], "minLength":1, "maxLength":maximum}
     return result
 
 
@@ -74,6 +114,16 @@ def content_problems(spec, duration=None):
             problems.append(f"{labels} must contain exactly {count} nonempty labels; demo fallbacks are forbidden")
     if name == "tracing-beam" and (len(parts("labels")) != 3 or not all(parts("labels"))):
         problems.append("tracing-beam requires three explicit nonempty labels")
+    list_bounds = {"grid-card-assemble":("items",3,12),"radial-surround":("chips",1,12),
+                   "state-chip-rail":("states",2,8),"notification-stack":("titles",1,5)}
+    if name in list_bounds:
+        key, minimum, maximum = list_bounds[name]
+        if not minimum <= len(parts(key)) <= maximum or not all(parts(key)):
+            problems.append(f"{key} requires {minimum}–{maximum} explicit nonempty entries; silent list truncation is forbidden")
+    if name == "notification-stack" and len(parts("bodies")) != len(parts("titles")):
+        problems.append("Every notification title requires a corresponding body slot, which may be explicitly empty")
+    if name == "notes-typing" and (not 1 <= len(str(p["lines"]).split("|")) <= 6 or not all(v.strip() for v in str(p["lines"]).split("|"))):
+        problems.append("notes-typing requires 1–6 nonempty lines; silent removal or truncation is forbidden")
     if name == "chart-story":
         try:
             values = [float(v) for v in parts("data")]
@@ -131,8 +181,12 @@ class NativeMotion(BaseModel):
                 if not isinstance(value, bool):
                     raise ValueError(f"Boolean required: {key}")
             elif kind in {"string", "enum", "color"}:
-                if not isinstance(value, str) or len(value) > 1200 or any(c in value for c in "<>&"):
+                if not isinstance(value, str) or len(value) > 1200 or any(c in value for c in "<>"):
                     raise ValueError(f"Bounded plain text required: {key}")
+                if item.get("minLength") and not value.strip():
+                    raise ValueError(f"Nonempty content required to avoid demo fallback: {key}")
+                if len(value.encode("utf-16-le", errors="surrogatepass")) // 2 > item.get("maxLength", 1200):
+                    raise ValueError(f"Content exceeds source limit; silent truncation forbidden: {key}")
                 if kind == "enum" and value not in [o["value"] for o in item.get("options", [])]:
                     raise ValueError(f"Unknown enum value: {key}")
                 if kind == "color" and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
@@ -150,19 +204,18 @@ def catalog():
     for key in SUPPORTED:
         name = key.split(":")[1]
         profile = profiles.get(name, {})
-        result.append({"id":key, "execution":"vendored-hyperframes-code", "format":"vertical",
+        result.append({"id":key,
                        "description":entries.get(name, {}).get("description", name),
                        "best_for":profile.get("best_for", []), "avoid_when":profile.get("avoid_when", []),
-                       "inputs":{"resource_id":key,"text":"short exact approved headline", "parameters":{
+                       "inputs":{"parameters":{
                            k: {"type":v["type"], "description":(v.get("description") or v.get("label", ""))[:100],
                                **({"min":v["min"]} if "min" in v else {}),
                                **({"max":v["max"]} if "max" in v else {}),
+                               **({"maxLength":v["maxLength"]} if "maxLength" in v else {}),
                                **({"options":[o["value"] for o in v["options"]]} if "options" in v else {})}
                            for k,v in parameter_schema(name).items()},
                            "required_content":[k for k,v in parameter_schema(name).items() if v.get("role")=="content"]},
-                       "minimum_seconds":10 if name=="notes-typing" else 2.5,
-                       "contract":"Supply every required_content parameter explicitly, including empty optional copy. Counts must match complete nonempty label lists; charts require finite factual data and one label per datum; tracing-beam needs exactly three labels. Persian per-word-rise must use split=word. Do not retain upstream demo claims, brands or statistics. Data only, never JS; original source executes.",
-                       "certification":"Portrait demo browser-checked, not certification of every copy, duration, RTL input or encoded output."})
+                       "minimum_seconds":10 if name=="notes-typing" else 2.5})
     return result
 
 
@@ -203,6 +256,26 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
         text, count = re.subn(r"var vars = Object\.assign\([^;]+;", lambda _: "var vars = " + payload + ";", text, count=1)
         if count != 1:
             raise ValueError("Cursor variable contract changed")
+    bindings = [row for row in EXTRA_TEXT.get(name, []) if row[0] in spec.parameters]
+    if bindings:
+        binding_code = '''
+          BINDINGS.forEach(function(binding){
+            var nodes=root.querySelectorAll(binding[1]);
+            Array.from(nodes).forEach(function(node,index){
+              if(binding[2]!==null && index!==binding[2])return;
+              Array.from(node.childNodes).forEach(function(child){if(child.nodeType===3)child.remove();});
+              node.appendChild(document.createTextNode(vars[binding[0]]));
+            });
+          });
+'''.replace("BINDINGS", json.dumps(bindings))
+        text = text.replace("var vars = " + payload + ";", "var vars = " + payload + ";" + binding_code, 1)
+    if name == "pan-stations" and "station_kind" in spec.parameters:
+        text = text.replace("kicker.innerHTML = '<span>Feature station</span><span class=\"ps-index\"></span>';",
+                            "kicker.innerHTML = '<span></span><span class=\"ps-index\"></span>'; kicker.firstElementChild.textContent=vars.station_kind;")
+    if name == "beat-timeline" and "cue_label" in spec.parameters:
+        text = text.replace('"Cue " +', 'String(vars.cue_label) + " " +')
+        text = text.replace('(i * timedInterval).toFixed(2) +\n                "s";',
+                            '(i * timedInterval).toFixed(2) + " " + String(vars.time_unit);')
     text = re.sub(r'<script src="https://cdn\.jsdelivr\.net/[^\"]+"></script>', "", text)
     text = text.replace('id="root"', f'id="{instance}"').replace('#root', f'#{instance}')
     text = text.replace('getElementById("root")', f'getElementById("{instance}")')
@@ -223,7 +296,46 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
         text = text.replace('for (var i = 0; i < phrase.length; i++) {',
                             'var rtlPhrase = /[\\u0600-\\u06ff]/.test(phrase); var units = rtlPhrase ? (phrase.match(/\\S+\\s*/g) || []) : Array.from(phrase); for (var i = 0; i < units.length; i++) {')
         text = text.replace('span.textContent = phrase[i];', 'span.textContent = units[i];')
+        text = text.replace('span.textContent = units[i];', 'span.textContent = units[i]; if(rtlPhrase){span.style.display="inline-block";span.style.whiteSpace="pre";span.style.marginInline=".15em";}')
         text = text.replace('box.l + (box.r - box.l) * frac', '(rtlPhrase ? box.r - (box.r - box.l) * frac : box.l + (box.r - box.l) * frac)')
+        if "meta_label" in spec.parameters:
+            text = text.replace('var text = String(vars.text || DEFAULTS.text || "");',
+                                'root.querySelector(".ts-meta").textContent=vars.meta_label; var text = String(vars.text || DEFAULTS.text || "");')
+        # Original render() remeasures words while switching font weights on
+        # every seek. Freeze both layouts once, after local fonts are ready.
+        start, end = text.index('          function render(t) {'), text.index('          var clock = { t: 0 };')
+        render = text[start:end].replace('charBox(', 'cachedCharBox(')
+        replacements = {
+            'offsetIn(para.parentNode)': 'cardGeometry',
+            'para.parentNode.offsetWidth': 'cardWidth',
+            'toolbar.offsetWidth': 'toolbarWidth',
+            'toolbar.offsetHeight': 'toolbarHeight',
+            'boldBtn.offsetLeft': 'boldLeft', 'boldBtn.offsetTop': 'boldTop',
+            'boldBtn.offsetWidth': 'boldWidth', 'boldBtn.offsetHeight': 'boldHeight',
+            'offsetIn(para)': 'paraGeometry',
+            'para.offsetWidth': 'paraWidth', 'para.offsetHeight': 'paraHeight',
+        }
+        for old, new in replacements.items():
+            render = render.replace(old, new)
+        render = render.replace('var n = chars.length;', 'activeBoxes = normalBoxes; var n = chars.length;')
+        render = render.replace('var start = { x:', 'activeBoxes = bold ? boldBoxes : normalBoxes; var start = { x:')
+        measurements = '''
+          var normalBoxes=chars.map(function(_,k){return charBox(k);});
+          chars.forEach(function(el){el.classList.add("is-bold");});
+          var boldBoxes=chars.map(function(_,k){return charBox(k);});
+          chars.forEach(function(el){el.classList.remove("is-bold");});
+          var activeBoxes=normalBoxes;
+          function cachedCharBox(k){return activeBoxes[k];}
+          var cardGeometry=offsetIn(para.parentNode),cardWidth=para.parentNode.offsetWidth;
+          var toolbarWidth=toolbar.offsetWidth,toolbarHeight=toolbar.offsetHeight;
+          var boldLeft=boldBtn.offsetLeft,boldTop=boldBtn.offsetTop,boldWidth=boldBtn.offsetWidth,boldHeight=boldBtn.offsetHeight;
+          var paraGeometry=offsetIn(para),paraWidth=para.offsetWidth,paraHeight=para.offsetHeight;
+'''
+        text = text[:start] + measurements + render + text[end:]
+        text = text.replace('var box = charBox(k);', 'var box = cachedCharBox(k);')
+        text = text.replace('          var W = root.clientWidth || 1920;', '          function buildReady(){\n          var W = root.clientWidth || 1920;')
+        text = text.replace('window.__timelines[compositionId] = tl;',
+                            'window.__timelines[compositionId] = tl;\n} if(document.fonts && document.fonts.ready){document.fonts.ready.then(buildReady);}else{buildReady();}')
     text = re.sub(r'data-(?:composition-)?duration="[0-9.]+"', f'data-duration="{duration:.3f}"', text)
     if name == "count-up":
         # Localize only the existing deterministic formatter, not its counter.
@@ -231,6 +343,15 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
     if name == "marker-checklist-card":
         text = re.sub(r'@font-face\s*\{[^}]+\}', '', text)
         text = text.replace('"Permanent Marker", cursive', 'Ray, sans-serif').replace('"Courier Prime", monospace', 'Vazir, monospace')
+    if name == "notes-typing":
+        # Keep the original caret/timeline, but Persian shaping requires a whole
+        # connected word per span, never one opaque span per joined character.
+        text = text.replace('line.split("").forEach(function (ch) {',
+                            'var rtlLine = /[\\u0600-\\u06ff]/.test(line); (rtlLine ? (line.match(/\\S+\\s*/g) || []) : line.split("")).forEach(function (ch) {')
+        text = text.replace('chars.push({ el: s, line: li });', 'chars.push({ el: s, line: li, rtl: rtlLine });')
+        text = text.replace('(r.right - bodyRect.left) / scale', '((c.rtl ? r.left : r.right) - bodyRect.left) / scale')
+        text = text.replace('t += KEY_GAPS[i % KEY_GAPS.length] / speed;',
+                            't += KEY_GAPS[i % KEY_GAPS.length] * (c.rtl ? Math.max(1, c.el.textContent.length) : 1) / speed;')
     # Per-source typography fixes for the metrics of the shipped Persian fonts.
     # Do not silence checks: increase the actual line boxes / fix real contrast.
     corrections = {
@@ -246,7 +367,8 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
         "tracing-beam": ".tb-label{line-height:1.8;font-size:26px;white-space:normal;overflow-wrap:anywhere}",
         "svg-mask-reveal": ".smr-mask-text,.smr-outline{font-size:170px}",
         "social-proof-card": ".spc-proof{color:#32689f}",
-        "cursor-text-select": ".ts-title{line-height:1.5;margin-bottom:8cqw}.ts-para{line-height:1.8}.ts-meta{color:#596278}",
+        "cursor-text-select": ".ts-title{line-height:1.5;margin-bottom:8cqw}.ts-para{line-height:1.8}.ts-meta{color:#596278;letter-spacing:normal}",
+        "notes-typing": ".nty-title{line-height:1.5}",
     }
     if name in corrections:
         text = text.replace('</style>', corrections[name] + '</style>', 1)
@@ -276,5 +398,7 @@ def materialize(project: Path, spec: NativeMotion, instance: str, duration: floa
         (target.parent / filename).write_bytes((SOURCES / filename).read_bytes())
     return {"resource_id": spec.resource_id, "instance": instance,
             "integration": "vendored-code-execution", "source_sha256": digest,
-            "source_revision": "3b2058a2b7a2", "adapter_version": 1,
+            "source_revision": "3b2058a2b7a2", "adapter_version": 2,
+            "adapter_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "materialized_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
             "code_license": "Apache-2.0", "render_verified": False}

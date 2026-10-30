@@ -15,6 +15,7 @@ def test_gallery_has_real_local_images_and_truthful_status(filename, count):
     rows = json.loads((GALLERY / filename).read_text())["items"]
     assert len(rows) == count
     for row in rows.values():
+        assert row["status"] == ("browser-checked" if filename == "index.json" else "synthetic-frame-checked" if filename == "claude-effects.json" else "upstream-demo-checked")
         assert re.fullmatch(r"/creative-previews/[a-z0-9-]+\.png", row["poster"])
         image = GALLERY / row["poster"].rsplit("/",1)[1]
         assert image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
@@ -33,3 +34,12 @@ def test_vendored_lemo_and_shotcraft_dependencies_are_pinned():
             source = (base / name).resolve()
             assert source.is_relative_to(base.resolve())
             assert hashlib.sha256(source.read_bytes()).hexdigest() == expected
+
+
+def test_every_generic_adapter_has_explicit_valid_persian_test_content():
+    from creative.native_motion import NativeMotion, SUPPORTED, LEGACY_INPUTS, content_problems
+    from scripts.component_examples import PERSIAN_CONTENT
+    assert set(PERSIAN_CONTENT) == {s.split(":")[1] for s in SUPPORTED if s not in LEGACY_INPUTS}
+    for name, values in PERSIAN_CONTENT.items():
+        spec = NativeMotion(resource_id="hyperframes:"+name,text="نمونه",parameters=values)
+        assert not content_problems(spec, 20), (name, content_problems(spec, 20))

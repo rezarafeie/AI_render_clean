@@ -71,6 +71,10 @@ def test_planner_discovers_native_code_separately_from_references():
     assert "EXECUTABLE COMPONENTS" in request
     assert "hyperframes:count-up" in request
     assert "AVAILABLE SHOTCRAFT REFERENCES" in request
+    from creative.native_motion import CATALOG_CONTRACT, SUPPORTED
+    assert request.count(CATALOG_CONTRACT) == 1
+    assert all(resource in request for resource in SUPPORTED)
+    assert len(request) < 50_000  # Shared instructions must not be duplicated 45 times.
 
 
 def test_native_failure_never_enters_plain_title_isolation(tmp_path):
@@ -88,12 +92,24 @@ def test_upstream_parameter_schema_is_enforced():
             NativeMotion(resource_id="hyperframes:line-swap", text="تغییر", parameters=params)
 
 
+@pytest.mark.parametrize("name,key,value", [("marker-checklist-card","top","این متن بیش از حد طولانی است"),
+                                            ("social-proof-card","proof",""),
+                                            ("notes-typing","title","الف"*61)])
+def test_copy_is_rejected_instead_of_silently_truncated_or_replaced(name,key,value):
+    with pytest.raises(ValidationError):
+        NativeMotion(resource_id="hyperframes:"+name,text="نمونه",parameters={key:value})
+
+
 def test_namespaces_nested_ids(tmp_path):
     spec = NativeMotion(resource_id="hyperframes:cursor-text-select", text="نمونه", parameters={"title":"نمونه", "text":"متن نمونه", "phrase":"نمونه"})
     materialize(tmp_path, spec, "s4-native", 4)
     source = (tmp_path / "compositions/s4-native.html").read_text()
     assert 'getElementById("s4-native-ts-title")' in source
     assert 'id="ts-title"' not in source
+    render = source.split('function render(t) {')[1].split('var clock = { t: 0 };')[0]
+    assert 'offsetIn(' not in render
+    assert '.offsetWidth' not in render and '.offsetHeight' not in render
+    assert 'document.fonts.ready.then(buildReady)' in source
 
 
 def test_namespacing_never_changes_matching_class_names(tmp_path):
@@ -137,6 +153,37 @@ def test_original_task_animation_uses_explicit_labels(tmp_path):
     source = (tmp_path / "compositions/s1-native.html").read_text()
     assert "var labels = String(vars.task_labels)" in source
     assert '"Inbox",' not in source
+
+
+def test_notes_keep_connected_persian_words_and_caret_direction(tmp_path):
+    spec = NativeMotion(resource_id="hyperframes:notes-typing",text="یادداشت",
+                        parameters={"title":"روایت", "lines":"می‌توانیم بهتر بسازیم"})
+    materialize(tmp_path,spec,"s1-native",12)
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert 'rtlLine ? (line.match(/\\S+\\s*/g)' in source
+    assert 'c.rtl ? r.left : r.right' in source
+    assert 'c.rtl ? Math.max(1, c.el.textContent.length)' in source
+
+
+def test_supporting_demo_claims_have_required_typed_bindings(tmp_path):
+    from creative.native_motion import parameter_schema, content_problems
+    from scripts.component_examples import PERSIAN_CONTENT
+    name = "pull-back-reveal"
+    assert parameter_schema(name)["support_a_value"]["role"] == "content"
+    spec = NativeMotion(resource_id="hyperframes:"+name,text="ایده",parameters=PERSIAN_CONTENT[name])
+    assert not content_problems(spec, 4)
+    materialize(tmp_path,spec,"s1-native",4)
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert '["support_a_value", ".pbr-support-value", 0]' in source
+    assert 'node.appendChild(document.createTextNode(vars[binding[0]]))' in source
+    assert content_problems(spec.model_copy(update={"parameters":{"detail_text":"ایده","headline":"روایت"}}))
+
+
+def test_plain_ampersand_is_data_not_html(tmp_path):
+    spec = NativeMotion(resource_id="hyperframes:text-shimmer",text="R&D",parameters={"text":"R&D"})
+    materialize(tmp_path,spec,"s1-native",4)
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert 'R\\u0026D' in source
 
 
 @pytest.mark.parametrize("name", __import__("creative.native_motion", fromlist=["source_names"]).source_names())

@@ -39,12 +39,31 @@
           "label": "Labels",
           "description": "Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N.",
           "default": "One,Two,Three,Four"
+        },
+        {
+          "id": "cue_label",
+          "type": "string",
+          "role": "content",
+          "label": "cue label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "time_unit",
+          "type": "string",
+          "role": "content",
+          "label": "time unit",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/beat-timeline.png",
+      "adapter_version": 2,
+      "adapter_sha256": "4968b7a59fab0b745299dd5e38a2d4ef190972e91b549606ff074e586bc6c836",
+      "materialized_sha256": "bd48b8c8d0e645e39aff9aa187a6c696e15af64c64369bd8083b00717675c3f3",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "d1c08a9bf01574e0871ad23663bd482ea3653b02026d19c91e4542db260c66a6"
+      "poster_sha256": "738959967f89cbf7567cd1e6bfd19ce1b11b01eb8a9e6edcc3fe338b92e0a912"
     },
     "hyperframes:chart-story": {
       "id": "hyperframes:chart-story",
@@ -159,6 +178,8 @@
         }
       ],
       "poster": "/creative-previews/chart-story.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -167,7 +188,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "2ff3c1f9e5ca382b795b06db088bb435b5aac33808cd1cf895900cebbdb2ce6c"
+      "poster_sha256": "130b64f5dad8ef0431e03d6977e75b8760b72244762dc4458d32d1d9c8a865d8"
     },
     "hyperframes:conic-progress-ring": {
       "id": "hyperframes:conic-progress-ring",
@@ -211,9 +232,11 @@
         }
       ],
       "poster": "/creative-previews/conic-progress-ring.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "1b364725573b57b41b2feb9ecb18a9a13681aaf39ef0b5b563d82d82b96730a9"
+      "poster_sha256": "f2c6d7256002305ec92be3df4ba2860337ea45bcfa6f94a8d81460fbfc0d9700"
     },
     "hyperframes:constellation-hub": {
       "id": "hyperframes:constellation-hub",
@@ -293,6 +316,8 @@
         }
       ],
       "poster": "/creative-previews/constellation-hub.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -311,7 +336,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "e7a46d0e3802b4126b9798a9d63cf95ca8c04181a956b5b012d8860bbf942c8e"
+      "poster_sha256": "82efb6578904483b0427603f5a5fe2852dd970d4e992349780eaf846ccae58d9"
     },
     "hyperframes:count-up": {
       "id": "hyperframes:count-up",
@@ -409,6 +434,8 @@
         }
       ],
       "poster": "/creative-previews/count-up.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
       "poster_sha256": "7880645e0e90f69a247faf69fa815d8e42626890f0389492d84f708e71d4b90c"
@@ -469,9 +496,11 @@
         }
       ],
       "poster": "/creative-previews/cta-lockup.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "55251bf5eacb039be42a2c61eba6dca58cf72b0f489bc9144f1b7ac3d74b1fb7"
+      "poster_sha256": "a23e48243e3e3b32c2864b87749f843f3fc0ec3f1706db272a1632882a21e574"
     },
     "hyperframes:cta-close": {
       "id": "hyperframes:cta-close",
@@ -543,6 +572,8 @@
         }
       ],
       "poster": "/creative-previews/cta-close.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
       "poster_sha256": "e7a90a8bb847ed668af864c2aafd80fba41503d1a476f9289280431501897d7d"
@@ -604,6 +635,8 @@
         }
       ],
       "poster": "/creative-previews/headline-slam.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
       "poster_sha256": "21dcc04e5442e8ae47b243548b74639008a04f3749b2f9f56a02d516b3c4fffd"
@@ -694,6 +727,8 @@
         }
       ],
       "poster": "/creative-previews/kinetic-type-swap.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -707,7 +742,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "c3f75beaf0a994013226e255ccbda397186be70afaaca048a0654e9dd1fce699"
+      "poster_sha256": "28835d397a4a178c395de1d74bbae0d5447c42ddce9384ae3a135c74f77b2eee"
     },
     "hyperframes:line-swap": {
       "id": "hyperframes:line-swap",
@@ -798,6 +833,8 @@
         }
       ],
       "poster": "/creative-previews/line-swap.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -811,7 +848,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "60ad67127bef86784439dd251e7d2ec594cf6bbf23414fa25d560656ff6afd9b"
+      "poster_sha256": "7885acd068d01be1a7372af93090c90e66ac181c7177d3b18ff0df91a2706cfa"
     },
     "hyperframes:marker-highlight": {
       "id": "hyperframes:marker-highlight",
@@ -920,9 +957,11 @@
         }
       ],
       "poster": "/creative-previews/marker-highlight.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "53e7ed124639f54b8c2ffe0df455179ab277b25a152ff78ea57f7c0e548b4b23"
+      "poster_sha256": "145bdda28853d8d973ddcef5e79a848e6e5b4d3874122f8847ec4142ea572241"
     },
     "hyperframes:marker-checklist-card": {
       "id": "hyperframes:marker-checklist-card",
@@ -1014,6 +1053,8 @@
         }
       ],
       "poster": "/creative-previews/marker-checklist-card.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -1167,7 +1208,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "953fef09e60ca89d688e2b996d9afeb326f2c65e0344b5eab9cdcc6106de6ed4"
+      "poster_sha256": "408349d70aaa9911a26c99a7339619f1f848a7a84c6d465208ceb8e143fdc110"
     },
     "hyperframes:match-cut": {
       "id": "hyperframes:match-cut",
@@ -1214,9 +1255,21 @@
           "label": "Scene B label",
           "description": "Result text revealed after the cut.",
           "default": "Done"
+        },
+        {
+          "id": "result_caption",
+          "type": "string",
+          "role": "content",
+          "label": "result caption",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/match-cut.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "f9fccc4d92f2df576ef1d978e3c4aae86b2a73fe73962c2aabd1ecc89f9aa4de",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -1230,7 +1283,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "8cd612af337582415b1fafc2a7b038b313bc3f855cfcd7107d98d25e6c20c6ee"
+      "poster_sha256": "c88c7a0b67977fe2255b8d3923c6cf0382650674ce9293d59fcbd65737f42415"
     },
     "hyperframes:notification-stack": {
       "id": "hyperframes:notification-stack",
@@ -1321,9 +1374,11 @@
         }
       ],
       "poster": "/creative-previews/notification-stack.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "18222bf895d944ca53b61326cfcc4a989f9801ec141c9301ad0234ec476d36fa"
+      "poster_sha256": "dc20b0dbde361651db83e6e1abae3311d523494bf0c623c17ebbceec16186a7d"
     },
     "hyperframes:native-notification-pop": {
       "id": "hyperframes:native-notification-pop",
@@ -1433,9 +1488,11 @@
         }
       ],
       "poster": "/creative-previews/native-notification-pop.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "48b5f288ea3ee0eac004ad067a349cccf02c6328d9c0ce378dc94f23eddc555a"
+      "poster_sha256": "ddda493f1f22decd110546beb884c49113ed02a28ef23737690a5e9726933222"
     },
     "hyperframes:notes-typing": {
       "id": "hyperframes:notes-typing",
@@ -1474,9 +1531,11 @@
         }
       ],
       "poster": "/creative-previews/notes-typing.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "d046a304c4528383863144b473cb7d78cd3a9caab93980d20b4845486a5580fe"
+      "poster_sha256": "4764c56ab21cc76b3f74858aa7c3f54874009377d2c140499561adecd6f068f1"
     },
     "hyperframes:overwhelm-surround": {
       "id": "hyperframes:overwhelm-surround",
@@ -1525,6 +1584,8 @@
         }
       ],
       "poster": "/creative-previews/overwhelm-surround.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -1621,6 +1682,8 @@
         }
       ],
       "poster": "/creative-previews/radial-surround.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -1629,7 +1692,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "1f9e0617c9acc2c61700c3038969726341f3e2f388a487ef49f79beed9c1ff17"
+      "poster_sha256": "f555fed69d70c87846ad9044cd91fb9df65b6aed42a6c6b0303766b18806c7ab"
     },
     "hyperframes:pan-stations": {
       "id": "hyperframes:pan-stations",
@@ -1669,9 +1732,21 @@
           "max": 2,
           "step": 0.1,
           "unit": "s"
+        },
+        {
+          "id": "station_kind",
+          "type": "string",
+          "role": "content",
+          "label": "station kind",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/pan-stations.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "7041b604e1087f90d59f551fd94d3a315e614804f67977f8b9d9b9569f3617ab",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -1785,7 +1860,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "78a8d0afc3438bc12991b42f965b81d8ad94b30fd7f0df73ad278282cbaaf7d9"
+      "poster_sha256": "95477fafeb8508d2e3506e6d9c9c089692fa1af3840821dbff52af4433bbe35f"
     },
     "hyperframes:per-word-rise": {
       "id": "hyperframes:per-word-rise",
@@ -1875,9 +1950,11 @@
         }
       ],
       "poster": "/creative-previews/per-word-rise.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "4a68d438d490a7fcc13d9c9638f278252f5561ea25a213598200c3a02a4ea974"
+      "poster_sha256": "9a0a03e19e8cef65eefa3913e59dd84728cc113663381d89da0f69381fdeeb15"
     },
     "hyperframes:perspective-marquee": {
       "id": "hyperframes:perspective-marquee",
@@ -1963,33 +2040,10 @@
         }
       ],
       "poster": "/creative-previews/perspective-marquee.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
-        },
-        {
-          "section": "layout",
-          "code": "canvas_overflow",
-          "severity": "info"
-        },
         {
           "section": "layout",
           "code": "container_overflow",
@@ -1999,9 +2053,19 @@
           "section": "layout",
           "code": "canvas_overflow",
           "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
         }
       ],
-      "poster_sha256": "1f5703eafc05cd80e315119518637d26ea1a56e51a5daad25029fc0caa1d353c"
+      "poster_sha256": "dfb1cf39b0a99f39731f92ccb7deb65d1cc3da0c0537c112a5637caec3a6d319"
     },
     "hyperframes:pull-back-reveal": {
       "id": "hyperframes:pull-back-reveal",
@@ -2048,9 +2112,56 @@
               "label": "Violet"
             }
           ]
+        },
+        {
+          "id": "detail_label",
+          "type": "string",
+          "role": "content",
+          "label": "detail label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "detail_context",
+          "type": "string",
+          "role": "content",
+          "label": "detail context",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "support_a_label",
+          "type": "string",
+          "role": "content",
+          "label": "support a label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "support_a_value",
+          "type": "string",
+          "role": "content",
+          "label": "support a value",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "support_b_label",
+          "type": "string",
+          "role": "content",
+          "label": "support b label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "support_b_value",
+          "type": "string",
+          "role": "content",
+          "label": "support b value",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/pull-back-reveal.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "257025d9d3f18cb7976b7d445acd7bbf1f591b677885bdcd607d13def63c3c7d",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2094,7 +2205,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "cfe66d7d1d4a09dfab7ab509a4d7627e07c289371fe68096e7a23e0f17af89fd"
+      "poster_sha256": "6746110747a10c0f195461b1db2cb36585be730ca4b81a1a65745d0e7277b5a4"
     },
     "hyperframes:push-in": {
       "id": "hyperframes:push-in",
@@ -2136,6 +2247,8 @@
         }
       ],
       "poster": "/creative-previews/push-in.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2144,7 +2257,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "62180e226c23761b118f6e49712be78d13ea6d1f67b38478b3ed0d0675ff918e"
+      "poster_sha256": "fcb59594a9099c9651a541570e63b9856bb6c87ebb30d8dfbd8adb445669937a"
     },
     "hyperframes:social-proof-card": {
       "id": "hyperframes:social-proof-card",
@@ -2204,9 +2317,11 @@
         }
       ],
       "poster": "/creative-previews/social-proof-card.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "3f2af7235e6b67847e164b267288c60f2c6fae925b18c2158710f1d94072c238"
+      "poster_sha256": "d8af3b6f66a76ea29de88b7ff8a1809ca54ee8be5994283fb8a74973b095551f"
     },
     "hyperframes:split-tilt-cards": {
       "id": "hyperframes:split-tilt-cards",
@@ -2294,6 +2409,8 @@
         }
       ],
       "poster": "/creative-previews/split-tilt-cards.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2307,7 +2424,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "cb5ff81796fe8cfb7b0c1f0add8d8dc251dea895a8919a7944e3d78fc1d40fce"
+      "poster_sha256": "9224820ebdf4291a548b6354a175b30be68e8a8b04a2f09fcf581ba46db209b9"
     },
     "hyperframes:comparison-split": {
       "id": "hyperframes:comparison-split",
@@ -2365,6 +2482,8 @@
         }
       ],
       "poster": "/creative-previews/comparison-split.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2373,7 +2492,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "2d3f27171e46fd271eb1540a75344937ca75c2b0588c3b94367aca7d471a96f4"
+      "poster_sha256": "5fc3b65817eccd290aa23bee4de13521e403de5ac7b464bd12883dbb0ae60418"
     },
     "hyperframes:before-after-wipe": {
       "id": "hyperframes:before-after-wipe",
@@ -2469,6 +2588,8 @@
         }
       ],
       "poster": "/creative-previews/before-after-wipe.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2477,7 +2598,7 @@
           "severity": "info"
         }
       ],
-      "poster_sha256": "f1561bc6c7582247a10873f26ac4854bf52dc9ba5ace7885d0a01f4e91be9baf"
+      "poster_sha256": "4f19c4b40b1f9353f9b847ad0592cb13444e91dddf2a887e6836a69fb7579723"
     },
     "hyperframes:focus-rack": {
       "id": "hyperframes:focus-rack",
@@ -2524,12 +2645,24 @@
               "label": "Violet"
             }
           ]
+        },
+        {
+          "id": "workspace_label",
+          "type": "string",
+          "role": "content",
+          "label": "workspace label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/focus-rack.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "bc28f5fba9c168f3af600e538b8a22ece248acdac085e8f01a42b49d213a356e",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "4fffdb0d8d0f0545709f9804162c2d8f74b4abe02e0c2b5d332a87e18524b559"
+      "poster_sha256": "f000633ad6f513cc50b027bb9780e0c5eb52204ba6c2514f58f28c037d2a257d"
     },
     "hyperframes:state-chip-rail": {
       "id": "hyperframes:state-chip-rail",
@@ -2620,9 +2753,11 @@
         }
       ],
       "poster": "/creative-previews/state-chip-rail.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "d2517ace631c80f77a5721b8c4d3d3aa0a9b33db8539c1ff8d835cabe014373d"
+      "poster_sha256": "41df56270cc3754c5745203fcee2182b1f6ccd031478452e4cda56decc9f162b"
     },
     "hyperframes:svg-mask-reveal": {
       "id": "hyperframes:svg-mask-reveal",
@@ -2667,9 +2802,11 @@
         }
       ],
       "poster": "/creative-previews/svg-mask-reveal.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "e4938931b1c8b23205b11493c25e83e44e039f44eeed5c223a900a4873aea08d"
+      "poster_sha256": "264cc7bd325a6e1f3083bdd4b0e8274e915ccf71ae3014d2506e5962a5590ffb"
     },
     "hyperframes:text-shimmer": {
       "id": "hyperframes:text-shimmer",
@@ -2723,6 +2860,8 @@
         }
       ],
       "poster": "/creative-previews/text-shimmer.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
       "poster_sha256": "42bada2d36384a4991e69eb02a71bb5e19c4b003c535832bc98a77d5e3067168"
@@ -2753,9 +2892,11 @@
         }
       ],
       "poster": "/creative-previews/titlecard-calm.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "5457f8197bdb8cb0685dad6c8f3dbf0749c371e29e7c66e0a0623442b5eefb15"
+      "poster_sha256": "3aa1b214b24d9f9da8fd4b22e1ead71472d5d82824cb55d2335e21218d68f5d2"
     },
     "hyperframes:titlecard-lockup": {
       "id": "hyperframes:titlecard-lockup",
@@ -2853,9 +2994,11 @@
         }
       ],
       "poster": "/creative-previews/titlecard-lockup.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "3eeaa2d5d26c302ab9c9b6c4abeb58ee55946683fb308ba0c8c4c06b705d8fe2"
+      "poster_sha256": "1a940a07fe2bf42fefd68578e553ec9a8a2b623ac4bf0e722dd1f62f7844d7ad"
     },
     "hyperframes:typed-prompt": {
       "id": "hyperframes:typed-prompt",
@@ -2979,6 +3122,8 @@
         }
       ],
       "poster": "/creative-previews/typed-prompt.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -2987,7 +3132,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "fde463eeef9ec4457e65c623ba17d121317df1920060131454a31ab24f3fdce1"
+      "poster_sha256": "23a6d0b38d91f5817ee49a38180f21d3d4dcc1fdfb6b5f03fd873b17c073bcd6"
     },
     "hyperframes:vox-annotate": {
       "id": "hyperframes:vox-annotate",
@@ -3104,15 +3249,27 @@
         }
       ],
       "poster": "/creative-previews/vox-annotate.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
           "section": "lint",
           "code": "composition_file_too_large",
           "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "warning"
         }
       ],
-      "poster_sha256": "ae6b511d4bddc909a2af9f1b956ed81b99bd30d9429e2550a124c2e33e5d74a3"
+      "poster_sha256": "8e3970b600f1ad88556c41e51a9b3e9d8ed362ade1b8bcb0d8485a7a430afba1"
     },
     "hyperframes:grid-card-assemble": {
       "id": "hyperframes:grid-card-assemble",
@@ -3213,6 +3370,8 @@
         }
       ],
       "poster": "/creative-previews/grid-card-assemble.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -3221,7 +3380,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "6aa2a09cab07f39bd5a3abcf2f0bf2f0843792b9c395a45c700eeeab8ae7e272"
+      "poster_sha256": "0a07236fbd5175896d83a254af40337023622af51c18c8bb9e4b8aafda735739"
     },
     "hyperframes:toggle-flip": {
       "id": "hyperframes:toggle-flip",
@@ -3271,6 +3430,8 @@
         }
       ],
       "poster": "/creative-previews/toggle-flip.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -3279,7 +3440,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "00a78d92b708e8e8783ad41431f66cb90225595869051fb937b73b472da70a3f"
+      "poster_sha256": "03879d0dc0469ad0f16e584bb69f7d41a7a09b9e2ffb99691c192fe11ec5484d"
     },
     "hyperframes:star-rating-fill": {
       "id": "hyperframes:star-rating-fill",
@@ -3331,6 +3492,8 @@
         }
       ],
       "poster": "/creative-previews/star-rating-fill.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
       "poster_sha256": "e75b0a7f0dba23dc1c4caaf96f8d589a8c77a2c1ffa7b8a918254ab3e5052d41"
@@ -3372,12 +3535,38 @@
               "label": "Amber"
             }
           ]
+        },
+        {
+          "id": "step_1",
+          "type": "string",
+          "role": "content",
+          "label": "step 1",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "step_2",
+          "type": "string",
+          "role": "content",
+          "label": "step 2",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
+        },
+        {
+          "id": "step_3",
+          "type": "string",
+          "role": "content",
+          "label": "step 3",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/tracing-beam.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "41b900c52337d2abbf119fabb65c31dea98af57fedabcbc06bda21d742d1951c",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "87ad33ac52fb29e31ebf0740a6bb489a7dbe792f96ab7646c6021b305b187e75"
+      "poster_sha256": "6ec1432e0a76bd49346135bb1c99011b0f612126d66c5a003ac4789a34b955f0"
     },
     "hyperframes:avatar-cloud": {
       "id": "hyperframes:avatar-cloud",
@@ -3423,9 +3612,21 @@
           "label": "Proof label",
           "description": "Community proof copy shown in the center hub.",
           "default": "50k builders"
+        },
+        {
+          "id": "community_label",
+          "type": "string",
+          "role": "content",
+          "label": "community label",
+          "description": "Explicit visible supporting copy; empty hides this label. Never keep the source demo's English copy or fabricated statistics."
         }
       ],
       "poster": "/creative-previews/avatar-cloud.png",
+      "adapter_version": 2,
+      "adapter_sha256": "2ac217585d4731530760bc70ff01eb7b25a94189193169d8d13e5899ad3c0f92",
+      "materialized_sha256": "80c988fa71f8976fbd2652ee91e8a87fd6adaa3a4c462d0645a622e005fb5671",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -3434,7 +3635,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "fb1140613fbd1534c013001c16594f264a2d06d018918cbdbc98edc414411bf4"
+      "poster_sha256": "c78a036bbc4494b74fa099990e47654b33f53033d77f3a2a1feb687769c8243a"
     },
     "hyperframes:multiplayer-cursors": {
       "id": "hyperframes:multiplayer-cursors",
@@ -3465,6 +3666,8 @@
         }
       ],
       "poster": "/creative-previews/multiplayer-cursors.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
         {
@@ -3473,7 +3676,7 @@
           "severity": "warning"
         }
       ],
-      "poster_sha256": "6ebaaf772e2ea973df1af4d428fb2381b0ba07542baef9b26c3dceb324f5a4fb"
+      "poster_sha256": "dfb44558860c694fa14f7ed5bb234a0a8f0128f76d92432c50a0eacf992f2e57"
     },
     "hyperframes:cursor-text-select": {
       "id": "hyperframes:cursor-text-select",
@@ -3510,23 +3713,27 @@
           "role": "style",
           "label": "Accent",
           "default": "#0a84ff"
+        },
+        {
+          "id": "meta_label",
+          "type": "string",
+          "role": "content",
+          "label": "Document status",
+          "description": "Small document-status label. Explicit text replaces the original English draft-status demo."
         }
       ],
       "poster": "/creative-previews/cursor-text-select.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [
-        {
-          "section": "lint",
-          "code": "gsap_callback_dom_measurement",
-          "severity": "warning"
-        },
         {
           "section": "lint",
           "code": "composition_file_too_large",
           "severity": "warning"
         }
       ],
-      "poster_sha256": "87f019e2fea4eea6a5d69328b9bec60082da2159dc24ab86816705f31bdf924d"
+      "poster_sha256": "85d32440f54a9c406f761aaddcf5c4a6396d10bf30b8e1988285825237c23a2f"
     },
     "hyperframes:drift-hold": {
       "id": "hyperframes:drift-hold",
@@ -3564,9 +3771,11 @@
         }
       ],
       "poster": "/creative-previews/drift-hold.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "c0fe082abec5de89e877765c761963e021077a42c7d4717b0a74763ec1835475"
+      "poster_sha256": "a7e7400fd3a844236b49e65c24911f8ff766250e8926a876509c0b02e306ddb8"
     },
     "hyperframes:staggered-fade-up": {
       "id": "hyperframes:staggered-fade-up",
@@ -3656,9 +3865,11 @@
         }
       ],
       "poster": "/creative-previews/staggered-fade-up.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "678d1c4e9ae1db80975cc4a7300325a8a8df8b82b0876e6b115fc8ed8606704a"
+      "poster_sha256": "89d63e237693962e1090ba581446917cf6b81b148535b7be7fce18305a945959"
     },
     "hyperframes:text-stagger": {
       "id": "hyperframes:text-stagger",
@@ -3730,9 +3941,11 @@
         }
       ],
       "poster": "/creative-previews/text-stagger.png",
+      "fixture_language": "fa",
+      "numeric_values_are_synthetic": true,
       "browser_ran": true,
       "findings": [],
-      "poster_sha256": "d2c594f0ee1269eccb75c370fe772d57b0071e4b8f24ee35d00344da3877d266"
+      "poster_sha256": "4bad56b3c861266aec96d034f0da7cbf9d1b534fbe066c39d44a84bdb6640202"
     }
   }
 }

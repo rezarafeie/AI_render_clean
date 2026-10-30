@@ -72,7 +72,7 @@ Update, 2026-10-30:
   clearly labelled public demonstration gallery, never certified as user content.
 - Swiss Lemo demo uses original Canvas code and local licensed fonts. Seeking
   12 → 27 → 32 → 12 seconds produced identical pixels for both 12-second captures.
-- 123 focused automated tests passed, including frozen gallery and dependency
+- 130 focused automated tests passed, including frozen gallery and dependency
   integrity, required content, chart label consistency and Persian splitting.
   Two existing deprecation warnings remain.
 - Production validates complete content during planning and before scene
@@ -80,6 +80,38 @@ Update, 2026-10-30:
   labels. The task-surround adapter binds explicit task labels instead of the
   upstream demo's fixed English tasks. Its corrected Persian example passed the
   same browser checks and its retained image was replaced.
+- A complete second pass supplied explicit Persian content for all 45 sources.
+  All 45 now pass sampled browser checks with those inputs. Persian fixtures are
+  in `scripts/component_examples.py`, separated from production defaults; their
+  numerical values are explicitly synthetic. Do not reuse them as user facts.
+- Notes typing now reveals whole Persian words, preserving joins and the original
+  timing/caret mechanism. The 12-second example is sampled at 0.5, 3, 7 and 11s.
+- Persian text selection uses spaced whole-word boxes. Both normal/bold geometry
+  are measured once after fonts load; timeline callbacks no longer measure DOM.
+  The original layout-measurement warning was removed by fixing the measurement,
+  not by suppressing a check. The composition-size warning remains.
+- All ten Shotcraft demos additionally passed first/middle/final/repeated-frame
+  checks. A transient repeat-frame failure prompted an explicit font/CSS SVG
+  decode fence; the full suite then passed again. This verifies sampled fresh-page
+  frame repeatability, NOT same-page backward seeking or encoded-video playback.
+- Frontend build passes; existing bundle-size warnings remain. Mobile-sized
+  Chrome loaded all 98 gallery entries, filtered correctly and decoded images
+  without page errors. React review keeps the gallery entry separate from the
+  production bundle and its readiness wrappers outside render functions.
+- Shared native instructions are emitted once, not once per entry. The measured
+  minimal planning request decreased from 76,203 to 47,279 characters while
+  preserving all 45 IDs, parameter descriptions/types, bounds and enum options.
+  No live AI request was used to claim a latency improvement.
+- Auditing static HTML found supporting demo claims absent from upstream schemas
+  (including Retention 94% and Teams 48). Adapter-owned typed slots now cover
+  those labels, focus/workspace/community kickers, match-cut captions, station
+  labels, tracing-step kickers and timing labels. They are required explicitly in
+  production, may be deliberately empty, and bind via text nodes. Synthetic
+  Persian examples passed browser checks again after those changes.
+- Source helper limits are validated in advance: approved copy cannot silently
+  truncate or fall back to English. Adapter receipts include source hash, adapter
+  hash/version and materialized HTML hash. QA scripts fail nonzero on failed
+  checks, while retaining evidence and distinguishing failures from passes.
 - No production deployment, paid provider request or full MP4 certification in
   this update. The local static gallery is not proof that the running API reloaded.
 
@@ -95,7 +127,7 @@ Reproduce offline/source verification:
 
 ```sh
 python -m pytest tests/test_component_gallery.py tests/test_native_motion.py tests/test_creative_resources.py
-python scripts/build_component_gallery.py --work NEW_DIRECTORY --gsap EXISTING_GSAP --cli PINNED_CLI
+python scripts/build_component_gallery.py --work NEW_DIRECTORY --gsap EXISTING_GSAP --cli PINNED_CLI --persian
 python scripts/build_face_effect_gallery.py
 node remotion/shotcraft-gallery.mjs
 node scripts/build_lemo_gallery.mjs
