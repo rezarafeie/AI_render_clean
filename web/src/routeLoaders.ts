@@ -9,11 +9,10 @@ export const loaders = {
   hermesFrame: () => import("./pages/hermes/HermesFrame.jsx"),
   hermesContent: () => import("./pages/hermes/HermesContent.jsx"),
   hermesAnalytics: () => import("./pages/hermes/HermesAnalytics.jsx"),
-  hermesSettings: () => import("./pages/hermes/HermesSettingsPage.jsx"),
   hermesPost: () => import("./pages/hermes/HermesPostEditor.jsx"),
 };
 
 const settle = (list: (() => Promise<unknown>)[]) => Promise.all(list.map(load => load().catch(() => undefined))).then(() => undefined);
 
-export const preloadHermes = () => settle([loaders.hermesLayout, loaders.hermesHome, loaders.hermesChat, loaders.hermesFrame, loaders.hermesContent, loaders.hermesAnalytics, loaders.hermesSettings]);
+export const preloadHermes = () => settle([loaders.hermesLayout, loaders.hermesHome, loaders.hermesChat, loaders.hermesFrame, loaders.hermesContent, loaders.hermesAnalytics]);
 export const preloadEditor = () => settle([loaders.studio, loaders.projects, loaders.templates]);

@@ -152,7 +152,7 @@ export default function EditorShell() {
         <div className="sb-spacer"/>
 
         <div className="sb-foot">
-          {hermesMode ? <NavLink to="/hermes/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
+          {hermesMode ? <NavLink to="/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
           {authenticated ? <div className="account">
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>
             <span className="account-copy"><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>

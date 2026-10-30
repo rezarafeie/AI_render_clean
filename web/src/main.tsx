@@ -42,9 +42,9 @@ const HermesHome = React.lazy(loaders.hermesHome);
 const HermesChat = React.lazy(loaders.hermesChat);
 const HermesContent = React.lazy(loaders.hermesContent);
 const HermesAnalytics = React.lazy(loaders.hermesAnalytics);
-const HermesSettingsPage = React.lazy(loaders.hermesSettings);
 const HermesFrame = React.lazy(loaders.hermesFrame);
-const HermesSettings = React.lazy(() => import("./pages/hermes/HermesSettings"));
+// The OAuth callback lands on /hermes/connect; keep its query so Settings can confirm the connection.
+function ReturnToSettings() { const { search } = useLocation(); return <Navigate to={`/settings${search}#integrations`} replace/>; }
 
 function LoadingSpinner() { return <div className="boot" role="status" aria-label="Loading EditorGPT"><span className="spinner"/></div>; }
 
@@ -90,7 +90,7 @@ function App() {
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
       <Route path="my-effects" element={<RequireAuth><MyEffects/></RequireAuth>}/><Route path="library" element={<RequireAuth><Library/></RequireAuth>}/><Route path="style-library" element={<RequireAuth><StyleLibrary/></RequireAuth>}/><Route path="style-learner" element={<RequireAuth><StyleLearner/></RequireAuth>}/><Route path="fonts" element={<Navigate to="/style-library#fonts" replace/>}/>
-      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesHome/>}/><Route path="chat/:chatId" element={<HermesChat/>}/><Route element={<HermesFrame/>}><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<HermesSettingsPage/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/></Route><Route path="connect" element={<Navigate to="/hermes/settings" replace/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
+      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesHome/>}/><Route path="chat/:chatId" element={<HermesChat/>}/><Route element={<HermesFrame/>}><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<Navigate to="/settings#integrations" replace/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/></Route><Route path="connect" element={<ReturnToSettings/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
       <Route path="*" element={<Navigate to="/studio" replace/>}/>
     </Route>
   </Routes></React.Suspense><ToastHost/></JobCacheProvider></AuthProvider></SessionBootstrap></AppErrorBoundary></BrowserRouter>;

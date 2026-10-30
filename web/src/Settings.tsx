@@ -7,6 +7,7 @@ import { aiAdminRequest } from "./api";
 import { useAuth } from "./auth/AuthContext";
 import { isLocalDevelopment } from "./auth";
 import { AgentSettings } from "./studio/AgentMode";
+import { IntegrationsSettings } from "./settings/Integrations";
 
 type Tool = { label: string; description: string; to: string; icon: IconName };
 const groups: { title: string; hint: string; tools: Tool[] }[] = [
@@ -22,7 +23,7 @@ const groups: { title: string; hint: string; tools: Tool[] }[] = [
     { label: "Style learning", description: "Learn a style from reference videos.", to: "/style-learner", icon: "eye" },
     { label: "Media library", description: "Music, B-roll, sound effects and brand assets.", to: "/library", icon: "library" },
   ] },
-  { title: "Integrations", hint: "Connected services.", tools: [
+  { title: "Workspaces", hint: "Agents that use your connected services.", tools: [
     { label: "Hermes", description: "Plan, schedule and analyse social publishing.", to: "/hermes", icon: "link" },
   ] },
 ];
@@ -33,7 +34,7 @@ export default function Settings() {
   const theme = useTheme();
   React.useEffect(() => { aiAdminRequest<{ allowed: boolean }>("/access").then(r => setAdmin(r.allowed)).catch(() => setAdmin(false)); }, []);
   return <div className="page page-narrow">
-    <header className="page-header"><div><h1>Settings</h1><p>Appearance, account and specialist tools.</p></div></header>
+    <header className="page-header"><div><h1>Settings</h1><p>Appearance, account, connected services and specialist tools.</p></div></header>
 
     <section className="set-section" aria-labelledby="set-appearance">
       <h2 id="set-appearance">Appearance</h2>
@@ -53,6 +54,7 @@ export default function Settings() {
 
     <InstallationSettings/>
     {authenticated ? <AgentSettings/> : null}
+    {authenticated ? <IntegrationsSettings/> : null}
     <DeviceSettings/>
     {admin ? <section className="set-section" aria-labelledby="set-admin"><h2 id="set-admin">Administration</h2>
       <NavLink className="set-link" to="/settings/ai"><Icon name="settings" size={20}/><span><b>AI models &amp; logs</b><small>Routing, priorities and request history.</small></span><Icon name="chevron" size={16}/></NavLink></section> : null}
