@@ -1,6 +1,7 @@
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
 const BASE = "/api";
+const RESUMABLE_FROM = 100 * 1024 ** 2;   // nginx accepts at most 500 MB in one request; pieces are 8 MB
 
 type JobCacheListener = () => void;
 const jobCacheListeners = new Set<JobCacheListener>();
@@ -1205,6 +1206,41 @@ export const api = {
   async cloudTransfer(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}?conversation_id=${encodeURIComponent(conversationId)}`)); },
   async cloudCancel(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}/cancel?conversation_id=${encodeURIComponent(conversationId)}`, { method: "POST" })); },
   async cloudRetry(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}/retry?conversation_id=${encodeURIComponent(conversationId)}`, { method: "POST" })); },
+  /** Small files go in one request; big ones are sent in resumable pieces (up to 10 GB of video). */
+  async uploadStudioMedia(id: string, file: File, onProgress?: (value: number) => void, signal?: AbortSignal): Promise<StudioAttachment> {
+    if (file.size <= RESUMABLE_FROM) return this.uploadStudioAttachment(id, file, onProgress);
+    const base = `${BASE}/studio/conversations/${id}/uploads`;
+    const started = await j<{ id: string; received: number; chunk_size: number }>(await authFetch(base, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: file.name, size: file.size, content_type: file.type || "application/octet-stream", last_modified: file.lastModified || 0 }) }));
+    let received = started.received;
+    const chunk = started.chunk_size || 8 * 1024 ** 2;
+    let failures = 0;
+    onProgress?.(Math.round(received / file.size * 100));
+    while (true) {
+      if (signal?.aborted) { await authFetch(`${base}/${started.id}`, { method: "DELETE" }).catch(() => {}); throw new Error("Upload was cancelled"); }
+      const end = Math.min(received + chunk, file.size);
+      let response: Response;
+      try {
+        response = await authFetch(`${base}/${started.id}?offset=${received}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: file.slice(received, end), signal });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        if (++failures > 8) throw new Error("Upload failed: the connection kept dropping. Choose the same file again to continue.");
+        await new Promise(resolve => setTimeout(resolve, Math.min(15000, 1000 * 2 ** failures)));
+        // The piece may or may not have arrived: ask the server where it is.
+        const where = await authFetch(`${base}/${started.id}`).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (where) received = where.received;
+        continue;
+      }
+      if (response.status === 409) { received = (await response.json().catch(() => ({})))?.detail?.received ?? received; continue; }
+      if (response.status >= 500 && ++failures <= 8) { await new Promise(resolve => setTimeout(resolve, Math.min(15000, 1000 * 2 ** failures))); continue; }
+      const result = await j<{ done: boolean; received?: number; attachment?: StudioAttachment }>(response);
+      failures = 0;
+      if (result.done && result.attachment) { onProgress?.(100); return result.attachment; }
+      received = result.received ?? end;
+      onProgress?.(Math.min(99, Math.round(received / file.size * 100)));
+    }
+  },
   async uploadStudioAttachment(id: string, file: File, onProgress?: (value: number) => void): Promise<StudioAttachment> {
     const form = new FormData(); form.append("file", file);
     return uploadWithProgress(`${BASE}/studio/conversations/${id}/attachments`, form, onProgress);

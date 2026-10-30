@@ -383,7 +383,7 @@ export default function Studio() {
         if (autoLogo && !online && !confirm("Upload this logo to the current project and continue?")) continue;
         const id = await ensureConversation("New media edit", false);
         setFiles(value => value.map(item => item.key === key ? {...item,progress:0} : item));
-        const attachment = await api.uploadStudioAttachment(id, file, progress => setFiles(value => value.map(item => item.key === key ? { ...item, progress } : item)));
+        const attachment = await api.uploadStudioMedia(id, file, progress => setFiles(value => value.map(item => item.key === key ? { ...item, progress } : item)));
         setFiles(value => value.map(item => item.key === key ? { ...item, progress: 100, attachmentId: attachment.id } : item));
         if (autoLogo) {
           await send(undefined, { text: "attached", ids: [attachment.id] });
@@ -457,7 +457,7 @@ export default function Studio() {
       try {
         const id = await ensureConversation(finalText.slice(0, 70), false);
         for (const entry of pendingFiles) {
-          const attached = await api.uploadStudioAttachment(id, entry.file, progress => setFiles(value => value.map(item => item.key === entry.key ? { ...item, progress } : item)));
+          const attached = await api.uploadStudioMedia(id, entry.file, progress => setFiles(value => value.map(item => item.key === entry.key ? { ...item, progress } : item)));
           ids.push(attached.id);
           setFiles(value => value.map(item => item.key === entry.key ? { ...item, attachmentId: attached.id, progress: 100 } : item));
         }

@@ -201,6 +201,8 @@ app.include_router(fonts.legacy_router)
 app.include_router(localize.router)
 app.include_router(studio.router)
 app.include_router(cloud.router)
+from app.resumable_upload import router as resumable_router
+app.include_router(resumable_router)
 from app.routers import lm_admin
 app.include_router(lm_admin.access_router)
 app.include_router(lm_admin.router)
