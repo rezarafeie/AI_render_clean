@@ -20,6 +20,30 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def inspect_light_fixture_frames(source):
+    """Every encoded frame, not just a middle still, must contain dark content.
+
+    Deliberately specific to this light convergence fixture. This is a blank
+    frame regression gate, not a universal aesthetic or motion quality score.
+    """
+    raw=subprocess.run(["ffmpeg","-v","error","-i",str(source),"-vf","scale=288:512",
+                        "-pix_fmt","gray","-f","rawvideo","pipe:1"],
+                       check=True,capture_output=True,timeout=30).stdout
+    size=288*512
+    if not raw or len(raw)%size:
+        raise ValueError("Cannot inspect complete decoded frames")
+    from PIL import Image
+    counts=[]
+    for offset in range(0,len(raw),size):
+        histogram=Image.frombytes("L",(288,512),raw[offset:offset+size]).histogram()
+        dark=sum(histogram[:140])
+        if dark<12 or sum(histogram[180:])<size*.2:
+            raise ValueError(f"Empty/light or black frame at index {offset//size}")
+        counts.append(dark)
+    return {"decoded_frames":len(counts),"min_dark_pixels":min(counts),
+            "method":"all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"}
+
+
 def main():
     from creative.motion_graphic import MotionPage
     from creative.shotcraft_native import inspect_output, source_fingerprint, ShotcraftNative
@@ -47,6 +71,7 @@ def main():
     if not report_file.is_relative_to(project):
         raise ValueError("Hybrid check must belong to this exact synthetic project")
     media=inspect_output(source,*page.size,mount.duration)
+    frame_audit=inspect_light_fixture_frames(source)
     outer=project/"hybrid.mp4"
     encoded=subprocess.run(["ffprobe","-v","error","-show_streams","-show_format","-of","json",str(outer)],
                            check=True,capture_output=True,text=True,timeout=20)
@@ -62,6 +87,7 @@ def main():
     item={"id":mount.spec.resource_id,"name":stem,"status":"native-component-checked","format":page.format,
           "demonstration_only":True,"production_template_ready":True,"source_revision":receipt["source_revision"],
           "encoded_output_verified":True,"hybrid_browser_checked":True,"media":media,
+          "frame_audit":frame_audit,
           "source_adapter_sha256":receipt["source_adapter_sha256"],"hybrid_artifact_sha256":digest(outer),"hybrid_check_sha256":digest(args.check_report),
           "poster":"/creative-previews/"+poster.name,"preview_video":"/creative-previews/"+video.name,
           "poster_sha256":digest(poster),"video_sha256":digest(video),"parameters":ShotcraftNative.model_json_schema(),

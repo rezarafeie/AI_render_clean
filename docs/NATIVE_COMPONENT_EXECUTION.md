@@ -139,6 +139,17 @@ test; two existing deprecation warnings. No paid provider call, production deplo
 or running API restart was performed. Existing versions 1/2 Remotion contracts
 are regression-tested; only native version 3 uses the added binding adapter.
 
+Follow-up opening-frame gate: inspecting the encoded first frame exposed empty
+pre-roll in the original convergence source, which middle-frame browser checks
+had missed. The adapter trims its empty 0–0.2 normalized phase, retaining the
+original convergence/pan/erase and final reading hold. A fresh child and nine-
+second hybrid were encoded; browser samples now include 0 and 0.1 seconds.
+All 180 decoded child frames pass a fixture-specific light-background foreground
+gate at 288×512 (minimum 28 dark pixels; threshold 12), while the old encoded
+fixture fails at frame zero. This is not a universal visual-quality classifier.
+Black and white middle-frame rejection is unit-tested, rather than checking only
+the first frame. The frozen gallery MP4, PNG and source/adapter hashes were updated.
+
 Open `/creative-previews/gallery.html` on the application's frontend. The Media
 Library has a link to it. Every item has an individually stored PNG plus its
 source revision, actual verification class, compatibility and limitations. Search

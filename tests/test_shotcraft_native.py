@@ -40,6 +40,7 @@ process.stdout.write(result);'''
     assert '<ShotcraftMark ' not in result
     assert 'const CAP_WORDS = "از ایده تا روایت"' in result
     assert 'const mkPathGeom' in result and 'const GEOMS = SRCS.map' in result
+    assert 'const t = 0.2 + 0.8 * Math.min(1, useT()' in result
     assert 'h={853.3333333333334}' in result
     assert before==hashlib.sha256(source.read_bytes()).hexdigest()
 

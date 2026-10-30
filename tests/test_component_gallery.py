@@ -48,9 +48,30 @@ def test_native_shotcraft_preview_is_encoded_and_frozen():
         path = GALLERY / row[field].rsplit("/", 1)[1]
         assert hashlib.sha256(path.read_bytes()).hexdigest() == row[digest]
     assert row["media"]["max_keyframe_interval"] <= 1.1
+    assert row["frame_audit"]["decoded_frames"] == 180
+    assert row["frame_audit"]["min_dark_pixels"] >= 12
     html = (GALLERY / "gallery.html").read_text()
     assert "native-shotcraft.json" in html
     assert "preload='none'" in html or 'preload="none"' in html or "preload='none'" in html.replace('"', "'")
+
+
+@pytest.mark.parametrize("blank", [255, 0])
+def test_frame_gate_rejects_blank_middle_frames(monkeypatch, blank):
+    from scripts import build_native_shotcraft_preview as audit
+    from types import SimpleNamespace
+    size=288*512
+    valid=bytes([40])*100+bytes([240])*(size-100)
+    monkeypatch.setattr(audit.subprocess,"run",lambda *a,**k:SimpleNamespace(stdout=valid+bytes([blank])*size+valid))
+    with pytest.raises(ValueError,match="index 1"):
+        audit.inspect_light_fixture_frames(Path("synthetic.mp4"))
+
+
+def test_frame_gate_checks_complete_encoded_sequence(monkeypatch):
+    from scripts import build_native_shotcraft_preview as audit
+    from types import SimpleNamespace
+    valid=bytes([40])*100+bytes([240])*(288*512-100)
+    monkeypatch.setattr(audit.subprocess,"run",lambda *a,**k:SimpleNamespace(stdout=valid*5))
+    assert audit.inspect_light_fixture_frames(Path("synthetic.mp4"))["decoded_frames"] == 5
 
 
 def test_every_generic_adapter_has_explicit_valid_persian_test_content():

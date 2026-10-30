@@ -20,7 +20,9 @@ module.exports = function(source) {
     source=source.replace(needle,()=>value);
   };
   once("const CAP_WORDS = 'From screenshot to showreel'.split(' ');", 'const CAP_WORDS = '+quote(spec.caption)+".trim().split(/\\s+/);");
-  once('const t = useT();', 'const t = Math.min(1, useT() / '+((frames/30-hold)/(frames/30))+');');
+  // Trim only the source's empty pre-roll. Start with visible source nodes;
+  // preserve its convergence, erase, camera pan and explicit final reading hold.
+  once('const t = useT();', 'const t = 0.2 + 0.8 * Math.min(1, useT() / '+((frames/30-hold)/(frames/30))+');');
   once("const SANS = FONT.sans;", "const SANS = 'EditorGPTVazir, Arial, sans-serif';");
   once("const ACCENT = '#5b63d3';", 'const ACCENT = '+quote(spec.accent)+';');
   const high='#'+[1,3,5].map(i=>Math.round(parseInt(spec.accent.slice(i,i+2),16)*.75+255*.25).toString(16).padStart(2,'0')).join('');

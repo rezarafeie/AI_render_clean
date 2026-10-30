@@ -18,13 +18,18 @@
         "codec": "h264",
         "max_keyframe_interval": 1.0
       },
-      "source_adapter_sha256": "8a9fbca14825d30b61b5c02359e65d76b2de9e0edce3d67708f3ee809d75636b",
-      "hybrid_artifact_sha256": "269987c9b336200e55e8d3ad0e575bd5f4e22c8e82af3789e801b8ae73968ce1",
-      "hybrid_check_sha256": "6dce524984f0de95f80996290ae481f1aefb3ee523c2395e5affe704143a2f4e",
+      "frame_audit": {
+        "decoded_frames": 180,
+        "min_dark_pixels": 28,
+        "method": "all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "b35345e62beb8bd0295705026b0c8cab29c4ca1e8347e0027a783f0ca90d427d",
+      "hybrid_artifact_sha256": "41757b37541c35f387f8406b7e6c7d55319cafdb0dbdf2d7b57da44c551038ba",
+      "hybrid_check_sha256": "1d6217576c08108000d77a000e2246a69bacc883824805ed80e7cec8fb6c84eb",
       "poster": "/creative-previews/shotcraft-native-bezier-source-converge-merge.png",
       "preview_video": "/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4",
-      "poster_sha256": "63d237b765c64a7c42050760f1c31833adf9e0d354c084fbdf418b3bcdefaddc",
-      "video_sha256": "4cacd956c3ae9df468cadd4a5fbe6ac63659c4097744f2423bec3a1940092caf",
+      "poster_sha256": "80cee661cfc7d8cbab27c5ba722cc325c41ffb640c1c69f0e15508255ba14d98",
+      "video_sha256": "8769145707c46f09753ae789ac21935de566737465ca1f89e707b82f15f19630",
       "parameters": {
         "additionalProperties": false,
         "properties": {
