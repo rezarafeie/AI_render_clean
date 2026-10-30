@@ -96,29 +96,44 @@ async def set_enabled(user_id: str, enabled: bool):
     return await status(user_id)
 
 
-async def session_id(user_id: str) -> str:
-    values = await state(user_id)
+_building: dict[str, asyncio.Lock] = {}
+
+
+def _reusable(values: dict, user_id: str) -> str | None:
     if values.get("enabled") == "false":
         raise HTTPException(409, detail={"code": "COMPOSIO_DISABLED"})
-    if values.get("session_id"):
-        # Fail closed after an administrator changes the namespace.
-        if values.get("identity") != identity(user_id):
-            raise HTTPException(409, detail={"code": "COMPOSIO_POLICY_CHANGED_RECONNECT_REQUIRED"})
-        # A changed toolkit list only needs a fresh session built under the new policy;
-        # connected accounts belong to the identity, not to the session.
-        if values.get("policy") == ",".join(allowed_toolkits()):
-            return values["session_id"]
+    if not values.get("session_id"):
+        return None
+    # Fail closed after an administrator changes the namespace.
+    if values.get("identity") != identity(user_id):
+        raise HTTPException(409, detail={"code": "COMPOSIO_POLICY_CHANGED_RECONNECT_REQUIRED"})
+    # A changed toolkit list only needs a fresh session built under the new policy;
+    # connected accounts belong to the identity, not to the session.
+    return values["session_id"] if values.get("policy") == ",".join(allowed_toolkits()) else None
 
-    def create():
-        with sdk() as client:
-            return client.sessions.create(user_id=identity(user_id),
-                toolkits={"enable": allowed_toolkits()}, sandbox={"enable": False},
-                proxy_execute=False, manage_connections=False,
-                tags={"enable": ["readOnlyHint"]}).session_id
-    reference = await remote(create)
-    values.update(session_id=reference, identity=identity(user_id), policy=",".join(allowed_toolkits()))
-    await save_state(user_id, values)
-    return reference
+
+async def session_id(user_id: str) -> str:
+    values = await state(user_id)
+    reference = _reusable(values, user_id)
+    if reference:
+        return reference
+    # Building a session takes tens of seconds; concurrent requests must share one build, not start one each.
+    async with _building.setdefault(user_id, asyncio.Lock()):
+        values = await state(user_id)
+        reference = _reusable(values, user_id)
+        if reference:
+            return reference
+
+        def create():
+            with sdk() as client:
+                return client.sessions.create(user_id=identity(user_id),
+                    toolkits={"enable": allowed_toolkits()}, sandbox={"enable": False},
+                    proxy_execute=False, manage_connections=False,
+                    tags={"enable": ["readOnlyHint"]}).session_id
+        reference = await remote(create)
+        values.update(session_id=reference, identity=identity(user_id), policy=",".join(allowed_toolkits()))
+        await save_state(user_id, values)
+        return reference
 
 
 async def remote(call):

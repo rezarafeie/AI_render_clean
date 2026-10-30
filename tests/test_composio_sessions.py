@@ -271,3 +271,13 @@ def test_a_relay_url_is_used_only_when_it_is_https(monkeypatch):
         with service.sdk():
             pass
     assert bad.value.status_code == 503
+
+
+def test_concurrent_requests_share_one_session_build(setup):
+    _, calls = setup
+    async def scenario():
+        await service.set_enabled("1", True)
+        return await asyncio.gather(*[service.session_id("1") for _ in range(6)])
+    refs = asyncio.run(scenario())
+    assert len(set(refs)) == 1
+    assert len([c for c in calls if c[0] == "create"]) == 1
