@@ -6,7 +6,9 @@ import { formatBytes } from "../format";
 import { AgentMode } from "../api";
 import { AgentModeSelector } from "./AgentMode";
 
-export type PendingFile = { key: string; file: File; progress: number; attachmentId?: string; url: string; localId?: string; localNote?: string };
+export type PendingFile = { key: string; file: File; progress: number; attachmentId?: string; url: string; localId?: string; localNote?: string;
+  /** Imported server-side from cloud storage: nothing is on this device, so the file is only a label. */
+  cloud?: { transferId: string; provider: string; conversationId: string; size: number } };
 
 interface ComposerProps {
   text: string; setText: (value: string) => void;
@@ -24,6 +26,8 @@ interface ComposerProps {
   /** No attachments or templates: for chats that only exchange text (the Hermes agent). */
   textOnly?: boolean;
   agentMode?: AgentMode; onAgentModeChange?: (mode: AgentMode) => void;
+  /** Opens the cloud storage picker (Google Drive). */
+  onCloud?: () => void;
 }
 
 export function Composer(props: ComposerProps) {
@@ -56,8 +60,8 @@ export function Composer(props: ComposerProps) {
       onDrop={event => { event.preventDefault(); setDragging(false); void onFiles(Array.from(event.dataTransfer.files)); }}>
       {error ? <div className="notice composer-error" data-tone="error" role="alert"><span className="grow">{error}</span><button className="icon-btn" style={{ ["--size" as string]: "24px" }} onClick={onDismissError} aria-label="Dismiss error"><Icon name="close" size={14}/></button></div> : null}
       {files.length ? <ul className="attach-row" aria-label="Attachments">{files.map((item, index) => <li key={item.key} className="attach-chip">
-        {item.file.type.startsWith("image/") ? <img src={item.url} alt=""/> : <span className="attach-icon"><Icon name={item.file.type.startsWith("video/") ? "video" : "music"} size={18}/></span>}
-        <span className="attach-meta"><b className="wrap-safe">{item.file.name}</b><small>{item.attachmentId ? formatBytes(item.file.size) : item.progress < 0 ? `On this device · ${formatBytes(item.file.size)}` : `Uploading ${Math.round(item.progress)}%`}</small>{item.localNote ? <small>{item.localNote}</small> : null}</span>
+        {item.file.type.startsWith("image/") && item.url ? <img src={item.url} alt=""/> : <span className="attach-icon"><Icon name={item.file.type.startsWith("video/") ? "video" : "music"} size={18}/></span>}
+        <span className="attach-meta"><b className="wrap-safe">{item.file.name}</b><small>{item.attachmentId ? formatBytes(item.cloud?.size || item.file.size) : item.cloud ? `Importing from Google Drive${item.progress > 0 ? ` · ${Math.round(item.progress)}%` : ""}` : item.progress < 0 ? `On this device · ${formatBytes(item.file.size)}` : `Uploading ${Math.round(item.progress)}%`}</small>{item.localNote ? <small>{item.localNote}</small> : null}</span>
         <button className="icon-btn" style={{ ["--size" as string]: "24px" }} onClick={() => onRemoveFile(item)} aria-label={`Remove ${item.file.name}`}><Icon name="close" size={14}/></button>
         {!item.attachmentId && item.progress >= 0 ? <i className="attach-progress" style={{ width: `${item.progress}%` }}/> : null}
       </li>)}</ul> : null}
@@ -78,6 +82,7 @@ export function Composer(props: ComposerProps) {
               {templates.map(item => <button type="button" key={item.id} role="menuitem" className="menu-item" onClick={() => { setText(item.prompt); close(); ref.current?.focus(); }}><Icon name={item.icon} size={18}/><span>{item.title}</span></button>)}
             </> : <>
               <button ref={menuFirst} type="button" role="menuitem" className="menu-item" onClick={() => { close(); fileInput.current?.click(); }}><Icon name="paperclip" size={18}/><span>Attach media</span></button>
+              {props.onCloud ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onCloud?.(); }}><Icon name="link" size={18}/><span>Import from Google Drive</span></button> : null}
               <button type="button" role="menuitem" className="menu-item" onClick={() => setTemplateMenu(true)}><Icon name="grid" size={18}/><span>Templates</span><Icon name="chevron" size={14}/></button>
             </>}
           </>}

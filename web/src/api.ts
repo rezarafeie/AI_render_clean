@@ -177,6 +177,9 @@ export interface MusicStatus {
   technical_qc?: { loudness_lufs: number | null; true_peak_dbfs: number | null; warnings: string[] } | null;
 }
 
+export interface CloudProvider { id: string; name: string; enabled: boolean; connected: boolean; status: string; capabilities: Record<string, boolean> }
+export interface CloudFile { id: string; name: string; mime_type: string; size: number | null; is_folder: boolean; native: boolean; kind: "video" | "image" | "audio" | null; modified: string | null; thumbnail: string | null; duration: number | null; width: number | null; height: number | null }
+export interface CloudTransfer { id: string; state: "queued" | "connecting" | "fetching_metadata" | "downloading" | "validating" | "completed" | "failed" | "cancelled"; provider: string; file_id: string; filename: string; kind: string; size: number | null; bytes: number | null; error: string | null; error_code: string | null; attachment_id: string | null; reused: boolean | null; retryable: boolean | null; speed: number | null }
 export interface StudioAttachment { id: string; kind: "video" | "image" | "audio"; filename: string; mime_type: string; size_bytes: number }
 export type AgentMode = "lite" | "medium";
 export interface StudioAgentRun { id: string; message_id: string; agent_mode: AgentMode; status: string; plan?: {summary: string; steps: {tool: string; label: string}[]}; error?: string }
@@ -1190,6 +1193,18 @@ export const api = {
   async updateStudioConversation(id: string, patch: { title?: string; status_voice_enabled?: boolean; execution_mode?: "auto" | "manual"; agent_mode?: AgentMode }): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/studio/conversations/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) }));
   },
+  async cloudProviders(): Promise<{ providers: CloudProvider[] }> { return j(await authFetch(`${BASE}/studio/cloud/providers`)); },
+  async cloudFiles(provider: string, query: { folder?: string; q?: string; media?: string; page_token?: string | null; sort?: string }): Promise<{ files: CloudFile[]; next_page_token: string | null }> {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => { if (value) params.set(key, value); });
+    return j(await authFetch(`${BASE}/studio/cloud/${provider}/files?${params}`));
+  },
+  async cloudImport(provider: string, conversationId: string, fileIds: string[]): Promise<{ transfers: CloudTransfer[]; errors: { file_id: string; code: string; message: string }[] }> {
+    return j(await authFetch(`${BASE}/studio/cloud/${provider}/import`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversation_id: conversationId, file_ids: fileIds }) }));
+  },
+  async cloudTransfer(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}?conversation_id=${encodeURIComponent(conversationId)}`)); },
+  async cloudCancel(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}/cancel?conversation_id=${encodeURIComponent(conversationId)}`, { method: "POST" })); },
+  async cloudRetry(conversationId: string, id: string): Promise<CloudTransfer> { return j(await authFetch(`${BASE}/studio/cloud/transfers/${id}/retry?conversation_id=${encodeURIComponent(conversationId)}`, { method: "POST" })); },
   async uploadStudioAttachment(id: string, file: File, onProgress?: (value: number) => void): Promise<StudioAttachment> {
     const form = new FormData(); form.append("file", file);
     return uploadWithProgress(`${BASE}/studio/conversations/${id}/attachments`, form, onProgress);

@@ -5,7 +5,7 @@ import { verifyLocalBackend } from "./local/backend";
 const ProjectRender = React.lazy(() => import("./local/ProjectRender").then(m => ({default:m.ProjectRender})));
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, AgentMode, StudioConversation, StudioEvent } from "./api";
+import { api, AgentMode, CloudFile, StudioConversation, StudioEvent } from "./api";
 import { AgentRunControls } from "./studio/AgentMode";
 import { useAuth } from "./auth/AuthContext";
 import { Icon } from "./components/Icon";
@@ -17,6 +17,7 @@ import { Resizer, usePanelWidth } from "./components/Resizer";
 import { useMotionActive } from "./studio/MotionGraphic";
 import { useDiscoveryActive } from "./studio/Discovery";
 import { Composer, PendingFile } from "./studio/Composer";
+import { CloudPicker } from "./studio/CloudPicker";
 import { ManualQuestion } from "./studio/ManualQuestion";
 import { Thread, LocalFileInfo } from "./studio/Thread";
 import { Workspace, WorkspaceTab, advancedEditorUrl } from "./studio/Workspace";
@@ -43,6 +44,8 @@ export default function Studio() {
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
   const [text, setText] = React.useState(() => searchParams.get("prompt") || templatePrompts[searchParams.get("template") || ""] || "");
   const [files, setFiles] = React.useState<PendingFile[]>([]);
+  const [cloudOpen, setCloudOpen] = React.useState(false);
+
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState("");
   const [pending, setPending] = React.useState<PendingMessage | null>(null);
@@ -212,7 +215,7 @@ export default function Studio() {
       refreshTimerRef.current = null; listTimerRef.current = null;
     };
   }, [activeId, refresh, refreshList]);
-  React.useEffect(() => () => filesRef.current.forEach(item => URL.revokeObjectURL(item.url)), []);
+  React.useEffect(() => () => filesRef.current.forEach(item => item.url && URL.revokeObjectURL(item.url)), []);
 
   // ── derived state ────────────────────────────────────────────
   const projects = conversation?.projects || [];
@@ -380,7 +383,39 @@ export default function Studio() {
     }
     if (autoLogo) logoUploadRef.current = false;
   }
-  function removeFile(file: PendingFile) { removedFilesRef.current.add(file.key); setFiles(value => value.filter(item => item.key !== file.key)); URL.revokeObjectURL(file.url); if (file.localId) void removeAsset(file.localId, localOwner).catch(() => {}); }
+  async function importCloud(picked: CloudFile[]) {
+    if (!authenticated) { requireLogin(); return; }
+    const id = await ensureConversation("New media edit", false);
+    const result = await api.cloudImport("googledrive", id, picked.map(file => file.id));
+    if (result.errors.length) setError(result.errors.map(item => item.message).join(" "));
+    const entries: PendingFile[] = result.transfers.map(transfer => {
+      const source = picked.find(file => file.id === transfer.file_id);
+      const done = transfer.state === "completed" && !!transfer.attachment_id;
+      return { key: `cloud-${transfer.id}`, file: new File([], transfer.filename, { type: source?.mime_type || "" }), url: "", progress: done ? 100 : 0,
+        attachmentId: done ? transfer.attachment_id! : undefined, localNote: transfer.reused ? "Already imported" : undefined,
+        cloud: { transferId: transfer.id, provider: "googledrive", conversationId: id, size: transfer.size || source?.size || 0 } };
+    });
+    setFiles(value => [...value, ...entries]);
+  }
+  const cloudWaiting = files.filter(item => item.cloud && !item.attachmentId).map(item => item.key).join(",");
+  React.useEffect(() => {
+    if (!cloudWaiting) return;
+    const timer = window.setInterval(async () => {
+      for (const entry of filesRef.current.filter(item => item.cloud && !item.attachmentId)) {
+        try {
+          const transfer = await api.cloudTransfer(entry.cloud!.conversationId, entry.cloud!.transferId);
+          if (transfer.state === "completed") setFiles(value => value.map(item => item.key === entry.key ? { ...item, attachmentId: transfer.attachment_id || undefined, progress: 100, localNote: undefined } : item));
+          else if (transfer.state === "failed" || transfer.state === "cancelled") {
+            setFiles(value => value.filter(item => item.key !== entry.key));
+            if (transfer.state === "failed") setError(`${transfer.filename}: ${transfer.error || "The import failed."}`);
+          } else setFiles(value => value.map(item => item.key === entry.key ? { ...item, progress: transfer.size && transfer.bytes ? Math.min(99, (transfer.bytes / transfer.size) * 100) : 0,
+            localNote: transfer.state === "validating" ? "Checking the file…" : undefined } : item));
+        } catch { /* the next tick asks again */ }
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [cloudWaiting]);
+  function removeFile(file: PendingFile) { if (file.cloud && !file.attachmentId) void api.cloudCancel(file.cloud.conversationId, file.cloud.transferId).catch(() => {}); removedFilesRef.current.add(file.key); setFiles(value => value.filter(item => item.key !== file.key)); URL.revokeObjectURL(file.url); if (file.localId) void removeAsset(file.localId, localOwner).catch(() => {}); }
 
   async function send(override?: string, resend?: { text: string; ids: string[] }) {
     const submittedAgentMode = agentMode; // snapshot before uploads/navigation or an active-job mode switch
@@ -401,8 +436,8 @@ export default function Studio() {
       try { await verifyLocalBackend(); }
       catch (error) { setError(error instanceof Error ? error.message : String(error)); return; }
     }
-    if (!resend && files.some(item => !item.attachmentId)) {
-      const pendingFiles = files.filter(item => !item.attachmentId);
+    if (!resend && files.some(item => !item.attachmentId && !item.cloud)) {
+      const pendingFiles = files.filter(item => !item.attachmentId && !item.cloud);
       const mb = Math.round(pendingFiles.reduce((sum, f) => sum + f.file.size, 0) / 1024**2);
       const destination = processing.mode === "lan" || processing.engine === "lan" ? `your Mac’s EditorGPT backend (${location.origin}), not the EditorGPT cloud` : `this installation’s backend (${location.origin})`;
       if (!confirm(`AI editing needs ${pendingFiles.length} file(s), ${mb} MB, transferred to ${destination}. AI providers may receive text, frames or audio required for analysis. Render choice is separate. Allow this transfer? Cancel keeps the originals on this device.`)) return;
@@ -480,11 +515,13 @@ export default function Studio() {
   const wsVisible = layout === "desktop" ? desktopOpen : layout === "tablet" ? overlayOpen : mobileView !== "chat";
   const mobileTab = layout === "mobile" ? (mobileView === "chat" ? "chat" : wsTab) : null;
 
-  const composer = (variant: "home" | "dock") => <Composer variant={variant} text={text} setText={setText} files={files} onRemoveFile={removeFile} onFiles={addFiles}
+  const composer = (variant: "home" | "dock") => <><Composer variant={variant} text={text} setText={setText} files={files} onRemoveFile={removeFile} onFiles={addFiles}
     agentMode={agentMode} onAgentModeChange={changeAgentMode}
     manual={manual} onManualChange={modeSaving ? undefined : () => void toggleManual()}
     processing={processing} onStop={canStop ? stop : undefined} onSend={() => void send()} error={error} onDismissError={() => setError("")}
-    hasSpeech={hasSpeech} listening={listening} onListen={startVoiceInput} textareaRef={textareaRef} autoFocus={variant === "home" && layout !== "mobile"}/>;
+    hasSpeech={hasSpeech} listening={listening} onListen={startVoiceInput} textareaRef={textareaRef} autoFocus={variant === "home" && layout !== "mobile"}
+    onCloud={authenticated && processingPreferences().mode === "online" ? () => setCloudOpen(true) : undefined}/>
+    {cloudOpen ? <CloudPicker onClose={() => setCloudOpen(false)} onImport={importCloud}/> : null}</>;
 
   if (!showConversation) return <div className="studio-home">
     <div className="home-inner">
