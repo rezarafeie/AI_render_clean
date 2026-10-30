@@ -13,8 +13,10 @@ import json
 import logging
 import os
 import socket
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -33,6 +35,9 @@ PROVIDERS = {DRIVE: {"name": "Google Drive", "toolkit": "googledrive",
 FOLDER_MIME = "application/vnd.google-apps.folder"
 FILE_FIELDS = ("id,name,mimeType,size,modifiedTime,md5Checksum,version,thumbnailLink,"
                "videoMediaMetadata(durationMillis,width,height)")
+TRANSFER_QUEUE = "transfer"      # its own worker: an hour-long download must not block renders and chats
+SEGMENT = 16 * 1024**2
+CONNECTIONS = max(1, min(16, settings.CLOUD_DOWNLOAD_CONNECTIONS))
 ACTIVE = {"queued", "connecting", "fetching_metadata", "downloading", "validating"}
 FINAL = {"completed", "failed", "cancelled"}
 
@@ -271,7 +276,7 @@ def dispatch(transfer_id: str, user: str, conversation_id: str) -> None:
     if CELERY_AVAILABLE:
         from app.tasks import task_cloud_import
         from request_context import celery_request_headers
-        task_cloud_import.apply_async(args=[transfer_id, user, conversation_id], headers=celery_request_headers())
+        task_cloud_import.apply_async(args=[transfer_id, user, conversation_id], headers=celery_request_headers(), queue=TRANSFER_QUEUE)
     else:
         import contextvars
         import threading
@@ -295,7 +300,7 @@ def retry(user: str, conversation_id: str, transfer_id: str) -> dict:
     if record["state"] not in {"failed", "cancelled"}:
         return public(record)
     _path(user, conversation_id, transfer_id).with_suffix(".cancel").unlink(missing_ok=True)
-    record = _set(user, record, state="queued", error=None, error_code=None, bytes=0, retryable=None)
+    record = _set(user, record, state="queued", error=None, error_code=None, retryable=None)
     dispatch(transfer_id, user, conversation_id)
     return public(record)
 
@@ -315,13 +320,21 @@ async def _import(transfer_id: str, user: str, conversation_id: str) -> None:
         record = await _aset(user, record, state="connecting", attempts=record.get("attempts", 0) + 1)
         info = await metadata(user, record["provider"], record["file_id"])
         record = await _aset(user, record, state="fetching_metadata", size=info["size"])
-        downloaded = await _call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]})
-        link = (downloaded.get("downloaded_file_content") or {}).get("s3url")
-        if not link:
-            raise CloudError("provider_error", "Google Drive did not return the file.", 502)
-        safe = await asyncio.to_thread(safe_download_url, link)
-        record = await _aset(user, record, state="downloading", bytes=0)
-        size = await asyncio.to_thread(_stream, user, record, safe, temporary)
+        record = await _aset(user, record, state="downloading")
+        size = 0
+        for attempt in range(6):            # a link can expire during a very long download: ask Composio for a new one and carry on
+            downloaded = await _call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]})
+            link = (downloaded.get("downloaded_file_content") or {}).get("s3url")
+            if not link:
+                raise CloudError("provider_error", "Google Drive did not return the file.", 502)
+            safe = await asyncio.to_thread(safe_download_url, link)
+            try:
+                size = await asyncio.to_thread(_download, user, record, safe, temporary)
+                break
+            except _LinkExpired:
+                continue
+        else:
+            raise CloudError("network", "The download link kept expiring.", 502)
         record = await _aset(user, record, state="validating", bytes=size)
         attachment = await finalize(user, conversation_id, temporary, record["filename"], record["kind"],
                                     record["mime_type"], size,
@@ -330,16 +343,114 @@ async def _import(transfer_id: str, user: str, conversation_id: str) -> None:
                                                "modified": record["modified"]}})
         await _aset(user, record, state="completed", attachment_id=attachment["id"], bytes=size, size=size)
     except CloudError as exc:
-        temporary.unlink(missing_ok=True)
+        retryable = exc.code in {"network", "rate_limited", "provider_error", "provider_unavailable", "provider_timeout"}
         if exc.code == "cancelled":
-            await _aset(user, record, state="cancelled", error=None, error_code=None)
+            temporary.unlink(missing_ok=True)
+            await _aset(user, record, state="cancelled", error=None, error_code=None, done=[])
         else:
-            await _aset(user, record, state="failed", error=exc.message, error_code=exc.code,
-                        retryable=exc.code in {"network", "rate_limited", "provider_error", "provider_unavailable"})
+            if not retryable: temporary.unlink(missing_ok=True)   # a retryable failure keeps the finished ranges for the retry
+            await _aset(user, record, state="failed", error=exc.message, error_code=exc.code, retryable=retryable)
     except Exception as exc:
         temporary.unlink(missing_ok=True)
         log.warning("cloud import failed: %s", type(exc).__name__)
         await _aset(user, record, state="failed", error="The file could not be imported.", error_code="import_failed", retryable=True)
+
+
+class _LinkExpired(Exception):
+    pass
+
+
+def _segments(total: int) -> list[tuple[int, int, int]]:
+    return [(i, i * SEGMENT, min(total, (i + 1) * SEGMENT) - 1) for i in range((total + SEGMENT - 1) // SEGMENT)]
+
+
+def _download(user: str, record: dict, url: str, target: Path) -> int:
+    """Fetch the file in 16 MB ranges over several connections, remembering finished ranges so a retry continues.
+
+    One connection from this server to the storage host is slow; several in parallel add up. Falls back to a single
+    stream when the host does not honour ranges.
+    """
+    limit = MAX_BYTES[record["kind"]]
+    with httpx.Client(timeout=httpx.Timeout(30, read=60), follow_redirects=False,
+                      limits=httpx.Limits(max_connections=CONNECTIONS, max_keepalive_connections=CONNECTIONS)) as client:
+        probe = client.get(url, headers={"Range": "bytes=0-0"})
+        if probe.status_code in (301, 302, 303, 307, 308):
+            raise CloudError("unsafe_link", "The download link was refused.", 502)
+        if probe.status_code in (401, 403):
+            raise _LinkExpired()
+        try:
+            total = int(probe.headers.get("content-range", "").rsplit("/", 1)[1])
+        except (IndexError, ValueError):
+            total = 0
+        if probe.status_code != 206 or not total:
+            return _stream(user, record, url, target)          # no range support: one connection
+        if total > limit:
+            raise CloudError("file_too_large", "The file is larger than the allowed size.", 413)
+        if record.get("size") and int(record["size"]) != total:
+            raise CloudError("network", "The file changed while it was being fetched.", 502)
+        done = set(record.get("done") or [])
+        if not target.exists() or target.stat().st_size != total:
+            with open(target, "wb") as handle:
+                handle.truncate(total)
+            done = set()
+        segments = _segments(total)
+        length = {i: b - a + 1 for i, a, b in segments}
+        counted = {"bytes": sum(length[i] for i in done)}
+        lock, stop, expired = threading.Lock(), threading.Event(), threading.Event()
+        started = time.monotonic(); base = counted["bytes"]
+        fd = os.open(target, os.O_WRONLY)
+
+        def fetch(segment):
+            index, first, last = segment
+            for attempt in range(4):
+                if stop.is_set():
+                    return
+                got = 0
+                try:
+                    with client.stream("GET", url, headers={"Range": f"bytes={first}-{last}"}) as response:
+                        if response.status_code in (401, 403):
+                            expired.set(); stop.set(); return
+                        if response.status_code != 206:
+                            raise httpx.TransportError(f"status {response.status_code}")
+                        position = first
+                        for block in response.iter_bytes(1024 * 1024):
+                            if stop.is_set():
+                                return
+                            os.pwrite(fd, block, position); position += len(block); got += len(block)
+                            with lock: counted["bytes"] += len(block)
+                    if position != last + 1:
+                        raise httpx.TransportError("short range")
+                    with lock: done.add(index)
+                    return
+                except (httpx.TransportError, httpx.TimeoutException):
+                    with lock: counted["bytes"] -= got
+                    if attempt == 3:
+                        raise
+                    time.sleep(2 ** attempt)
+
+        try:
+            with ThreadPoolExecutor(max_workers=CONNECTIONS) as pool:
+                pending = {pool.submit(fetch, segment) for segment in segments if segment[0] not in done}
+                while pending:
+                    finished, pending = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+                    for future in finished:
+                        error = future.exception()
+                        if error:
+                            stop.set()
+                            raise CloudError("network", "The connection was interrupted.", 502) from None
+                    if _cancelled(user, record):
+                        stop.set()
+                        raise CloudError("cancelled", "Cancelled.")
+                    elapsed = max(time.monotonic() - started, 0.001)
+                    _set(user, record, bytes=counted["bytes"], speed=int((counted["bytes"] - base) / elapsed), done=sorted(done))
+        finally:
+            stop.set(); os.close(fd)
+        if expired.is_set():
+            _set(user, record, bytes=counted["bytes"], done=sorted(done))
+            raise _LinkExpired()
+        if len(done) != len(segments):
+            raise CloudError("network", "The download was incomplete.", 502)
+        return total
 
 
 def _stream(user: str, record: dict, url: str, target: Path) -> int:

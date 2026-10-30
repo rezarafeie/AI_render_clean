@@ -194,3 +194,74 @@ def test_a_transfer_left_active_by_a_dead_worker_becomes_a_retryable_failure(mon
     seen = cloud.get_transfer("u", "c1", record["id"])
     assert seen["state"] == "failed" and seen["error_code"] == "interrupted" and seen["retryable"] is True
     assert cloud.retry("u", "c1", record["id"])["state"] == "queued"
+
+
+def ranged_transport(payload, forbid_after=None):
+    calls = {"n": 0}
+    def handler(request):
+        calls["n"] += 1
+        spec = request.headers.get("range", "")
+        if not spec:
+            return httpx.Response(200, content=payload)
+        first, last = [int(x) for x in spec.split("=")[1].split("-")]
+        if forbid_after is not None and calls["n"] > forbid_after:
+            return httpx.Response(403)
+        last = min(last, len(payload) - 1)
+        return httpx.Response(206, content=payload[first:last + 1], headers={"content-range": f"bytes {first}-{last}/{len(payload)}"})
+    return httpx.MockTransport(handler), calls
+
+
+def prepared_record(size):
+    return {"id": "abc", "conversation_id": "c1", "kind": "video", "size": size, "state": "downloading", "filename": "clip.mp4"}
+
+
+def test_a_ranged_download_assembles_the_file_from_parallel_pieces(monkeypatch, root):
+    payload = bytes(range(200)) * 3          # 600 bytes
+    transport, _ = ranged_transport(payload)
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=transport, **kw))
+    monkeypatch.setattr(cloud, "SEGMENT", 64)
+    record = prepared_record(len(payload)); target = root / "out.bin"
+    cloud._write("u", record)
+    assert cloud._download("u", record, "https://b.r2.cloudflarestorage.com/x", target) == len(payload)
+    assert target.read_bytes() == payload
+    assert len(record["done"]) == 10 and record["bytes"] == len(payload)
+
+
+def test_a_retry_only_fetches_the_ranges_that_were_not_finished(monkeypatch, root):
+    payload = bytes(range(256)) * 2
+    transport, calls = ranged_transport(payload)
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=transport, **kw))
+    monkeypatch.setattr(cloud, "SEGMENT", 128)       # four ranges
+    target = root / "out.bin"
+    target.write_bytes(payload[:256] + b"\0" * 256)  # the first two ranges are already on disk
+    record = {**prepared_record(len(payload)), "done": [0, 1]}
+    cloud._write("u", record)
+    cloud._download("u", record, "https://b.r2.cloudflarestorage.com/x", target)
+    assert target.read_bytes() == payload
+    assert calls["n"] == 1 + 2                       # the probe plus only the two missing ranges
+
+
+def test_an_expired_link_is_reported_so_a_new_one_can_be_requested(monkeypatch, root):
+    payload = b"x" * 300
+    transport, _ = ranged_transport(payload, forbid_after=1)
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=transport, **kw))
+    monkeypatch.setattr(cloud, "SEGMENT", 100)
+    record = prepared_record(len(payload)); cloud._write("u", record)
+    with pytest.raises(cloud._LinkExpired):
+        cloud._download("u", record, "https://b.r2.cloudflarestorage.com/x", root / "out.bin")
+
+
+def test_a_cancel_stops_a_parallel_download(monkeypatch, root):
+    payload = b"y" * 400
+    transport, _ = ranged_transport(payload)
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=transport, **kw))
+    monkeypatch.setattr(cloud, "SEGMENT", 50)
+    monkeypatch.setattr(cloud, "_cancelled", lambda user, record: True)
+    record = prepared_record(len(payload)); cloud._write("u", record)
+    with pytest.raises(cloud.CloudError) as err:
+        cloud._download("u", record, "https://b.r2.cloudflarestorage.com/x", root / "out.bin")
+    assert err.value.code == "cancelled"

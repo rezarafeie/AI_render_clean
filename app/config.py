@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # Job metadata/status is persisted in PostgreSQL.
     JOBS_DIR: str = "/app/job_data"
     # Hosts a Composio download link may point at (suffix match). Anything else is refused.
+    # Parallel connections used to fetch one cloud file; one connection from this server is slow.
+    CLOUD_DOWNLOAD_CONNECTIONS: int = 6
     CLOUD_DOWNLOAD_HOSTS: str = ".r2.cloudflarestorage.com,.amazonaws.com,.composio.dev"
     # Localization (Persian voice-over) projects; defaults to a "localize_jobs"
     # folder next to JOBS_DIR.
