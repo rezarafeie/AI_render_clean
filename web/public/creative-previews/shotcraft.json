@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "items": {
+    "shotcraft-card-stack": {
+      "id": "shotcraft-card-stack",
+      "name": "shotcraft-card-stack",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-card-stack.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-text-column-converge": {
+      "id": "shotcraft-text-column-converge",
+      "name": "shotcraft-text-column-converge",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-text-column-converge.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-title-demote-to-label": {
+      "id": "shotcraft-title-demote-to-label",
+      "name": "shotcraft-title-demote-to-label",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-title-demote-to-label.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-bezier-source-converge-merge": {
+      "id": "shotcraft-bezier-source-converge-merge",
+      "name": "shotcraft-bezier-source-converge-merge",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-bezier-source-converge-merge.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-card-flip-reveal": {
+      "id": "shotcraft-card-flip-reveal",
+      "name": "shotcraft-card-flip-reveal",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-card-flip-reveal.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-circle-match-iris": {
+      "id": "shotcraft-circle-match-iris",
+      "name": "shotcraft-circle-match-iris",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-circle-match-iris.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-before-after-slider-scrub": {
+      "id": "shotcraft-before-after-slider-scrub",
+      "name": "shotcraft-before-after-slider-scrub",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-before-after-slider-scrub.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-chart-axis-rescale": {
+      "id": "shotcraft-chart-axis-rescale",
+      "name": "shotcraft-chart-axis-rescale",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-chart-axis-rescale.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-chart-oscilloscope": {
+      "id": "shotcraft-chart-oscilloscope",
+      "name": "shotcraft-chart-oscilloscope",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-chart-oscilloscope.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    },
+    "shotcraft-chart-unit-regroup": {
+      "id": "shotcraft-chart-unit-regroup",
+      "name": "shotcraft-chart-unit-regroup",
+      "status": "upstream-demo-checked",
+      "poster": "/creative-previews/shotcraft-chart-unit-regroup.png",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+    }
+  }
+}

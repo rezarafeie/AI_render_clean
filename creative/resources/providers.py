@@ -18,7 +18,14 @@ def _preview_url(value):
 def hyperframes_resources():
     from engine.hyperframes.catalog import load_catalog, load_profiles
     from engine.hyperframes.registry_runtime import SUPPORTED_REGISTRY_ADAPTERS
-    from creative.native_motion import SUPPORTED
+    from creative.native_motion import SUPPORTED, source_names, parameter_schema
+    from pathlib import Path
+    import json
+    gallery_path = Path(__file__).resolve().parents[2] / "web/public/creative-previews/index.json"
+    try:
+        gallery = json.loads(gallery_path.read_text()).get("items", {})
+    except (OSError, ValueError):
+        gallery = {}
     catalog, profiles = load_catalog(), load_profiles()
     # The index owns membership/version. Profiles only enrich matching items;
     # the two snapshots currently have different item counts.
@@ -27,6 +34,10 @@ def hyperframes_resources():
         profile = profiles.get(key, {})
         preview = profile.get("preview") or {}
         video, poster = _preview_url(preview.get("video")), _preview_url(preview.get("poster"))
+        local = gallery.get(f"hyperframes:{key}", {})
+        expected_poster = f"/creative-previews/{key}.png"
+        if local.get("poster") == expected_poster and (gallery_path.parent / f"{key}.png").is_file():
+            poster = expected_poster
         motion = f"hyperframes:{key}" in SUPPORTED
         talking = key in SUPPORTED_REGISTRY_ADAPTERS
         wired = talking or motion
@@ -50,6 +61,25 @@ def hyperframes_resources():
                          "Existing adapters are context-specific, not a generic execution API." if wired else
                          "Metadata only; not yet connected to an EditorGPT render adapter."),
         )
+    # The vendored executable snapshot is newer/different from the discovery
+    # index. Do not lose real local components merely because that index lags.
+    indexed = {item["name"] for item in catalog.get("items", [])}
+    for key in sorted(set(source_names()) - indexed):
+        rid = "hyperframes:" + key
+        local = gallery.get(rid, {})
+        wired = rid in SUPPORTED
+        poster = f"/creative-previews/{key}.png"
+        yield Resource(id=rid, name=key.replace("-", " ").title(),
+                       description=f"Pinned {key} source; typed upstream parameters, local runtime and per-instance timeline.",
+                       type="component", category="motion", provider="hyperframes-official",
+                       source_url="https://github.com/heygen-com/hyperframes/tree/3b2058a2b7a2/registry/components",
+                       source_version="3b2058a2b7a2", engine="hyperframes",
+                       integration_status="native" if wired else "adapter-required",
+                       availability="existing-pipeline" if wired else "catalog-only",
+                       contexts=("motion-graphic",) if wired else (), legacy_id=key,
+                       parameters=tuple(Parameter(name=k, value_type="number" if v["type"] == "number" else "boolean" if v["type"] == "boolean" else "string", default=v.get("default")) for k,v in parameter_schema(key).items()),
+                       preview_poster=poster if local.get("poster") == poster else None,
+                       limitations=("Portrait demonstration browser-checked only; not certification of all inputs, RTL, timings or encoded output." if wired else "Adapter check failed; not eligible for production selection.",))
 
 
 def existing_effect_resources():
@@ -109,4 +139,22 @@ def shotcraft_resources():
             engine="hyperframes", integration_status="port-required", availability="catalog-only",
             contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
             limitations=("Pinned recipe and TSX guide scene authoring. TSX is not executed; no certified native port or automatic Remotion fallback.",),
+        )
+
+
+def face_effect_resources():
+    """Discover the existing real compositor; do not duplicate its execution API."""
+    from engine.face_effects import CATALOG
+    for item in CATALOG:
+        yield Resource(
+            id=f'claude-effects:{item["id"]}', name=item["title"], description=item["description"],
+            type="face-effect", category="talking-head", provider="claude-video-effects",
+            source_url="https://github.com/Vibha-Ramprakash/claude-video-effects",
+            engine="ffmpeg", integration_status="native", availability="existing-pipeline",
+            contexts=("talking-reel",), legacy_id=item["id"], recommended_for=(item.get("use", ""),),
+            license=License(type="MIT", verified=True, attribution_required=True),
+            preview_poster=f'/creative-previews/claude-{item["id"]}.png',
+            parameters=tuple(Parameter(name=v["key"], value_type="number" if v["type"] == "number" else "string", default=v.get("default")) for v in item.get("options", [])),
+            limitations=("Uses existing engine.face_effects.clean_plan/apply, cancellation and Talking Reel jobs. Requires video/person tracking runtime and model assets.",
+                         "Gallery demonstrates the real compositor on synthetic geometry and a fixed matte; it does not certify tracking or complete encoded video."),
         )

@@ -1,0 +1,3741 @@
+{
+  "schema_version": 1,
+  "items": {
+    "hyperframes:beat-timeline": {
+      "id": "hyperframes:beat-timeline",
+      "name": "beat-timeline",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "19c6528e970766422978e26d5ac483bfe2c711b7fdcaf1f8a28805a4a53f584c",
+      "parameters": [
+        {
+          "id": "beatCount",
+          "type": "number",
+          "role": "content",
+          "label": "Beat count",
+          "description": "Number of beat rows in the sequence.",
+          "default": 4,
+          "min": 2,
+          "max": 6,
+          "step": 1
+        },
+        {
+          "id": "interval",
+          "type": "number",
+          "role": "layout",
+          "label": "Interval",
+          "description": "Base time between consecutive beat markers.",
+          "default": 0.6,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.05,
+          "unit": "s"
+        },
+        {
+          "id": "labels",
+          "type": "string",
+          "role": "content",
+          "label": "Labels",
+          "description": "Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N.",
+          "default": "One,Two,Three,Four"
+        }
+      ],
+      "poster": "/creative-previews/beat-timeline.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "d1c08a9bf01574e0871ad23663bd482ea3653b02026d19c91e4542db260c66a6"
+    },
+    "hyperframes:chart-story": {
+      "id": "hyperframes:chart-story",
+      "name": "chart-story",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "d65180b77637521ea98676c9af1d59395f1e70ce0d0d5e1f604d02bee2821310",
+      "parameters": [
+        {
+          "id": "type",
+          "type": "enum",
+          "role": "content",
+          "label": "Chart type",
+          "description": "Chart form the data builds into.",
+          "default": "bars",
+          "options": [
+            {
+              "value": "bars",
+              "label": "Bars"
+            },
+            {
+              "value": "line",
+              "label": "Line"
+            },
+            {
+              "value": "donut",
+              "label": "Donut"
+            },
+            {
+              "value": "progress",
+              "label": "Progress"
+            }
+          ]
+        },
+        {
+          "id": "data",
+          "type": "string",
+          "role": "content",
+          "label": "Data",
+          "description": "Comma-separated numbers; the chart lands exactly on these values.",
+          "default": "12, 28, 45, 64"
+        },
+        {
+          "id": "labels",
+          "type": "string",
+          "role": "content",
+          "label": "Labels",
+          "description": "Comma-separated labels, one per datum.",
+          "default": "Q1, Q2, Q3, Q4"
+        },
+        {
+          "id": "emphasize",
+          "type": "number",
+          "role": "content",
+          "label": "Emphasize",
+          "description": "Index of the datum that takes the accent and the value callout. Clamped to the data range.",
+          "default": 3,
+          "step": 1
+        },
+        {
+          "id": "unit",
+          "type": "string",
+          "role": "content",
+          "label": "Unit",
+          "description": "Suffix appended to every displayed value.",
+          "default": "%"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Contract color used by the emphasized datum and its callout.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "style",
+          "label": "Exit",
+          "description": "Optional departure. Proof stats end on the still hold, so the default is none.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/chart-story.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "2ff3c1f9e5ca382b795b06db088bb435b5aac33808cd1cf895900cebbdb2ce6c"
+    },
+    "hyperframes:conic-progress-ring": {
+      "id": "hyperframes:conic-progress-ring",
+      "name": "conic-progress-ring",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "a01beeb774006a3317d123983b85586adb3bc81b94e435e3f65116ba9dabb93a",
+      "parameters": [
+        {
+          "id": "progress",
+          "type": "number",
+          "role": "content",
+          "label": "Progress",
+          "description": "Target angular fill from 0 to 100.",
+          "default": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        },
+        {
+          "id": "thickness",
+          "type": "number",
+          "role": "layout",
+          "label": "Thickness",
+          "description": "Ring stroke thickness as a percent of the ring radius.",
+          "default": 12,
+          "min": 4,
+          "max": 30,
+          "step": 1,
+          "unit": "%"
+        },
+        {
+          "id": "label",
+          "type": "string",
+          "role": "content",
+          "label": "Center label",
+          "description": "Numeric target shown in the center and counted in sync with the fill.",
+          "default": "100"
+        }
+      ],
+      "poster": "/creative-previews/conic-progress-ring.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "1b364725573b57b41b2feb9ecb18a9a13681aaf39ef0b5b563d82d82b96730a9"
+    },
+    "hyperframes:constellation-hub": {
+      "id": "hyperframes:constellation-hub",
+      "name": "constellation-hub",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6ebed16e6f7d2aff53507fc719639e4b9332b1882c4c4b8e3e8ff0b53011805e",
+      "parameters": [
+        {
+          "id": "hub_label",
+          "type": "string",
+          "role": "content",
+          "label": "Hub label",
+          "description": "Text displayed inside the fixed central hub.",
+          "default": "Product"
+        },
+        {
+          "id": "nodes",
+          "type": "string",
+          "role": "content",
+          "label": "Feature nodes",
+          "description": "Comma-separated feature labels introduced in narration order.",
+          "default": "Capture,Compose,Render,Share"
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated seconds (from mount start) for each node reveal. Empty keeps the authored even spread.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Highlight color used by the hub, connectors, and active nodes.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the lockup holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/constellation-hub.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "e7a46d0e3802b4126b9798a9d63cf95ca8c04181a956b5b012d8860bbf942c8e"
+    },
+    "hyperframes:count-up": {
+      "id": "hyperframes:count-up",
+      "name": "count-up",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6b34b9873a243fedb060d23f4eb5cef1b61a5b169ec1ae064030b70b48beea66",
+      "parameters": [
+        {
+          "id": "start",
+          "type": "number",
+          "role": "content",
+          "label": "Start value",
+          "description": "First value shown by the count.",
+          "default": 0,
+          "step": 1
+        },
+        {
+          "id": "end",
+          "type": "number",
+          "role": "content",
+          "label": "End value",
+          "description": "Final value where the count lands.",
+          "default": 100,
+          "step": 1
+        },
+        {
+          "id": "prefix",
+          "type": "string",
+          "role": "content",
+          "label": "Prefix",
+          "description": "Optional text shown before the value.",
+          "default": ""
+        },
+        {
+          "id": "suffix",
+          "type": "string",
+          "role": "content",
+          "label": "Suffix",
+          "description": "Optional text shown after the value.",
+          "default": "%"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Color used by the count.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "glow",
+          "type": "boolean",
+          "role": "style",
+          "label": "Glow",
+          "description": "Optional soft accent glow under the count. Off by default.",
+          "default": false
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the landed value holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/count-up.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "7880645e0e90f69a247faf69fa815d8e42626890f0389492d84f708e71d4b90c"
+    },
+    "hyperframes:cta-lockup": {
+      "id": "hyperframes:cta-lockup",
+      "name": "cta-lockup",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "126c3b7da9540230aeead700a154c36d5f205a33037083cc0cb7aaabe497ee65",
+      "parameters": [
+        {
+          "id": "action_line",
+          "type": "string",
+          "role": "content",
+          "label": "Action line",
+          "description": "Primary action statement shown above the CTA.",
+          "default": "Start building today"
+        },
+        {
+          "id": "button_label",
+          "type": "string",
+          "role": "content",
+          "label": "Button label",
+          "description": "Text displayed inside the CTA capsule.",
+          "default": "Get HyperFrames"
+        },
+        {
+          "id": "microcopy",
+          "type": "string",
+          "role": "content",
+          "label": "Microcopy",
+          "description": "Supporting detail shown below the CTA capsule.",
+          "default": "Free while in beta"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Fill color used by the CTA capsule.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/cta-lockup.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "55251bf5eacb039be42a2c61eba6dca58cf72b0f489bc9144f1b7ac3d74b1fb7"
+    },
+    "hyperframes:cta-close": {
+      "id": "hyperframes:cta-close",
+      "name": "cta-close",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "1aff42f1ddfaebcd961b64987e59ed8a3bd1961b4d40d44d24e117093801c46f",
+      "parameters": [
+        {
+          "id": "action_line",
+          "type": "string",
+          "role": "content",
+          "label": "Action line",
+          "description": "Two to four word action that closes the film.",
+          "default": "Make it happen"
+        },
+        {
+          "id": "button_label",
+          "type": "string",
+          "role": "content",
+          "label": "Button label",
+          "description": "Text displayed inside the single CTA capsule.",
+          "default": "Start now"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Contract color used by the CTA capsule.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the lockup holds until the frame cuts (this primitive closes films).",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/cta-close.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "e7a90a8bb847ed668af864c2aafd80fba41503d1a476f9289280431501897d7d"
+    },
+    "hyperframes:headline-slam": {
+      "id": "hyperframes:headline-slam",
+      "name": "headline-slam",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "b16ac28b01bf7f352d6a3f267838253de85794cd9bedd8065b48d7675e9295cd",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Headline",
+          "description": "Text displayed as the headline.",
+          "default": "Ship it today"
+        },
+        {
+          "id": "accent_word_index",
+          "type": "number",
+          "role": "content",
+          "label": "Accent word index",
+          "description": "Zero-based word index to color. Out of range leaves the headline unaccented.",
+          "default": 1,
+          "step": 1
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Color applied to the selected word.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "shadow",
+          "type": "boolean",
+          "role": "style",
+          "label": "Shadow",
+          "description": "Drop shadow cast under the headline. On by default; set false for a flat matte look.",
+          "default": true
+        }
+      ],
+      "poster": "/creative-previews/headline-slam.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "21dcc04e5442e8ae47b243548b74639008a04f3749b2f9f56a02d516b3c4fffd"
+    },
+    "hyperframes:kinetic-type-swap": {
+      "id": "hyperframes:kinetic-type-swap",
+      "name": "kinetic-type-swap",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "e98407ad72306094c3f17f25043924c5214428ef290235db0409c44865e259ba",
+      "parameters": [
+        {
+          "id": "prefix",
+          "type": "string",
+          "role": "content",
+          "label": "Prefix",
+          "description": "Fixed sentence text before the rolling word slot.",
+          "default": "Ship"
+        },
+        {
+          "id": "options",
+          "type": "string",
+          "role": "content",
+          "label": "Options",
+          "description": "Comma-separated words shown in the rolling slot.",
+          "default": "faster,smarter,together"
+        },
+        {
+          "id": "suffix",
+          "type": "string",
+          "role": "content",
+          "label": "Suffix",
+          "description": "Fixed sentence text after the rolling word slot.",
+          "default": ""
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Color used by the rolling word slot.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the sentence holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/kinetic-type-swap.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "text_box_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "c3f75beaf0a994013226e255ccbda397186be70afaaca048a0654e9dd1fce699"
+    },
+    "hyperframes:line-swap": {
+      "id": "hyperframes:line-swap",
+      "name": "line-swap",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "24fb7b6b8ed1455e2bcf22addfa80d02dbc1008473b4cef98e7346709aa80ad7",
+      "parameters": [
+        {
+          "id": "line_a",
+          "type": "string",
+          "role": "content",
+          "label": "Line A",
+          "description": "First line; holds center inside the mask, then exits up on the swap beat.",
+          "default": "Everyone promised you AI."
+        },
+        {
+          "id": "line_b",
+          "type": "string",
+          "role": "content",
+          "label": "Line B",
+          "description": "Replacement line; enters bottom-up on the swap beat and holds.",
+          "default": "Almost nobody promised you control."
+        },
+        {
+          "id": "swap_at",
+          "type": "number",
+          "role": "timing",
+          "label": "Swap at",
+          "description": "Second (from mount start) of the beat replacement. Clamped so the swap and underline complete before any exit.",
+          "default": 1.5,
+          "min": 0,
+          "step": 0.1,
+          "unit": "s"
+        },
+        {
+          "id": "underline_word",
+          "type": "string",
+          "role": "content",
+          "label": "Underline word",
+          "description": "First case-insensitive substring match in line B gets the accent underline after landing. Empty disables it.",
+          "default": "control"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Underline color from the contract token map.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the landed line holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/line-swap.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "60ad67127bef86784439dd251e7d2ec594cf6bbf23414fa25d560656ff6afd9b"
+    },
+    "hyperframes:marker-highlight": {
+      "id": "hyperframes:marker-highlight",
+      "name": "marker-highlight",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "bedd128ffab3808b4624f9aa5bcd0e80c9022726fdad59191301259adb0512dc",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "Full line of display text.",
+          "default": "Ship it with confidence"
+        },
+        {
+          "id": "emphasis_word",
+          "type": "string",
+          "role": "content",
+          "label": "Emphasis word",
+          "description": "First case-insensitive substring match in text receives the marker. Empty or unmatched draws no marker.",
+          "default": "confidence"
+        },
+        {
+          "id": "style",
+          "type": "enum",
+          "role": "style",
+          "label": "Marker style",
+          "description": "Shape of the hand-drawn marker stroke.",
+          "default": "highlight",
+          "options": [
+            {
+              "value": "highlight",
+              "label": "Highlight"
+            },
+            {
+              "value": "circle",
+              "label": "Circle"
+            },
+            {
+              "value": "underline",
+              "label": "Underline"
+            },
+            {
+              "value": "scribble",
+              "label": "Scribble"
+            }
+          ]
+        },
+        {
+          "id": "draw_at",
+          "type": "number",
+          "role": "timing",
+          "label": "Draw at",
+          "description": "Second (from mount start) the marker starts drawing. Clamped so the stroke completes before any exit.",
+          "default": 0.9,
+          "min": 0,
+          "step": 0.1,
+          "unit": "s"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Marker ink color from the contract token map.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the lockup holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/marker-highlight.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "53e7ed124639f54b8c2ffe0df455179ab277b25a152ff78ea57f7c0e548b4b23"
+    },
+    "hyperframes:marker-checklist-card": {
+      "id": "hyperframes:marker-checklist-card",
+      "name": "marker-checklist-card",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "c99d951e0f361447109f50b5301cbbd8bcfed621cd7a66d92d9c5a65ec1614f0",
+      "parameters": [
+        {
+          "id": "top",
+          "type": "string",
+          "role": "content",
+          "label": "Headline top",
+          "description": "First marker line.",
+          "default": "THE POWER"
+        },
+        {
+          "id": "mid",
+          "type": "string",
+          "role": "content",
+          "label": "Headline middle",
+          "description": "Small connecting word under the underline.",
+          "default": "OF"
+        },
+        {
+          "id": "circled",
+          "type": "string",
+          "role": "content",
+          "label": "Circled word",
+          "description": "The word the marker ellipse draws around.",
+          "default": "ONE"
+        },
+        {
+          "id": "rest",
+          "type": "string",
+          "role": "content",
+          "label": "Headline rest",
+          "description": "The rest of the bottom line.",
+          "default": "FILE"
+        },
+        {
+          "id": "l1",
+          "type": "string",
+          "role": "content",
+          "label": "Row 1 label",
+          "description": "Typewriter label of row 1.",
+          "default": "WRITE"
+        },
+        {
+          "id": "v1",
+          "type": "string",
+          "role": "content",
+          "label": "Row 1 value",
+          "description": "Marker value of row 1.",
+          "default": "HTML"
+        },
+        {
+          "id": "l2",
+          "type": "string",
+          "role": "content",
+          "label": "Row 2 label",
+          "description": "Typewriter label of row 2.",
+          "default": "RENDER"
+        },
+        {
+          "id": "v2",
+          "type": "string",
+          "role": "content",
+          "label": "Row 2 value",
+          "description": "Marker value of row 2.",
+          "default": "IN 4K"
+        },
+        {
+          "id": "l3",
+          "type": "string",
+          "role": "content",
+          "label": "Row 3 label",
+          "description": "Typewriter label of row 3.",
+          "default": "SHIP"
+        },
+        {
+          "id": "v3",
+          "type": "string",
+          "role": "content",
+          "label": "Row 3 value",
+          "description": "Marker value of row 3.",
+          "default": "TODAY"
+        }
+      ],
+      "poster": "/creative-previews/marker-checklist-card.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "runtime",
+          "code": "console_warning",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "953fef09e60ca89d688e2b996d9afeb326f2c65e0344b5eab9cdcc6106de6ed4"
+    },
+    "hyperframes:match-cut": {
+      "id": "hyperframes:match-cut",
+      "name": "match-cut",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "34ffaa62e703ccd331889f44ae09aef650844b8c1f77d5ae417bf65cddf5ec5d",
+      "parameters": [
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Color shared by the matched circles.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "label_a",
+          "type": "string",
+          "role": "content",
+          "label": "Scene A label",
+          "description": "Text inside the outgoing button.",
+          "default": "Start"
+        },
+        {
+          "id": "label_b",
+          "type": "string",
+          "role": "content",
+          "label": "Scene B label",
+          "description": "Result text revealed after the cut.",
+          "default": "Done"
+        }
+      ],
+      "poster": "/creative-previews/match-cut.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "gsap_timeline_set_initial_hide",
+          "severity": "warning"
+        },
+        {
+          "section": "lint",
+          "code": "gsap_timeline_set_initial_hide",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "8cd612af337582415b1fafc2a7b038b313bc3f855cfcd7107d98d25e6c20c6ee"
+    },
+    "hyperframes:notification-stack": {
+      "id": "hyperframes:notification-stack",
+      "name": "notification-stack",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "dfe78474314169e66fb3cb6fa26d3e09755873248a1ff72dc4b472edacbb2771",
+      "parameters": [
+        {
+          "id": "titles",
+          "type": "string",
+          "role": "content",
+          "label": "Titles",
+          "description": "Comma-separated card titles (1 to 5 cards).",
+          "default": "Build queued,Checks passed,Deploy live"
+        },
+        {
+          "id": "bodies",
+          "type": "string",
+          "role": "content",
+          "label": "Bodies",
+          "description": "Comma-separated body lines matched to titles by index. Blank entries hide that body line.",
+          "default": "Pipeline started for main,All 42 checks green,Now serving version 2.4"
+        },
+        {
+          "id": "expand",
+          "type": "number",
+          "role": "content",
+          "label": "Expand",
+          "description": "Index of the focus card in the titles list. -1 focuses the newest card (top of the stack).",
+          "default": -1,
+          "min": -1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Accent token family used by the icon dots.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "How the stack leaves the frame. Default none: the hold ends the film.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/notification-stack.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "18222bf895d944ca53b61326cfcc4a989f9801ec141c9301ad0234ec476d36fa"
+    },
+    "hyperframes:native-notification-pop": {
+      "id": "hyperframes:native-notification-pop",
+      "name": "native-notification-pop",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "d4e8b73da0360ddd34d622d0a37ae61920e77bae4fab74d445bebd829580be33",
+      "parameters": [
+        {
+          "id": "title",
+          "type": "string",
+          "role": "content",
+          "label": "Title",
+          "description": "The notification title line.",
+          "default": "Render complete"
+        },
+        {
+          "id": "body",
+          "type": "string",
+          "role": "content",
+          "label": "Body",
+          "description": "One body line. Long lines truncate with an ellipsis.",
+          "default": "launch-cut.mp4 is ready to preview"
+        },
+        {
+          "id": "app_label",
+          "type": "string",
+          "role": "content",
+          "label": "App label",
+          "description": "Small-caps app name row beside the app dot.",
+          "default": "HyperFrames"
+        },
+        {
+          "id": "os",
+          "type": "enum",
+          "role": "style",
+          "label": "OS",
+          "description": "Banner geometry and placement: wide centered iOS or compact top-right macOS.",
+          "default": "ios",
+          "options": [
+            {
+              "value": "ios",
+              "label": "iOS"
+            },
+            {
+              "value": "macos",
+              "label": "macOS"
+            }
+          ]
+        },
+        {
+          "id": "at",
+          "type": "number",
+          "role": "timing",
+          "label": "Drop start",
+          "description": "Seconds after mount start when the banner drops in.",
+          "default": 0.3,
+          "min": 0,
+          "max": 8,
+          "step": 0.05,
+          "unit": "s"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "App dot color.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "None holds the banner; up tucks it back off the top; fade fades it in place.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/native-notification-pop.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "48b5f288ea3ee0eac004ad067a349cccf02c6328d9c0ce378dc94f23eddc555a"
+    },
+    "hyperframes:notes-typing": {
+      "id": "hyperframes:notes-typing",
+      "name": "notes-typing",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "d1e0ad020fb0fd17b9e5abdddb1c125c40806d4f2f31c08bb6fffcd8867d495a",
+      "parameters": [
+        {
+          "id": "title",
+          "type": "string",
+          "role": "content",
+          "label": "Title",
+          "description": "Bold note title. A | breaks the line.",
+          "default": "Things nobody told me|about video."
+        },
+        {
+          "id": "lines",
+          "type": "string",
+          "role": "content",
+          "label": "Lines",
+          "description": "Pipe-separated body lines, typed one after another.",
+          "default": "my videos sucked|my tools cost $$$|and re-edits never end."
+        },
+        {
+          "id": "speed",
+          "type": "number",
+          "role": "timing",
+          "label": "Speed",
+          "description": "Typing speed multiplier. 1 is the measured human rhythm.",
+          "default": 1,
+          "min": 0.5,
+          "max": 2,
+          "step": 0.1
+        }
+      ],
+      "poster": "/creative-previews/notes-typing.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "d046a304c4528383863144b473cb7d78cd3a9caab93980d20b4845486a5580fe"
+    },
+    "hyperframes:overwhelm-surround": {
+      "id": "hyperframes:overwhelm-surround",
+      "name": "overwhelm-surround",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "e9ce5fdaf46f5639eede726f6c1426ff111a7235423a24b91c63b596a0513993",
+      "parameters": [
+        {
+          "id": "count",
+          "type": "number",
+          "role": "content",
+          "label": "Chip count",
+          "description": "Number of tasks and notifications crowding the center.",
+          "default": 16,
+          "min": 8,
+          "max": 24,
+          "step": 1
+        },
+        {
+          "id": "centerLabel",
+          "type": "string",
+          "role": "content",
+          "label": "Center label",
+          "description": "Text inside the calm central subject. Blank hides the text.",
+          "default": "You"
+        },
+        {
+          "id": "intensity",
+          "type": "number",
+          "role": "layout",
+          "label": "Intensity",
+          "description": "How tightly and quickly the chips crowd the center.",
+          "default": 1,
+          "min": 0.5,
+          "max": 2,
+          "step": 0.1
+        }
+      ],
+      "poster": "/creative-previews/overwhelm-surround.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "9ff65a5d1d7c10739ff9529c2ae9ff754b0504269244dab4745c86dadfb6a81a"
+    },
+    "hyperframes:radial-surround": {
+      "id": "hyperframes:radial-surround",
+      "name": "radial-surround",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "a331e57781ee42b150615fac69c9e8368425d050d25ffe134cf01f27d91af224",
+      "parameters": [
+        {
+          "id": "center_label",
+          "type": "string",
+          "role": "content",
+          "label": "Center label",
+          "description": "Label on the default center token card.",
+          "default": "Your team"
+        },
+        {
+          "id": "chips",
+          "type": "string",
+          "role": "content",
+          "label": "Chips",
+          "description": "Comma-separated chip labels that surround the center (up to 12).",
+          "default": "Docs,Tickets,Dashboards,Inbox,Chat,Sheets"
+        },
+        {
+          "id": "close_in",
+          "type": "boolean",
+          "role": "timing",
+          "label": "Close in",
+          "description": "Converge the ring inward with a subtle edge dim after assembly. The center never moves.",
+          "default": true
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Accent token family used by the center card tint.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "How the surrounded stage leaves the frame. Default none: the crowded hold ends the film.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/radial-surround.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "1f9e0617c9acc2c61700c3038969726341f3e2f388a487ef49f79beed9c1ff17"
+    },
+    "hyperframes:pan-stations": {
+      "id": "hyperframes:pan-stations",
+      "name": "pan-stations",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "3d3b32584a7b969025e13a5586a6f7f66cadca311758ce6f735e523a170d6ed3",
+      "parameters": [
+        {
+          "id": "stationCount",
+          "type": "number",
+          "role": "layout",
+          "label": "Station count",
+          "description": "Number of feature stations in the row.",
+          "default": 4,
+          "min": 3,
+          "max": 6,
+          "step": 1
+        },
+        {
+          "id": "labels",
+          "type": "string",
+          "role": "content",
+          "label": "Station labels",
+          "description": "Comma-separated labels shown on the station cards.",
+          "default": "Capture,Edit,Render,Share"
+        },
+        {
+          "id": "dwell",
+          "type": "number",
+          "role": "timing",
+          "label": "Dwell",
+          "description": "Seconds the camera holds at each station before panning.",
+          "default": 0.6,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.1,
+          "unit": "s"
+        }
+      ],
+      "poster": "/creative-previews/pan-stations.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "panel_out_of_canvas",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "78a8d0afc3438bc12991b42f965b81d8ad94b30fd7f0df73ad278282cbaaf7d9"
+    },
+    "hyperframes:per-word-rise": {
+      "id": "hyperframes:per-word-rise",
+      "name": "per-word-rise",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "e093265396dba184e2b451eb8154d7bbf3d80a49edd33d3a84d6676702a190f7",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "Text whose words or characters rise into place.",
+          "default": "WORDS IN MOTION"
+        },
+        {
+          "id": "split",
+          "type": "enum",
+          "role": "content",
+          "label": "Split",
+          "description": "Animate the text as words or individual characters.",
+          "default": "word",
+          "options": [
+            {
+              "value": "word",
+              "label": "Word"
+            },
+            {
+              "value": "char",
+              "label": "Character"
+            }
+          ]
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated seconds (from mount start) for each unit landing. Empty keeps the authored cascade rhythm.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Contract accent token used for the text color.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the line holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/per-word-rise.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "4a68d438d490a7fcc13d9c9638f278252f5561ea25a213598200c3a02a4ea974"
+    },
+    "hyperframes:perspective-marquee": {
+      "id": "hyperframes:perspective-marquee",
+      "name": "perspective-marquee",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "14d4544b748881f564ee3a2ffd55b1a630179b47b9d17bc3ee24667baf7c1698",
+      "parameters": [
+        {
+          "id": "tilt",
+          "type": "enum",
+          "role": "style",
+          "label": "Tilt",
+          "description": "How far the marquee plane leans back toward the horizon.",
+          "default": "standard",
+          "options": [
+            {
+              "value": "flat",
+              "label": "Flat"
+            },
+            {
+              "value": "standard",
+              "label": "Standard"
+            },
+            {
+              "value": "steep",
+              "label": "Steep"
+            }
+          ]
+        },
+        {
+          "id": "travel",
+          "type": "enum",
+          "role": "motion",
+          "label": "Travel",
+          "description": "Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time.",
+          "default": "standard",
+          "options": [
+            {
+              "value": "short",
+              "label": "Short"
+            },
+            {
+              "value": "standard",
+              "label": "Standard"
+            },
+            {
+              "value": "long",
+              "label": "Long"
+            }
+          ]
+        },
+        {
+          "id": "tone",
+          "type": "enum",
+          "role": "style",
+          "label": "Tone",
+          "description": "Pill colour: ink for light frames, paper for dark ones, accent rides the brand token.",
+          "default": "ink",
+          "options": [
+            {
+              "value": "ink",
+              "label": "Ink"
+            },
+            {
+              "value": "paper",
+              "label": "Paper"
+            },
+            {
+              "value": "accent",
+              "label": "Accent"
+            }
+          ]
+        },
+        {
+          "id": "words",
+          "type": "string",
+          "role": "content",
+          "label": "Words",
+          "description": "Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop.",
+          "default": "COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS"
+        }
+      ],
+      "poster": "/creative-previews/perspective-marquee.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "1f5703eafc05cd80e315119518637d26ea1a56e51a5daad25029fc0caa1d353c"
+    },
+    "hyperframes:pull-back-reveal": {
+      "id": "hyperframes:pull-back-reveal",
+      "name": "pull-back-reveal",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "c8fe75a2fd0b82212840378501098a0f13792add8fac82af02f492335a23549e",
+      "parameters": [
+        {
+          "id": "detail_text",
+          "type": "string",
+          "role": "content",
+          "label": "Detail text",
+          "description": "Stat shown in the detail chip at the center of the reveal.",
+          "default": "+312%"
+        },
+        {
+          "id": "headline",
+          "type": "string",
+          "role": "content",
+          "label": "Headline",
+          "description": "Headline revealed around the focused detail.",
+          "default": "Growth compounds"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Highlight color used across the composed scene.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/pull-back-reveal.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "canvas_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        },
+        {
+          "section": "layout",
+          "code": "escaped_container",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "cfe66d7d1d4a09dfab7ab509a4d7627e07c289371fe68096e7a23e0f17af89fd"
+    },
+    "hyperframes:push-in": {
+      "id": "hyperframes:push-in",
+      "name": "push-in",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "e6b899e011c238430f86218d952360fb66ccd7d5c8d1c60e42251a302671f242",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Headline",
+          "description": "Text centered in the camera frame.",
+          "default": "Focus"
+        },
+        {
+          "id": "intensity",
+          "type": "enum",
+          "role": "motion",
+          "label": "Push intensity",
+          "description": "Final camera scale reached by the push.",
+          "default": "standard",
+          "options": [
+            {
+              "value": "subtle",
+              "label": "Subtle"
+            },
+            {
+              "value": "standard",
+              "label": "Standard"
+            },
+            {
+              "value": "bold",
+              "label": "Bold"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/push-in.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "62180e226c23761b118f6e49712be78d13ea6d1f67b38478b3ed0d0675ff918e"
+    },
+    "hyperframes:social-proof-card": {
+      "id": "hyperframes:social-proof-card",
+      "name": "social-proof-card",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "66bf596ea2fd55b6d36902e695d047e751aff80ce16f6e006b8a5ddd57713892",
+      "parameters": [
+        {
+          "id": "brand",
+          "type": "string",
+          "role": "content",
+          "label": "Brand",
+          "description": "Wordmark at the top of the card.",
+          "default": "HyperFrames"
+        },
+        {
+          "id": "proof",
+          "type": "string",
+          "role": "content",
+          "label": "Proof line",
+          "description": "Social-proof line under the stars.",
+          "default": "12,000+ creators"
+        },
+        {
+          "id": "cta",
+          "type": "string",
+          "role": "content",
+          "label": "CTA",
+          "description": "Label on the closing capsule.",
+          "default": "Start rendering free"
+        },
+        {
+          "id": "f1",
+          "type": "string",
+          "role": "content",
+          "label": "Feature 1",
+          "description": "First feature, | breaks the line.",
+          "default": "Write|plain HTML"
+        },
+        {
+          "id": "f2",
+          "type": "string",
+          "role": "content",
+          "label": "Feature 2",
+          "description": "Second feature, | breaks the line.",
+          "default": "Render|pixel-perfect"
+        },
+        {
+          "id": "f3",
+          "type": "string",
+          "role": "content",
+          "label": "Feature 3",
+          "description": "Third feature, | breaks the line.",
+          "default": "Own|every line"
+        }
+      ],
+      "poster": "/creative-previews/social-proof-card.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "3f2af7235e6b67847e164b267288c60f2c6fae925b18c2158710f1d94072c238"
+    },
+    "hyperframes:split-tilt-cards": {
+      "id": "hyperframes:split-tilt-cards",
+      "name": "split-tilt-cards",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "93a753ab8250a3ab9c47d12894ab7677b3007492529e426aba36b4cef8126e32",
+      "parameters": [
+        {
+          "id": "label_a",
+          "type": "string",
+          "role": "content",
+          "label": "Left label",
+          "description": "Mono header on the left card. Blank hides it.",
+          "default": "Before"
+        },
+        {
+          "id": "label_b",
+          "type": "string",
+          "role": "content",
+          "label": "Right label",
+          "description": "Mono header on the right card. Blank hides it.",
+          "default": "After"
+        },
+        {
+          "id": "badge_a",
+          "type": "string",
+          "role": "content",
+          "label": "Left badge",
+          "description": "Pill badge that spring-pops at the left card inner edge. Blank disables it.",
+          "default": "v1"
+        },
+        {
+          "id": "badge_b",
+          "type": "string",
+          "role": "content",
+          "label": "Right badge",
+          "description": "Pill badge that spring-pops at the right card inner edge. Blank disables it.",
+          "default": "v2"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Right-card tint, right badge, and right ambient glow color.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Outgoing transition. None holds the final spread.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/split-tilt-cards.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        },
+        {
+          "section": "layout",
+          "code": "container_overflow",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "cb5ff81796fe8cfb7b0c1f0add8d8dc251dea895a8919a7944e3d78fc1d40fce"
+    },
+    "hyperframes:comparison-split": {
+      "id": "hyperframes:comparison-split",
+      "name": "comparison-split",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "2637b4dd260eb9ef272fad2f3b3921fe8f282cb498b8de112ec6faa76d5ef3b8",
+      "parameters": [
+        {
+          "id": "split",
+          "type": "number",
+          "role": "layout",
+          "label": "Split position",
+          "description": "Target resting position of the comparison divider.",
+          "default": 50,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        },
+        {
+          "id": "orientation",
+          "type": "enum",
+          "role": "layout",
+          "label": "Orientation",
+          "description": "Axis and direction used by the comparison wipe.",
+          "default": "horizontal",
+          "options": [
+            {
+              "value": "horizontal",
+              "label": "Horizontal"
+            },
+            {
+              "value": "vertical",
+              "label": "Vertical"
+            }
+          ]
+        },
+        {
+          "id": "labelA",
+          "type": "string",
+          "role": "content",
+          "label": "Before label",
+          "description": "Caption shown on the base before panel.",
+          "default": "Before"
+        },
+        {
+          "id": "labelB",
+          "type": "string",
+          "role": "content",
+          "label": "After label",
+          "description": "Caption shown on the revealed after panel.",
+          "default": "After"
+        }
+      ],
+      "poster": "/creative-previews/comparison-split.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "text_occluded",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "2d3f27171e46fd271eb1540a75344937ca75c2b0588c3b94367aca7d471a96f4"
+    },
+    "hyperframes:before-after-wipe": {
+      "id": "hyperframes:before-after-wipe",
+      "name": "before-after-wipe",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "c04e8bf1bfbcec71d0921a03a786cc09e660732428aa04bf79036a30b7755e09",
+      "parameters": [
+        {
+          "id": "label_a",
+          "type": "string",
+          "role": "content",
+          "label": "Before label",
+          "description": "Chip shown on the base before panel. Blank hides the chip.",
+          "default": "Before"
+        },
+        {
+          "id": "label_b",
+          "type": "string",
+          "role": "content",
+          "label": "After label",
+          "description": "Chip shown on the revealed after panel. Blank hides the chip.",
+          "default": "After"
+        },
+        {
+          "id": "rest_split",
+          "type": "number",
+          "role": "layout",
+          "label": "Resting split",
+          "description": "Divider resting position after the wipe lands.",
+          "default": 50,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        },
+        {
+          "id": "wipe_at",
+          "type": "number",
+          "role": "timing",
+          "label": "Wipe start",
+          "description": "Seconds after mount start when the wipe begins.",
+          "default": 0.25,
+          "min": 0,
+          "max": 8,
+          "step": 0.05,
+          "unit": "s"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Divider handle and after chip color.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Outgoing transition. None holds the final comparison frame.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/before-after-wipe.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "layout",
+          "code": "text_occluded",
+          "severity": "info"
+        }
+      ],
+      "poster_sha256": "f1561bc6c7582247a10873f26ac4854bf52dc9ba5ace7885d0a01f4e91be9baf"
+    },
+    "hyperframes:focus-rack": {
+      "id": "hyperframes:focus-rack",
+      "name": "focus-rack",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "415d25ac225c7ce5908d0c9ef3ab144bd93b44d40fc0b65fcc853c7254d5573e",
+      "parameters": [
+        {
+          "id": "label_a",
+          "type": "string",
+          "role": "content",
+          "label": "Card A label",
+          "description": "Label on the card that begins in focus.",
+          "default": "Draft"
+        },
+        {
+          "id": "label_b",
+          "type": "string",
+          "role": "content",
+          "label": "Card B label",
+          "description": "Label on the card that receives focus.",
+          "default": "Published"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Highlight color shared by both cards.",
+          "default": "blue",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/focus-rack.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "4fffdb0d8d0f0545709f9804162c2d8f74b4abe02e0c2b5d332a87e18524b559"
+    },
+    "hyperframes:state-chip-rail": {
+      "id": "hyperframes:state-chip-rail",
+      "name": "state-chip-rail",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "a6f986a78fb892751bfd8811102eea7b135db325dc8c52bafb7d61f870d4f04f",
+      "parameters": [
+        {
+          "id": "states",
+          "type": "string",
+          "role": "content",
+          "label": "States",
+          "description": "Comma-separated chip labels in machine order (2 to 8 states).",
+          "default": "Queued,Reading,Drafting,Done"
+        },
+        {
+          "id": "times",
+          "type": "string",
+          "role": "timing",
+          "label": "Times",
+          "description": "Comma-separated activation times in seconds, one per advance (state 1 onward). Blank entries use the default even rhythm.",
+          "default": ""
+        },
+        {
+          "id": "badge_state",
+          "type": "number",
+          "role": "content",
+          "label": "Badge state",
+          "description": "Index of the state the badges pop beside.",
+          "default": 1,
+          "min": 0,
+          "max": 7,
+          "step": 1
+        },
+        {
+          "id": "badges",
+          "type": "string",
+          "role": "content",
+          "label": "Badges",
+          "description": "Comma-separated badge labels shown beside the badge state. Empty disables.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Accent token family used by the active chip.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "How the rail leaves the frame. Default none: the hold ends the film.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/state-chip-rail.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "d2517ace631c80f77a5721b8c4d3d3aa0a9b33db8539c1ff8d835cabe014373d"
+    },
+    "hyperframes:svg-mask-reveal": {
+      "id": "hyperframes:svg-mask-reveal",
+      "name": "svg-mask-reveal",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "ee75c96ce061fd2de8819313edbd6a16a7810fff5148c138cf92b210a7467da1",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Wordmark",
+          "description": "Text used as the SVG mask window.",
+          "default": "REVEAL",
+          "maxLength": 16
+        },
+        {
+          "id": "revealProgress",
+          "type": "number",
+          "role": "content",
+          "label": "Reveal progress",
+          "description": "Final revealed width of the wordmark.",
+          "default": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        },
+        {
+          "id": "featherPx",
+          "type": "number",
+          "role": "style",
+          "label": "Edge feather",
+          "description": "Softness of the traveling reveal edge.",
+          "default": 24,
+          "min": 0,
+          "max": 120,
+          "step": 1,
+          "unit": "px"
+        }
+      ],
+      "poster": "/creative-previews/svg-mask-reveal.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "e4938931b1c8b23205b11493c25e83e44e039f44eeed5c223a900a4873aea08d"
+    },
+    "hyperframes:text-shimmer": {
+      "id": "hyperframes:text-shimmer",
+      "name": "text-shimmer",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "a96775b95265720efc23311566d17d574768cd60383743fa2dd71c9fd3241153",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Headline",
+          "description": "Text receiving the single shimmer pass.",
+          "default": "Effortless"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Hue of the specular shimmer band.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "sweep_at",
+          "type": "number",
+          "role": "timing",
+          "label": "Sweep start",
+          "description": "Requested start time for the shimmer sweep.",
+          "default": 1.2,
+          "min": 0.2,
+          "max": 2,
+          "step": 0.1,
+          "unit": "s"
+        }
+      ],
+      "poster": "/creative-previews/text-shimmer.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "42bada2d36384a4991e69eb02a71bb5e19c4b003c535832bc98a77d5e3067168"
+    },
+    "hyperframes:titlecard-calm": {
+      "id": "hyperframes:titlecard-calm",
+      "name": "titlecard-calm",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "5d6833d8bf512352e67d39a7b1f4133fe1bd84a9d0c76f528c6f40eea9e950ae",
+      "parameters": [
+        {
+          "id": "headline",
+          "type": "string",
+          "role": "content",
+          "label": "Headline",
+          "description": "Primary title displayed in the card.",
+          "default": "Less, but better"
+        },
+        {
+          "id": "kicker",
+          "type": "string",
+          "role": "content",
+          "label": "Kicker",
+          "description": "Small uppercase label displayed above the headline.",
+          "default": "DESIGN PRINCIPLE"
+        }
+      ],
+      "poster": "/creative-previews/titlecard-calm.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "5457f8197bdb8cb0685dad6c8f3dbf0749c371e29e7c66e0a0623442b5eefb15"
+    },
+    "hyperframes:titlecard-lockup": {
+      "id": "hyperframes:titlecard-lockup",
+      "name": "titlecard-lockup",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6a5e54b3819357bd264337cf16240b6a4e65e1059c08ccd82554611a60cdb072",
+      "parameters": [
+        {
+          "id": "wordmark",
+          "type": "string",
+          "role": "content",
+          "label": "Wordmark",
+          "description": "Display wordmark that settles dead-center.",
+          "default": "HYPERFRAMES"
+        },
+        {
+          "id": "label",
+          "type": "string",
+          "role": "content",
+          "label": "Label",
+          "description": "Mono caption under the rule. Empty hides it.",
+          "default": "WRITE HTML. RENDER VIDEO."
+        },
+        {
+          "id": "kicker",
+          "type": "string",
+          "role": "content",
+          "label": "Kicker",
+          "description": "Small mono label above the wordmark. Empty hides it.",
+          "default": "INTRODUCING"
+        },
+        {
+          "id": "rule",
+          "type": "enum",
+          "role": "style",
+          "label": "Rule",
+          "description": "Hairline rule drawn left to right under the wordmark.",
+          "default": "show",
+          "options": [
+            {
+              "value": "show",
+              "label": "Show"
+            },
+            {
+              "value": "hide",
+              "label": "Hide"
+            }
+          ]
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Contract color carried by the hairline rule.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "style",
+          "label": "Exit",
+          "description": "Optional departure. Frame roots own transitions, so none is the default.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/titlecard-lockup.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "3eeaa2d5d26c302ab9c9b6c4abeb58ee55946683fb308ba0c8c4c06b705d8fe2"
+    },
+    "hyperframes:typed-prompt": {
+      "id": "hyperframes:typed-prompt",
+      "name": "typed-prompt",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "ea5562adebc554cd363b4b4bf5b91dcf7b1fc2c73c634cb727e8a7dc149f3723",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "The prompt that gets typed.",
+          "default": "Generate a product launch video"
+        },
+        {
+          "id": "prompt_glyph",
+          "type": "string",
+          "role": "style",
+          "label": "Prompt glyph",
+          "description": "Leading glyph before the typed line. Empty string hides it.",
+          "default": ">"
+        },
+        {
+          "id": "cadence",
+          "type": "enum",
+          "role": "timing",
+          "label": "Cadence",
+          "description": "Keystroke rhythm: uniform fixed steps or seeded human chunks.",
+          "default": "human",
+          "options": [
+            {
+              "value": "uniform",
+              "label": "Uniform"
+            },
+            {
+              "value": "human",
+              "label": "Human"
+            }
+          ]
+        },
+        {
+          "id": "caret",
+          "type": "enum",
+          "role": "style",
+          "label": "Caret",
+          "description": "Blink runs integer sine cycles during typing then goes solid.",
+          "default": "blink",
+          "options": [
+            {
+              "value": "blink",
+              "label": "Blink"
+            },
+            {
+              "value": "solid",
+              "label": "Solid"
+            }
+          ]
+        },
+        {
+          "id": "correction",
+          "type": "string",
+          "role": "content",
+          "label": "Correction",
+          "description": "Mistyped word typed in place of the final word, then backspaced and corrected. Empty disables.",
+          "default": ""
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated seconds relative to mount start; cue N anchors the start of word N. Empty uses the authored rhythm.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Color of the prompt glyph and caret.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Outgoing transition. Frame roots own transitions; none holds the end frame.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/typed-prompt.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "fde463eeef9ec4457e65c623ba17d121317df1920060131454a31ab24f3fdce1"
+    },
+    "hyperframes:vox-annotate": {
+      "id": "hyperframes:vox-annotate",
+      "name": "vox-annotate",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "33485ba8f255cae458180f00380e2d2ed01141b382cbc33a1105d7905612c333",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "Full line of display text.",
+          "default": "Ship the story, not the spec"
+        },
+        {
+          "id": "keyword",
+          "type": "string",
+          "role": "content",
+          "label": "Keyword",
+          "description": "First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing.",
+          "default": "story"
+        },
+        {
+          "id": "note",
+          "type": "string",
+          "role": "content",
+          "label": "Note",
+          "description": "Mono callout label at the end of the connector. Empty draws the marker only.",
+          "default": "the annotate beat"
+        },
+        {
+          "id": "style",
+          "type": "enum",
+          "role": "style",
+          "label": "Marker style",
+          "description": "Shape of the hand-drawn marker stroke.",
+          "default": "highlight",
+          "options": [
+            {
+              "value": "highlight",
+              "label": "Highlight"
+            },
+            {
+              "value": "circle",
+              "label": "Circle"
+            },
+            {
+              "value": "underline",
+              "label": "Underline"
+            },
+            {
+              "value": "scribble",
+              "label": "Scribble"
+            }
+          ]
+        },
+        {
+          "id": "draw_at",
+          "type": "number",
+          "role": "timing",
+          "label": "Draw at",
+          "description": "Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit.",
+          "default": 0.9,
+          "min": 0,
+          "step": 0.1,
+          "unit": "s"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Annotation ink color from the contract token map.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "Optional departure. Default none: the lockup holds until the frame cuts.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/vox-annotate.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "ae6b511d4bddc909a2af9f1b956ed81b99bd30d9429e2550a124c2e33e5d74a3"
+    },
+    "hyperframes:grid-card-assemble": {
+      "id": "hyperframes:grid-card-assemble",
+      "name": "grid-card-assemble",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "8713fc92043a353732f4d9bd8832e0023a2019472d3a9cfffc566ff6fd194042",
+      "parameters": [
+        {
+          "id": "items",
+          "type": "string",
+          "role": "content",
+          "label": "Items",
+          "description": "Comma-separated cards (3 to 12). \"Label: body\" adds a one-line muted body under the label.",
+          "default": "Capture,Compose,Render,Publish"
+        },
+        {
+          "id": "layout",
+          "type": "enum",
+          "role": "layout",
+          "label": "Layout",
+          "description": "Grid wraps by columns; list stacks vertically.",
+          "default": "grid",
+          "options": [
+            {
+              "value": "grid",
+              "label": "Grid"
+            },
+            {
+              "value": "list",
+              "label": "List"
+            }
+          ]
+        },
+        {
+          "id": "columns",
+          "type": "number",
+          "role": "layout",
+          "label": "Columns",
+          "description": "Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)).",
+          "default": 0,
+          "min": 0,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "cues",
+          "type": "string",
+          "role": "timing",
+          "label": "Cues",
+          "description": "Comma-separated per-item entrance times in seconds. Blank entries use the default cascade.",
+          "default": ""
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Accent token family used by the card icons.",
+          "default": "green",
+          "options": [
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "type": "enum",
+          "role": "timing",
+          "label": "Exit",
+          "description": "How the assembled layout leaves the frame. Default none: the hold ends the film.",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "fade",
+              "label": "Fade"
+            },
+            {
+              "value": "up",
+              "label": "Up"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/grid-card-assemble.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "6aa2a09cab07f39bd5a3abcf2f0bf2f0843792b9c395a45c700eeeab8ae7e272"
+    },
+    "hyperframes:toggle-flip": {
+      "id": "hyperframes:toggle-flip",
+      "name": "toggle-flip",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6955c7c0c468c6a5364a4d64d3c28bc6453f4cc8fc8988ca33e4df7ebe90f72b",
+      "parameters": [
+        {
+          "id": "direction",
+          "type": "enum",
+          "role": "content",
+          "label": "Flip direction",
+          "description": "Target end state the flip lands on.",
+          "default": "on",
+          "options": [
+            {
+              "value": "on",
+              "label": "Off → On"
+            },
+            {
+              "value": "off",
+              "label": "On → Off"
+            }
+          ]
+        },
+        {
+          "id": "label",
+          "type": "string",
+          "role": "content",
+          "label": "Caption",
+          "description": "Optional caption under the toggle. Blank hides the line.",
+          "default": "Auto-save"
+        },
+        {
+          "id": "size",
+          "type": "number",
+          "role": "layout",
+          "label": "Size",
+          "description": "Toggle width as a percent of the host box width.",
+          "default": 40,
+          "min": 20,
+          "max": 70,
+          "step": 1,
+          "unit": "%"
+        }
+      ],
+      "poster": "/creative-previews/toggle-flip.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "00a78d92b708e8e8783ad41431f66cb90225595869051fb937b73b472da70a3f"
+    },
+    "hyperframes:star-rating-fill": {
+      "id": "hyperframes:star-rating-fill",
+      "name": "star-rating-fill",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6d9c5ecd6fe80a7608db0118e20c29e5e9b64d3a4d9659977ed5402509aebc57",
+      "parameters": [
+        {
+          "id": "rating",
+          "type": "number",
+          "role": "content",
+          "label": "Rating",
+          "description": "Target rating in star units from 0 to 5.",
+          "default": 4.8,
+          "min": 0,
+          "max": 5,
+          "step": 0.1
+        },
+        {
+          "id": "starCount",
+          "type": "number",
+          "role": "layout",
+          "label": "Star count",
+          "description": "Number of stars shown in the row.",
+          "default": 5,
+          "min": 1,
+          "max": 10,
+          "step": 1
+        },
+        {
+          "id": "showValue",
+          "type": "enum",
+          "role": "content",
+          "label": "Show value",
+          "description": "Show or hide the synchronized numeric rating.",
+          "default": "yes",
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/star-rating-fill.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "e75b0a7f0dba23dc1c4caaf96f8d589a8c77a2c1ffa7b8a918254ab3e5052d41"
+    },
+    "hyperframes:tracing-beam": {
+      "id": "hyperframes:tracing-beam",
+      "name": "tracing-beam",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "6700d9db125a62d6628e93fcd35bb0d9a4d68cf6cb7dd2f1d20a9f895ed98ff6",
+      "parameters": [
+        {
+          "id": "labels",
+          "type": "string",
+          "role": "content",
+          "label": "Labels",
+          "description": "Three comma-separated labels shown in path order.",
+          "default": "Search,Preview,Export"
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Beam and active-element color.",
+          "default": "cyan",
+          "options": [
+            {
+              "value": "cyan",
+              "label": "Cyan"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            },
+            {
+              "value": "amber",
+              "label": "Amber"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/tracing-beam.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "87ad33ac52fb29e31ebf0740a6bb489a7dbe792f96ab7646c6021b305b187e75"
+    },
+    "hyperframes:avatar-cloud": {
+      "id": "hyperframes:avatar-cloud",
+      "name": "avatar-cloud",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "f69c3d95ce928b43c40426f15368e00cfc4effc252948e9c046b29e08738980b",
+      "parameters": [
+        {
+          "id": "avatarCount",
+          "type": "number",
+          "role": "layout",
+          "label": "Avatar count",
+          "description": "Number of lettermark avatars in the network cloud.",
+          "default": 10,
+          "min": 6,
+          "max": 16,
+          "step": 1
+        },
+        {
+          "id": "showLinks",
+          "type": "enum",
+          "role": "content",
+          "label": "Show links",
+          "description": "Show or hide the connecting network lines.",
+          "default": "yes",
+          "options": [
+            {
+              "value": "yes",
+              "label": "Yes"
+            },
+            {
+              "value": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "id": "label",
+          "type": "string",
+          "role": "content",
+          "label": "Proof label",
+          "description": "Community proof copy shown in the center hub.",
+          "default": "50k builders"
+        }
+      ],
+      "poster": "/creative-previews/avatar-cloud.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "fb1140613fbd1534c013001c16594f264a2d06d018918cbdbc98edc414411bf4"
+    },
+    "hyperframes:multiplayer-cursors": {
+      "id": "hyperframes:multiplayer-cursors",
+      "name": "multiplayer-cursors",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "9ffcd3b73e81cb297e04df810db8b862f75b4409a894b377a15fe468618a4ac9",
+      "parameters": [
+        {
+          "id": "cursorCount",
+          "type": "number",
+          "role": "content",
+          "label": "Cursor count",
+          "description": "Number of labeled collaborator cursors.",
+          "default": 4,
+          "min": 2,
+          "max": 6,
+          "step": 1
+        },
+        {
+          "id": "labels",
+          "type": "string",
+          "role": "content",
+          "label": "Labels",
+          "description": "Comma-separated cursor names, in order.",
+          "default": "Ana,Ken,Wen,Mia"
+        }
+      ],
+      "poster": "/creative-previews/multiplayer-cursors.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "negative_z_index",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "6ebaaf772e2ea973df1af4d428fb2381b0ba07542baef9b26c3dceb324f5a4fb"
+    },
+    "hyperframes:cursor-text-select": {
+      "id": "hyperframes:cursor-text-select",
+      "name": "cursor-text-select",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "a80b90330f132f337d3c1a606b52dfae34468d170dc32162895822494039ce47",
+      "parameters": [
+        {
+          "id": "title",
+          "type": "string",
+          "role": "content",
+          "label": "Heading",
+          "default": "Spring release notes"
+        },
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Paragraph",
+          "default": "Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."
+        },
+        {
+          "id": "phrase",
+          "type": "string",
+          "role": "content",
+          "label": "Phrase to select",
+          "default": "approve the final cut"
+        },
+        {
+          "id": "accent",
+          "type": "color",
+          "role": "style",
+          "label": "Accent",
+          "default": "#0a84ff"
+        }
+      ],
+      "poster": "/creative-previews/cursor-text-select.png",
+      "browser_ran": true,
+      "findings": [
+        {
+          "section": "lint",
+          "code": "gsap_callback_dom_measurement",
+          "severity": "warning"
+        },
+        {
+          "section": "lint",
+          "code": "composition_file_too_large",
+          "severity": "warning"
+        }
+      ],
+      "poster_sha256": "87f019e2fea4eea6a5d69328b9bec60082da2159dc24ab86816705f31bdf924d"
+    },
+    "hyperframes:drift-hold": {
+      "id": "hyperframes:drift-hold",
+      "name": "drift-hold",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "0a9a4ce4c04a57e3ba04af61e6f23b119fafbc7ff2893fb032888a351c2eaac2",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "Text displayed in the default centered card.",
+          "default": "Always alive"
+        },
+        {
+          "id": "intensity",
+          "type": "enum",
+          "role": "motion",
+          "label": "Intensity",
+          "description": "Amplitude of the ambient rotation, breathing, and light sweep.",
+          "default": "standard",
+          "options": [
+            {
+              "value": "whisper",
+              "label": "Whisper"
+            },
+            {
+              "value": "standard",
+              "label": "Standard"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/drift-hold.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "c0fe082abec5de89e877765c761963e021077a42c7d4717b0a74763ec1835475"
+    },
+    "hyperframes:staggered-fade-up": {
+      "id": "hyperframes:staggered-fade-up",
+      "name": "staggered-fade-up",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "7953224e9c08cf90ad5bcfe256392916b48a293c85579a52ba67ae8fea9b9de1",
+      "parameters": [
+        {
+          "id": "direction",
+          "type": "enum",
+          "role": "motion",
+          "label": "Direction",
+          "description": "Where the offset the timeline drives points.",
+          "default": "up",
+          "options": [
+            {
+              "value": "up",
+              "label": "Up"
+            },
+            {
+              "value": "down",
+              "label": "Down"
+            },
+            {
+              "value": "left",
+              "label": "Left"
+            },
+            {
+              "value": "right",
+              "label": "Right"
+            }
+          ]
+        },
+        {
+          "id": "distance",
+          "type": "enum",
+          "role": "motion",
+          "label": "Distance",
+          "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
+          "default": "standard",
+          "options": [
+            {
+              "value": "close",
+              "label": "Close"
+            },
+            {
+              "value": "standard",
+              "label": "Standard"
+            },
+            {
+              "value": "far",
+              "label": "Far"
+            }
+          ]
+        },
+        {
+          "id": "tone",
+          "type": "enum",
+          "role": "style",
+          "label": "Tone",
+          "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+          "default": "ink",
+          "options": [
+            {
+              "value": "ink",
+              "label": "Ink"
+            },
+            {
+              "value": "paper",
+              "label": "Paper"
+            },
+            {
+              "value": "accent",
+              "label": "Accent"
+            }
+          ]
+        },
+        {
+          "id": "words",
+          "type": "string",
+          "role": "content",
+          "label": "Words",
+          "description": "The words themselves, split on spaces, one span and one stagger step each.",
+          "default": "Staggered fade up"
+        }
+      ],
+      "poster": "/creative-previews/staggered-fade-up.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "678d1c4e9ae1db80975cc4a7300325a8a8df8b82b0876e6b115fc8ed8606704a"
+    },
+    "hyperframes:text-stagger": {
+      "id": "hyperframes:text-stagger",
+      "name": "text-stagger",
+      "status": "browser-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "source_sha256": "00b5f9203d219b8a451db70c10c0518013914cdf715714047367183bd3c69128",
+      "parameters": [
+        {
+          "id": "text",
+          "type": "string",
+          "role": "content",
+          "label": "Text",
+          "description": "Headline copy. Every whitespace-separated word becomes one staggered span.",
+          "default": "Build motion systems fast"
+        },
+        {
+          "id": "size",
+          "type": "number",
+          "role": "layout",
+          "label": "Size",
+          "description": "Type size of every word in pixels, clamped to 24-160. Line height stays proportional.",
+          "default": 74,
+          "min": 24,
+          "max": 160,
+          "step": 1,
+          "unit": "px"
+        },
+        {
+          "id": "tone",
+          "type": "enum",
+          "role": "style",
+          "label": "Tone",
+          "description": "Base word colour: ink for light frames, paper for dark ones.",
+          "default": "ink",
+          "options": [
+            {
+              "value": "ink",
+              "label": "Ink"
+            },
+            {
+              "value": "paper",
+              "label": "Paper"
+            }
+          ]
+        },
+        {
+          "id": "accent",
+          "type": "enum",
+          "role": "style",
+          "label": "Accent",
+          "description": "Colour of the shimmer the second timeline step sweeps across the words.",
+          "default": "blue",
+          "options": [
+            {
+              "value": "blue",
+              "label": "Blue"
+            },
+            {
+              "value": "green",
+              "label": "Green"
+            },
+            {
+              "value": "violet",
+              "label": "Violet"
+            }
+          ]
+        }
+      ],
+      "poster": "/creative-previews/text-stagger.png",
+      "browser_ran": true,
+      "findings": [],
+      "poster_sha256": "d2c594f0ee1269eccb75c370fe772d57b0071e4b8f24ee35d00344da3877d266"
+    }
+  }
+}

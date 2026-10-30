@@ -78,3 +78,49 @@ def test_native_failure_never_enters_plain_title_isolation(tmp_path):
     from app.motion_graphic import _isolate
     with pytest.raises(RuntimeError, match="refusing plain-title"):
         _isolate(tmp_path, tmp_path, None, SimpleNamespace(native_components=[{}]), ["runtime error"], [])
+
+
+def test_upstream_parameter_schema_is_enforced():
+    spec = NativeMotion(resource_id="hyperframes:line-swap", text="تغییر", parameters={"line_a":"قبل", "line_b":"بعد", "swap_at":1.2})
+    assert spec.parameters["line_b"] == "بعد"
+    for params in ({"line_a":"<img onerror=x>"}, {"swap_at":float("nan")}, {"script":"x"}, {"accent":"invalid"}):
+        with pytest.raises(ValidationError):
+            NativeMotion(resource_id="hyperframes:line-swap", text="تغییر", parameters=params)
+
+
+def test_namespaces_nested_ids(tmp_path):
+    spec = NativeMotion(resource_id="hyperframes:cursor-text-select", text="نمونه", parameters={"title":"نمونه", "text":"متن نمونه", "phrase":"نمونه"})
+    materialize(tmp_path, spec, "s4-native", 4)
+    source = (tmp_path / "compositions/s4-native.html").read_text()
+    assert 'getElementById("s4-native-ts-title")' in source
+    assert 'id="ts-title"' not in source
+
+
+def test_namespacing_never_changes_matching_class_names(tmp_path):
+    spec = NativeMotion(resource_id="hyperframes:marker-checklist-card", text="نمونه")
+    materialize(tmp_path, spec, "s1-native", 4)
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert 'class="mcc-card" id="s1-native-mcc-card"' in source
+    assert 'getElementById("s1-native-mcc-row" +' in source
+
+
+def test_generic_component_requires_explicit_content_without_calling_model(monkeypatch):
+    monkeypatch.setattr(mg.llm, "ask", lambda *a, **k: pytest.fail("No model replacement"))
+    spec = NativeMotion(resource_id="hyperframes:line-swap", text="تغییر")
+    scene = mg.ScenePlan(headline="تغییر", idea="comparison", start=0, end=4, native_component=spec)
+    plan = mg.MotionPlan(duration=4, scenes=[scene])
+    with pytest.raises(mg.CreativeUnavailable, match="پارامترهای محتوایی"):
+        mg.author_scene(plan, 1, "compare")
+    scene.native_component = spec.model_copy(update={"parameters": {"line_a": "روش قبلی", "line_b": "روش تازه", "underline_word": "تازه"}})
+    assert mg.author_scene(plan, 1, "compare").native_component.parameters["line_b"] == "روش تازه"
+
+
+@pytest.mark.parametrize("name", __import__("creative.native_motion", fromlist=["source_names"]).source_names())
+def test_every_vendored_component_materializes_with_integrity(tmp_path, name):
+    import hashlib
+    from creative.native_motion import SOURCES
+    receipt = materialize(tmp_path, NativeMotion(resource_id="hyperframes:" + name, text="نمونه"), "s1-native", 4)
+    assert receipt["source_sha256"] == hashlib.sha256((SOURCES / (name + ".html")).read_bytes()).hexdigest()
+    source = (tmp_path / "compositions/s1-native.html").read_text()
+    assert '<script src="https:' not in source
+    assert 'data-composition-id="s1-native"' in source
