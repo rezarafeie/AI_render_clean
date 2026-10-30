@@ -34,10 +34,7 @@ async def media_session(request: Request):
                             secure=_cookie_secure(request), samesite='lax', path='/')
     return response
 
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
-MAX_BYTES = {"video": 2 * 1024**3, "image": 25 * 1024**2, "audio": 100 * 1024**2}
+from app.studio_ingest import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, MAX_BYTES, VIDEO_EXTENSIONS, attachment_folder, finalize, kind_of
 
 
 def _user(request: Request) -> str:
@@ -45,10 +42,8 @@ def _user(request: Request) -> str:
 
 
 def _kind(filename: str) -> str:
-    suffix = Path(filename).suffix.lower()
-    if suffix in VIDEO_EXTENSIONS: return "video"
-    if suffix in IMAGE_EXTENSIONS: return "image"
-    if suffix in AUDIO_EXTENSIONS: return "audio"
+    kind = kind_of(filename)
+    if kind: return kind
     raise HTTPException(422, "Only supported video, image and audio files can be attached")
 
 
@@ -267,8 +262,7 @@ async def upload_attachment(request: Request, conversation_id: str, file: Upload
         raise HTTPException(404, "conversation not found")
     original = Path(file.filename or "attachment").name
     kind = _kind(original); suffix = Path(original).suffix.lower()
-    folder = ROOT / re.sub(r"[^A-Za-z0-9_-]", "_", user_key) / conversation_id / "attachments"
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = attachment_folder(user_key, conversation_id)
     temporary = folder / f"uploading_{id(file)}{suffix}"
     size = 0
     try:
@@ -278,35 +272,8 @@ async def upload_attachment(request: Request, conversation_id: str, file: Upload
                 if size > MAX_BYTES[kind]: raise HTTPException(413, f"{kind} attachment is too large")
                 target.write(chunk)
         if size == 0: raise HTTPException(422, "attachment is empty")
-        # Decode/probe uploads now, before any engine sees them.
-        if kind == "image":
-            from PIL import Image
-            with Image.open(temporary) as image:
-                image.verify()
-        else:
-            from engine.probe import probe
-            info = await asyncio.to_thread(probe, temporary)
-            streams = info.get("streams", [])
-            if kind == "video" and not any(item.get("codec_type") == "video" for item in streams):
-                raise ValueError("file has no video stream")
-            if kind == "audio" and not any(item.get("codec_type") == "audio" for item in streams):
-                raise ValueError("file has no audio stream")
-        attachment = await repo.create_attachment(conversation_id, user_key, kind=kind,
-            filename=original[:255], path=str(temporary), mime_type=(file.content_type or "application/octet-stream")[:100],
-            size_bytes=size, metadata={})
-        target = folder / f"{attachment['id']}{suffix}"
-        temporary.replace(target)
-        if settings.DATABASE_URL:
-            from app.database import AsyncSessionLocal
-            from app.models import StudioAttachment
-            assert AsyncSessionLocal is not None
-            async with AsyncSessionLocal() as db:
-                row = await db.get(StudioAttachment, attachment["id"]); row.path = str(target); await db.commit()
-        else:
-            from app import studio_store
-            with studio_store._lock:
-                data = studio_store._read(); data["attachments"][attachment["id"]]["path"] = str(target); studio_store._write(data)
-        attachment["path"] = str(target)
+        attachment = await finalize(user_key, conversation_id, temporary, original, kind,
+                                    file.content_type or "application/octet-stream", size)
         return {key: attachment[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
     except HTTPException:
         temporary.unlink(missing_ok=True); raise

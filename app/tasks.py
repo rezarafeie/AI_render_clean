@@ -169,6 +169,14 @@ if CELERY_AVAILABLE:
         try: process_message(conversation_id, user_key, message_id, text, attachment_ids, manual_question_id)
         finally: request_id_var.reset(token)
 
+    @celery.task(bind=True, name="airender.cloud_import", max_retries=0, acks_late=True)
+    def task_cloud_import(self, transfer_id: str, user_key: str, conversation_id: str) -> None:
+        from app.cloud_storage import run_import
+        headers = getattr(self.request, "headers", None) or {}
+        token = request_id_var.set(headers.get("request_id"))
+        try: run_import(transfer_id, user_key, conversation_id)
+        finally: request_id_var.reset(token)
+
     @celery.task(bind=True, name="airender.studio_agent", acks_late=True)
     def task_studio_agent(self, run_id: str, user_key: str) -> None:
         from app.agents.dispatcher import execute_run

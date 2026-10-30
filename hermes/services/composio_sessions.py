@@ -101,10 +101,13 @@ async def session_id(user_id: str) -> str:
     if values.get("enabled") == "false":
         raise HTTPException(409, detail={"code": "COMPOSIO_DISABLED"})
     if values.get("session_id"):
-        # Fail closed after an administrator changes namespace or tool policy.
-        if values.get("identity") != identity(user_id) or values.get("policy") != ",".join(allowed_toolkits()):
+        # Fail closed after an administrator changes the namespace.
+        if values.get("identity") != identity(user_id):
             raise HTTPException(409, detail={"code": "COMPOSIO_POLICY_CHANGED_RECONNECT_REQUIRED"})
-        return values["session_id"]
+        # A changed toolkit list only needs a fresh session built under the new policy;
+        # connected accounts belong to the identity, not to the session.
+        if values.get("policy") == ",".join(allowed_toolkits()):
+            return values["session_id"]
 
     def create():
         with sdk() as client:

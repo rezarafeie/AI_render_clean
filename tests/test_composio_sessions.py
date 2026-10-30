@@ -148,15 +148,30 @@ def test_authenticated_routes_reject_client_identity_and_arbitrary_actions(setup
         assert client.get("/api/hermes/composio").json()["external_actions_enabled"] is False
 
 
-def test_changed_policy_fails_closed(setup, monkeypatch):
+def test_changed_namespace_fails_closed(setup, monkeypatch):
     async def scenario():
         await service.set_enabled("1", True)
         await service.session_id("1")
-        monkeypatch.setattr(service.settings, "COMPOSIO_TOOLKITS", "")
+        monkeypatch.setattr(service.settings, "COMPOSIO_INSTANCE_ID", "another-installation")
         with pytest.raises(HTTPException) as error:
             await service.session_id("1")
         assert error.value.status_code == 409
     asyncio.run(scenario())
+
+
+def test_changed_toolkit_policy_builds_a_new_session_under_the_new_policy(setup, monkeypatch):
+    _, calls = setup
+    async def scenario():
+        await service.set_enabled("1", True)
+        await service.session_id("1")
+        monkeypatch.setattr(service.settings, "COMPOSIO_TOOLKITS", "instagram,googledrive")
+        await service.session_id("1")
+        await service.session_id("1")          # now stable again
+    asyncio.run(scenario())
+    creates = [c[1] for c in calls if c[0] == "create"]
+    assert len(creates) == 2
+    assert creates[1]["toolkits"] == {"enable": ["googledrive", "instagram"]}
+    assert creates[1]["tags"] == {"enable": ["readOnlyHint"]} and creates[1]["manage_connections"] is False
 
 
 def test_context_discovery_is_scoped_bounded_and_does_not_forward_raw_state(setup):
