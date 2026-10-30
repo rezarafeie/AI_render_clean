@@ -88,7 +88,7 @@ export function Composer(props: ComposerProps) {
           </>}
         </Menu>
         )}
-        <input ref={fileInput} type="file" multiple hidden accept="video/*,image/*,audio/*" onChange={event => { const picked = Array.from(event.target.files || []); event.target.value = ""; if (picked.length) void onFiles(picked); }}/>
+        <input ref={fileInput} type="file" multiple hidden accept="video/*,image/*,audio/*,.mp4,.mov,.m4v,.webm,.mkv,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.aac,.ogg" onChange={event => { const picked = Array.from(event.target.files || []); event.target.value = ""; if (picked.length) void onFiles(picked); }}/>
         {props.onAgentModeChange ? <AgentModeSelector value={props.agentMode || "lite"} onChange={props.onAgentModeChange}/> : null}
         <span className="grow"/>
         {hasSpeech ? <button type="button" className="icon-btn" aria-pressed={listening} onClick={onListen} aria-label={listening ? "Stop voice input" : "Use voice input"} data-tip="Voice input" data-tip-pos="top"><Icon name="mic" size={19}/></button> : null}
