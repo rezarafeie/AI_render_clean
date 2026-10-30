@@ -180,11 +180,19 @@ def _write(user: str, record: dict) -> dict:
     return record
 
 
+STALE_AFTER = 6 * 60   # a step waits on Composio for up to a minute; silence beyond this means the worker died
+
+
 def get_transfer(user: str, conversation_id: str, transfer_id: str) -> dict:
     try:
-        return json.loads(_path(user, conversation_id, transfer_id).read_text())
+        record = json.loads(_path(user, conversation_id, transfer_id).read_text())
     except (OSError, ValueError):
         raise CloudError("not_found", "Transfer not found.", 404) from None
+    # A worker restart or crash leaves the record in an active state forever; report it as interrupted so it can be retried.
+    if record.get("state") in ACTIVE and time.time() - float(record.get("updated_at") or 0) > STALE_AFTER:
+        record = _set(user, record, state="failed", error="The import was interrupted. Try again.",
+                      error_code="interrupted", retryable=True)
+    return record
 
 
 def list_transfers(user: str, conversation_id: str) -> list[dict]:

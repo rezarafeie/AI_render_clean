@@ -5,7 +5,7 @@ import { verifyLocalBackend } from "./local/backend";
 const ProjectRender = React.lazy(() => import("./local/ProjectRender").then(m => ({default:m.ProjectRender})));
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, AgentMode, CloudFile, StudioConversation, StudioEvent } from "./api";
+import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioEvent } from "./api";
 import { AgentRunControls } from "./studio/AgentMode";
 import { useAuth } from "./auth/AuthContext";
 import { Icon } from "./components/Icon";
@@ -31,6 +31,18 @@ const WORKSPACE_BOUNDS = { min: 340, max: 1100 };
 const MIN_CHAT = 360;
 const lsGet = (key: string, fallback: string) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
 const lsSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } };
+
+function cloudNote(transfer: CloudTransfer): string | undefined {
+  const mb = (value: number | null) => value ? `${(value / 1024 ** 2).toFixed(value > 10 * 1024 ** 2 ? 0 : 1)} MB` : "";
+  if (transfer.state === "queued") return "Waiting to start…";
+  if (transfer.state === "connecting" || transfer.state === "fetching_metadata") return "Asking Google Drive for the file… this can take up to a minute";
+  if (transfer.state === "validating") return "Checking the file…";
+  if (transfer.state === "downloading") {
+    const speed = transfer.speed ? ` · ${(transfer.speed / 1024 ** 2).toFixed(2)} MB/s` : "";
+    return transfer.bytes ? `${mb(transfer.bytes)}${transfer.size ? ` of ${mb(transfer.size)}` : ""}${speed}` : "Starting the download…";
+  }
+  return undefined;
+}
 
 export default function Studio() {
   const { conversationId } = useParams();
@@ -409,7 +421,7 @@ export default function Studio() {
             setFiles(value => value.filter(item => item.key !== entry.key));
             if (transfer.state === "failed") setError(`${transfer.filename}: ${transfer.error || "The import failed."}`);
           } else setFiles(value => value.map(item => item.key === entry.key ? { ...item, progress: transfer.size && transfer.bytes ? Math.min(99, (transfer.bytes / transfer.size) * 100) : 0,
-            localNote: transfer.state === "validating" ? "Checking the file…" : undefined } : item));
+            localNote: cloudNote(transfer) } : item));
         } catch { /* the next tick asks again */ }
       }
     }, 2000);

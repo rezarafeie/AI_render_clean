@@ -182,3 +182,15 @@ def test_the_whole_import_runs_in_one_event_loop(monkeypatch):
     cloud.run_import(record["id"], "u", "c1")
     assert cloud.get_transfer("u", "c1", record["id"])["state"] == "completed"
     assert len(loops) == 3 and len({id(loop) for loop in loops}) == 1
+
+
+def test_a_transfer_left_active_by_a_dead_worker_becomes_a_retryable_failure(monkeypatch):
+    patch_meta(monkeypatch)
+    record = asyncio.run(cloud.begin_import("u", "c1", "googledrive", "f1"))
+    stored = cloud.get_transfer("u", "c1", record["id"])
+    cloud._set("u", stored, state="downloading")
+    path = cloud._path("u", "c1", record["id"])
+    data = json.loads(path.read_text()); data["updated_at"] -= cloud.STALE_AFTER + 5; path.write_text(json.dumps(data))
+    seen = cloud.get_transfer("u", "c1", record["id"])
+    assert seen["state"] == "failed" and seen["error_code"] == "interrupted" and seen["retryable"] is True
+    assert cloud.retry("u", "c1", record["id"])["state"] == "queued"
