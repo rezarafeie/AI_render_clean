@@ -18,6 +18,7 @@ def _preview_url(value):
 def hyperframes_resources():
     from engine.hyperframes.catalog import load_catalog, load_profiles
     from engine.hyperframes.registry_runtime import SUPPORTED_REGISTRY_ADAPTERS
+    from creative.native_motion import SUPPORTED
     catalog, profiles = load_catalog(), load_profiles()
     # The index owns membership/version. Profiles only enrich matching items;
     # the two snapshots currently have different item counts.
@@ -26,7 +27,9 @@ def hyperframes_resources():
         profile = profiles.get(key, {})
         preview = profile.get("preview") or {}
         video, poster = _preview_url(preview.get("video")), _preview_url(preview.get("poster"))
-        wired = key in SUPPORTED_REGISTRY_ADAPTERS
+        motion = f"hyperframes:{key}" in SUPPORTED
+        talking = key in SUPPORTED_REGISTRY_ADAPTERS
+        wired = talking or motion
         yield Resource(
             id=f"hyperframes:{key}", name=item.get("title", key),
             description=item.get("description", ""), type=item.get("type", "component"),
@@ -35,7 +38,7 @@ def hyperframes_resources():
             source_url="https://github.com/heygen-com/hyperframes/tree/main/registry",
             engine="hyperframes", integration_status="native" if wired else "adapter-required",
             availability="existing-pipeline" if wired else "catalog-only",
-            contexts=("talking_2",) if wired else (), legacy_id=key,
+            contexts=(("talking_2",) if talking else ()) + (("motion-graphic",) if motion else ()), legacy_id=key,
             capabilities=Capabilities(supports_preview=True if video or poster else None),
             parameters=tuple(Parameter(name=str(name), value_type="string")
                              for name in profile.get("variables", [])),
@@ -43,6 +46,7 @@ def hyperframes_resources():
             avoid_when=tuple(profile.get("avoid_when", [])),
             preview_video=video, preview_poster=poster,
             limitations=("Capabilities, asset licenses and performance require per-resource verification.",
+                         "Bounded ScenePlan.native_component adapter; portrait browser-tested, encoded-output certification pending." if motion else
                          "Existing adapters are context-specific, not a generic execution API." if wired else
                          "Metadata only; not yet connected to an EditorGPT render adapter."),
         )

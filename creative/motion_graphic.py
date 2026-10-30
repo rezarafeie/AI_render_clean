@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import llm, speech
+from .native_motion import NativeMotion
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class MotionPage(BaseModel):
     update_js: str = ""
     audio: list[dict] = Field(default_factory=list)            # narration clips: {"path": local file, "start": seconds, "duration": seconds}
     resource_receipts: list[dict] = Field(default_factory=list)
+    native_components: list[dict] = Field(default_factory=list)
 
     @field_validator("questions")
     @classmethod
@@ -206,7 +208,7 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
     if not re.search(r"\btl\s*\.|\bHM\s*\.", _strip_strings(page.build_js)):
         problems.append("build_js never adds an animation (use tl.fromTo/tl.to or HM.rise/HM.fadeUp ...)")
     visible_text = " ".join(scan.text)
-    if len(visible_text) < 6:
+    if len(visible_text) < 6 and not page.native_components:
         problems.append("the scenes carry almost no text: write the copy inside the scenes")
     return list(dict.fromkeys(problems))
 
@@ -279,6 +281,11 @@ def write_project(directory: Path, page: MotionPage) -> Path:
         source = Path(str(clip["path"]))
         if source.is_file():
             shutil.copy2(source, assets / f"vo{i}{source.suffix or '.wav'}")
+    if page.native_components:
+        from .native_motion import materialize
+        receipts = [materialize(directory, NativeMotion.model_validate(e["spec"]), e["instance"], e["duration"])
+                    for e in page.native_components]
+        page.resource_receipts = [r for r in page.resource_receipts if r.get("integration") != "vendored-code-execution"] + receipts
     (directory / "index.html").write_text(assemble(page), encoding="utf-8")
     (directory / "page.json").write_text(page.model_dump_json(indent=1), encoding="utf-8")
     return directory / "index.html"
@@ -442,6 +449,7 @@ class ScenePlan(BaseModel):
     end: float
     narration: str = ""                # the line spoken while the scene is on screen (Persian, as it is read aloud)
     shotcraft_id: str = ""
+    native_component: NativeMotion | None = None
 
     @field_validator("shotcraft_id")
     @classmethod
@@ -480,6 +488,7 @@ class SceneDraft(BaseModel):
     css: str = ""
     build_js: str
     update_js: str = ""
+    native_component: NativeMotion | None = None
 
 
 PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics studio. A person describes a short clip in chat. Plan it so that
@@ -552,6 +561,8 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
+        if scene.native_component and plan.format != "vertical":
+            problems.append(f"scene {index}: native component is currently verified for vertical format only")
         if abs(scene.start - cursor) > 0.15:
             problems.append(f"scene {index} must start at {cursor:g} (the previous scene's end), not {scene.start:g}")
         if scene.end - scene.start < 2.4:
@@ -573,6 +584,9 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "") -> str:
     from .shotcraft import catalog
     parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False)]
+    from .native_motion import catalog as native_catalog
+    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + json.dumps(native_catalog(), ensure_ascii=False)
+                 + "\nUse only for the stated role and vertical format. Keep explanatory scenes custom; do not turn the entire video into titles. Omit native_component when unsuitable. Native text must match the approved headline; never add facts.")
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
     if brand:
@@ -599,7 +613,9 @@ def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
         length = max(2.6, float(line["seconds"]), speech.speech_seconds(line["say"]) * speech.MARGIN + 0.5)
         original = plan.scenes[len(scenes)] if len(scenes) < len(plan.scenes) else None
         scenes.append(ScenePlan(headline=line["title"].strip() or line["say"][:40], narration=line["say"].strip(), idea=(line["see"] or plan.summary).strip(),
-                                start=round(cursor, 2), end=round(cursor + length, 2), shotcraft_id=original.shotcraft_id if original else ""))
+                                start=round(cursor, 2), end=round(cursor + length, 2), shotcraft_id=original.shotcraft_id if original else "",
+                                native_component=NativeMotion.model_validate({**original.native_component.model_dump(), "text": line["title"].strip() or line["say"][:40]})
+                                if original and original.native_component else None))
         cursor += length
     if len(scenes) < 2:
         return plan
@@ -758,6 +774,9 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
                  feedback: list[str] | None = None, on_retry=None, style: str = "") -> SceneDraft:
     """One validated scene. Rejections are fed back to the model (``on_retry(next_attempt, problems)`` tells the caller); ``feedback`` starts the
     conversation with problems an earlier check found in this scene. The caller falls back to a plain scene when this raises."""
+    spec = plan.scenes[n - 1].native_component
+    if spec:
+        return SceneDraft(html=f'<div id="s{n}-native-slot"></div>', build_js='tl.to({}, {duration:.001}, 0);', timebase="local", native_component=spec)
     request = scene_request(plan, n, brief, context, style)
     guide = SCENE_GUIDE.replace("sN", f"s{n}").replace("using ABSOLUTE times (T + offset)", "using LOCAL times (T=0, offset)")
     problems: list[str] = list(feedback or [])
@@ -793,9 +812,18 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
     """The clip: every scene in its own layer, entrance wipes added here, each scene's code isolated in its own function."""
     width, height = FORMATS[plan.format]
     palette = plan.palette
-    html, css, build, update = [], [], [], []
+    html, css, build, update, native = [], [], [], [], []
     corners = [(width / 2, height / 2), (width * .85, height * .75), (width * .15, height * .25), (width / 2, height * .9), (width * .85, height * .2), (width * .2, height * .8)]
     for n, (scene, draft) in enumerate(zip(plan.scenes, drafts), 1):
+        if draft.native_component:
+            instance = f"s{n}-native"
+            native.append({"spec": draft.native_component.model_dump(), "instance": instance, "duration": scene.end - scene.start})
+            html.append(f'<section class="hm-scene" id="s{n}"><div id="{instance}-host" class="clip" data-composition-id="{instance}" data-composition-src="compositions/{instance}.html" data-start="{scene.start:g}" data-duration="{scene.end-scene.start:g}" data-track-index="2" style="position:absolute;inset:0"></div></section>')
+            css.append(f'#s{n}{{background:{palette.bg};color:{palette.ink};opacity:0}}')
+            build.append(f'tl.fromTo("#s{n}", {{opacity:0}}, {{opacity:1,duration:.001,immediateRender:false}}, {scene.start:g});')
+            if n < len(plan.scenes):
+                build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
+            continue
         html.append(f'<section class="hm-scene" id="s{n}">{draft.html}</section>')
         css.append(f"#s{n}{{background:{palette.bg};color:{palette.ink}}}\n{scope_css(n, draft.css)}")
         if n > 1:
@@ -818,4 +846,4 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
                  "integration": "reference-guided-authoring", "native_remotion_execution": False}
                 for n, scene in enumerate(plan.scenes, 1) if scene.shotcraft_id]
     return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration,
-                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts)
+                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts, native_components=native)

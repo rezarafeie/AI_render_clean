@@ -163,10 +163,11 @@ def test_snapshot_indexes_existing_sources_without_claiming_execution():
 
 def test_only_real_hyperframes_adapters_are_connected():
     from engine.hyperframes.registry_runtime import SUPPORTED_REGISTRY_ADAPTERS
+    from creative.native_motion import SUPPORTED
     rows = registry.search_resources(engine="hyperframes", provider="hyperframes-official",
                                      availability="existing-pipeline")["items"]
-    assert {r["legacy_id"] for r in rows} == SUPPORTED_REGISTRY_ADAPTERS
-    assert all(r["contexts"] == ["talking_2"] for r in rows)
+    assert {r["legacy_id"] for r in rows} == SUPPORTED_REGISTRY_ADAPTERS | {r.split(":")[1] for r in SUPPORTED}
+    assert all(r["contexts"] == (["talking_2"] if r["legacy_id"] in SUPPORTED_REGISTRY_ADAPTERS else ["motion-graphic"]) for r in rows)
     assert registry.get_resource("hyperframes:data-chart")["availability"] == "catalog-only"
 
 
