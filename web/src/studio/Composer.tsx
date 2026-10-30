@@ -30,6 +30,10 @@ interface ComposerProps {
   onCloud?: () => void;
 }
 
+// iOS Files greys out whatever its cloud providers do not type as video/audio/image (Drive reports .mov that way), so no filter there.
+// The server still accepts only supported media and says so when it refuses a file.
+const iosFiles = typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 export function Composer(props: ComposerProps) {
   const { text, setText, files, onRemoveFile, onFiles, processing, onStop, onSend, error, onDismissError, hasSpeech, listening, onListen, placeholder, variant = "dock" } = props;
   const own = React.useRef<HTMLTextAreaElement>(null);
@@ -88,7 +92,7 @@ export function Composer(props: ComposerProps) {
           </>}
         </Menu>
         )}
-        <input ref={fileInput} type="file" multiple hidden accept="video/*,image/*,audio/*,.mp4,.mov,.m4v,.webm,.mkv,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.aac,.ogg" onChange={event => { const picked = Array.from(event.target.files || []); event.target.value = ""; if (picked.length) void onFiles(picked); }}/>
+        <input ref={fileInput} type="file" multiple hidden accept={iosFiles ? undefined : "video/*,image/*,audio/*,.mp4,.mov,.m4v,.webm,.mkv,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.aac,.ogg"} onChange={event => { const picked = Array.from(event.target.files || []); event.target.value = ""; if (picked.length) void onFiles(picked); }}/>
         {props.onAgentModeChange ? <AgentModeSelector value={props.agentMode || "lite"} onChange={props.onAgentModeChange}/> : null}
         <span className="grow"/>
         {hasSpeech ? <button type="button" className="icon-btn" aria-pressed={listening} onClick={onListen} aria-label={listening ? "Stop voice input" : "Use voice input"} data-tip="Voice input" data-tip-pos="top"><Icon name="mic" size={19}/></button> : null}
