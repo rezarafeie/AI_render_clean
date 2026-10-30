@@ -24,7 +24,7 @@ not change. Existing plans default to generated authoring as before.
 | HyperFrames registry catalog | Metadata index and profiles | Existing talking_2 context adapters remain unchanged; catalog is not execution |
 | EditorGPT effects/transitions | Existing MLT implementations | Already executable via EditPlan; not interchangeable with HTML components |
 | EditorGPT motion recipes | Existing recipe adapters | Already connected in talking_2, not generic motion-graphic templates |
-| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Ten original-code Remotion stills verified. Production remains reference-guided: typed user-content binding and format adaptation pending |
+| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | One bounded native convergence component executes user content through existing Remotion → HyperFrames; nine other demos remain reference-only |
 | Claude Video Effects | Existing 42 implementations in engine/face_effects | Existing talking-reel execution preserved, all 42 exposed in shared registry; synthetic-frame previews, not video-tracker certification |
 | Lemo Opuscar | Pinned Swiss Canvas source, score, MIT license, local OFL fonts | Original demo executed, backward seek pixel equality checked. Fixed demo story is NOT an editable production template; remaining styles pending |
 
@@ -116,6 +116,28 @@ Update, 2026-10-30:
   this update. The local static gallery is not proof that the running API reloaded.
 
 ### Persistent visual gallery
+
+Native Shotcraft update: `shotcraft:bezier-source-converge-merge` now accepts
+explicit approved caption, exactly four allowlisted source icons, output icon,
+accent and locale through `ScenePlan.shotcraft_component`. The original source
+is hash-verified, not rewritten by a model. Existing Remotion renders a bounded
+4–12-second child artifact; HyperFrames mounts it as framework-owned video.
+No arbitrary script, path, URL or agent-authored video markup is admitted.
+Failures do not silently substitute a title. Receipts and cache keys bind source,
+adapter, content, duration and dimensions; corrupt artifacts are not reused.
+
+A real six-second Persian portrait child and nine-second mixed HyperFrames film
+were encoded. The child is H.264/yuv420p/BT.709 with maximum one-second keyframe
+interval. Sampled browser checks passed; automatic motion analysis was disabled.
+Landscape/square are not visually certified. Only this one Shotcraft component
+is production-bound; other recipes and Lemo's fixed demo are not upgraded by this
+result. The gallery now retains 99 entries including this actual MP4, loaded only
+after a user's play gesture. Existing audio generation remains unchanged.
+
+Focused regression suite: 182 passed before the additional frozen native-gallery
+test; two existing deprecation warnings. No paid provider call, production deploy
+or running API restart was performed. Existing versions 1/2 Remotion contracts
+are regression-tested; only native version 3 uses the added binding adapter.
 
 Open `/creative-previews/gallery.html` on the application's frontend. The Media
 Library has a link to it. Every item has an individually stored PNG plus its

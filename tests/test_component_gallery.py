@@ -36,6 +36,23 @@ def test_vendored_lemo_and_shotcraft_dependencies_are_pinned():
             assert hashlib.sha256(source.read_bytes()).hexdigest() == expected
 
 
+def test_native_shotcraft_preview_is_encoded_and_frozen():
+    from creative.shotcraft_native import source_fingerprint
+    rows = json.loads((GALLERY / "native-shotcraft.json").read_text())["items"]
+    assert set(rows) == {"shotcraft:bezier-source-converge-merge"}
+    row = next(iter(rows.values()))
+    assert row["status"] == "native-component-checked"
+    assert row["encoded_output_verified"] and row["hybrid_browser_checked"]
+    assert row["source_adapter_sha256"] == source_fingerprint()
+    for field, digest in [("poster", "poster_sha256"), ("preview_video", "video_sha256")]:
+        path = GALLERY / row[field].rsplit("/", 1)[1]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == row[digest]
+    assert row["media"]["max_keyframe_interval"] <= 1.1
+    html = (GALLERY / "gallery.html").read_text()
+    assert "native-shotcraft.json" in html
+    assert "preload='none'" in html or 'preload="none"' in html or "preload='none'" in html.replace('"', "'")
+
+
 def test_every_generic_adapter_has_explicit_valid_persian_test_content():
     from creative.native_motion import NativeMotion, SUPPORTED, LEGACY_INPUTS, content_problems
     from scripts.component_examples import PERSIAN_CONTENT

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "items": {
+    "shotcraft:bezier-source-converge-merge": {
+      "id": "shotcraft:bezier-source-converge-merge",
+      "name": "shotcraft-native-bezier-source-converge-merge",
+      "status": "native-component-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1080,
+        "height": 1920,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "source_adapter_sha256": "8a9fbca14825d30b61b5c02359e65d76b2de9e0edce3d67708f3ee809d75636b",
+      "hybrid_artifact_sha256": "269987c9b336200e55e8d3ad0e575bd5f4e22c8e82af3789e801b8ae73968ce1",
+      "hybrid_check_sha256": "6dce524984f0de95f80996290ae481f1aefb3ee523c2395e5affe704143a2f4e",
+      "poster": "/creative-previews/shotcraft-native-bezier-source-converge-merge.png",
+      "preview_video": "/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4",
+      "poster_sha256": "63d237b765c64a7c42050760f1c31833adf9e0d354c084fbdf418b3bcdefaddc",
+      "video_sha256": "4cacd956c3ae9df468cadd4a5fbe6ac63659c4097744f2423bec3a1940092caf",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:bezier-source-converge-merge",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "source_icons": {
+            "items": {
+              "enum": [
+                "shot",
+                "card",
+                "code",
+                "wave"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Source Icons",
+            "type": "array"
+          },
+          "output_icon": {
+            "default": "play",
+            "enum": [
+              "check",
+              "play",
+              "spark"
+            ],
+            "title": "Output Icon",
+            "type": "string"
+          },
+          "accent": {
+            "default": "#5b63d3",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Accent",
+            "type": "string"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "source_icons"
+        ],
+        "title": "ShotcraftNative",
+        "type": "object"
+      },
+      "use": "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید. سایر قالب‌های Shotcraft هنوز آمادهٔ تولید نیستند."
+    }
+  }
+}

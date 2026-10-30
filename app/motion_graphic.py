@@ -483,7 +483,11 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
     count = len(plan.scenes)
     import hashlib
-    fingerprint = plan_fp + hashlib.sha256(json.dumps([(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes], ensure_ascii=False).encode()).hexdigest()[:8]   # timings and executable parameters both invalidate drafts
+    draft_inputs = [(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes]
+    # Keep the exact legacy fingerprint shape when no new component is selected.
+    if any(sc.shotcraft_component for sc in plan.scenes):
+        draft_inputs = {"existing":draft_inputs,"shotcraft":[sc.shotcraft_component.model_dump() if sc.shotcraft_component else None for sc in plan.scenes]}
+    fingerprint = plan_fp + hashlib.sha256(json.dumps(draft_inputs, ensure_ascii=False).encode()).hexdigest()[:8]
     scenes_dir = directory / "scenes"
     scenes_dir.mkdir(exist_ok=True)
     drafts: dict[int, Any] = {}
@@ -523,7 +527,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
             _learn("scene_s", (time.monotonic() - started) / tries[0])
             return n, draft, False
         except Exception as exc:
-            if scene.native_component:
+            if scene.native_component or getattr(scene,"shotcraft_component",None):
                 raise
             log.warning("scene %d of %s fell back to a plain scene: %s", n, key, str(exc)[:200])
             return n, mg.fallback_scene(plan, n), True
@@ -571,7 +575,7 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
     every scene becomes plain. Returns the page to check again."""
     from creative import motion_graphic as mg
     from engine.hyperframes import standalone
-    if getattr(page, "native_components", None):
+    if getattr(page, "native_components", None) or getattr(page,"shotcraft_components",None):
         raise RuntimeError("Executable component failed validation; refusing plain-title substitution: " + problems[0])
     key = directory.name
     count = len(build.plan.scenes)
@@ -608,7 +612,15 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     isolated = 0
     stats = _stats()
     while True:
-        mg.write_project(work, page)
+        def component_progress(instance,percent):
+            if _cancelled(key):
+                raise _Cancelled()
+            number = instance.split("-",1)[0].lstrip("s")
+            _progress(directory,"writing",30+round(percent*.04),f"اجرای کامپوننت آمادهٔ صحنهٔ {number} · {percent}%",stage="native_component")
+        if getattr(page,"shotcraft_components",None):
+            mg.write_project(work, page, on_component_progress=component_progress)
+        else:
+            mg.write_project(work, page)
         _progress(directory, "checking", 36, "دارم صفحه را در مرورگر بررسی می‌کنم: چیدمان، خوانایی و خطاهای اجرا.", stage="checking",
                   eta=_remaining(0, page.duration))
         _note(directory, "check", "دارم صحنه‌ها را در مرورگر بررسی می‌کنم: چیدمان، خوانایی متن و خطاهای اجرا")
@@ -619,7 +631,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         if _cancelled(key):
             raise _Cancelled()
         problems = list(result.blocking)
-        if problems and getattr(page, "native_components", None):
+        if problems and (getattr(page, "native_components", None) or getattr(page,"shotcraft_components",None)):
             raise RuntimeError("کامپوننت اجرایی از بررسی رد شد؛ کد اصلی با طراحی ساده جایگزین نشد: " + problems[0])
         if not problems:
             # Layout and contrast findings are not fatal and do not justify rewriting the page with a slow model: they are reported.
@@ -643,7 +655,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             # Rebuild only the scenes the findings point at (small requests); a scene that cannot be fixed is replaced by a plain one.
             for n in hit:
                 scene = build.plan.scenes[n - 1]
-                if scene.native_component:
+                if scene.native_component or getattr(scene,"shotcraft_component",None):
                     raise RuntimeError("Executable component needs an adapter correction, not model rewriting: " + problems[0])
                 own = [p for p in problems if n in _scenes_in([p], len(build.plan.scenes))]
                 _note(directory, f"scene{n}", f"صحنهٔ {n} («{scene.headline}») در بررسی مرورگر مشکل داشت: {'؛ '.join(dict.fromkeys(mg.explain_problem(p) for p in own[:3]))}. دارم فقط همین صحنه را دوباره می‌سازم", "active")

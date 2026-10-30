@@ -139,14 +139,23 @@ def existing_recipe_resources():
 def shotcraft_resources():
     from creative.shotcraft import catalog, REVISION
     for item in catalog():
+        native = item["id"] == "shotcraft:bezier-source-converge-merge"
         yield Resource(
             id=item["id"], name=item["id"].split(":", 1)[1], description=item["intent"],
-            type="motion-reference", category="explainer", provider="video-shotcraft",
+            type="component" if native else "motion-reference", category="explainer", provider="video-shotcraft",
             source_url="https://github.com/Vincentwei1021/video-shotcraft", source_version=REVISION,
-            engine="hyperframes", integration_status="port-required", availability="catalog-only",
+            engine="hyperframes", integration_status="native" if native else "port-required", availability="existing-pipeline" if native else "catalog-only",
             contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
-            preview_poster="/creative-previews/shotcraft-" + ("chart-axis-rescale" if item["id"] == "shotcraft:chart-live-moves" else item["id"].split(":",1)[1]) + ".png",
-            limitations=("Production uses the pinned recipe as authoring guidance, not native TSX. Gallery executes original TSX demos only; user-content binding is incomplete. No automatic Remotion fallback.",),
+            preview_poster="/creative-previews/shotcraft-native-bezier-source-converge-merge.png" if native else "/creative-previews/shotcraft-" + ("chart-axis-rescale" if item["id"] == "shotcraft:chart-live-moves" else item["id"].split(":",1)[1]) + ".png",
+            preview_video="/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4" if native else None,
+            capabilities=Capabilities(supports_vertical=True,supports_rtl=True,supports_preview=True,transparent=False) if native else Capabilities(),
+            parameters=(Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48,description="Exact approved headline, at most eight complete words"),
+                        Parameter(name="source_icons",value_type="array",editable=True,required=True,min_items=4,max_items=4,item_options=("shot","card","code","wave"),description="Four bounded media icons, in source order"),
+                        Parameter(name="output_icon",value_type="string",editable=True,default="play",options=("check","play","spark")),
+                        Parameter(name="accent",value_type="string",editable=True,default="#5b63d3",description="#RRGGBB only"),
+                        Parameter(name="locale",value_type="string",editable=True,default="fa-IR",options=("fa-IR","en-US"))) if native else (),
+            limitations=("Native shotcraft_component executes pinned TSX through the existing Remotion renderer, then embeds an owned video in HyperFrames; shotcraft_id alone remains reference guidance. Four media icons and abstract output icon only; no arbitrary UI/logo or code. 4–12 s with a caption reading hold; current retained hybrid audit is portrait Persian.",) if native else
+                         ("Production uses the pinned recipe as authoring guidance, not native TSX. Gallery executes original TSX demos only; user-content binding is incomplete. No automatic Remotion fallback.",),
         )
 
 

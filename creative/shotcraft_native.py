@@ -1,0 +1,145 @@
+"""Typed native Shotcraft adapter over the existing Remotion renderer.
+
+One reviewed component initially. No request-time installs, generated source,
+arbitrary paths, external media, provider requests or title-only fallbacks.
+"""
+import hashlib
+import json
+import math
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+ROOT = Path(__file__).resolve().parents[1]
+REVISION = "5a2e98daade313c4f376120f38427eb19a108e8c"
+DIMS = {"vertical":(1080,1920),"horizontal":(1920,1080),"square":(1080,1080)}
+
+
+class ShotcraftNative(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource_id: Literal["shotcraft:bezier-source-converge-merge"]
+    caption: str = Field(min_length=1,max_length=48)
+    source_icons: tuple[Literal["shot","card","code","wave"], ...] = Field(min_length=4,max_length=4)
+    output_icon: Literal["check","play","spark"] = "play"
+    accent: str = Field(default="#5b63d3",pattern=r"^#[0-9a-fA-F]{6}$")
+    locale: Literal["fa-IR","en-US"] = "fa-IR"
+
+    @field_validator("caption")
+    @classmethod
+    def plain_bounded_caption(cls,value):
+        if not value.strip() or len(value.encode("utf-16-le",errors="surrogatepass"))//2>48 or any(c in value for c in "<>"):
+            raise ValueError("Use a nonempty bounded plain caption")
+        if len(value.split())>8:
+            raise ValueError("Use at most eight complete caption words")
+        return value.strip()
+
+
+class ShotcraftMount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    spec: ShotcraftNative
+    instance: str = Field(pattern=r"^s[1-8]-shotcraft$")
+    start: float = Field(ge=0,le=60,allow_inf_nan=False)
+    duration: float = Field(ge=4,le=12,allow_inf_nan=False)
+    format: Literal["vertical","horizontal","square"]
+    asset: str | None = Field(default=None,pattern=r"^assets/s[1-8]-shotcraft-[0-9a-f]{16}\.mp4$")
+
+
+def catalog():
+    return [{"id":"shotcraft:bezier-source-converge-merge", "field":"shotcraft_component",
+             "execution":"pinned original Remotion source, embedded as a framework-owned local clip",
+             "best_for":"Four screenshot/card/code/audio sources merging into one result; a convergence diagram, not a substitute for unrelated explanatory imagery.",
+             "inputs":ShotcraftNative.model_json_schema(), "seconds":[4,12],
+             "constraints":"Caption must equal the approved headline: 1–48 characters, at most eight complete words. Duration >= max(4, 2.4 + max(1.2, word_count/2.5)); final reading hold is explicit. Four fixed safe media-icon choices; output is an abstract symbol, not upstream branding. No arbitrary source, URL, logo or asset path. Existing Remotion dependencies and FFmpeg required. No automatic fallback."}]
+
+
+def required_seconds(spec: ShotcraftNative):
+    return max(4,2.4+max(1.2,len(spec.caption.split())/2.5))
+
+
+def source_fingerprint():
+    from .shotcraft import manifest, read_reference
+    data = manifest()
+    # Exact upstream source and all shared fixtures must match before execution.
+    for name in data["sha256"]:
+        read_reference(name,data)
+    runtime = json.loads((ROOT/"creative/shotcraft_data/runtime_sha256.json").read_text())
+    if runtime["revision"] != REVISION:
+        raise ValueError("Unreviewed Shotcraft runtime revision")
+    for name,expected in runtime["sha256"].items():
+        path = (ROOT/"creative/shotcraft_data"/name).resolve()
+        if not path.is_relative_to((ROOT/"creative/shotcraft_data").resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
+            raise ValueError("Shotcraft dependency integrity failure")
+    adapter_files = [Path(__file__),ROOT/"remotion/shotcraft-content-loader.cjs",ROOT/"remotion/shotcraft-native-config.mjs",
+                     ROOT/"remotion/src/shotcraft-native.tsx",ROOT/"remotion/src/shotcraft/FrameReady.tsx",ROOT/"remotion/render.mjs",
+                     ROOT/"engine/remotion_renderer.py",ROOT/"presets/fonts/Vazirmatn-Regular.ttf"]
+    return hashlib.sha256(json.dumps({"source":data["sha256"],"runtime":runtime["sha256"],
+        "adapter":[hashlib.sha256(p.read_bytes()).hexdigest() for p in adapter_files]},sort_keys=True).encode()).hexdigest()
+
+
+def inspect_output(path, width, height, seconds):
+    result = subprocess.run(["ffprobe","-v","error","-show_streams","-show_format","-of","json",str(path)],
+                            capture_output=True,text=True,timeout=20,check=True)
+    data = json.loads(result.stdout)
+    video = next(s for s in data["streams"] if s["codec_type"]=="video")
+    duration = float(data["format"]["duration"])
+    if (video["width"],video["height"]) != (width,height) or video["codec_name"]!="h264" or abs(duration-seconds)>.1:
+        raise ValueError("Native component output does not match the approved stage or duration")
+    keyframes = subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-skip_frame","nokey","-show_frames",
+                               "-show_entries","frame=best_effort_timestamp_time","-of","json",str(path)],
+                              capture_output=True,text=True,timeout=20,check=True)
+    times = [float(f["best_effort_timestamp_time"]) for f in json.loads(keyframes.stdout)["frames"] if "best_effort_timestamp_time" in f]
+    if not times or times[0]>.05:
+        raise ValueError("Native component is missing its initial keyframe")
+    interval = max([b-a for a,b in zip(times,times[1:])]+[duration-times[-1]])
+    if interval>1.1 or video.get("pix_fmt")!="yuv420p":
+        raise ValueError("Native component must use seek-safe one-second keyframes and yuv420p")
+    return {"width":width,"height":height,"duration":duration,"codec":"h264","max_keyframe_interval":interval}
+
+
+def materialize(project: Path, spec: ShotcraftNative, instance: str, duration: float, format: str, *, on_progress=None):
+    if not re.fullmatch(r"s[1-8]-shotcraft",instance) or format not in DIMS or not math.isfinite(duration) or not required_seconds(spec)<=duration<=12:
+        raise ValueError("Unsupported native Shotcraft instance, format or duration")
+    # Revalidate even model_copy/update values before crossing the process boundary.
+    spec = ShotcraftNative.model_validate(spec.model_dump())
+    if on_progress: on_progress(0)
+    root = project.resolve()
+    source = source_fingerprint()
+    width,height = DIMS[format]
+    frames = round(duration*30)
+    fingerprint = hashlib.sha256(json.dumps({"spec":spec.model_dump(),"frames":frames,"format":format,"source":source},
+                                           ensure_ascii=True,sort_keys=True).encode()).hexdigest()
+    stem = instance+"-"+fingerprint[:16]
+    output,partial,receipt = [root/"assets"/(stem+suffix) for suffix in (".mp4",".part.mp4",".json")]
+    for target in (output,partial,receipt,partial.with_suffix(".remotion.json")):
+        if not target.resolve().is_relative_to(root):
+            raise ValueError("Native component output escapes the owned project")
+    output.parent.mkdir(parents=True,exist_ok=True)
+    if output.is_file() and receipt.is_file():
+        try:
+            cached = json.loads(receipt.read_text())
+            if cached.get("fingerprint")==fingerprint and cached.get("artifact_sha256")==hashlib.sha256(output.read_bytes()).hexdigest():
+                inspect_output(output,width,height,frames/30)
+                if on_progress: on_progress(100)
+                return cached
+        except (OSError,ValueError,subprocess.SubprocessError):
+            pass  # A corrupt cache is not a valid completed operation.
+    from engine.remotion_renderer import render
+    render({"version":3,"width":width,"height":height,"scenes":[{"frames":frames,"kind":"shotcraft_native","shotcraft":spec.model_dump()}]},
+           partial,job_dir=root,on_progress=on_progress,timeout=600)
+    media = inspect_output(partial,width,height,frames/30)
+    partial.replace(output)
+    notice = root/"assets/SHOTCRAFT-LICENSE.txt"
+    if not notice.resolve().is_relative_to(root):
+        raise ValueError("Native component license path escapes project")
+    shutil.copy2(ROOT/"creative/shotcraft_data/LICENSE",notice)
+    record = {"resource_id":spec.resource_id,"instance":instance,"integration":"native-shotcraft-code",
+              "source_revision":REVISION,"source_adapter_sha256":source,"fingerprint":fingerprint,
+              "asset":output.relative_to(root).as_posix(),"artifact_sha256":hashlib.sha256(output.read_bytes()).hexdigest(),
+              "media":media,"encoded_output_verified":True,"visual_review_verified":False}
+    receipt.write_text(json.dumps(record,ensure_ascii=False,indent=2))
+    if on_progress: on_progress(100)
+    return record

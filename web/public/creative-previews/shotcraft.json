@@ -16,7 +16,8 @@
         148
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "74724ddc7bc6b214fc76dac6a418c8afd50975de27a999f5f1f2a075affada7d"
     },
     "shotcraft-text-column-converge": {
       "id": "shotcraft-text-column-converge",
@@ -33,7 +34,8 @@
         178
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "232aea1c82483a46887af91b490af95146b7e5eb338801e662a4c1a6d09990c9"
     },
     "shotcraft-title-demote-to-label": {
       "id": "shotcraft-title-demote-to-label",
@@ -50,7 +52,8 @@
         244
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "05b654fd2812b3e265bb49fd390bc59dedf0e6d53630faf6d50a3359d89d62a1"
     },
     "shotcraft-bezier-source-converge-merge": {
       "id": "shotcraft-bezier-source-converge-merge",
@@ -67,7 +70,8 @@
         166
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "7d70ade8563d6d141a8a2a07af0611405e994bdb2836e4ed18c7112c0b953849"
     },
     "shotcraft-card-flip-reveal": {
       "id": "shotcraft-card-flip-reveal",
@@ -84,7 +88,8 @@
         148
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "b4ca2707c3ab1b2eb6d9f5aa2ab431ec1a44e2eb2f9afa898f55084133902d4a"
     },
     "shotcraft-circle-match-iris": {
       "id": "shotcraft-circle-match-iris",
@@ -101,7 +106,8 @@
         163
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "c2ec7835e548479de5aba07baf37a091c376d67032f34a85dc9b5a3b275a3497"
     },
     "shotcraft-before-after-slider-scrub": {
       "id": "shotcraft-before-after-slider-scrub",
@@ -118,7 +124,8 @@
         148
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "9bea3a1328302a99af7a12ba2fdf9ad87d9a0aa9004dda76624ea318a81b2d65"
     },
     "shotcraft-chart-axis-rescale": {
       "id": "shotcraft-chart-axis-rescale",
@@ -135,7 +142,8 @@
         166
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "c9ccbb690feb38499f7e9e22ce6b6b2e43272a0eeb0b4929bfb9d1cf44f4a293"
     },
     "shotcraft-chart-oscilloscope": {
       "id": "shotcraft-chart-oscilloscope",
@@ -152,7 +160,8 @@
         163
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "9c746fda4202645992dda269f3d54b2a3354f2da0cc27f43c99b74d4361a02dd"
     },
     "shotcraft-chart-unit-regroup": {
       "id": "shotcraft-chart-unit-regroup",
@@ -169,7 +178,8 @@
         190
       ],
       "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
-      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required."
+      "use": "Original upstream demo; demo branding/copy and synthetic data are not user content. Typed content binding and portrait adaptation remain required.",
+      "poster_sha256": "c41250ef55295a8ae76dc1aed99ddc771911a15ea89cf362a9a1dad62ee32dc5"
     }
   }
 }

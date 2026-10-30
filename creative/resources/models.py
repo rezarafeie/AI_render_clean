@@ -25,7 +25,7 @@ class Capabilities(ManifestModel):
 
 class Parameter(ManifestModel):
     name: str
-    value_type: Literal["string", "number", "boolean"]
+    value_type: Literal["string", "number", "boolean", "array"]
     default: Any = None
     # A known default is not a validated editing contract.
     editable: bool = False
@@ -35,6 +35,9 @@ class Parameter(ManifestModel):
     maximum: float | None = None
     max_length: int | None = None
     options: tuple[str, ...] = ()
+    min_items: int | None = None
+    max_items: int | None = None
+    item_options: tuple[str, ...] = ()
 
 
 class Resource(ManifestModel):
