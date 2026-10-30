@@ -157,3 +157,28 @@ def test_provider_errors_are_classified_without_leaking_details():
     assert cloud._classify("HTTP 403 insufficient permission token=abc") == "permission_denied"
     assert "token" not in cloud._public_error("HTTP 403 insufficient permission token=abc")
     assert cloud._classify("invalid_grant") == "reconnect_required"
+
+
+def test_the_whole_import_runs_in_one_event_loop(monkeypatch):
+    """The Hermes database engine is pooled; reusing it from a second loop broke real imports."""
+    loops = []
+    patch_meta(monkeypatch, size=5)
+    record = asyncio.run(cloud.begin_import("u", "c1", "googledrive", "f1"))
+    async def meta(user, provider, file_id):
+        loops.append(asyncio.get_running_loop()); return meta_value
+    meta_value = meta_of = None
+    async def fake_meta(user, provider, file_id):
+        loops.append(asyncio.get_running_loop()); return {"size": 5}
+    async def call(user, provider, slug, args):
+        loops.append(asyncio.get_running_loop()); return {"downloaded_file_content": {"s3url": "https://b.r2.cloudflarestorage.com/x"}}
+    async def fin(user, cid, temp, name, kind, mime, size, extra):
+        loops.append(asyncio.get_running_loop()); return {"id": "att1", "path": str(temp)}
+    monkeypatch.setattr(cloud, "metadata", fake_meta)
+    monkeypatch.setattr(cloud, "_call", call)
+    monkeypatch.setattr(cloud, "finalize", fin)
+    monkeypatch.setattr(cloud, "safe_download_url", lambda u: u)
+    real = httpx.Client
+    monkeypatch.setattr(cloud.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=b"12345")), **kw))
+    cloud.run_import(record["id"], "u", "c1")
+    assert cloud.get_transfer("u", "c1", record["id"])["state"] == "completed"
+    assert len(loops) == 3 and len({id(loop) for loop in loops}) == 1

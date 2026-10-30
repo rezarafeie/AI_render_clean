@@ -204,8 +204,13 @@ def public(record: dict) -> dict:
 def _set(user: str, record: dict, **values) -> dict:
     record.update(values)
     _write(user, record)
+    return record
+
+
+async def _aset(user: str, record: dict, **values) -> dict:
+    _set(user, record, **values)
     try:
-        run(repo.emit(record["conversation_id"], "cloud.progress", public(record)))
+        await repo.emit(record["conversation_id"], "cloud.progress", public(record))
     except Exception:   # progress is best effort; the record on disk is the truth
         log.debug("cloud progress event not delivered")
     return record
@@ -288,39 +293,45 @@ def retry(user: str, conversation_id: str, transfer_id: str) -> dict:
 
 
 def run_import(transfer_id: str, user: str, conversation_id: str) -> None:
+    # One event loop for the whole import: the Hermes database engine is pooled and cannot be reused across loops.
+    asyncio.run(_import(transfer_id, user, conversation_id))
+
+
+async def _import(transfer_id: str, user: str, conversation_id: str) -> None:
     record = get_transfer(user, conversation_id, transfer_id)
     if record["state"] != "queued":
         return
     folder = attachment_folder(user, conversation_id)
     temporary = folder / f"cloud_{transfer_id}{Path(record['filename']).suffix.lower()}"
     try:
-        record = _set(user, record, state="connecting", attempts=record.get("attempts", 0) + 1)
-        info = run(metadata(user, record["provider"], record["file_id"]))
-        record = _set(user, record, state="fetching_metadata", size=info["size"])
-        downloaded = run(_call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]}))
+        record = await _aset(user, record, state="connecting", attempts=record.get("attempts", 0) + 1)
+        info = await metadata(user, record["provider"], record["file_id"])
+        record = await _aset(user, record, state="fetching_metadata", size=info["size"])
+        downloaded = await _call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]})
         link = (downloaded.get("downloaded_file_content") or {}).get("s3url")
         if not link:
             raise CloudError("provider_error", "Google Drive did not return the file.", 502)
-        record = _set(user, record, state="downloading", bytes=0)
-        size = _stream(user, record, safe_download_url(link), temporary)
-        record = _set(user, record, state="validating", bytes=size)
-        attachment = run(finalize(user, conversation_id, temporary, record["filename"], record["kind"],
-                                  record["mime_type"], size,
-                                  {"cloud": {"provider": record["provider"], "file_id": record["file_id"],
-                                             "version": record["version"], "checksum": record["checksum"],
-                                             "modified": record["modified"]}}))
-        _set(user, record, state="completed", attachment_id=attachment["id"], bytes=size, size=size)
+        safe = await asyncio.to_thread(safe_download_url, link)
+        record = await _aset(user, record, state="downloading", bytes=0)
+        size = await asyncio.to_thread(_stream, user, record, safe, temporary)
+        record = await _aset(user, record, state="validating", bytes=size)
+        attachment = await finalize(user, conversation_id, temporary, record["filename"], record["kind"],
+                                    record["mime_type"], size,
+                                    {"cloud": {"provider": record["provider"], "file_id": record["file_id"],
+                                               "version": record["version"], "checksum": record["checksum"],
+                                               "modified": record["modified"]}})
+        await _aset(user, record, state="completed", attachment_id=attachment["id"], bytes=size, size=size)
     except CloudError as exc:
         temporary.unlink(missing_ok=True)
         if exc.code == "cancelled":
-            _set(user, record, state="cancelled", error=None, error_code=None)
+            await _aset(user, record, state="cancelled", error=None, error_code=None)
         else:
-            _set(user, record, state="failed", error=exc.message, error_code=exc.code,
-                 retryable=exc.code in {"network", "rate_limited", "provider_error", "provider_unavailable"})
+            await _aset(user, record, state="failed", error=exc.message, error_code=exc.code,
+                        retryable=exc.code in {"network", "rate_limited", "provider_error", "provider_unavailable"})
     except Exception as exc:
         temporary.unlink(missing_ok=True)
         log.warning("cloud import failed: %s", type(exc).__name__)
-        _set(user, record, state="failed", error="The file could not be imported.", error_code="import_failed", retryable=True)
+        await _aset(user, record, state="failed", error="The file could not be imported.", error_code="import_failed", retryable=True)
 
 
 def _stream(user: str, record: dict, url: str, target: Path) -> int:
