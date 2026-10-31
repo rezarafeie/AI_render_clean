@@ -270,3 +270,27 @@ Earlier incremental verification (retained for audit):
 5. Inspect snapshots and decoded output; only then expose through resource
    selection and planner with truthful compatibility constraints.
 6. Keep unsupported items discoverable but non-executable, with a specific reason.
+# Card-flip adapter preparation (not enabled)
+
+`creative/shotcraft_card_flip.py` and `remotion/shotcraft-card-loader.cjs` now
+define and bind explicit three-card content into the pinned upstream TSX.
+They are deliberately **not** registered in `NativeSpec`, the renderer allowlist,
+or the planner catalog yet. Existing completed capability counts are unchanged.
+
+All copy and before/after numbers are required inputs; no demonstration claims
+are production defaults. Bars use the actual numeric ratio, including zero/zero.
+The required evidence string records a reference, not independently verified
+truth. Existing user approval remains required by the surrounding workflow.
+Front copy is an abstract three-line feature summary, not a claimed screenshot
+of an actual product UI. The original perspective, flip curve, spring, staggering,
+lighting, reflections and contact shadows are retained. Front reading time and
+result hold are bounded from explicit copy. Negative Persian letter spacing and
+fixed English demo copy are removed.
+
+Preparation tests cover Python validation, source binding, unchanged vendor
+bytes, preserved motion constants, zero comparisons, changed-source rejection,
+insufficient reading holds and TypeScript transpilation. These tests do **not**
+certify text fit, RTL geometry, encoded frames, audio or production availability.
+Before promotion: add shaped-font geometry limits, complete an actual native and
+hybrid render audit, review sampled front/flip/back frames independently, retain
+the approved visual in the gallery, and only then expose the typed catalog entry.
