@@ -16,12 +16,12 @@ sys.path.insert(0,str(ROOT))
 def main():
     from creative import motion_graphic as mg
     from creative.native_motion import NativeMotion
-    from creative.shotcraft_native import ShotcraftNative,TextColumnNative,CardFlipNative,BeforeAfterNative
+    from creative.shotcraft_native import ShotcraftNative,TextColumnNative,CardFlipNative,BeforeAfterNative,CardStackNative
     import engine.hyperframes.assets as assets
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project",type=Path)
     parser.add_argument("--gsap",type=Path,required=True)
-    parser.add_argument("--component",choices=["convergence","text-column","card-flip","before-after"],default="convergence")
+    parser.add_argument("--component",choices=["convergence","text-column","card-flip","before-after","card-stack"],default="convergence")
     parser.add_argument("--refresh-audit",action="store_true",help="Refresh only an unchanged dedicated synthetic audit, reusing its verified native cache")
     args=parser.parse_args()
     if args.project.exists():
@@ -88,10 +88,30 @@ def main():
                 before_label='ورودی اول',after_label='ورودی دوم',before_asset=rows[0]['asset'],after_asset=rows[1]['asset'],
                 comparison_basis='دو فایل هندسی آزمایشی با کادر یکسان؛ نه ادعای بهبود'))
         plan.scenes[1].native_component=None
+    if args.component=='card-stack':
+        from PIL import Image,ImageDraw
+        from creative.shotcraft_compare import stage_images,restore_inputs
+        originals=args.project/'synthetic-attachments';originals.mkdir(exist_ok=True)
+        attachments=[]
+        for index in range(9):
+            image=Image.new('RGB',(1920,1080),'#edf0f4');draw=ImageDraw.Draw(image)
+            color=['#5b63d3','#b65237','#148577'][index%3]
+            draw.rounded_rectangle((200,150,1720,930),radius=80,outline=color,width=24)
+            for k in range(index+1):
+                x=330+(k%3)*480;y=260+(k//3)*240
+                draw.ellipse((x,y,x+160,y+160),fill=color)
+            aid=f'{index+1:032x}';path=originals/(aid+'.png');image.save(path)
+            attachments.append({'id':aid,'kind':'image','path':str(path)})
+        rows=stage_images(args.project,originals,attachments);restore_inputs(args.project,args.project,rows)
+        caption='مجموعهٔ تصویری';plan.format='horizontal'
+        plan.scenes[0]=mg.ScenePlan(headline=caption,idea='Nine supplied geometric images stack and fan; the fifth image is highlighted. A collection overview, not a product claim.',start=0,end=6,narration='این مجموعه فقط نمونهٔ آزمایشی است.',
+            shotcraft_component=CardStackNative(resource_id='shotcraft:card-stack',caption=caption,kicker='نمونهٔ آزمایشی',subtitle='نه تصویر، یک مجموعه',
+                cards=[dict(title='تصویر '+str(i+1),meta='نمونهٔ هندسی',asset=row['asset']) for i,row in enumerate(rows)]))
+        plan.scenes[1].native_component=None
     problems=mg.validate_plan(plan)
     if problems: raise ValueError("Invalid audit plan: "+"; ".join(problems))
     drafts=[mg.author_scene(plan,1,"synthetic integration audit")]
-    if args.component in {"text-column","card-flip","before-after"}:
+    if args.component in {"text-column","card-flip","before-after","card-stack"}:
         drafts.append(mg.SceneDraft(html='<div style="position:absolute;inset:0;display:grid;place-items:center;background:#08090c;color:#eeeef2;font:60px Ray;line-height:1.5">داستانت را بساز</div>',build_js='tl.to({}, {duration:3}, 0);',timebase="local"))
     else:
         drafts.append(mg.author_scene(plan,2,"synthetic integration audit"))

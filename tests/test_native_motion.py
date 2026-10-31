@@ -84,6 +84,8 @@ def test_planner_shared_metadata_compaction_is_lossless():
     packed=json.loads(request.split(CATALOG_CONTRACT+'\n',1)[1].split('\nUse only',1)[0])
     original=catalog()
     for expected,row in zip(original,packed['entries'],strict=True):
+        for key,value in row['inputs']['parameters'].items():
+            if '$ref' in value:row['inputs']['parameters'][key]=packed['parameter_definitions'][value['$ref']]
         restored={**{k:[] for k,v in expected.items() if v==[]},**packed['shared_metadata'],**row}
         assert restored==expected
 

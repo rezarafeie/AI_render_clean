@@ -22,23 +22,23 @@
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 180,
-        "min_dark_pixels": 49,
+        "min_dark_pixels": 50,
         "method": "all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
       },
       "hybrid_opening_audit": {
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 1,
-        "min_dark_pixels": 104,
+        "min_dark_pixels": 103,
         "method": "first encoded frame, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
       },
-      "source_adapter_sha256": "6e905959b289c4a22f346f7ec1f21acc05f4f6a12135a86303f432844023b2a0",
-      "hybrid_artifact_sha256": "4338983a653be82563dfa78384b5888f633d815846861af50aae6fc26bf96b52",
-      "hybrid_check_sha256": "a2b1c514c62fdfbb387c44e0c7c74740c22e3d3432dc1419e597880fcca7dd7c",
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "a75ccf8545222cc38a0e2a32fcb5c34ed8dcd701e7c046e8c13243330122b0f6",
+      "hybrid_check_sha256": "ad5c52ce5816b1949a5bbf104ad1b2dc63e1c36a4074f2bce8c906eafdc9cfa0",
       "poster": "/creative-previews/shotcraft-native-bezier-source-converge-merge.png",
       "preview_video": "/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4",
-      "poster_sha256": "a2cbc215f26a7b73b9fcea93b2ee4ea09231e943ce7e504de0d3af236fb0d572",
-      "video_sha256": "9f7c9463bc2ded69fd3666d14f7da18b21d3f472dadf502740a704234fea24ca",
+      "poster_sha256": "3dfaa23a6c7fe0d2d5b271264e35280aa1a488e70d4609af2bfc3eff97abfb5c",
+      "video_sha256": "701aaebc710fef81811f9495fef3a0228fdea2fe77f4d41837bbe8571280df90",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -135,13 +135,13 @@
         "min_bright_pixels": 15,
         "method": "first encoded frame, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
       },
-      "source_adapter_sha256": "6e905959b289c4a22f346f7ec1f21acc05f4f6a12135a86303f432844023b2a0",
-      "hybrid_artifact_sha256": "fcefe2bba32287a911f5b79840c8a94436ddd414ded765ef07a674789874c9da",
-      "hybrid_check_sha256": "c3d223ad279d7b7a19087c6ae028e9767c5b9fda1565cf34de75545b016fb6fa",
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "ef53754ecd6690b0168c1b2d6f245ff7a88eb93f64c6a2b843937bd921c44cf6",
+      "hybrid_check_sha256": "502603269ba98aba40fef750f0762ad6cff7618c5a01f9bce1265e54f261e29a",
       "poster": "/creative-previews/shotcraft-native-text-column-converge.png",
       "preview_video": "/creative-previews/shotcraft-native-text-column-converge.mp4",
-      "poster_sha256": "35be0fc56acf365e6594f5771ac556093fb4e61df26d69b3349941566c79abb1",
-      "video_sha256": "77795de1e7e8d3917bb69a0d03952c6c9c7261934a6438aeb14e4f235ad674ed",
+      "poster_sha256": "216a34d4e2adca1079026e212e5935c17d7f3b53cc7ddddc5276598f57efaa8b",
+      "video_sha256": "469dd316b37aa11911e751f81d75fe1e085f1b7b07d54def8c99711c833238f0",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -220,7 +220,7 @@
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 300,
-        "min_bright_pixels": 66,
+        "min_bright_pixels": 67,
         "method": "all encoded frames, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
       },
       "card_region_audit": {
@@ -234,16 +234,16 @@
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 1,
-        "min_bright_pixels": 63,
+        "min_bright_pixels": 60,
         "method": "first encoded frame, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
       },
-      "source_adapter_sha256": "6e905959b289c4a22f346f7ec1f21acc05f4f6a12135a86303f432844023b2a0",
-      "hybrid_artifact_sha256": "a6b67190d23a91a86ba43014c715bbceceef99cccd9c93f47ee1c0b7ec68f15a",
-      "hybrid_check_sha256": "3de4313ad69154768770f237df609b076149372f7ce6bd4bec356f5824a8ce20",
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "886fbccbce837cc61f95bf95a99c06a31074d73cbbb945405b32934f938c4297",
+      "hybrid_check_sha256": "d028700de932b846adb8b045ede29033a1a882ff4d0297e11cea61b0b8792d53",
       "poster": "/creative-previews/shotcraft-native-card-flip-reveal.png",
       "preview_video": "/creative-previews/shotcraft-native-card-flip-reveal.mp4",
-      "poster_sha256": "6b9bee8b27b761b8bb41789a4855599ae72a8350295659d68b268218fa2bff1a",
-      "video_sha256": "73f1a3069ffcea2f90e18a37576b56dc4b57fcfcca6ba2930f2aec10280a6ea2",
+      "poster_sha256": "5b8f7481652860eb555a36a9b5e25b0876f63b193cc26e1022c27461f10b2f0f",
+      "video_sha256": "ffb01ff60f9ad04bf8904900b132e2ac50ba28e57932e1800aaa12e417f83698",
       "parameters": {
         "$defs": {
           "FlipCardContent": {
@@ -406,7 +406,7 @@
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 180,
-        "min_dark_pixels": 5381,
+        "min_dark_pixels": 5380,
         "method": "all encoded frames, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
       },
       "input_sha256": [
@@ -417,16 +417,16 @@
         "validator_revision": 2,
         "minimum_foreground_pixels": 1,
         "decoded_frames": 1,
-        "min_dark_pixels": 5383,
+        "min_dark_pixels": 5382,
         "method": "first encoded frame, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
       },
-      "source_adapter_sha256": "6e905959b289c4a22f346f7ec1f21acc05f4f6a12135a86303f432844023b2a0",
-      "hybrid_artifact_sha256": "2515b4da7c51ce3af068ef9c0424b725cb59fe9a074d9d7c82ffb3b70d1a9760",
-      "hybrid_check_sha256": "71e83e161d3d98d950946f2ccbe78bbe3b0cc06f0bdb860f4b6ee58196c33563",
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "8e6d50a4706083a7a156f9e9714928418cb0b8791dcc7131085692cc64f69354",
+      "hybrid_check_sha256": "33902e37ee4c01e080071edfa5000da5beaee75f221f3d74167f3504dec6b8b6",
       "poster": "/creative-previews/shotcraft-native-before-after-slider-scrub.png",
       "preview_video": "/creative-previews/shotcraft-native-before-after-slider-scrub.mp4",
-      "poster_sha256": "485b7013b5c3f88df033b56feb35ab7c0e3c70067b54ffaf0eaa3ce50eba5436",
-      "video_sha256": "46c556733bf359edbb4909a3386afd1797103e1f42fde23bbd1db54fa8421426",
+      "poster_sha256": "593cd224eba74ce8c2efb7bb9bab40c0571565bbf34e2693790f21c1f778ca1b",
+      "video_sha256": "e21451b83542a3288b163f92e536922bbbd6858b744adbf8c7a71227b12fc11d",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -492,6 +492,143 @@
         "type": "object"
       },
       "use": "مقایسهٔ دو تصویر واقعیِ ارائه‌شده با اسلایدر کد اصلی. دو تصویر این نمونه هندسی و مصنوعی‌اند؛ هیچ ادعای بهبود یا تخریب ساختگی تصویر اول وجود ندارد. تصاویر کامل حفظ می‌شوند؛ فعلاً فقط افقی و بی‌صدا."
+    },
+    "shotcraft:card-stack": {
+      "id": "shotcraft:card-stack",
+      "name": "shotcraft-native-card-stack",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_dark_pixels": 8,
+        "method": "all encoded frames, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "input_sha256": [
+        "488201b70cbc174cdcf1fa92d7d1850c27430edebfa56e307c7e5beb86005c70",
+        "69f649a7d4a280cf8c2d1dd9e1ae4b133298433dcc934c76fc41e42718d394ba",
+        "658947a655d1ca7fddb0d9d325ed2b023f122bbf6bcfde8da281b715b43311f0",
+        "a77fa533204271b0cd8c8033361b9488c06121f3b64c2ba5d480dd48b0a30790",
+        "5ad86acccf4c1741ecea4f9d876f7d79654d910b32031c619121befb8f7ffe89",
+        "d5ea2c4d604e17b47849eacdcc554b8fa1cad74f228f6cbf06dc1da852e7252e",
+        "4a22eb73530bb09016832899b980d9dd0ed0a044a031f883d729290b37f309cc",
+        "c670aa680f55a979d1e3668c05d792e63f14f566e649e3aa748f00d4fc74a586",
+        "0d69275031b2b75b4a850fef7d192ae079bf59b284636c5f6a8b504f4b91093c"
+      ],
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_dark_pixels": 7,
+        "method": "first encoded frame, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "b230d00dc701c39e030aeae4bb20d697be0183bab86a95b4b9c7065a968fabfc",
+      "hybrid_check_sha256": "9fae99a3e4dbbe9c83464974f09fa53f1d600593d0ce658af99d0e474097f0ef",
+      "poster": "/creative-previews/shotcraft-native-card-stack.png",
+      "preview_video": "/creative-previews/shotcraft-native-card-stack.mp4",
+      "poster_sha256": "7dce875fa3350b8340b0ee6cb4f72cbdad6e13b7b25fb87c30a3faf32f38ca5c",
+      "video_sha256": "d0b7a8207b41a3d12e275b6ed6ce83108301686d83a425440e89c17bca553afb",
+      "parameters": {
+        "$defs": {
+          "StackCard": {
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "maxLength": 12,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "meta": {
+                "maxLength": 16,
+                "minLength": 1,
+                "title": "Meta",
+                "type": "string"
+              },
+              "asset": {
+                "pattern": "^assets/compare-[0-9a-f]{64}\\.png$",
+                "title": "Asset",
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "meta",
+              "asset"
+            ],
+            "title": "StackCard",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:card-stack",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "kicker": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Kicker",
+            "type": "string"
+          },
+          "subtitle": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/$defs/StackCard"
+            },
+            "maxItems": 9,
+            "minItems": 9,
+            "title": "Cards",
+            "type": "array"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "kicker",
+          "subtitle",
+          "cards"
+        ],
+        "title": "CardStackNative",
+        "type": "object"
+      },
+      "use": "نه تصویر واقعیِ ارائه‌شده، ورود پشته‌ای و بازشدن بادبزنی با کد اصلی. کارت پنجم برجسته می‌شود. این نمونه فقط تصاویر هندسی مصنوعی دارد؛ جلد و آمار ساختگی تولید نمی‌شود. چیدمان برای نمای کلی است، نه خواندن هم‌زمان نه کارت. فعلاً افقی و بی‌صدا."
     }
   }
 }

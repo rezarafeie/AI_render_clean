@@ -24,11 +24,70 @@ not change. Existing plans default to generated authoring as before.
 | HyperFrames registry catalog | Metadata index and profiles | Existing talking_2 context adapters remain unchanged; catalog is not execution |
 | EditorGPT effects/transitions | Existing MLT implementations | Already executable via EditPlan; not interchangeable with HTML components |
 | EditorGPT motion recipes | Existing recipe adapters | Already connected in talking_2, not generic motion-graphic templates |
-| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Four bounded native adapters (source convergence, text-column convergence, card-flip reveal, before/after slider) execute user content through existing Remotion → HyperFrames; six other demos remain reference-only |
+| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Five bounded native adapters (source convergence, text-column convergence, card-flip reveal, before/after slider, card stack) execute user content through existing Remotion → HyperFrames; five other demos remain reference-only |
 | Claude Video Effects | Existing 42 implementations in engine/face_effects | Existing talking-reel execution preserved, all 42 exposed in shared registry; synthetic-frame previews, not video-tracker certification |
 | Lemo Opuscar | Pinned Swiss Canvas source, score, MIT license, local OFL fonts | Original demo executed, backward seek pixel equality checked. Fixed demo story is NOT an editable production template; remaining styles pending |
 
 ## Adapter parameters (portrait; encoded-output certification pending)
+
+### Nine-image collection / card stack (2026-10-31)
+
+`shotcraft:card-stack` executes the exact pinned original physical nine-card
+animation: accelerating stagger, spring entry, landing dip, 62–72f squeeze,
+68f fan spring, camera pullback and fifth-card lift/ring/single sheen. Original
+z-order and intentional overlap remain unchanged. All fictional demo covers,
+charts, metrics, avatar circles, brand text and duration claims are removed.
+Each cover is an actual owned image, fully contained without crop/stretch.
+
+The existing private image bridge now accepts at most nine eligible images;
+eligibility and metadata/privacy rules are unchanged. Existing Lite intake and
+Medium's authorized `attachment_ids` feed the same job. This adds no provider,
+database, service, routing or parallel workflow. Renderer versions 1/2 retain
+their three-supporting-image limit. Only the typed v3 `card-stack` path carries
+exactly nine, with ownership checked before process spawn. All nine digests are
+validated before cache reuse and participate in artifact identity; a changed
+ninth image cannot reuse a cached result.
+Fresh and cached plans also check asset references against the existing owned
+input catalog before paid narration or scene authoring. Missing images or
+mismatched comparison dimensions become an existing user-question state rather
+than a late renderer failure. Completed paid operations are not repeated here.
+
+Parameters: `caption`, `kicker`, `subtitle`, nine user-ordered `cards` with `title`,
+`meta`, `asset`, plus `locale`. Assets must be distinct content-addressed entries
+from the eligible input catalog; the fifth is featured. Horizontal1920×1080 only,
+6–12s with a final-copy reading budget. Local-font measurement rejects overflow;
+it does not shrink or clip approved text. Metadata was increased from the demo's
+15px to 36px (as was its width measurement). This is a **collection overview**,
+not a layout in which all nine overlapping labels or screenshot details can be
+read independently. Use sequential scenes for detailed explanation.
+
+Planner catalog compaction now interns identical parameter definitions in a
+small `parameter_definitions` dictionary. `$ref` names are explicitly explained
+to the planner; a reconstruction test proves every original description, bound,
+option and required field is retained. With the fifth adapter, the minimal
+Persian planning request remains below 50,000 characters (49,691 measured).
+No latency/model-quality improvement is claimed without a live AI test.
+
+The gallery fixture is silent synthetic geometry, not user product material.
+Public publication requires the exact nine reviewed synthetic input hashes in
+addition to the existing unchanged-fixture marker and actual render checks.
+Arbitrary private media cannot be published by marking a job synthetic.
+The six-second native sample passes all 180 decoded-frame foreground checks;
+its nine-second hybrid passes the actual HyperFrames browser check and encoded
+opening gate. Independent decoded review confirms entry, fan, fifth-card lift,
+settled hold, assembly wipe and closing. This does not certify arbitrary user
+imagery, all nine labels, the separate closing design, audio or a full film.
+Original Gallery dynamic-reference comparison remains unverified because the
+reference MP4 is absent locally. Mobile-sized Chrome verifies 103 gallery entries,
+no page errors/overflow, and zero video requests before play / one after play.
+Final verification: 358 relevant automated tests pass (four existing deprecation
+warnings); frontend build passes (existing bundle-size warnings). All five native
+samples and hybrids were actually rendered/checked against the final adapter;
+no older receipt was merely re-stamped. The integration remains local and the
+running API has not been restarted as part of this work.
+No paid AI calls, API restart or production deployment are part of this stage.
+Rollback the whole integration commit on idle owned workers; preserve existing
+MP4s and private inputs. No schema migration is needed.
 
 ### Owned-image comparison (2026-10-31)
 

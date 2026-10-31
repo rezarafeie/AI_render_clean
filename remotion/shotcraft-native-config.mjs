@@ -10,6 +10,7 @@ const sources={
   'shotcraft:text-column-converge':['demos/typography/text-column-converge/TextColumnConverge.tsx','shotcraft-text-loader.cjs'],
   'shotcraft:card-flip-reveal':['demos/transition/card-flip-reveal/CardFlipReveal.tsx','shotcraft-card-loader.cjs'],
   'shotcraft:before-after-slider-scrub':['demos/data/before-after-slider-scrub/BeforeAfterSliderScrub.tsx','shotcraft-compare-loader.cjs'],
+  'shotcraft:card-stack':['demos/ui-entrance/card-stack/CardStack.tsx','shotcraft-stack-loader.cjs'],
 };
 
 export function nativeShotcraftBundle(inputProps) {

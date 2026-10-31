@@ -41,7 +41,7 @@ class Storyboard(Args):
 
 class MotionGraphic(Args):
     request: str = Field(min_length=3, max_length=12000)
-    attachment_ids: list[str] = Field(default_factory=list,max_length=8,description='Existing owned image attachment IDs to include, in user-specified order. Never invent IDs or paths.')
+    attachment_ids: list[str] = Field(default_factory=list,max_length=9,description='Existing owned image attachment IDs to include, in user-specified order. Never invent IDs or paths.')
 
 
 class Project(Args):

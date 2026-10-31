@@ -36,11 +36,11 @@ def test_vendored_lemo_and_shotcraft_dependencies_are_pinned():
             assert hashlib.sha256(source.read_bytes()).hexdigest() == expected
 
 
-@pytest.mark.parametrize("resource",["shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub"])
+@pytest.mark.parametrize("resource",["shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub","shotcraft:card-stack"])
 def test_native_shotcraft_preview_is_encoded_and_frozen(resource):
     from creative.shotcraft_native import source_fingerprint
     rows = json.loads((GALLERY / "native-shotcraft.json").read_text())["items"]
-    assert set(rows) == {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub"}
+    assert set(rows) == {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub","shotcraft:card-stack"}
     row = rows[resource]
     assert row["status"] == "native-component-checked"
     assert row["encoded_output_verified"] and row["hybrid_browser_checked"]
@@ -51,9 +51,11 @@ def test_native_shotcraft_preview_is_encoded_and_frozen(resource):
     assert row["media"]["max_keyframe_interval"] <= 1.1
     assert row["frame_audit"]["decoded_frames"] == (300 if resource.endswith('card-flip-reveal') else 180)
     assert row["hybrid_opening_audit"]["decoded_frames"] == 1
-    assert row["frame_audit"]["min_dark_pixels" if resource.endswith(("bezier-source-converge-merge","before-after-slider-scrub")) else "min_bright_pixels"] >= 12
+    assert row["frame_audit"]["min_dark_pixels" if resource.endswith(("bezier-source-converge-merge","before-after-slider-scrub","card-stack")) else "min_bright_pixels"] >= (1 if resource.endswith('card-stack') else 12)
     if resource.endswith('before-after-slider-scrub'):
         assert len(set(row['input_sha256']))==2
+    if resource.endswith('card-stack'):
+        assert len(set(row['input_sha256']))==9
     if resource.endswith('card-flip-reveal'):
         assert row['card_region_audit']['checked_card_frames']==744
         assert row['card_region_audit']['min_bright_pixels']>=1

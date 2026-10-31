@@ -190,7 +190,7 @@ def test_registry_promotes_only_the_actual_native_adapter():
     icons=next(p for p in row["parameters"] if p["name"]=="source_icons")
     assert icons["value_type"]=="array" and icons["min_items"]==icons["max_items"]==4
     assert assess_resource(row["id"],ResourceRequirements(context="motion-graphic",engine="hyperframes",kind="component",require_rtl=True,require_vertical=True))["eligible"]
-    assert registry.get_resource("shotcraft:card-stack")["availability"]=="catalog-only"
+    assert registry.get_resource("shotcraft:title-demote-to-label")["availability"]=="catalog-only"
 
 
 def text_spec(**patch):

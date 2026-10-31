@@ -15,6 +15,7 @@ from typing import Literal, Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, TypeAdapter
 from .shotcraft_card_flip import CardFlipNative, reading_frames as card_reading_frames
 from .shotcraft_compare import BeforeAfterNative,validate_assets as comparison_assets
+from .shotcraft_stack import CardStackNative,required_seconds as stack_seconds,validate_assets as stack_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "5a2e98daade313c4f376120f38427eb19a108e8c"
@@ -68,7 +69,7 @@ class TextColumnNative(BaseModel):
         return tuple(v.strip() for v in values)
 
 
-NativeSpec = Annotated[ShotcraftNative | TextColumnNative | CardFlipNative | BeforeAfterNative, Field(discriminator="resource_id")]
+NativeSpec = Annotated[ShotcraftNative | TextColumnNative | CardFlipNative | BeforeAfterNative | CardStackNative, Field(discriminator="resource_id")]
 
 
 def parse_spec(value):
@@ -86,7 +87,7 @@ class ShotcraftMount(BaseModel):
 
     @model_validator(mode="after")
     def supported_stage(self):
-        if isinstance(self.spec,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and self.format!="horizontal":
+        if isinstance(self.spec,(TextColumnNative,CardFlipNative,BeforeAfterNative,CardStackNative)) and self.format!="horizontal":
             raise ValueError("Selected native component requires the horizontal stage")
         if self.duration<required_seconds(self.spec):
             raise ValueError("Native scene omits its required reading hold")
@@ -114,7 +115,11 @@ def catalog():
             {"id":"shotcraft:before-after-slider-scrub","field":"shotcraft_component","format":"horizontal",
              "best_for":"Two actual user-supplied states of the same view. Original fast fling, bounce and slow comparison slider. Never fabricate or degrade before.",
              "inputs":compact(BeforeAfterNative.model_json_schema()),"seconds":[5,12],
-             "constraints":"Caption=approved headline; header width1640px at64px, labels280px at40px measured. Select ONLY listed eligible owned assets, two different opaque SDR PNG images of identical16:9 dimensions,1920x1080–3840x2160. Same camera/layout and before/after roles must be specified by user; ask if unknown. comparison_basis records user-supplied basis, not proof of improvement. No URLs, paths outside listed assets, automatic enhancement, clipping or fallback. Images fit fully in reserved body; slider reaches40% then holds."}]
+             "constraints":"Caption=approved headline; header width1640px at64px, labels280px at40px measured. Select ONLY listed eligible owned assets, two different opaque SDR PNG images of identical16:9 dimensions,1920x1080–3840x2160. Same camera/layout and before/after roles must be specified by user; ask if unknown. comparison_basis records user-supplied basis, not proof of improvement. No URLs, paths outside listed assets, automatic enhancement, clipping or fallback. Images fit fully in reserved body; slider reaches40% then holds."},
+            {"id":"shotcraft:card-stack","field":"shotcraft_component","format":"horizontal",
+             "best_for":"Overview of exactly nine supplied collection images; original spring stack → fan → fifth-card highlight. Not a dense reading layout or full film.",
+             "inputs":compact(CardStackNative.model_json_schema()),"seconds":[6,12],
+             "constraints":"Caption=approved headline. Nine different listed owned opaque16:9 PNG assets; index4 is featured, preserve user ordering. Never invent covers/metrics/avatars. Whole images contained, no crop/stretch. Measured text: caption1640px/88px, subtitle1640/40,kicker900/40,title264/36,meta264/36. Frames>=max(180,130+max(45,ceil(max(caption_words,subtitle_words)/2.5*30))). Cards overlap intentionally; do not promise all nine captions are readable. No URLs, arbitrary paths, clipping or fallback."}]
 
 
 def feature_frames(spec):
@@ -122,6 +127,7 @@ def feature_frames(spec):
 
 
 def required_seconds(spec):
+    if isinstance(spec,CardStackNative):return stack_seconds(spec)
     if isinstance(spec,BeforeAfterNative):return 5
     if isinstance(spec,CardFlipNative):
         return max(4,card_reading_frames(spec)/30)
@@ -147,6 +153,7 @@ def source_fingerprint():
                      ROOT/"remotion/shotcraft-text-loader.cjs",ROOT/"remotion/src/shotcraft/useTextMetrics.ts",
                      ROOT/"creative/shotcraft_card_flip.py",ROOT/"remotion/shotcraft-card-loader.cjs",ROOT/"remotion/src/shotcraft/useCardMetrics.ts",
                      ROOT/"creative/shotcraft_compare.py",ROOT/"remotion/shotcraft-compare-loader.cjs",ROOT/"remotion/src/shotcraft/useCompareMetrics.ts",
+                     ROOT/"creative/shotcraft_stack.py",ROOT/"remotion/shotcraft-stack-loader.cjs",ROOT/"remotion/src/shotcraft/useStackMetrics.ts",
                      ROOT/"remotion/src/shotcraft-native.tsx",ROOT/"remotion/src/shotcraft/FrameReady.tsx",ROOT/"remotion/render.mjs",
                      ROOT/"engine/remotion_renderer.py",ROOT/"presets/fonts/Vazirmatn-Regular.ttf"]
     return hashlib.sha256(json.dumps({"source":data["sha256"],"runtime":runtime["sha256"],
@@ -178,11 +185,11 @@ def materialize(project: Path, spec: NativeSpec, instance: str, duration: float,
         raise ValueError("Unsupported native Shotcraft instance, format or duration")
     # Revalidate even model_copy/update values before crossing the process boundary.
     spec = parse_spec(spec.model_dump())
-    if isinstance(spec,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and format!="horizontal":
+    if isinstance(spec,(TextColumnNative,CardFlipNative,BeforeAfterNative,CardStackNative)) and format!="horizontal":
         raise ValueError("Selected native source currently requires its horizontal design stage")
     if on_progress: on_progress(0)
     root = project.resolve()
-    paths,digests=comparison_assets(root,spec) if isinstance(spec,BeforeAfterNative) else ([],[])
+    paths,digests=(comparison_assets(root,spec) if isinstance(spec,BeforeAfterNative) else stack_assets(root,spec) if isinstance(spec,CardStackNative) else ([],[]))
     source = source_fingerprint()
     width,height = DIMS[format]
     frames = round(duration*30)

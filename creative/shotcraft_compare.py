@@ -72,7 +72,7 @@ def stage_images(directory:Path,owned_root:Path,attachments:list[dict]):
         if not re.fullmatch('[0-9a-f]{32}',aid):raise ValueError('Invalid owned attachment ID')
         source=Path(item.get('path','')).resolve()
         if source.parent!=root or source.stem!=aid or not source.is_file():raise ValueError('Comparison attachment is not owned by this conversation')
-        if len(rows)>=8:continue
+        if len(rows)>=9:continue
         if source.stat().st_size>MAX_BYTES:continue
         try:raw,size=canonical_image(source.read_bytes())
         except (ValueError,OSError):continue
@@ -86,10 +86,11 @@ def stage_images(directory:Path,owned_root:Path,attachments:list[dict]):
     return rows
 
 
-def validate_assets(project:Path,spec:BeforeAfterNative):
+def validate_image_references(project:Path,names:list[str]):
     """Resolve only content-addressed files inside this render's asset folder."""
     root=project.resolve();paths=[];sizes=[];digests=[]
-    for name in (spec.before_asset,spec.after_asset):
+    if not 1<=len(names)<=9:raise ValueError('Owned image count exceeds limits')
+    for name in names:
         if not re.fullmatch(ASSET,name):raise ValueError('Invalid comparison asset reference')
         path=(root/name).resolve()
         if not path.is_relative_to(root/'assets') or not path.is_file() or path.stat().st_size>MAX_BYTES:
@@ -98,7 +99,14 @@ def validate_assets(project:Path,spec:BeforeAfterNative):
         if path.name!='compare-'+digest+'.png':raise ValueError('Comparison asset integrity failure')
         _,size=canonical_image(raw)
         paths.append(path);sizes.append(size);digests.append(digest)
-    if sizes[0]!=sizes[1] or digests[0]==digests[1]:raise ValueError('Comparison needs two different supplied states with matching dimensions')
+    if len(set(digests))!=len(digests):raise ValueError('Supply different owned image states')
+    return paths,digests,sizes
+
+
+def validate_assets(project:Path,spec:BeforeAfterNative):
+    if spec.before_asset==spec.after_asset:raise ValueError('Comparison needs two different supplied states with matching dimensions')
+    paths,digests,sizes=validate_image_references(project,[spec.before_asset,spec.after_asset])
+    if sizes[0]!=sizes[1]:raise ValueError('Comparison needs two different supplied states with matching dimensions')
     return paths,digests
 
 

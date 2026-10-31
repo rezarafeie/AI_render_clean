@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from . import llm, speech
 from .native_motion import NativeMotion
-from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, CardFlipNative, BeforeAfterNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
+from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, CardFlipNative, BeforeAfterNative, CardStackNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -603,7 +603,7 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
-        if isinstance(scene.shotcraft_component,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and plan.format!="horizontal":
+        if isinstance(scene.shotcraft_component,(TextColumnNative,CardFlipNative,BeforeAfterNative,CardStackNative)) and plan.format!="horizontal":
             problems.append(f"scene {index}: {scene.shotcraft_component.resource_id} requires horizontal format")
         if scene.shotcraft_component and not shotcraft_min_seconds(scene.shotcraft_component) <= scene.end-scene.start <= 12:
             problems.append(f"scene {index}: native Shotcraft requires {shotcraft_min_seconds(scene.shotcraft_component):g}–12 seconds for this caption and its reading hold")
@@ -650,8 +650,18 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
     shared={key:rows[0][key] for key in ("avoid_when",) if all(row[key]==rows[0][key] for row in rows)}
     shared['minimum_seconds']=Counter(row['minimum_seconds'] for row in rows).most_common(1)[0][0]
     compact_rows=[{key:value for key,value in row.items() if (key not in shared or value!=shared[key]) and value!=[]} for row in rows]
-    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps({"shared_metadata":shared,"entries":compact_rows}, ensure_ascii=False, separators=(",", ":"))
+    # Intern identical parameter definitions without dropping bounds/descriptions.
+    compact_rows=json.loads(json.dumps(compact_rows))
+    repeated=Counter(json.dumps(v,sort_keys=True,ensure_ascii=False,separators=(',',':')) for row in compact_rows for v in row['inputs']['parameters'].values())
+    refs={value:'p'+str(i) for i,(value,count) in enumerate((v,n) for v,n in repeated.items() if n>1 and len(v)>60)}
+    definitions={key:json.loads(value) for value,key in refs.items()}
+    for row in compact_rows:
+        for key,value in row['inputs']['parameters'].items():
+            ref=refs.get(json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':')))
+            if ref:row['inputs']['parameters'][key]={'$ref':ref}
+    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps({"shared_metadata":shared,"parameter_definitions":definitions,"entries":compact_rows}, ensure_ascii=False, separators=(",", ":"))
                  + "\nUse only for the stated role and vertical format. Keep explanatory scenes custom; do not turn the entire video into titles. Omit native_component when unsuitable. Native text must match the approved headline; never add facts.")
+    parts.append('Resolve parameter $ref names from parameter_definitions; shared_metadata supplies missing entry fields. All required_content fields remain mandatory.')
     parts.append("NATIVE SHOTCRAFT (shotcraft_component executes original code; shotcraft_id alone remains reference-guided authoring):\n" + json.dumps(shotcraft_native_catalog(),ensure_ascii=False,separators=(",",":"))
                  + "\nWhen a native design fits the actual meaning and constraints, use its typed shotcraft_component, not a model recreation of its code. Keep custom scene design when no native component fits. Never claim that shotcraft_id authoring executed original TSX.")
     parts.append("Card-flip is a brief three-feature overview. Reading holds are per-card, NOT a guarantee of serial reading of all three cards; keep copy terse or use sequential custom scenes for detailed explanation.")
@@ -847,7 +857,7 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     shot = plan.scenes[n-1].shotcraft_component
     if shot:
         parse_spec(shot.model_dump())
-        if isinstance(shot,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and plan.format!="horizontal":
+        if isinstance(shot,(TextColumnNative,CardFlipNative,BeforeAfterNative,CardStackNative)) and plan.format!="horizontal":
             raise CreativeUnavailable("این کامپوننت فعلاً فقط طراحی افقیِ بررسی‌شده دارد.")
         if shot.caption != plan.scenes[n-1].headline.strip():
             raise CreativeUnavailable("متن کامپوننت باید دقیقاً مطابق عنوان تأییدشدهٔ صحنه باشد.")

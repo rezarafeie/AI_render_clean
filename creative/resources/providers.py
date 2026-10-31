@@ -142,7 +142,8 @@ def shotcraft_resources():
         text_native = item["id"] == "shotcraft:text-column-converge"
         card_native = item["id"] == "shotcraft:card-flip-reveal"
         compare_native = item["id"] == "shotcraft:before-after-slider-scrub"
-        native = item["id"] in {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub"}
+        stack_native = item["id"] == "shotcraft:card-stack"
+        native = item["id"] in {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub","shotcraft:card-stack"}
         yield Resource(
             id=item["id"], name=item["id"].split(":", 1)[1], description=item["intent"],
             type="component" if native else "motion-reference", category="explainer", provider="video-shotcraft",
@@ -151,8 +152,13 @@ def shotcraft_resources():
             contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
             preview_poster="/creative-previews/shotcraft-native-"+item["id"].split(":",1)[1]+".png" if native else "/creative-previews/shotcraft-" + ("chart-axis-rescale" if item["id"] == "shotcraft:chart-live-moves" else item["id"].split(":",1)[1]) + ".png",
             preview_video="/creative-previews/shotcraft-native-"+item["id"].split(":",1)[1]+".mp4" if native else None,
-            capabilities=Capabilities(supports_vertical=not (text_native or card_native or compare_native),supports_rtl=True,supports_preview=True,transparent=False) if native else Capabilities(),
+            capabilities=Capabilities(supports_vertical=not (text_native or card_native or compare_native or stack_native),supports_rtl=True,supports_preview=True,transparent=False) if native else Capabilities(),
             parameters=(Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48),
+                        Parameter(name="kicker",value_type="string",editable=True,required=True,max_length=24),
+                        Parameter(name="subtitle",value_type="string",editable=True,required=True,max_length=64),
+                        Parameter(name="cards",value_type="array",editable=True,required=True,min_items=9,max_items=9,description="User-ordered objects: bounded title, meta, distinct exact asset from eligible owned image catalog. Fifth is featured. Full schema and measured text limits in native catalog."),
+                        Parameter(name="locale",value_type="string",editable=True,default="fa-IR",options=("fa-IR","en-US"))) if stack_native else (
+                        Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48),
                         Parameter(name="before_label",value_type="string",editable=True,required=True,max_length=12),
                         Parameter(name="after_label",value_type="string",editable=True,required=True,max_length=12),
                         Parameter(name="before_asset",value_type="string",editable=True,required=True,description="Exact content-addressed asset from eligible owned input catalog; never a path or URL"),
@@ -176,7 +182,8 @@ def shotcraft_resources():
                         Parameter(name="features",value_type="array",editable=True,required=True,min_items=2,max_items=6,description="Unique plain phrases, at most 24 UTF16 units / three words each"),
                         Parameter(name="subtitle",value_type="string",editable=True,required=True,max_length=48),
                         Parameter(name="locale",value_type="string",editable=True,default="fa-IR",options=("fa-IR","en-US"))) if text_native else (),
-            limitations=("Two different owned opaque SDR PNG/JPEG states, identical 16:9 dimensions, 1920x1080 to 3840x2160, <=16MiB each. Horizontal only, 5–12s. Complete images contained without crop/stretch or manufactured degradation. User must identify roles and comparison basis; common view and factual improvement cannot be verified automatically. No arbitrary paths/URLs. Silent synthetic preview.",) if compare_native else (
+            limitations=("Original nine-card spring stack, fan and fifth-card highlight. Exactly nine distinct owned opaque 16:9 images, >=1920x1080, <=3840x2160 /16MiB each; all fit fully. Horizontal only, 6–12s plus reading budget. Overview/collection, not reading nine overlapping labels. No fake covers, data or avatars. Labels width-checked; no clipping or fallback. Synthetic silent preview.",) if stack_native else (
+                         "Two different owned opaque SDR PNG/JPEG states, identical 16:9 dimensions, 1920x1080 to 3840x2160, <=16MiB each. Horizontal only, 5–12s. Complete images contained without crop/stretch or manufactured degradation. User must identify roles and comparison basis; common view and factual improvement cannot be verified automatically. No arbitrary paths/URLs. Silent synthetic preview.",) if compare_native else (
                          "Original three-card flip, light and reflections through Remotion → HyperFrames. Horizontal only; abstract feature summaries, not actual product screenshots. Brief overview only, not serial reading of three dense cards. All numbers need supplied evidence; a reference is not factual verification. Shaped-font limits and per-card reading holds enforced; no automatic clipping or fallback. Synthetic preview is silent.",) if card_native else (
                          "Native shotcraft_component uses original TSX through existing Remotion → HyperFrames. Horizontal only; pinned opposing edges, a single convergence, shaped local-font width checks, explicit reading hold. No arbitrary UI, URLs or source code; no fallback or clipping.",) if text_native else (
                          "Native shotcraft_component executes pinned TSX through the existing Remotion renderer, then embeds an owned video in HyperFrames; shotcraft_id alone remains reference guidance. Four media icons and abstract output icon only; no arbitrary UI/logo or code. 4–12 s with a caption reading hold; current retained hybrid audit is portrait Persian.",) if native else

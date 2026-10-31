@@ -37,7 +37,10 @@ def render(config: dict, output: Path, *, job_dir: Path, on_progress=None, timeo
         if not 1 <= scene["frames"] <= 900:
             raise ValueError("Scene duration is outside render limits")
         supporting = []
-        for item in scene.get("supporting_assets", [])[:3]:
+        stack = config.get('version')==3 and (scene.get('shotcraft') or {}).get('resource_id')=='shotcraft:card-stack'
+        if stack and len(scene.get('supporting_assets',[]))!=9:
+            raise ValueError('Native collection requires exactly nine owned images')
+        for item in scene.get("supporting_assets", [])[:9 if stack else 3]:
             path = (root / item).resolve()
             if not path.is_relative_to(root) or not path.is_file():
                 raise ValueError("Invalid owned supporting asset")

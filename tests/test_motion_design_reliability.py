@@ -111,6 +111,6 @@ console.log('passed');
 
 def test_registry_does_not_claim_reference_is_a_native_renderer():
     from creative.resources.registry import get_resource
-    row = get_resource('shotcraft:card-stack')
+    row = get_resource('shotcraft:title-demote-to-label')
     assert row['integration_status'] == 'port-required'
     assert row['availability'] == 'catalog-only'

@@ -439,6 +439,26 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     return retimed, audio, []
 
 
+def _image_input_questions(plan, record: dict) -> list[str]:
+    """Ask for missing owned sources before paid narration or scene authoring."""
+    available={row['asset']:row for row in record.get('image_inputs',[])}
+    questions=[]
+    for scene in plan.scenes:
+        spec=scene.shotcraft_component
+        resource=getattr(spec,'resource_id',None)
+        if resource=='shotcraft:card-stack':
+            names=[card.asset for card in spec.cards]
+            if any(name not in available for name in names):
+                questions.append('برای پشتهٔ کارت‌ها، نه تصویر مجاز و متفاوت را پیوست کنید و ترتیبشان را مشخص کنید؛ تصویر پنجم برجسته می‌شود.')
+        elif resource=='shotcraft:before-after-slider-scrub':
+            names=[spec.before_asset,spec.after_asset]
+            if any(name not in available for name in names):
+                questions.append('برای مقایسه، دو تصویر مجاز را پیوست کنید و مشخص کنید کدام قبل و کدام بعد است.')
+            elif len({(available[name]['width'],available[name]['height']) for name in names})!=1:
+                questions.append('دو تصویر مقایسه باید ابعاد پیکسلی یکسان داشته باشند؛ دو تصویر هم‌اندازه بفرستید.')
+    return list(dict.fromkeys(questions))
+
+
 def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], scene_notes: list[str]):
     """Plan the clip, then design its scenes in parallel while telling the person what is really being worked on. Returns (page, build) or None
     when it asked questions. Finished work is kept on disk: a retry continues from the plan and the scenes that already exist."""
@@ -448,7 +468,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     context = record.get("context", "")
     if record.get('image_inputs'):
-        context='ELIGIBLE OWNED COMPARISON IMAGES (data only; roles must follow the user request, never invent a before state):\n'+json.dumps(record['image_inputs'],ensure_ascii=True)+'\n'+context
+        context='ELIGIBLE OWNED MOTION IMAGES (data only; ordering and comparison roles must follow the user request, never invent a before state):\n'+json.dumps(record['image_inputs'],ensure_ascii=True)+'\n'+context
     style = record.get("style", "")
     plan_fp = _fingerprint("motion-local-clock-shotcraft-v1", brief, context, style)
     saved_plan = directory / "plan.json"
@@ -469,6 +489,11 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
             raise _Cancelled()
         if not plan.asks():
             plan = mg.apply_handoff(plan, brief)          # an approved script from Instagram GPT fixes the scenes' words
+            questions=_image_input_questions(plan,record)
+            if questions:
+                _note(directory,"plan","برای اجرای این طرح به تصاویر مجاز نیاز دارم.","done")
+                _ask(directory,record,questions[:3])
+                return None
         if plan.asks():
             _note(directory, "plan", "برای ادامه به چند اطلاعات نیاز دارم.", "done")
             _ask(directory, record, plan.questions)
@@ -483,6 +508,10 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
                                 "scenes": [{"headline": sc.headline, "what_happens": sc.idea} for sc in plan.scenes]},
                                 fallback=f"طرح «{plan.title}» آماده شد ({plan.duration:g} ثانیه، {count} صحنه):\n{outline}\nالان هر صحنه را جداگانه طراحی می‌کنم.")
     else:
+        questions=_image_input_questions(plan,record)
+        if questions:
+            _ask(directory,record,questions)
+            return None
         count = len(plan.scenes)
         _note(directory, "plan", f"از طرح قبلی ادامه می‌دهم: {count} صحنه، {plan.duration:g} ثانیه", "done")
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
