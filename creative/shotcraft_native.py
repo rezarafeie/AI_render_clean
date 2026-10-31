@@ -14,6 +14,7 @@ from typing import Literal, Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, TypeAdapter
 from .shotcraft_card_flip import CardFlipNative, reading_frames as card_reading_frames
+from .shotcraft_compare import BeforeAfterNative,validate_assets as comparison_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "5a2e98daade313c4f376120f38427eb19a108e8c"
@@ -67,7 +68,7 @@ class TextColumnNative(BaseModel):
         return tuple(v.strip() for v in values)
 
 
-NativeSpec = Annotated[ShotcraftNative | TextColumnNative | CardFlipNative, Field(discriminator="resource_id")]
+NativeSpec = Annotated[ShotcraftNative | TextColumnNative | CardFlipNative | BeforeAfterNative, Field(discriminator="resource_id")]
 
 
 def parse_spec(value):
@@ -85,8 +86,8 @@ class ShotcraftMount(BaseModel):
 
     @model_validator(mode="after")
     def supported_stage(self):
-        if isinstance(self.spec,(TextColumnNative,CardFlipNative)) and self.format!="horizontal":
-            raise ValueError("Text-column requires the horizontal stage")
+        if isinstance(self.spec,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and self.format!="horizontal":
+            raise ValueError("Selected native component requires the horizontal stage")
         if self.duration<required_seconds(self.spec):
             raise ValueError("Native scene omits its required reading hold")
         return self
@@ -109,7 +110,11 @@ def catalog():
             {"id":"shotcraft:card-flip-reveal","field":"shotcraft_component","format":"horizontal",
              "best_for":"Exactly three feature → measured result pairs, original staggered 3D cards with lighting/reflection. Abstract summaries, NOT screenshots or a full explainer.",
              "inputs":compact(CardFlipNative.model_json_schema()),"seconds":[4,12],
-             "constraints":"Use ONLY user-provided verified numbers with an evidence reference per card; never invent metrics. Caption=approved headline. Short single-line copy: measured widths reject overflow (header1480px/84px, name400/52, description and front lines400/40, result400/40, value370/120). Duration frames>=max(60,ceil(densest_front_words/2.5*30))+50+max(40,ceil(densest_back_words/2.5*30)); front=name+description+3lines; back=name+result_label+before_label+after_label+unit. No clipping, code, URLs or fallback."}]
+             "constraints":"Use ONLY user-provided verified numbers with an evidence reference per card; never invent metrics. Caption=approved headline. Short single-line copy: measured widths reject overflow (header1480px/84px, name400/52, description and front lines400/40, result400/40, value370/120). Duration frames>=max(60,ceil(densest_front_words/2.5*30))+50+max(40,ceil(densest_back_words/2.5*30)); front=name+description+3lines; back=name+result_label+before_label+after_label+unit. No clipping, code, URLs or fallback."},
+            {"id":"shotcraft:before-after-slider-scrub","field":"shotcraft_component","format":"horizontal",
+             "best_for":"Two actual user-supplied states of the same view. Original fast fling, bounce and slow comparison slider. Never fabricate or degrade before.",
+             "inputs":compact(BeforeAfterNative.model_json_schema()),"seconds":[5,12],
+             "constraints":"Caption=approved headline; header width1640px at64px, labels280px at40px measured. Select ONLY listed eligible owned assets, two different opaque SDR PNG images of identical16:9 dimensions,1920x1080–3840x2160. Same camera/layout and before/after roles must be specified by user; ask if unknown. comparison_basis records user-supplied basis, not proof of improvement. No URLs, paths outside listed assets, automatic enhancement, clipping or fallback. Images fit fully in reserved body; slider reaches40% then holds."}]
 
 
 def feature_frames(spec):
@@ -117,6 +122,7 @@ def feature_frames(spec):
 
 
 def required_seconds(spec):
+    if isinstance(spec,BeforeAfterNative):return 5
     if isinstance(spec,CardFlipNative):
         return max(4,card_reading_frames(spec)/30)
     if isinstance(spec,TextColumnNative):
@@ -140,6 +146,7 @@ def source_fingerprint():
     adapter_files = [Path(__file__),ROOT/"remotion/shotcraft-content-loader.cjs",ROOT/"remotion/shotcraft-native-config.mjs",
                      ROOT/"remotion/shotcraft-text-loader.cjs",ROOT/"remotion/src/shotcraft/useTextMetrics.ts",
                      ROOT/"creative/shotcraft_card_flip.py",ROOT/"remotion/shotcraft-card-loader.cjs",ROOT/"remotion/src/shotcraft/useCardMetrics.ts",
+                     ROOT/"creative/shotcraft_compare.py",ROOT/"remotion/shotcraft-compare-loader.cjs",ROOT/"remotion/src/shotcraft/useCompareMetrics.ts",
                      ROOT/"remotion/src/shotcraft-native.tsx",ROOT/"remotion/src/shotcraft/FrameReady.tsx",ROOT/"remotion/render.mjs",
                      ROOT/"engine/remotion_renderer.py",ROOT/"presets/fonts/Vazirmatn-Regular.ttf"]
     return hashlib.sha256(json.dumps({"source":data["sha256"],"runtime":runtime["sha256"],
@@ -171,14 +178,15 @@ def materialize(project: Path, spec: NativeSpec, instance: str, duration: float,
         raise ValueError("Unsupported native Shotcraft instance, format or duration")
     # Revalidate even model_copy/update values before crossing the process boundary.
     spec = parse_spec(spec.model_dump())
-    if isinstance(spec,(TextColumnNative,CardFlipNative)) and format!="horizontal":
-        raise ValueError("Text-column source currently requires its horizontal design stage")
+    if isinstance(spec,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and format!="horizontal":
+        raise ValueError("Selected native source currently requires its horizontal design stage")
     if on_progress: on_progress(0)
     root = project.resolve()
+    paths,digests=comparison_assets(root,spec) if isinstance(spec,BeforeAfterNative) else ([],[])
     source = source_fingerprint()
     width,height = DIMS[format]
     frames = round(duration*30)
-    fingerprint = hashlib.sha256(json.dumps({"spec":spec.model_dump(),"frames":frames,"format":format,"source":source},
+    fingerprint = hashlib.sha256(json.dumps({"spec":spec.model_dump(),"frames":frames,"format":format,"source":source,**({"input_sha256":digests} if digests else {})},
                                            ensure_ascii=True,sort_keys=True).encode()).hexdigest()
     stem = instance+"-"+fingerprint[:16]
     output,partial,receipt = [root/"assets"/(stem+suffix) for suffix in (".mp4",".part.mp4",".json")]
@@ -196,7 +204,7 @@ def materialize(project: Path, spec: NativeSpec, instance: str, duration: float,
         except (OSError,ValueError,subprocess.SubprocessError):
             pass  # A corrupt cache is not a valid completed operation.
     from engine.remotion_renderer import render
-    render({"version":3,"width":width,"height":height,"scenes":[{"frames":frames,"kind":"shotcraft_native","shotcraft":spec.model_dump()}]},
+    render({"version":3,"width":width,"height":height,"scenes":[{"frames":frames,"kind":"shotcraft_native","shotcraft":spec.model_dump(),**({"supporting_assets":[str(p.relative_to(root)) for p in paths]} if paths else {})}]},
            partial,job_dir=root,on_progress=on_progress,timeout=600)
     media = inspect_output(partial,width,height,frames/30)
     partial.replace(output)
@@ -208,6 +216,7 @@ def materialize(project: Path, spec: NativeSpec, instance: str, duration: float,
               "source_revision":REVISION,"source_adapter_sha256":source,"fingerprint":fingerprint,
               "asset":output.relative_to(root).as_posix(),"artifact_sha256":hashlib.sha256(output.read_bytes()).hexdigest(),
               "media":media,"encoded_output_verified":True,"visual_review_verified":False}
+    if digests:record['input_sha256']=digests
     receipt.write_text(json.dumps(record,ensure_ascii=False,indent=2))
     if on_progress: on_progress(100)
     return record

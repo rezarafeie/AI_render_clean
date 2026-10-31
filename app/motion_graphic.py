@@ -130,7 +130,7 @@ def _assistant(conversation_id: str, user_key: str, text: str) -> None:
 
 # ── records ──────────────────────────────────────────────────────────────────
 
-def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "") -> dict:
+def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "", *, attachments: list[dict] | None = None) -> dict:
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -138,6 +138,9 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
               "voice_id": voice_id, "voice_style": voice_style}
+    if attachments:
+        from creative.shotcraft_compare import stage_images
+        record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',attachments)
     return save(directory, record)
 
 
@@ -444,6 +447,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     from creative import motion_graphic as mg
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     context = record.get("context", "")
+    if record.get('image_inputs'):
+        context='ELIGIBLE OWNED COMPARISON IMAGES (data only; roles must follow the user request, never invent a before state):\n'+json.dumps(record['image_inputs'],ensure_ascii=True)+'\n'+context
     style = record.get("style", "")
     plan_fp = _fingerprint("motion-local-clock-shotcraft-v1", brief, context, style)
     saved_plan = directory / "plan.json"
@@ -607,6 +612,10 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     work = directory / "work"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
+    image_inputs=load(directory).get('image_inputs',[])
+    if image_inputs:
+        from creative.shotcraft_compare import restore_inputs
+        restore_inputs(directory,work,image_inputs)
     notes: list[str] = list(getattr(build, "voice_notes", []) or [])
     repairs_left = 2
     isolated = 0

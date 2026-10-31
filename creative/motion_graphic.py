@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from . import llm, speech
 from .native_motion import NativeMotion
-from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, CardFlipNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
+from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, CardFlipNative, BeforeAfterNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -603,7 +603,7 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
-        if isinstance(scene.shotcraft_component,(TextColumnNative,CardFlipNative)) and plan.format!="horizontal":
+        if isinstance(scene.shotcraft_component,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and plan.format!="horizontal":
             problems.append(f"scene {index}: {scene.shotcraft_component.resource_id} requires horizontal format")
         if scene.shotcraft_component and not shotcraft_min_seconds(scene.shotcraft_component) <= scene.end-scene.start <= 12:
             problems.append(f"scene {index}: native Shotcraft requires {shotcraft_min_seconds(scene.shotcraft_component):g}–12 seconds for this caption and its reading hold")
@@ -646,8 +646,10 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
     from .shotcraft_native import catalog as shotcraft_native_catalog
     rows=native_catalog()
     # Lossless shared metadata: don't repeat the same policy in all 45 entries.
+    from collections import Counter
     shared={key:rows[0][key] for key in ("avoid_when",) if all(row[key]==rows[0][key] for row in rows)}
-    compact_rows=[{key:value for key,value in row.items() if key not in shared and value!=[]} for row in rows]
+    shared['minimum_seconds']=Counter(row['minimum_seconds'] for row in rows).most_common(1)[0][0]
+    compact_rows=[{key:value for key,value in row.items() if (key not in shared or value!=shared[key]) and value!=[]} for row in rows]
     parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps({"shared_metadata":shared,"entries":compact_rows}, ensure_ascii=False, separators=(",", ":"))
                  + "\nUse only for the stated role and vertical format. Keep explanatory scenes custom; do not turn the entire video into titles. Omit native_component when unsuitable. Native text must match the approved headline; never add facts.")
     parts.append("NATIVE SHOTCRAFT (shotcraft_component executes original code; shotcraft_id alone remains reference-guided authoring):\n" + json.dumps(shotcraft_native_catalog(),ensure_ascii=False,separators=(",",":"))
@@ -845,7 +847,7 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     shot = plan.scenes[n-1].shotcraft_component
     if shot:
         parse_spec(shot.model_dump())
-        if isinstance(shot,(TextColumnNative,CardFlipNative)) and plan.format!="horizontal":
+        if isinstance(shot,(TextColumnNative,CardFlipNative,BeforeAfterNative)) and plan.format!="horizontal":
             raise CreativeUnavailable("این کامپوننت فعلاً فقط طراحی افقیِ بررسی‌شده دارد.")
         if shot.caption != plan.scenes[n-1].headline.strip():
             raise CreativeUnavailable("متن کامپوننت باید دقیقاً مطابق عنوان تأییدشدهٔ صحنه باشد.")

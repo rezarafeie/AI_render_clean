@@ -16,12 +16,12 @@ sys.path.insert(0,str(ROOT))
 def main():
     from creative import motion_graphic as mg
     from creative.native_motion import NativeMotion
-    from creative.shotcraft_native import ShotcraftNative,TextColumnNative,CardFlipNative
+    from creative.shotcraft_native import ShotcraftNative,TextColumnNative,CardFlipNative,BeforeAfterNative
     import engine.hyperframes.assets as assets
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project",type=Path)
     parser.add_argument("--gsap",type=Path,required=True)
-    parser.add_argument("--component",choices=["convergence","text-column","card-flip"],default="convergence")
+    parser.add_argument("--component",choices=["convergence","text-column","card-flip","before-after"],default="convergence")
     parser.add_argument("--refresh-audit",action="store_true",help="Refresh only an unchanged dedicated synthetic audit, reusing its verified native cache")
     args=parser.parse_args()
     if args.project.exists():
@@ -66,10 +66,32 @@ def main():
             shotcraft_component=CardFlipNative(resource_id="shotcraft:card-flip-reveal",caption=caption,kicker="نمونهٔ آزمایشی",
                 front_label="ویژگی",before_label="قبل",after_label="بعد",cards=cards))
         plan.scenes[1].start=10;plan.scenes[1].end=13;plan.scenes[1].native_component=None
+    if args.component=='before-after':
+        from PIL import Image,ImageDraw
+        from creative.shotcraft_compare import stage_images,restore_inputs
+        # Actual, explicitly synthetic source files. No product UI or fake improvement.
+        originals=args.project/'synthetic-attachments';originals.mkdir(exist_ok=True)
+        attachments=[]
+        for index,color in enumerate(['#5b63d3','#b65237']):
+            image=Image.new('RGB',(1920,1080),'#edf0f4');draw=ImageDraw.Draw(image)
+            for x in range(0,1920,120):draw.line((x,0,x,1080),fill='#d7dce5',width=2)
+            for y in range(0,1080,120):draw.line((0,y,1920,y),fill='#d7dce5',width=2)
+            draw.rounded_rectangle((300,180,1620,900),radius=48,fill='#fff',outline='#19212f',width=8)
+            draw.ellipse((480,300,960,780),fill=color)
+            draw.rounded_rectangle((1080,300,1440,780),radius=32,fill=color)
+            aid=('a' if index==0 else 'b')*32;path=originals/(aid+'.png');image.save(path)
+            attachments.append({'id':aid,'kind':'image','path':str(path)})
+        rows=stage_images(args.project,originals,attachments);restore_inputs(args.project,args.project,rows)
+        caption='دو ورودی آزمایشی';plan.format='horizontal'
+        plan.scenes[0]=mg.ScenePlan(headline=caption,idea='Compare two supplied geometric source images without manufacturing a degraded before state',start=0,end=6,narration='دو ورودی آزمایشی را مقایسه می‌کنیم.',
+            shotcraft_component=BeforeAfterNative(resource_id='shotcraft:before-after-slider-scrub',caption=caption,
+                before_label='ورودی اول',after_label='ورودی دوم',before_asset=rows[0]['asset'],after_asset=rows[1]['asset'],
+                comparison_basis='دو فایل هندسی آزمایشی با کادر یکسان؛ نه ادعای بهبود'))
+        plan.scenes[1].native_component=None
     problems=mg.validate_plan(plan)
     if problems: raise ValueError("Invalid audit plan: "+"; ".join(problems))
     drafts=[mg.author_scene(plan,1,"synthetic integration audit")]
-    if args.component in {"text-column","card-flip"}:
+    if args.component in {"text-column","card-flip","before-after"}:
         drafts.append(mg.SceneDraft(html='<div style="position:absolute;inset:0;display:grid;place-items:center;background:#08090c;color:#eeeef2;font:60px Ray;line-height:1.5">داستانت را بساز</div>',build_js='tl.to({}, {duration:3}, 0);',timebase="local"))
     else:
         drafts.append(mg.author_scene(plan,2,"synthetic integration audit"))

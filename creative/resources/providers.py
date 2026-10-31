@@ -141,7 +141,8 @@ def shotcraft_resources():
     for item in catalog():
         text_native = item["id"] == "shotcraft:text-column-converge"
         card_native = item["id"] == "shotcraft:card-flip-reveal"
-        native = item["id"] in {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal"}
+        compare_native = item["id"] == "shotcraft:before-after-slider-scrub"
+        native = item["id"] in {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge","shotcraft:card-flip-reveal","shotcraft:before-after-slider-scrub"}
         yield Resource(
             id=item["id"], name=item["id"].split(":", 1)[1], description=item["intent"],
             type="component" if native else "motion-reference", category="explainer", provider="video-shotcraft",
@@ -150,8 +151,15 @@ def shotcraft_resources():
             contexts=("motion-graphic",), license=License(type="Apache-2.0", verified=True, attribution_required=True),
             preview_poster="/creative-previews/shotcraft-native-"+item["id"].split(":",1)[1]+".png" if native else "/creative-previews/shotcraft-" + ("chart-axis-rescale" if item["id"] == "shotcraft:chart-live-moves" else item["id"].split(":",1)[1]) + ".png",
             preview_video="/creative-previews/shotcraft-native-"+item["id"].split(":",1)[1]+".mp4" if native else None,
-            capabilities=Capabilities(supports_vertical=not (text_native or card_native),supports_rtl=True,supports_preview=True,transparent=False) if native else Capabilities(),
-            parameters=(Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48,description="Exact approved headline"),
+            capabilities=Capabilities(supports_vertical=not (text_native or card_native or compare_native),supports_rtl=True,supports_preview=True,transparent=False) if native else Capabilities(),
+            parameters=(Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48),
+                        Parameter(name="before_label",value_type="string",editable=True,required=True,max_length=12),
+                        Parameter(name="after_label",value_type="string",editable=True,required=True,max_length=12),
+                        Parameter(name="before_asset",value_type="string",editable=True,required=True,description="Exact content-addressed asset from eligible owned input catalog; never a path or URL"),
+                        Parameter(name="after_asset",value_type="string",editable=True,required=True,description="A different supplied image with matching dimensions"),
+                        Parameter(name="comparison_basis",value_type="string",editable=True,required=True,max_length=160),
+                        Parameter(name="locale",value_type="string",editable=True,default="fa-IR",options=("fa-IR","en-US"))) if compare_native else (
+                        Parameter(name="caption",value_type="string",editable=True,required=True,max_length=48,description="Exact approved headline"),
                         Parameter(name="kicker",value_type="string",editable=True,required=True,max_length=24),
                         Parameter(name="front_label",value_type="string",editable=True,required=True,max_length=12),
                         Parameter(name="before_label",value_type="string",editable=True,required=True,max_length=12),
@@ -168,7 +176,8 @@ def shotcraft_resources():
                         Parameter(name="features",value_type="array",editable=True,required=True,min_items=2,max_items=6,description="Unique plain phrases, at most 24 UTF16 units / three words each"),
                         Parameter(name="subtitle",value_type="string",editable=True,required=True,max_length=48),
                         Parameter(name="locale",value_type="string",editable=True,default="fa-IR",options=("fa-IR","en-US"))) if text_native else (),
-            limitations=("Original three-card flip, light and reflections through Remotion → HyperFrames. Horizontal only; abstract feature summaries, not actual product screenshots. Brief overview only, not serial reading of three dense cards. All numbers need supplied evidence; a reference is not factual verification. Shaped-font limits and per-card reading holds enforced; no automatic clipping or fallback. Synthetic preview is silent.",) if card_native else (
+            limitations=("Two different owned opaque SDR PNG/JPEG states, identical 16:9 dimensions, 1920x1080 to 3840x2160, <=16MiB each. Horizontal only, 5–12s. Complete images contained without crop/stretch or manufactured degradation. User must identify roles and comparison basis; common view and factual improvement cannot be verified automatically. No arbitrary paths/URLs. Silent synthetic preview.",) if compare_native else (
+                         "Original three-card flip, light and reflections through Remotion → HyperFrames. Horizontal only; abstract feature summaries, not actual product screenshots. Brief overview only, not serial reading of three dense cards. All numbers need supplied evidence; a reference is not factual verification. Shaped-font limits and per-card reading holds enforced; no automatic clipping or fallback. Synthetic preview is silent.",) if card_native else (
                          "Native shotcraft_component uses original TSX through existing Remotion → HyperFrames. Horizontal only; pinned opposing edges, a single convergence, shaped local-font width checks, explicit reading hold. No arbitrary UI, URLs or source code; no fallback or clipping.",) if text_native else (
                          "Native shotcraft_component executes pinned TSX through the existing Remotion renderer, then embeds an owned video in HyperFrames; shotcraft_id alone remains reference guidance. Four media icons and abstract output icon only; no arbitrary UI/logo or code. 4–12 s with a caption reading hold; current retained hybrid audit is portrait Persian.",) if native else
                          ("Production uses the pinned recipe as authoring guidance, not native TSX. Gallery executes original TSX demos only; user-content binding is incomplete. No automatic Remotion fallback.",),

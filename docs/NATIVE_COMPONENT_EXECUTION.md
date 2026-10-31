@@ -24,11 +24,65 @@ not change. Existing plans default to generated authoring as before.
 | HyperFrames registry catalog | Metadata index and profiles | Existing talking_2 context adapters remain unchanged; catalog is not execution |
 | EditorGPT effects/transitions | Existing MLT implementations | Already executable via EditPlan; not interchangeable with HTML components |
 | EditorGPT motion recipes | Existing recipe adapters | Already connected in talking_2, not generic motion-graphic templates |
-| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Three bounded native adapters (source convergence, text-column convergence, card-flip reveal) execute user content through existing Remotion → HyperFrames; seven other demos remain reference-only |
+| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Four bounded native adapters (source convergence, text-column convergence, card-flip reveal, before/after slider) execute user content through existing Remotion → HyperFrames; six other demos remain reference-only |
 | Claude Video Effects | Existing 42 implementations in engine/face_effects | Existing talking-reel execution preserved, all 42 exposed in shared registry; synthetic-frame previews, not video-tracker certification |
 | Lemo Opuscar | Pinned Swiss Canvas source, score, MIT license, local OFL fonts | Original demo executed, backward seek pixel equality checked. Fixed demo story is NOT an editable production template; remaining styles pending |
 
 ## Adapter parameters (portrait; encoded-output certification pending)
+
+### Owned-image comparison (2026-10-31)
+
+`shotcraft:before-after-slider-scrub` executes the pinned original slider's fling,
+overshoot, bounce and slow scrub. It replaces the demo dashboard with **two
+different supplied images**, not generated UI. The original demo's before blur,
+desaturation and fog are removed: a comparison must not manufacture degradation.
+The complete images are contained without stretching or cropping. The adapter is
+horizontal-only, 5–12 seconds, with bounded measured Persian/English copy.
+
+Both Lite and Medium pass already-authorized image attachments to the existing
+motion job. Medium uses the existing repository attachment ownership check;
+the server rechecks paths against that user's conversation attachment directory.
+Only static opaque SDR PNG/JPEG, identical 16:9 pixel dimensions, minimum
+1920×1080 and maximum 3840×2160 / 16MiB, are eligible. RGBA and RGB/L PNG tRNS
+transparency are checked by effective alpha. EXIF orientation is honored; other
+metadata is removed and the bounded ICC color profile is retained. Unsupported
+reference images remain available to existing workflows but not this adapter.
+
+Canonical PNGs live in private existing job `inputs/`; hash-addressed references,
+dimensions and attachment IDs, never private filesystem paths, enter planning
+context. Their catalog precedes truncated conversation context. Job retries
+restore owned inputs into the existing work directory; no separate media service
+or database is introduced. Input digests participate in cache identity and are
+validated before cache reuse. No URL fetch, arbitrary file path, shell execution,
+new provider or automatic agent switching is introduced.
+
+Required parameters: `caption`, `before_label`, `after_label`, `before_asset`,
+`after_asset`, `comparison_basis`, `locale`. Asset names must exactly match the
+server's eligible-input catalog. The user supplies state ordering and comparison
+basis; matching pixel dimensions do **not** prove matching camera/view or factual
+improvement. Backend ownership cannot certify those semantic claims.
+
+The retained silent six-second native sample uses two synthetic geometric images,
+not a fabricated product claim. Its complete 180-frame foreground gate and real
+nine-second HyperFrames hybrid browser/encode checks pass. This is not universal
+image quality certification, paid AI testing, audio certification or end-to-end
+authenticated production deployment. Gallery publication additionally allowlists
+the exact two reviewed synthetic hashes: user input images are never published.
+The public gallery now contains 102 demonstrations, not 102 production templates.
+
+Final regression evidence: 340 relevant tests pass (four existing deprecation
+warnings); frontend production build passes (existing large-bundle warnings).
+All four native samples were actually re-encoded against the final shared adapter
+fingerprint and their hybrids checked/rendered again, not merely re-stamped.
+Independent decoded-frame review confirmed comparison frame zero, fling/bounce,
+scrub, settled hold, normal closing wipe and final frame. Mobile-sized Chrome
+loaded 102 entries without page errors or horizontal overflow; zero MP4 requests
+before play and one after play, decoding 1920×1080 / six seconds.
+
+No API restart or production deployment accompanies this stage. The running API
+must load this checkout before new Studio requests can use the new input bridge.
+Rollback the integration commit as a unit on idle owned workers; keep private
+inputs and existing output MP4s. No schema migration is required.
 
 Example ScenePlan field:
 
