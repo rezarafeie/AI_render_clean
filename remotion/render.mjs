@@ -41,11 +41,20 @@ try {
     composition, serveUrl, inputProps, outputLocation: outputFile,
     codec: "h264", crf: 18, pixelFormat: "yuv420p", audioCodec: "aac",
     browserExecutable,...nativeBrowserPolicy,
-    ...(native?{gopSize:30,colorSpace:'bt709'}:{}),
-    concurrency: Number(process.env.REMOTION_CONCURRENCY || 2),
+    ...(native?{gopSize:30,colorSpace:'bt709',chromiumOptions:{gl:'swangle'}}:{}),
+    concurrency: native ? 1 : Number(process.env.REMOTION_CONCURRENCY || 2),
     onProgress: ({progress}) => console.log(`REMOTION_PROGRESS ${Math.round(progress * 100)}`),
   });
+  if (native) console.log('REMOTION_NATIVE_STAGE encoded');
 } finally {
   fs.rmSync(publicDir, {recursive: true, force: true});
   if (nativeBundleDir) fs.rmSync(nativeBundleDir, {recursive: true, force: true});
+}
+if (inputProps.version === 3) {
+  console.log('REMOTION_NATIVE_STAGE cleanup-complete');
+  // This is an isolated one-job CLI process, not the API or a shared worker.
+  // Some SDK/browser profiles leave idle server handles after renderMedia has
+  // resolved and owned files have been cleaned. Bound this successful shutdown;
+  // errors above still exit nonzero, and Python validates pixels before use.
+  setTimeout(() => process.exit(0), 1000).unref();
 }

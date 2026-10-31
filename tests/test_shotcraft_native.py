@@ -128,11 +128,14 @@ def test_assembly_keeps_video_in_platform_code_not_agent_markup(monkeypatch,tmp_
         kwargs["on_progress"](100)
         return {"integration":"native-shotcraft-code","asset":"assets/s1-shotcraft-0123456789abcdef.mp4"}
     monkeypatch.setattr(native,"materialize",mocked_materialize)
+    monkeypatch.setattr("creative.native_video_checks.inspect_native_frames",lambda *a,**kw:{"decoded_frames":180,"mocked":True})
     progress=[]
     mg.write_project(tmp_path/"project",page,on_component_progress=lambda instance,pct:progress.append((instance,pct)))
     html=(tmp_path/"project/index.html").read_text()
     assert '<video id="s1-shotcraft-video" class="clip"' in html
     assert 'data-start="0" data-duration="6"' in html
+    assert 'tl.set("#s1", {opacity:1}, 0)' in html
+    assert 'duration:.001' not in page.build_js
     assert '<video' not in page.scenes_html  # Trusted media is injected only at assembly.
     assert progress==[("s1-shotcraft",100)]
     page.scenes_html+='<video src="https://untrusted.invalid/video.mp4"></video>'
@@ -145,6 +148,21 @@ def test_native_mount_cannot_reference_another_instance(monkeypatch):
     page.shotcraft_components=[page.shotcraft_components[0].model_copy(update={"asset":"assets/s2-shotcraft-0123456789abcdef.mp4"})]
     with pytest.raises(ValueError,match="owned artifact"):
         mg.assemble(page)
+
+
+def test_blank_native_video_cannot_be_published_as_a_page(monkeypatch,tmp_path):
+    from creative import motion_graphic as mg
+    import engine.hyperframes.assets as assets
+    _,page=sample_page(monkeypatch)
+    runtime=tmp_path/"gsap.js";runtime.write_text("// local test fixture")
+    monkeypatch.setattr(assets,"ensure_gsap",lambda:runtime)
+    monkeypatch.setattr(native,"materialize",lambda *a,**kw:{"asset":"assets/s1-shotcraft-0123456789abcdef.mp4"})
+    def reject(*a,**kw):raise ValueError("Empty/light or black frame at index 153")
+    monkeypatch.setattr("creative.native_video_checks.inspect_native_frames",reject)
+    with pytest.raises(ValueError,match="index 153"):
+        mg.write_project(tmp_path/"project",page)
+    assert not (tmp_path/"project/index.html").exists()
+    assert page.shotcraft_components[0].asset is None
 
 
 def test_native_failure_cannot_be_plain_title_substituted(tmp_path):
@@ -173,6 +191,53 @@ def test_registry_promotes_only_the_actual_native_adapter():
     assert icons["value_type"]=="array" and icons["min_items"]==icons["max_items"]==4
     assert assess_resource(row["id"],ResourceRequirements(context="motion-graphic",engine="hyperframes",kind="component",require_rtl=True,require_vertical=True))["eligible"]
     assert registry.get_resource("shotcraft:card-stack")["availability"]=="catalog-only"
+
+
+def text_spec(**patch):
+    data=dict(resource_id="shotcraft:text-column-converge",caption="روایت روشن",prefix="یک",
+              features=("ایده","تصویر","صدا"),subtitle="از ایده تا نتیجه")
+    return native.parse_spec({**data,**patch})
+
+
+@pytest.mark.parametrize("patch",[{"caption":"<svg>"},{"prefix":" "},{"features":["تکراری","تکراری"]},
+    {"features":["یک"]},{"features":["a"*25,"b"]},{"subtitle":"x\ny"},{"features":["الف ب پ ت","صدا"]},
+    {"features":["😀"*13,"صدا"]},{"arbitrary_js":"alert(1)"}])
+def test_text_column_rejects_invalid_or_unreadable_copy(patch):
+    with pytest.raises(ValidationError):text_spec(**patch)
+
+
+def test_text_column_uses_typed_union_and_reading_hold(tmp_path):
+    value=text_spec()
+    assert isinstance(value,native.TextColumnNative)
+    assert native.required_seconds(value)>4
+    with pytest.raises(ValueError,match="horizontal"):
+        native.materialize(tmp_path,value,"s1-shotcraft",6,"vertical")
+    with pytest.raises(ValidationError,match="horizontal"):
+        native.ShotcraftMount(spec=value,instance="s1-shotcraft",start=0,duration=6,format="square")
+    with pytest.raises(ValidationError,match="reading hold"):
+        native.ShotcraftMount(spec=value,instance="s1-shotcraft",start=0,duration=4,format="horizontal")
+
+
+def test_text_column_binds_original_motion_without_demo_copy():
+    source=native.ROOT/"creative/shotcraft_data/demos/typography/text-column-converge/TextColumnConverge.tsx"
+    script="""const fs=require('fs'),loader=require('./remotion/shotcraft-text-loader.cjs');process.stdout.write(loader.call({getOptions:()=>({spec:JSON.parse(process.argv[1]),width:1920,height:1080,frames:180})},fs.readFileSync(process.argv[2],'utf8')));"""
+    result=subprocess.run(["node","-e",script,json.dumps(text_spec().model_dump()),str(source)],cwd=native.ROOT,check=True,capture_output=True,text=True,timeout=20).stdout
+    assert "\n            CRAFT THE SHOT.\n" not in result and "word: 'JIANYING EXPORT'" not in result
+    assert 'const BRAND_WORD = "روایت روشن"' in result
+    assert 'const CONVERGE_DUR = 36;' in result and 'const NEW_LEFT_EDGE = 618;' in result
+    assert 'useTextMetrics(' in result and 'right: newLeft' in result and 'const START = 0;' in result
+    assert 'export default TextColumnConverge;' in result
+
+
+def test_text_column_is_discoverable_but_not_vertical():
+    from creative.resources import registry
+    from creative.resources.selection import ResourceRequirements,assess_resource
+    registry._snapshot.cache_clear()
+    row=registry.get_resource("shotcraft:text-column-converge")
+    assert row["availability"]=="existing-pipeline"
+    assert row["capabilities"]["supports_vertical"] is False
+    assert not assess_resource(row["id"],ResourceRequirements(context="motion-graphic",engine="hyperframes",kind="component",require_vertical=True))["eligible"]
+    assert {p["name"] for p in row["parameters"]}=={"caption","prefix","features","subtitle","locale"}
 
 
 @pytest.mark.parametrize("version",[1,2])

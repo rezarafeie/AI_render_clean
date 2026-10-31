@@ -3,7 +3,8 @@
 import React from 'react';
 import {Composition, getInputProps, registerRoot, staticFile} from 'remotion';
 import {FrameReady} from './shotcraft/FrameReady';
-import {BezierSourceConvergeMerge} from '../../creative/shotcraft_data/demos/ui-entrance/bezier-source-converge-merge/BezierSourceConvergeMerge';
+// @ts-expect-error Fixed webpack alias selects only a hash-verified local source.
+import NativeComponent from 'editor-shotcraft-source';
 
 type NativeProps = {width: number; height: number; font: string; scenes: {frames: number}[]};
 const NativeScene: React.FC = () => {
@@ -12,7 +13,7 @@ const NativeScene: React.FC = () => {
   const fontUrl = staticFile(font);
   return <>
     <style>{`@font-face{font-family:EditorGPTVazir;src:url(${JSON.stringify(fontUrl)});font-weight:400 900}`}</style>
-    <FrameReady fontFamily="EditorGPTVazir"><BezierSourceConvergeMerge/></FrameReady>
+    <FrameReady fontFamily="EditorGPTVazir"><NativeComponent/></FrameReady>
   </>;
 };
 const NativeRoot: React.FC = () => {

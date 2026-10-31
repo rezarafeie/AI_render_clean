@@ -39,5 +39,5 @@ module.exports = function(source) {
   once('font: `600 13px/1.25 ${SANS}`,', 'font: `600 18px/1.5 ${SANS}`,');
   once("letterSpacing: (-0.012 - 0.02 * (1 - q)).toFixed(4) + 'em',", 'letterSpacing: 0,');
   once('marginRight: i === CAP_WORDS.length - 1 ? 0 : 4,', 'marginInlineEnd: i === CAP_WORDS.length - 1 ? 0 : 4,');
-  return source;
+  return source+'\nexport default BezierSourceConvergeMerge;';
 };

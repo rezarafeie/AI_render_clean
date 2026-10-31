@@ -20,33 +20,12 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def inspect_light_fixture_frames(source):
-    """Every encoded frame, not just a middle still, must contain dark content.
-
-    Deliberately specific to this light convergence fixture. This is a blank
-    frame regression gate, not a universal aesthetic or motion quality score.
-    """
-    raw=subprocess.run(["ffmpeg","-v","error","-i",str(source),"-vf","scale=288:512",
-                        "-pix_fmt","gray","-f","rawvideo","pipe:1"],
-                       check=True,capture_output=True,timeout=30).stdout
-    size=288*512
-    if not raw or len(raw)%size:
-        raise ValueError("Cannot inspect complete decoded frames")
-    from PIL import Image
-    counts=[]
-    for offset in range(0,len(raw),size):
-        histogram=Image.frombytes("L",(288,512),raw[offset:offset+size]).histogram()
-        dark=sum(histogram[:140])
-        if dark<12 or sum(histogram[180:])<size*.2:
-            raise ValueError(f"Empty/light or black frame at index {offset//size}")
-        counts.append(dark)
-    return {"decoded_frames":len(counts),"min_dark_pixels":min(counts),
-            "method":"all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"}
+from creative.native_video_checks import inspect_native_frames as inspect_light_fixture_frames
 
 
 def main():
     from creative.motion_graphic import MotionPage
-    from creative.shotcraft_native import inspect_output, source_fingerprint, ShotcraftNative
+    from creative.shotcraft_native import inspect_output, source_fingerprint, TextColumnNative
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project",type=Path)
     parser.add_argument("--check-report",type=Path,required=True)
@@ -71,7 +50,8 @@ def main():
     if not report_file.is_relative_to(project):
         raise ValueError("Hybrid check must belong to this exact synthetic project")
     media=inspect_output(source,*page.size,mount.duration)
-    frame_audit=inspect_light_fixture_frames(source)
+    is_text=isinstance(mount.spec,TextColumnNative)
+    frame_audit=inspect_light_fixture_frames(source,dark_background=is_text,height=round(288*page.size[1]/page.size[0]))
     outer=project/"hybrid.mp4"
     encoded=subprocess.run(["ffprobe","-v","error","-show_streams","-show_format","-of","json",str(outer)],
                            check=True,capture_output=True,text=True,timeout=20)
@@ -79,20 +59,26 @@ def main():
     stream=next(s for s in meta["streams"] if s["codec_type"]=="video")
     if stream["codec_name"]!="h264" or (stream["width"],stream["height"])!=page.size or abs(float(meta["format"]["duration"])-page.duration)>.1:
         raise ValueError("Actual hybrid encode does not match the approved fixture")
+    opening_audit=inspect_light_fixture_frames(outer,dark_background=is_text,height=round(288*page.size[1]/page.size[0]),expected_frames=1,first_frame_only=True)
     gallery=ROOT/"web/public/creative-previews"
-    stem="shotcraft-native-bezier-source-converge-merge"
+    stem="shotcraft-native-"+mount.spec.resource_id.split(":",1)[1]
     poster,video=gallery/(stem+".png"),gallery/(stem+".mp4")
-    subprocess.run(["ffmpeg","-v","error","-y","-ss","1.5","-i",str(source),"-frames:v","1",str(poster)],check=True,capture_output=True,timeout=20)
+    subprocess.run(["ffmpeg","-v","error","-y","-ss",str(mount.duration-.3 if is_text else 1.5),"-i",str(source),"-frames:v","1",str(poster)],check=True,capture_output=True,timeout=20)
     shutil.copy2(source,video)
     item={"id":mount.spec.resource_id,"name":stem,"status":"native-component-checked","format":page.format,
           "demonstration_only":True,"production_template_ready":True,"source_revision":receipt["source_revision"],
           "encoded_output_verified":True,"hybrid_browser_checked":True,"media":media,
           "frame_audit":frame_audit,
+          "hybrid_opening_audit":opening_audit,
           "source_adapter_sha256":receipt["source_adapter_sha256"],"hybrid_artifact_sha256":digest(outer),"hybrid_check_sha256":digest(args.check_report),
           "poster":"/creative-previews/"+poster.name,"preview_video":"/creative-previews/"+video.name,
-          "poster_sha256":digest(poster),"video_sha256":digest(video),"parameters":ShotcraftNative.model_json_schema(),
-          "use":"همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید. سایر قالب‌های Shotcraft هنوز آمادهٔ تولید نیستند."}
-    (gallery/"native-shotcraft.json").write_text(json.dumps({"schema_version":1,"items":{item["id"]:item}},ensure_ascii=False,indent=2))
+          "poster_sha256":digest(poster),"video_sha256":digest(video),"parameters":type(mount.spec).model_json_schema(),
+          "use":("چرخش ویژگی‌ها و یک بار جمع‌شدن به عبارت نهایی. متن فارسی با عرض واقعی فونت سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست." if is_text else
+                 "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید.")}
+    manifest_path=gallery/"native-shotcraft.json"
+    manifest=json.loads(manifest_path.read_text()) if manifest_path.exists() else {"schema_version":1,"items":{}}
+    manifest["items"][item["id"]]=item
+    manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
     # Version every retained image so PWA/static caches cannot keep an older PNG.
     for filename in ["index.json","claude-effects.json","shotcraft.json","lemo.json"]:
         path=gallery/filename

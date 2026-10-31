@@ -36,11 +36,12 @@ def test_vendored_lemo_and_shotcraft_dependencies_are_pinned():
             assert hashlib.sha256(source.read_bytes()).hexdigest() == expected
 
 
-def test_native_shotcraft_preview_is_encoded_and_frozen():
+@pytest.mark.parametrize("resource",["shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge"])
+def test_native_shotcraft_preview_is_encoded_and_frozen(resource):
     from creative.shotcraft_native import source_fingerprint
     rows = json.loads((GALLERY / "native-shotcraft.json").read_text())["items"]
-    assert set(rows) == {"shotcraft:bezier-source-converge-merge"}
-    row = next(iter(rows.values()))
+    assert set(rows) == {"shotcraft:bezier-source-converge-merge","shotcraft:text-column-converge"}
+    row = rows[resource]
     assert row["status"] == "native-component-checked"
     assert row["encoded_output_verified"] and row["hybrid_browser_checked"]
     assert row["source_adapter_sha256"] == source_fingerprint()
@@ -49,7 +50,8 @@ def test_native_shotcraft_preview_is_encoded_and_frozen():
         assert hashlib.sha256(path.read_bytes()).hexdigest() == row[digest]
     assert row["media"]["max_keyframe_interval"] <= 1.1
     assert row["frame_audit"]["decoded_frames"] == 180
-    assert row["frame_audit"]["min_dark_pixels"] >= 12
+    assert row["hybrid_opening_audit"]["decoded_frames"] == 1
+    assert row["frame_audit"]["min_bright_pixels" if resource.endswith("text-column-converge") else "min_dark_pixels"] >= 12
     html = (GALLERY / "gallery.html").read_text()
     assert "native-shotcraft.json" in html
     assert "preload='none'" in html or 'preload="none"' in html or "preload='none'" in html.replace('"', "'")
@@ -72,6 +74,29 @@ def test_frame_gate_checks_complete_encoded_sequence(monkeypatch):
     valid=bytes([40])*100+bytes([240])*(288*512-100)
     monkeypatch.setattr(audit.subprocess,"run",lambda *a,**k:SimpleNamespace(stdout=valid*5))
     assert audit.inspect_light_fixture_frames(Path("synthetic.mp4"))["decoded_frames"] == 5
+
+
+@pytest.mark.parametrize("blank",[0,255])
+def test_dark_fixture_gate_rejects_blank_frames(monkeypatch,blank):
+    from scripts import build_native_shotcraft_preview as audit
+    from types import SimpleNamespace
+    size=288*162
+    valid=bytes([240])*100+bytes([20])*(size-100)
+    monkeypatch.setattr(audit.subprocess,"run",lambda *a,**k:SimpleNamespace(stdout=valid+bytes([blank])*size))
+    with pytest.raises(ValueError,match="index 1"):
+        audit.inspect_light_fixture_frames(Path("synthetic.mp4"),dark_background=True,height=162)
+
+
+def test_native_frame_gate_rejects_wrong_or_unbounded_sequence(monkeypatch):
+    from creative.native_video_checks import inspect_native_frames
+    from types import SimpleNamespace
+    import creative.native_video_checks as checks
+    valid=bytes([40])*100+bytes([240])*(288*512-100)
+    monkeypatch.setattr(checks.subprocess,"run",lambda *a,**k:SimpleNamespace(stdout=valid*2))
+    with pytest.raises(ValueError,match="frame count"):
+        inspect_native_frames("synthetic.mp4",expected_frames=180)
+    with pytest.raises(ValueError,match="dimensions"):
+        inspect_native_frames("synthetic.mp4",width=99999)
 
 
 def test_every_generic_adapter_has_explicit_valid_persian_test_content():

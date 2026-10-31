@@ -55,10 +55,10 @@ def render(config: dict, output: Path, *, job_dir: Path, on_progress=None, timeo
             raise ValueError("Music asset is missing")
         config["music"] = str(music.resolve())
     if config.get("version") == 3:
-        from creative.shotcraft_native import ShotcraftNative
+        from creative.shotcraft_native import parse_spec
         if len(config["scenes"]) != 1:
             raise ValueError("Native Shotcraft requires one typed component")
-        ShotcraftNative.model_validate(config["scenes"][0].get("shotcraft"))
+        parse_spec(config["scenes"][0].get("shotcraft"))
         config["font"] = str(ROOT / "presets/fonts/Vazirmatn-Regular.ttf")
     else:
         config["font"] = str(ROOT / "presets/fonts/RAY-EXTRABLACK.TTF")

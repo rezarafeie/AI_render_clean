@@ -24,7 +24,7 @@ not change. Existing plans default to generated authoring as before.
 | HyperFrames registry catalog | Metadata index and profiles | Existing talking_2 context adapters remain unchanged; catalog is not execution |
 | EditorGPT effects/transitions | Existing MLT implementations | Already executable via EditPlan; not interchangeable with HTML components |
 | EditorGPT motion recipes | Existing recipe adapters | Already connected in talking_2, not generic motion-graphic templates |
-| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | One bounded native convergence component executes user content through existing Remotion → HyperFrames; nine other demos remain reference-only |
+| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Two bounded native adapters (source convergence and text-column convergence) execute user content through existing Remotion → HyperFrames; eight other demos remain reference-only |
 | Claude Video Effects | Existing 42 implementations in engine/face_effects | Existing talking-reel execution preserved, all 42 exposed in shared registry; synthetic-frame previews, not video-tracker certification |
 | Lemo Opuscar | Pinned Swiss Canvas source, score, MIT license, local OFL fonts | Original demo executed, backward seek pixel equality checked. Fixed demo story is NOT an editable production template; remaining styles pending |
 
@@ -116,6 +116,71 @@ Update, 2026-10-30:
   this update. The local static gallery is not proof that the running API reloaded.
 
 ### Persistent visual gallery
+
+#### Text-column integration (2026-10-31)
+
+`shotcraft:text-column-converge` has a separate discriminated input model, not a
+bag of optional parameters: `caption`, `prefix`, two to six unique `features`,
+`subtitle`, `locale`. Caption must equal the approved scene headline. All copy is
+plain bounded text; Persian ZWNJ is preserved. It is **horizontal only**. Backend
+planning, authoring, saved mounts and renderer all reject other formats.
+
+The exact pinned original TSX executes through a fixed webpack alias and a
+source-specific binding loader. Opposing edges stay fixed while phrases rotate;
+there is one 36-frame cubic convergence after a 10-frame final-phrase delay, then
+an 18-frame subtitle delay and 4-frame reveal. Per-phrase reading time and a final
+hold are budgeted before execution. Demo branding/copy is replaced explicitly.
+The adapter intentionally changes the original 42px specification typography to
+72px main / 48px supporting copy for readability, and uses shaped local-font
+measurement rather than a monospace character-count approximation. Oversized
+copy fails; it is not clipped or silently shrunk. Persian reverses the physical
+opposing edges while retaining whole shaped phrases.
+
+Independent review caught a black first frame in the hybrid assembly. Native
+scenes retain hidden pre-runtime CSS for the static contract and use instantaneous
+timed visibility sets, instead of a 0.001s opacity tween that was zero on frame zero.
+Existing generated-scene transitions are unchanged.
+
+An all-frame regression also reproduced intermittent missing foreground layers
+in the convergence component under the default local Chromium capture profile.
+Raster-mode changes and an added paint wait did not resolve it and were reverted.
+The isolated native v3 renderer now uses one capture worker with supported
+`swangle` software GL. This is slower than the previous local GPU profile; native
+clips remain bounded to 4–12s / 600s execution. It does not change existing v1/v2
+jobs, AI modes, models or providers. See the official [Remotion GL options](https://www.remotion.dev/docs/options/gl).
+
+The one-job Node process logs completed encoding/cleanup and gets a one-second
+successful-shutdown grace bound after `renderMedia` resolves and owned temporary
+files are removed. SDK failures still exit nonzero. This prevents idle SDK handles
+from holding a completed isolated CLI alive until the Python deadline; it never
+terminates the API or another job.
+
+`creative/native_video_checks.py` is reused by production `write_project` and the
+gallery builder. Before referencing a native artifact, production decodes its
+entire bounded sequence and rejects missing foreground or an unexpected frame
+count. This is specific to these two fixed light/dark designs, not universal
+quality grading. Foreground presence, not a minimum text area, is checked so a
+short valid phrase is not mistaken for an empty frame. Gallery publication additionally checks the actual hybrid's
+opening frame, not merely the standalone child or DOM boxes. Synthetic preview
+data and real production defaults remain separate.
+
+Rollback: stop submitting new native jobs, then revert the integration commit as
+a unit and restart only idle owned workers. Preserve completed MP4s/project data;
+do not run destructive Git resets or delete persisted outputs. Existing saved
+projects using the new `shotcraft_component` require its adapter to regenerate;
+older projects and existing rendered MP4s do not need migration. No database,
+provider or account configuration is changed by this integration.
+
+Final local verification for this stage: 203 applicable tests pass (two existing
+deprecation warnings); frontend build passes (existing large-bundle warnings).
+Both six-second native MP4s pass complete 180-frame checks. Both nine-second
+hybrids pass actual browser/static checks and an encoded-opening-frame gate.
+Independent sampled-pixel follow-up confirms text hybrid frame zero and the
+previously empty convergence frames 153/159 are now visible. Motion analysis in
+the HyperFrames browser check remains disabled; no audio or full-film aesthetic
+certification is inferred. Mobile Chrome at 390×844 loads 100 gallery entries
+without page errors or horizontal overflow; neither native MP4 is requested
+before a play gesture. No production deployment or API restart was performed.
 
 Native Shotcraft update: `shotcraft:bezier-source-converge-merge` now accepts
 explicit approved caption, exactly four allowlisted source icons, output icon,

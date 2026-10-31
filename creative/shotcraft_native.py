@@ -1,6 +1,6 @@
 """Typed native Shotcraft adapter over the existing Remotion renderer.
 
-One reviewed component initially. No request-time installs, generated source,
+Bounded reviewed components only. No request-time installs, generated source,
 arbitrary paths, external media, provider requests or title-only fallbacks.
 """
 import hashlib
@@ -10,9 +10,9 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, TypeAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "5a2e98daade313c4f376120f38427eb19a108e8c"
@@ -38,25 +38,82 @@ class ShotcraftNative(BaseModel):
         return value.strip()
 
 
+class TextColumnNative(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource_id: Literal["shotcraft:text-column-converge"]
+    caption: str = Field(min_length=1,max_length=24)
+    prefix: str = Field(min_length=1,max_length=12)
+    features: tuple[str,...] = Field(min_length=2,max_length=6)
+    subtitle: str = Field(min_length=1,max_length=48)
+    locale: Literal["fa-IR","en-US"] = "fa-IR"
+
+    @field_validator("caption","prefix","subtitle")
+    @classmethod
+    def plain_text(cls,value,info):
+        limit={"caption":24,"prefix":12,"subtitle":48}[info.field_name]
+        if not value.strip() or len(value.encode("utf-16-le",errors="surrogatepass"))//2>limit or any(c in value for c in "<>\n\r"):
+            raise ValueError("Use explicit single-line plain text")
+        return value.strip()
+
+    @field_validator("features")
+    @classmethod
+    def bounded_features(cls,values):
+        for value in values:
+            if not value.strip() or len(value.encode("utf-16-le",errors="surrogatepass"))//2>24 or len(value.split())>3 or any(c in value for c in "<>\n\r"):
+                raise ValueError("Features require 1–24 plain characters and at most three words")
+        if len(set(v.strip() for v in values))!=len(values):
+            raise ValueError("Do not repeat feature phrases")
+        return tuple(v.strip() for v in values)
+
+
+NativeSpec = Annotated[ShotcraftNative | TextColumnNative, Field(discriminator="resource_id")]
+
+
+def parse_spec(value):
+    return TypeAdapter(NativeSpec).validate_python(value)
+
+
 class ShotcraftMount(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    spec: ShotcraftNative
+    spec: NativeSpec
     instance: str = Field(pattern=r"^s[1-8]-shotcraft$")
     start: float = Field(ge=0,le=60,allow_inf_nan=False)
     duration: float = Field(ge=4,le=12,allow_inf_nan=False)
     format: Literal["vertical","horizontal","square"]
     asset: str | None = Field(default=None,pattern=r"^assets/s[1-8]-shotcraft-[0-9a-f]{16}\.mp4$")
 
+    @model_validator(mode="after")
+    def supported_stage(self):
+        if isinstance(self.spec,TextColumnNative) and self.format!="horizontal":
+            raise ValueError("Text-column requires the horizontal stage")
+        if self.duration<required_seconds(self.spec):
+            raise ValueError("Native scene omits its required reading hold")
+        return self
+
 
 def catalog():
+    def compact(value):
+        if isinstance(value,dict): return {k:compact(v) for k,v in value.items() if k!="title"}
+        if isinstance(value,list): return [compact(v) for v in value]
+        return value
     return [{"id":"shotcraft:bezier-source-converge-merge", "field":"shotcraft_component",
              "execution":"pinned original Remotion source, embedded as a framework-owned local clip",
              "best_for":"Four screenshot/card/code/audio sources merging into one result; a convergence diagram, not a substitute for unrelated explanatory imagery.",
-             "inputs":ShotcraftNative.model_json_schema(), "seconds":[4,12],
-             "constraints":"Caption must equal the approved headline: 1–48 characters, at most eight complete words. Duration >= max(4, 2.4 + max(1.2, word_count/2.5)); final reading hold is explicit. Four fixed safe media-icon choices; output is an abstract symbol, not upstream branding. No arbitrary source, URL, logo or asset path. Existing Remotion dependencies and FFmpeg required. No automatic fallback."}]
+             "inputs":compact(ShotcraftNative.model_json_schema()), "seconds":[4,12],
+             "constraints":"Caption equals approved headline, <=8 words; seconds >= max(4,2.4+max(1.2,words/2.5)). Safe icons only, no URLs/code/assets. Original source executes through existing Remotion → HyperFrames. No fallback."},
+            {"id":"shotcraft:text-column-converge","field":"shotcraft_component","format":"horizontal",
+             "best_for":"Feature phrases rotate at fixed opposing edges, then converge ONCE into prefix + approved headline; not explanatory imagery or a full film.",
+             "inputs":compact(TextColumnNative.model_json_schema()),"seconds":[4,12],
+             "constraints":"Caption equals approved headline. Features <=3 words each; <=24 UTF16 units each. Reading frames=sum(ceil(max(.6,feature_words/2.5)*30)+[0,3,1,2,0,3][i])+68+max(36,ceil(subtitle_words/2.5*30)); duration >=max(4,frames/30). Local shaped font measurement rejects copy exceeding the original 660px title or 900px subtitle slots. No automatic clipping, provider switch or fallback."}]
 
 
-def required_seconds(spec: ShotcraftNative):
+def feature_frames(spec):
+    return [math.ceil(max(.6,len(v.split())/2.5)*30)+[0,3,1,2,0,3][i] for i,v in enumerate(spec.features)]
+
+
+def required_seconds(spec):
+    if isinstance(spec,TextColumnNative):
+        return max(4,(sum(feature_frames(spec))+10+36+18+4+max(36,math.ceil(len(spec.subtitle.split())/2.5*30)))/30)
     return max(4,2.4+max(1.2,len(spec.caption.split())/2.5))
 
 
@@ -74,6 +131,7 @@ def source_fingerprint():
         if not path.is_relative_to((ROOT/"creative/shotcraft_data").resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
             raise ValueError("Shotcraft dependency integrity failure")
     adapter_files = [Path(__file__),ROOT/"remotion/shotcraft-content-loader.cjs",ROOT/"remotion/shotcraft-native-config.mjs",
+                     ROOT/"remotion/shotcraft-text-loader.cjs",ROOT/"remotion/src/shotcraft/useTextMetrics.ts",
                      ROOT/"remotion/src/shotcraft-native.tsx",ROOT/"remotion/src/shotcraft/FrameReady.tsx",ROOT/"remotion/render.mjs",
                      ROOT/"engine/remotion_renderer.py",ROOT/"presets/fonts/Vazirmatn-Regular.ttf"]
     return hashlib.sha256(json.dumps({"source":data["sha256"],"runtime":runtime["sha256"],
@@ -100,11 +158,13 @@ def inspect_output(path, width, height, seconds):
     return {"width":width,"height":height,"duration":duration,"codec":"h264","max_keyframe_interval":interval}
 
 
-def materialize(project: Path, spec: ShotcraftNative, instance: str, duration: float, format: str, *, on_progress=None):
+def materialize(project: Path, spec: NativeSpec, instance: str, duration: float, format: str, *, on_progress=None):
     if not re.fullmatch(r"s[1-8]-shotcraft",instance) or format not in DIMS or not math.isfinite(duration) or not required_seconds(spec)<=duration<=12:
         raise ValueError("Unsupported native Shotcraft instance, format or duration")
     # Revalidate even model_copy/update values before crossing the process boundary.
-    spec = ShotcraftNative.model_validate(spec.model_dump())
+    spec = parse_spec(spec.model_dump())
+    if isinstance(spec,TextColumnNative) and format!="horizontal":
+        raise ValueError("Text-column source currently requires its horizontal design stage")
     if on_progress: on_progress(0)
     root = project.resolve()
     source = source_fingerprint()

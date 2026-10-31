@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from . import llm, speech
 from .native_motion import NativeMotion
-from .shotcraft_native import ShotcraftNative, ShotcraftMount, required_seconds as shotcraft_min_seconds
+from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -304,12 +304,16 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
         page.resource_receipts = [r for r in page.resource_receipts if r.get("integration") != "vendored-code-execution"] + receipts
     if page.shotcraft_components:
         from .shotcraft_native import materialize as materialize_shotcraft
+        from .native_video_checks import inspect_native_frames
         mounts, receipts = [], []
         for mount in page.shotcraft_components:
             if mount.format != page.format or mount.start+mount.duration > page.duration+.05:
                 raise ValueError("Native component does not match the owned page timeline")
             callback = (lambda percent, instance=mount.instance: on_component_progress(instance,percent)) if on_component_progress else None
             record = materialize_shotcraft(directory,mount.spec,mount.instance,mount.duration,mount.format,on_progress=callback)
+            record = {**record,"frame_audit":inspect_native_frames(directory/record["asset"],
+                dark_background=isinstance(mount.spec,TextColumnNative),height=round(288*page.size[1]/page.size[0]),
+                expected_frames=round(mount.duration*30))}
             mounts.append(mount.model_copy(update={"asset":record["asset"]}))
             receipts.append(record)
         page.shotcraft_components = mounts
@@ -478,7 +482,7 @@ class ScenePlan(BaseModel):
     narration: str = ""                # the line spoken while the scene is on screen (Persian, as it is read aloud)
     shotcraft_id: str = ""
     native_component: NativeMotion | None = None
-    shotcraft_component: ShotcraftNative | None = None
+    shotcraft_component: NativeSpec | None = None
 
     @model_validator(mode="after")
     def one_native_source(self):
@@ -524,7 +528,7 @@ class SceneDraft(BaseModel):
     build_js: str
     update_js: str = ""
     native_component: NativeMotion | None = None
-    shotcraft_component: ShotcraftNative | None = None
+    shotcraft_component: NativeSpec | None = None
 
 
 PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics studio. A person describes a short clip in chat. Plan it so that
@@ -597,6 +601,8 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
+        if isinstance(scene.shotcraft_component,TextColumnNative) and plan.format!="horizontal":
+            problems.append(f"scene {index}: native text-column requires horizontal format")
         if scene.shotcraft_component and not shotcraft_min_seconds(scene.shotcraft_component) <= scene.end-scene.start <= 12:
             problems.append(f"scene {index}: native Shotcraft requires {shotcraft_min_seconds(scene.shotcraft_component):g}–12 seconds for this caption and its reading hold")
         if scene.shotcraft_component and scene.shotcraft_component.caption != scene.headline.strip():
@@ -633,7 +639,7 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
 
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "") -> str:
     from .shotcraft import catalog
-    parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False)]
+    parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False,separators=(",",":"))]
     from .native_motion import catalog as native_catalog, CATALOG_CONTRACT
     from .shotcraft_native import catalog as shotcraft_native_catalog
     parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps(native_catalog(), ensure_ascii=False, separators=(",", ":"))
@@ -669,7 +675,7 @@ def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
                                 start=round(cursor, 2), end=round(cursor + length, 2), shotcraft_id=original.shotcraft_id if original else "",
                                 native_component=NativeMotion.model_validate({**original.native_component.model_dump(), "text": line["title"].strip() or line["say"][:40]})
                                 if original and original.native_component else None,
-                                shotcraft_component=ShotcraftNative.model_validate({**original.shotcraft_component.model_dump(),"caption":line["title"].strip() or line["say"][:40]})
+                                shotcraft_component=parse_spec({**original.shotcraft_component.model_dump(),"caption":line["title"].strip() or line["say"][:40]})
                                 if original and original.shotcraft_component else None))
         cursor += length
     if len(scenes) < 2:
@@ -831,7 +837,9 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     conversation with problems an earlier check found in this scene. The caller falls back to a plain scene when this raises."""
     shot = plan.scenes[n-1].shotcraft_component
     if shot:
-        ShotcraftNative.model_validate(shot.model_dump())
+        parse_spec(shot.model_dump())
+        if isinstance(shot,TextColumnNative) and plan.format!="horizontal":
+            raise CreativeUnavailable("این کامپوننت فعلاً فقط طراحی افقیِ بررسی‌شده دارد.")
         if shot.caption != plan.scenes[n-1].headline.strip():
             raise CreativeUnavailable("متن کامپوننت باید دقیقاً مطابق عنوان تأییدشدهٔ صحنه باشد.")
         if not shotcraft_min_seconds(shot) <= plan.scenes[n-1].end-plan.scenes[n-1].start <= 12:
@@ -889,7 +897,7 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
             shotcraft.append(ShotcraftMount(spec=draft.shotcraft_component,instance=instance,start=scene.start,duration=scene.end-scene.start,format=plan.format))
             html.append(f'<section class="hm-scene" id="s{n}"><div id="{instance}-slot"></div></section>')
             css.append(f'#s{n}{{background:{palette.bg};color:{palette.ink};opacity:0}}')
-            build.append(f'tl.fromTo("#s{n}", {{opacity:0}}, {{opacity:1,duration:.001,immediateRender:false}}, {scene.start:g});')
+            build.append(f'tl.set("#s{n}", {{opacity:1}}, {scene.start:g});')
             if n < len(plan.scenes):
                 build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
             continue
@@ -898,7 +906,7 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
             native.append({"spec": draft.native_component.model_dump(), "instance": instance, "duration": scene.end - scene.start})
             html.append(f'<section class="hm-scene" id="s{n}"><div id="{instance}-host" class="clip" data-composition-id="{instance}" data-composition-src="compositions/{instance}.html" data-start="{scene.start:g}" data-duration="{scene.end-scene.start:g}" data-track-index="2" style="position:absolute;inset:0"></div></section>')
             css.append(f'#s{n}{{background:{palette.bg};color:{palette.ink};opacity:0}}')
-            build.append(f'tl.fromTo("#s{n}", {{opacity:0}}, {{opacity:1,duration:.001,immediateRender:false}}, {scene.start:g});')
+            build.append(f'tl.set("#s{n}", {{opacity:1}}, {scene.start:g});')
             if n < len(plan.scenes):
                 build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
             continue

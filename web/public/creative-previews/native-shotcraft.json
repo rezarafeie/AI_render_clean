@@ -19,17 +19,26 @@
         "max_keyframe_interval": 1.0
       },
       "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
         "decoded_frames": 180,
-        "min_dark_pixels": 28,
+        "min_dark_pixels": 50,
         "method": "all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
       },
-      "source_adapter_sha256": "b35345e62beb8bd0295705026b0c8cab29c4ca1e8347e0027a783f0ca90d427d",
-      "hybrid_artifact_sha256": "41757b37541c35f387f8406b7e6c7d55319cafdb0dbdf2d7b57da44c551038ba",
-      "hybrid_check_sha256": "1d6217576c08108000d77a000e2246a69bacc883824805ed80e7cec8fb6c84eb",
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_dark_pixels": 103,
+        "method": "first encoded frame, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "92591e85304ecfd8b61883c4a0f5f8e3069d4651da4b42b99223e846320cd73f",
+      "hybrid_artifact_sha256": "984eed127bdd819e8887950f6e568336a8f62106f54f72333f3dd63bcffe6ffd",
+      "hybrid_check_sha256": "a059671621976dc2e0e786c1c65545c6227728e8d1b741e666adfb759d21626a",
       "poster": "/creative-previews/shotcraft-native-bezier-source-converge-merge.png",
       "preview_video": "/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4",
-      "poster_sha256": "80cee661cfc7d8cbab27c5ba722cc325c41ffb640c1c69f0e15508255ba14d98",
-      "video_sha256": "8769145707c46f09753ae789ac21935de566737465ca1f89e707b82f15f19630",
+      "poster_sha256": "30d02fe6d00c556bec989a240441af5d110c6e92e7ff5a2d42b1f3f537e817f1",
+      "video_sha256": "34654e5c8be10e3a19c2cf9baaed6c99f79c81d49d2415bdac96a50839bc4086",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -93,7 +102,102 @@
         "title": "ShotcraftNative",
         "type": "object"
       },
-      "use": "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید. سایر قالب‌های Shotcraft هنوز آمادهٔ تولید نیستند."
+      "use": "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید."
+    },
+    "shotcraft:text-column-converge": {
+      "id": "shotcraft:text-column-converge",
+      "name": "shotcraft-native-text-column-converge",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0000000000000002
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_bright_pixels": 14,
+        "method": "all encoded frames, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_bright_pixels": 15,
+        "method": "first encoded frame, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "92591e85304ecfd8b61883c4a0f5f8e3069d4651da4b42b99223e846320cd73f",
+      "hybrid_artifact_sha256": "95fcf60462f9ad4cbcd20070b3701fe995d4e97e0ee3a7378af3635f7338d289",
+      "hybrid_check_sha256": "d5346ca46fd636aa30e383d6413986b876555c1bb9100b682d639dc51cdd63b6",
+      "poster": "/creative-previews/shotcraft-native-text-column-converge.png",
+      "preview_video": "/creative-previews/shotcraft-native-text-column-converge.mp4",
+      "poster_sha256": "156ce17c7144e9439f7da4a7e9d10d7705e11ef0fdfeadb6506f16fbd94a3fde",
+      "video_sha256": "13515fa74e7d43824d099492117839adf1db024fff00bf2aaf473f30c1cc9aab",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:text-column-converge",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "prefix": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Features",
+            "type": "array"
+          },
+          "subtitle": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "prefix",
+          "features",
+          "subtitle"
+        ],
+        "title": "TextColumnNative",
+        "type": "object"
+      },
+      "use": "چرخش ویژگی‌ها و یک بار جمع‌شدن به عبارت نهایی. متن فارسی با عرض واقعی فونت سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست."
     }
   }
 }
