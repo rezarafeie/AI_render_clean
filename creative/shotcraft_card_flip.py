@@ -1,10 +1,10 @@
 """Explicit content for the pinned three-card reveal; no demo claims/defaults.
 
-Preparation only: deliberately not registered in NativeSpec or the engine catalog
-until encoded-frame and shaped-text geometry audits pass. An evidence reference
-is required, but is not proof of factual accuracy or authorization to publish.
+An evidence reference is required, but is not proof of factual accuracy or
+authorization to publish. Actual shaped text is checked during native rendering.
 """
 from typing import Literal
+import math
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -51,3 +51,9 @@ class CardFlipNative(BaseModel):
     @classmethod
     def bounded_text(cls,value,info):
         return plain(value,{"caption":48,"kicker":24,"front_label":12,"before_label":12,"after_label":12}[info.field_name])
+
+
+def reading_frames(spec):
+    front=max(60,*(math.ceil(len(' '.join([c.name,c.description,*c.front_lines]).split())/2.5*30) for c in spec.cards))
+    back=max(40,*(math.ceil(len(' '.join([c.name,c.result_label,spec.before_label,spec.after_label,c.unit]).split())/2.5*30) for c in spec.cards))
+    return front+50+back

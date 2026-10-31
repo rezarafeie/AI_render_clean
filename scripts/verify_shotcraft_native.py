@@ -16,12 +16,12 @@ sys.path.insert(0,str(ROOT))
 def main():
     from creative import motion_graphic as mg
     from creative.native_motion import NativeMotion
-    from creative.shotcraft_native import ShotcraftNative,TextColumnNative
+    from creative.shotcraft_native import ShotcraftNative,TextColumnNative,CardFlipNative
     import engine.hyperframes.assets as assets
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project",type=Path)
     parser.add_argument("--gsap",type=Path,required=True)
-    parser.add_argument("--component",choices=["convergence","text-column"],default="convergence")
+    parser.add_argument("--component",choices=["convergence","text-column","card-flip"],default="convergence")
     parser.add_argument("--refresh-audit",action="store_true",help="Refresh only an unchanged dedicated synthetic audit, reusing its verified native cache")
     args=parser.parse_args()
     if args.project.exists():
@@ -52,11 +52,25 @@ def main():
             shotcraft_component=TextColumnNative(resource_id="shotcraft:text-column-converge",caption=caption,
                 prefix="یک",features=("ایده","تصویر","صدا"),subtitle="از ایده تا نتیجه"))
         plan.scenes[1].native_component=None
+    if args.component=="card-flip":
+        caption="سه ویژگی، سه نتیجه"
+        plan.format="horizontal"
+        plan.duration=13
+        cards=[dict(name=name,description=desc,front_lines=lines,before=before,after=after,unit="دقیقه",
+                    result_label="زمان آزمایشی",evidence="اعداد مصنوعی برای آزمون فنی؛ ادعای عملکرد واقعی نیست")
+               for name,desc,lines,before,after in [
+                   ("برنامه‌ریزی","از ایده تا برنامه",["هدف روشن","برنامهٔ مشخص","اجرای منظم"],20,10),
+                   ("تدوین","از تصویر تا روایت",["انتخاب تصویر","تنظیم ریتم","خروجی نهایی"],30,15),
+                   ("بازبینی","از بررسی تا اصلاح",["بررسی متن","کنترل تصویر","اصلاح نهایی"],12,6)]]
+        plan.scenes[0]=mg.ScenePlan(headline=caption,idea="Three abstract feature summaries flip into synthetic numeric comparisons",start=0,end=10,narration="این فقط نمونهٔ آزمایشی است.",
+            shotcraft_component=CardFlipNative(resource_id="shotcraft:card-flip-reveal",caption=caption,kicker="نمونهٔ آزمایشی",
+                front_label="ویژگی",before_label="قبل",after_label="بعد",cards=cards))
+        plan.scenes[1].start=10;plan.scenes[1].end=13;plan.scenes[1].native_component=None
     problems=mg.validate_plan(plan)
     if problems: raise ValueError("Invalid audit plan: "+"; ".join(problems))
     drafts=[mg.author_scene(plan,1,"synthetic integration audit")]
-    if args.component=="text-column":
-        drafts.append(mg.SceneDraft(html='<div style="position:absolute;inset:0;display:grid;place-items:center;background:#08090c;color:#eeeef2;font:48px Vazirmatn">داستانت را بساز</div>',build_js='tl.to({}, {duration:3}, 0);',timebase="local"))
+    if args.component in {"text-column","card-flip"}:
+        drafts.append(mg.SceneDraft(html='<div style="position:absolute;inset:0;display:grid;place-items:center;background:#08090c;color:#eeeef2;font:60px Ray;line-height:1.5">داستانت را بساز</div>',build_js='tl.to({}, {duration:3}, 0);',timebase="local"))
     else:
         drafts.append(mg.author_scene(plan,2,"synthetic integration audit"))
     page=mg.assemble_scenes(plan,drafts)

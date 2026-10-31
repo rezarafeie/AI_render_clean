@@ -24,7 +24,7 @@ not change. Existing plans default to generated authoring as before.
 | HyperFrames registry catalog | Metadata index and profiles | Existing talking_2 context adapters remain unchanged; catalog is not execution |
 | EditorGPT effects/transitions | Existing MLT implementations | Already executable via EditPlan; not interchangeable with HTML components |
 | EditorGPT motion recipes | Existing recipe adapters | Already connected in talking_2, not generic motion-graphic templates |
-| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Two bounded native adapters (source convergence and text-column convergence) execute user content through existing Remotion → HyperFrames; eight other demos remain reference-only |
+| Shotcraft | Eight pinned recipes, ten TSX demos and five original shared fixtures | Three bounded native adapters (source convergence, text-column convergence, card-flip reveal) execute user content through existing Remotion → HyperFrames; seven other demos remain reference-only |
 | Claude Video Effects | Existing 42 implementations in engine/face_effects | Existing talking-reel execution preserved, all 42 exposed in shared registry; synthetic-frame previews, not video-tracker certification |
 | Lemo Opuscar | Pinned Swiss Canvas source, score, MIT license, local OFL fonts | Original demo executed, backward seek pixel equality checked. Fixed demo story is NOT an editable production template; remaining styles pending |
 
@@ -270,12 +270,13 @@ Earlier incremental verification (retained for audit):
 5. Inspect snapshots and decoded output; only then expose through resource
    selection and planner with truthful compatibility constraints.
 6. Keep unsupported items discoverable but non-executable, with a specific reason.
-# Card-flip adapter preparation (not enabled)
+## Card-flip integration (2026-10-31)
 
 `creative/shotcraft_card_flip.py` and `remotion/shotcraft-card-loader.cjs` now
 define and bind explicit three-card content into the pinned upstream TSX.
-They are deliberately **not** registered in `NativeSpec`, the renderer allowlist,
-or the planner catalog yet. Existing completed capability counts are unchanged.
+The discriminated `NativeSpec`, fixed renderer allowlist, shared resource registry
+and planner catalog expose exactly `shotcraft:card-flip-reveal`. It is horizontal
+only; unsupported layouts fail rather than generating a title-only replacement.
 
 All copy and before/after numbers are required inputs; no demonstration claims
 are production defaults. Bars use the actual numeric ratio, including zero/zero.
@@ -287,10 +288,58 @@ lighting, reflections and contact shadows are retained. Front reading time and
 result hold are bounded from explicit copy. Negative Persian letter spacing and
 fixed English demo copy are removed.
 
-Preparation tests cover Python validation, source binding, unchanged vendor
+Tests cover Python validation, source binding, unchanged vendor
 bytes, preserved motion constants, zero comparisons, changed-source rejection,
-insufficient reading holds and TypeScript transpilation. These tests do **not**
-certify text fit, RTL geometry, encoded frames, audio or production availability.
-Before promotion: add shaped-font geometry limits, complete an actual native and
-hybrid render audit, review sampled front/flip/back frames independently, retain
-the approved visual in the gallery, and only then expose the typed catalog entry.
+insufficient reading holds and TypeScript transpilation. Source-specific local
+font measurement checks the actual weights used by each text slot; overlong
+shaped text is rejected, not shrunk or clipped. An actual negative render with
+48 wide Latin characters failed with `Card copy exceeds its measured slot` and
+no promoted MP4. Persian uses whole joined phrases, reversed physical card order,
+right-aligned header and corresponding comparison rows. English keeps LTR order.
+The synthetic encoded audit is Persian; arbitrary English inputs are not visually
+certified by the binding/unit tests alone.
+
+Readability adaptations: supporting typography is 40px instead of the original
+22–28px, main numbers 120px instead of158px; original card dimensions/perspective,
+4-frame anticipation,16-frame flip,12-frame stagger,194° overshoot/spring, side
+lighting, contact shadows and reflections are retained. Front hold is computed
+from the densest card. This is a brief overview, **not** a promise that every word
+on all three cards can be read serially at2.5 words/sec. For dense explanations,
+the planner is explicitly instructed to use sequential custom scenes instead.
+
+Final native audit: 1920×1080,30fps,300frames/10s, H264/yuv420p, one-second
+keyframes. The whole-frame foreground gate passed all300frames. A separate
+card-interior gate passed744 card-frames outside each card's possibly edge-on
+anticipation/flip/settling window (minimum13bright pixels); it prevents a remaining
+header from hiding disappeared cards. Both production and gallery run this gate.
+It is not OCR, a readability classifier or aesthetic certification.
+
+The existing HyperFrames assembly adds its normal overlapping wipe to a held
+three-second closing scene; this is not a hard cut at10s. Decoded seam frames
+were independently reviewed without a black gap or wrong asset. The fixture's
+closing line uses the shipped Ray font at60px. Motion-analysis automation is
+disabled in the retained browser report; actual decoded-frame review is separate.
+No audio, provider request, user media, API restart or deployment is part of this
+audit. The running Studio API must load this checkout before live availability
+can be claimed.
+
+Planner metadata compaction lifts identical policy into `shared_metadata` without
+dropping parameter types, bounds, descriptions or enum options; a reconstruction
+test checks losslessness. The minimal request remains below50,000characters with
+all45 HyperFrames components and all3 executable Shotcraft contracts.
+
+Rollback: revert this integration commit to restore the previous two-native
+allowlist, catalog and retained gallery. The preceding preparation commit contains
+no independently enabled execution path. There are no database migrations or new
+services to remove.
+
+Verification for this stage:226 focused tests passed (two pre-existing
+deprecation warnings); frontend TypeScript/Vite build passed with the existing
+bundle-size warnings. All three native fixtures were freshly encoded against
+adapter fingerprint `fb5bf972092cf0f49cb8c8bddf61b50508fc7d8cd1d8171023429363f3ca2b39`,
+then checked/rendered in the existing HyperFrames0.8.161 runtime. The gallery now
+retains101 entries (including reference demos, **not**101 native capabilities).
+Mobile-sized Chrome390×844 loaded101cards without page errors or horizontal
+overflow, made zero MP4 requests before clicking, then decoded the selected
+1920×1080/10s card preview with `preload=none` and inline playback. The served
+gallery was verified to be this checkout; no extra frontend/backend was started.

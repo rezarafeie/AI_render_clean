@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from . import llm, speech
 from .native_motion import NativeMotion
-from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
+from .shotcraft_native import ShotcraftNative, NativeSpec, TextColumnNative, CardFlipNative, parse_spec, ShotcraftMount, required_seconds as shotcraft_min_seconds
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -304,7 +304,7 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
         page.resource_receipts = [r for r in page.resource_receipts if r.get("integration") != "vendored-code-execution"] + receipts
     if page.shotcraft_components:
         from .shotcraft_native import materialize as materialize_shotcraft
-        from .native_video_checks import inspect_native_frames
+        from .native_video_checks import inspect_native_frames,inspect_card_regions
         mounts, receipts = [], []
         for mount in page.shotcraft_components:
             if mount.format != page.format or mount.start+mount.duration > page.duration+.05:
@@ -312,8 +312,10 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
             callback = (lambda percent, instance=mount.instance: on_component_progress(instance,percent)) if on_component_progress else None
             record = materialize_shotcraft(directory,mount.spec,mount.instance,mount.duration,mount.format,on_progress=callback)
             record = {**record,"frame_audit":inspect_native_frames(directory/record["asset"],
-                dark_background=isinstance(mount.spec,TextColumnNative),height=round(288*page.size[1]/page.size[0]),
+                dark_background=isinstance(mount.spec,(TextColumnNative,CardFlipNative)),height=round(288*page.size[1]/page.size[0]),
                 expected_frames=round(mount.duration*30))}
+            if isinstance(mount.spec,CardFlipNative):
+                record["card_region_audit"]=inspect_card_regions(directory/record["asset"],mount.spec,round(mount.duration*30))
             mounts.append(mount.model_copy(update={"asset":record["asset"]}))
             receipts.append(record)
         page.shotcraft_components = mounts
@@ -601,8 +603,8 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
         return problems
     cursor = 0.0
     for index, scene in enumerate(plan.scenes, 1):
-        if isinstance(scene.shotcraft_component,TextColumnNative) and plan.format!="horizontal":
-            problems.append(f"scene {index}: native text-column requires horizontal format")
+        if isinstance(scene.shotcraft_component,(TextColumnNative,CardFlipNative)) and plan.format!="horizontal":
+            problems.append(f"scene {index}: {scene.shotcraft_component.resource_id} requires horizontal format")
         if scene.shotcraft_component and not shotcraft_min_seconds(scene.shotcraft_component) <= scene.end-scene.start <= 12:
             problems.append(f"scene {index}: native Shotcraft requires {shotcraft_min_seconds(scene.shotcraft_component):g}–12 seconds for this caption and its reading hold")
         if scene.shotcraft_component and scene.shotcraft_component.caption != scene.headline.strip():
@@ -642,10 +644,15 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
     parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False,separators=(",",":"))]
     from .native_motion import catalog as native_catalog, CATALOG_CONTRACT
     from .shotcraft_native import catalog as shotcraft_native_catalog
-    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps(native_catalog(), ensure_ascii=False, separators=(",", ":"))
+    rows=native_catalog()
+    # Lossless shared metadata: don't repeat the same policy in all 45 entries.
+    shared={key:rows[0][key] for key in ("avoid_when",) if all(row[key]==rows[0][key] for row in rows)}
+    compact_rows=[{key:value for key,value in row.items() if key not in shared and value!=[]} for row in rows]
+    parts.append("EXECUTABLE COMPONENTS (optional native_component on a scene; original pinned code executes, NOT model-authored JS):\n" + CATALOG_CONTRACT + "\n" + json.dumps({"shared_metadata":shared,"entries":compact_rows}, ensure_ascii=False, separators=(",", ":"))
                  + "\nUse only for the stated role and vertical format. Keep explanatory scenes custom; do not turn the entire video into titles. Omit native_component when unsuitable. Native text must match the approved headline; never add facts.")
     parts.append("NATIVE SHOTCRAFT (shotcraft_component executes original code; shotcraft_id alone remains reference-guided authoring):\n" + json.dumps(shotcraft_native_catalog(),ensure_ascii=False,separators=(",",":"))
                  + "\nWhen a native design fits the actual meaning and constraints, use its typed shotcraft_component, not a model recreation of its code. Keep custom scene design when no native component fits. Never claim that shotcraft_id authoring executed original TSX.")
+    parts.append("Card-flip is a brief three-feature overview. Reading holds are per-card, NOT a guarantee of serial reading of all three cards; keep copy terse or use sequential custom scenes for detailed explanation.")
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
     if brand:
@@ -838,7 +845,7 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
     shot = plan.scenes[n-1].shotcraft_component
     if shot:
         parse_spec(shot.model_dump())
-        if isinstance(shot,TextColumnNative) and plan.format!="horizontal":
+        if isinstance(shot,(TextColumnNative,CardFlipNative)) and plan.format!="horizontal":
             raise CreativeUnavailable("این کامپوننت فعلاً فقط طراحی افقیِ بررسی‌شده دارد.")
         if shot.caption != plan.scenes[n-1].headline.strip():
             raise CreativeUnavailable("متن کامپوننت باید دقیقاً مطابق عنوان تأییدشدهٔ صحنه باشد.")

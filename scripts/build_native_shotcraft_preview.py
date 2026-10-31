@@ -25,7 +25,7 @@ from creative.native_video_checks import inspect_native_frames as inspect_light_
 
 def main():
     from creative.motion_graphic import MotionPage
-    from creative.shotcraft_native import inspect_output, source_fingerprint, TextColumnNative
+    from creative.shotcraft_native import inspect_output, source_fingerprint, TextColumnNative,CardFlipNative
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project",type=Path)
     parser.add_argument("--check-report",type=Path,required=True)
@@ -51,7 +51,12 @@ def main():
         raise ValueError("Hybrid check must belong to this exact synthetic project")
     media=inspect_output(source,*page.size,mount.duration)
     is_text=isinstance(mount.spec,TextColumnNative)
-    frame_audit=inspect_light_fixture_frames(source,dark_background=is_text,height=round(288*page.size[1]/page.size[0]))
+    is_card=isinstance(mount.spec,CardFlipNative)
+    frame_audit=inspect_light_fixture_frames(source,dark_background=is_text or is_card,height=round(288*page.size[1]/page.size[0]))
+    card_audit=None
+    if is_card:
+        from creative.native_video_checks import inspect_card_regions
+        card_audit=inspect_card_regions(source,mount.spec,round(mount.duration*30))
     outer=project/"hybrid.mp4"
     encoded=subprocess.run(["ffprobe","-v","error","-show_streams","-show_format","-of","json",str(outer)],
                            check=True,capture_output=True,text=True,timeout=20)
@@ -59,21 +64,23 @@ def main():
     stream=next(s for s in meta["streams"] if s["codec_type"]=="video")
     if stream["codec_name"]!="h264" or (stream["width"],stream["height"])!=page.size or abs(float(meta["format"]["duration"])-page.duration)>.1:
         raise ValueError("Actual hybrid encode does not match the approved fixture")
-    opening_audit=inspect_light_fixture_frames(outer,dark_background=is_text,height=round(288*page.size[1]/page.size[0]),expected_frames=1,first_frame_only=True)
+    opening_audit=inspect_light_fixture_frames(outer,dark_background=is_text or is_card,height=round(288*page.size[1]/page.size[0]),expected_frames=1,first_frame_only=True)
     gallery=ROOT/"web/public/creative-previews"
     stem="shotcraft-native-"+mount.spec.resource_id.split(":",1)[1]
     poster,video=gallery/(stem+".png"),gallery/(stem+".mp4")
-    subprocess.run(["ffmpeg","-v","error","-y","-ss",str(mount.duration-.3 if is_text else 1.5),"-i",str(source),"-frames:v","1",str(poster)],check=True,capture_output=True,timeout=20)
+    subprocess.run(["ffmpeg","-v","error","-y","-ss",str(mount.duration-.3 if is_text or is_card else 1.5),"-i",str(source),"-frames:v","1",str(poster)],check=True,capture_output=True,timeout=20)
     shutil.copy2(source,video)
     item={"id":mount.spec.resource_id,"name":stem,"status":"native-component-checked","format":page.format,
           "demonstration_only":True,"production_template_ready":True,"source_revision":receipt["source_revision"],
           "encoded_output_verified":True,"hybrid_browser_checked":True,"media":media,
           "frame_audit":frame_audit,
+          **({"card_region_audit":card_audit} if card_audit else {}),
           "hybrid_opening_audit":opening_audit,
           "source_adapter_sha256":receipt["source_adapter_sha256"],"hybrid_artifact_sha256":digest(outer),"hybrid_check_sha256":digest(args.check_report),
           "poster":"/creative-previews/"+poster.name,"preview_video":"/creative-previews/"+video.name,
           "poster_sha256":digest(poster),"video_sha256":digest(video),"parameters":type(mount.spec).model_json_schema(),
-          "use":("چرخش ویژگی‌ها و یک بار جمع‌شدن به عبارت نهایی. متن فارسی با عرض واقعی فونت سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست." if is_text else
+          "use":("سه کارت ویژگی با چرخش سه‌بعدی و نتیجهٔ عددی. اعداد این نمونه مصنوعی‌اند؛ استفادهٔ واقعی نیازمند داده و مرجع معتبر است. متن با فونت محلی سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست." if is_card else
+                 "چرخش ویژگی‌ها و یک بار جمع‌شدن به عبارت نهایی. متن فارسی با عرض واقعی فونت سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست." if is_text else
                  "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید.")}
     manifest_path=gallery/"native-shotcraft.json"
     manifest=json.loads(manifest_path.read_text()) if manifest_path.exists() else {"schema_version":1,"items":{}}

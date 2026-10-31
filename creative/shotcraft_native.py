@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Literal, Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, TypeAdapter
+from .shotcraft_card_flip import CardFlipNative, reading_frames as card_reading_frames
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "5a2e98daade313c4f376120f38427eb19a108e8c"
@@ -66,7 +67,7 @@ class TextColumnNative(BaseModel):
         return tuple(v.strip() for v in values)
 
 
-NativeSpec = Annotated[ShotcraftNative | TextColumnNative, Field(discriminator="resource_id")]
+NativeSpec = Annotated[ShotcraftNative | TextColumnNative | CardFlipNative, Field(discriminator="resource_id")]
 
 
 def parse_spec(value):
@@ -84,7 +85,7 @@ class ShotcraftMount(BaseModel):
 
     @model_validator(mode="after")
     def supported_stage(self):
-        if isinstance(self.spec,TextColumnNative) and self.format!="horizontal":
+        if isinstance(self.spec,(TextColumnNative,CardFlipNative)) and self.format!="horizontal":
             raise ValueError("Text-column requires the horizontal stage")
         if self.duration<required_seconds(self.spec):
             raise ValueError("Native scene omits its required reading hold")
@@ -104,7 +105,11 @@ def catalog():
             {"id":"shotcraft:text-column-converge","field":"shotcraft_component","format":"horizontal",
              "best_for":"Feature phrases rotate at fixed opposing edges, then converge ONCE into prefix + approved headline; not explanatory imagery or a full film.",
              "inputs":compact(TextColumnNative.model_json_schema()),"seconds":[4,12],
-             "constraints":"Caption equals approved headline. Features <=3 words each; <=24 UTF16 units each. Reading frames=sum(ceil(max(.6,feature_words/2.5)*30)+[0,3,1,2,0,3][i])+68+max(36,ceil(subtitle_words/2.5*30)); duration >=max(4,frames/30). Local shaped font measurement rejects copy exceeding the original 660px title or 900px subtitle slots. No automatic clipping, provider switch or fallback."}]
+             "constraints":"Caption equals approved headline. Features <=3 words each; <=24 UTF16 units each. Reading frames=sum(ceil(max(.6,feature_words/2.5)*30)+[0,3,1,2,0,3][i])+68+max(36,ceil(subtitle_words/2.5*30)); duration >=max(4,frames/30). Local shaped font measurement rejects copy exceeding the original 660px title or 900px subtitle slots. No automatic clipping, provider switch or fallback."},
+            {"id":"shotcraft:card-flip-reveal","field":"shotcraft_component","format":"horizontal",
+             "best_for":"Exactly three feature → measured result pairs, original staggered 3D cards with lighting/reflection. Abstract summaries, NOT screenshots or a full explainer.",
+             "inputs":compact(CardFlipNative.model_json_schema()),"seconds":[4,12],
+             "constraints":"Use ONLY user-provided verified numbers with an evidence reference per card; never invent metrics. Caption=approved headline. Short single-line copy: measured widths reject overflow (header1480px/84px, name400/52, description and front lines400/40, result400/40, value370/120). Duration frames>=max(60,ceil(densest_front_words/2.5*30))+50+max(40,ceil(densest_back_words/2.5*30)); front=name+description+3lines; back=name+result_label+before_label+after_label+unit. No clipping, code, URLs or fallback."}]
 
 
 def feature_frames(spec):
@@ -112,6 +117,8 @@ def feature_frames(spec):
 
 
 def required_seconds(spec):
+    if isinstance(spec,CardFlipNative):
+        return max(4,card_reading_frames(spec)/30)
     if isinstance(spec,TextColumnNative):
         return max(4,(sum(feature_frames(spec))+10+36+18+4+max(36,math.ceil(len(spec.subtitle.split())/2.5*30)))/30)
     return max(4,2.4+max(1.2,len(spec.caption.split())/2.5))
@@ -132,6 +139,7 @@ def source_fingerprint():
             raise ValueError("Shotcraft dependency integrity failure")
     adapter_files = [Path(__file__),ROOT/"remotion/shotcraft-content-loader.cjs",ROOT/"remotion/shotcraft-native-config.mjs",
                      ROOT/"remotion/shotcraft-text-loader.cjs",ROOT/"remotion/src/shotcraft/useTextMetrics.ts",
+                     ROOT/"creative/shotcraft_card_flip.py",ROOT/"remotion/shotcraft-card-loader.cjs",ROOT/"remotion/src/shotcraft/useCardMetrics.ts",
                      ROOT/"remotion/src/shotcraft-native.tsx",ROOT/"remotion/src/shotcraft/FrameReady.tsx",ROOT/"remotion/render.mjs",
                      ROOT/"engine/remotion_renderer.py",ROOT/"presets/fonts/Vazirmatn-Regular.ttf"]
     return hashlib.sha256(json.dumps({"source":data["sha256"],"runtime":runtime["sha256"],
@@ -163,7 +171,7 @@ def materialize(project: Path, spec: NativeSpec, instance: str, duration: float,
         raise ValueError("Unsupported native Shotcraft instance, format or duration")
     # Revalidate even model_copy/update values before crossing the process boundary.
     spec = parse_spec(spec.model_dump())
-    if isinstance(spec,TextColumnNative) and format!="horizontal":
+    if isinstance(spec,(TextColumnNative,CardFlipNative)) and format!="horizontal":
         raise ValueError("Text-column source currently requires its horizontal design stage")
     if on_progress: on_progress(0)
     root = project.resolve()

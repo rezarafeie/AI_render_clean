@@ -77,6 +77,17 @@ def test_planner_discovers_native_code_separately_from_references():
     assert len(request) < 50_000  # Shared instructions must not be duplicated 45 times.
 
 
+def test_planner_shared_metadata_compaction_is_lossless():
+    import json
+    from creative.native_motion import CATALOG_CONTRACT,catalog
+    request=mg.plan_request('synthetic metadata audit')
+    packed=json.loads(request.split(CATALOG_CONTRACT+'\n',1)[1].split('\nUse only',1)[0])
+    original=catalog()
+    for expected,row in zip(original,packed['entries'],strict=True):
+        restored={**{k:[] for k,v in expected.items() if v==[]},**packed['shared_metadata'],**row}
+        assert restored==expected
+
+
 def test_native_failure_never_enters_plain_title_isolation(tmp_path):
     from types import SimpleNamespace
     from app.motion_graphic import _isolate

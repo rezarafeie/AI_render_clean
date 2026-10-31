@@ -26,7 +26,7 @@ module.exports=function(source){
   const front=source.match(/const FrontUI:[\s\S]*?\n};/);
   if(!front)throw Error('Pinned front changed');
   once(front[0],`const FrontUI: React.FC<{i:number;frame:number}> = ({i}) => (
-    <div style={{fontFamily:'EditorGPTVazir',fontSize:32,lineHeight:1.7,color:L.ink,direction:${quote(locale==='fa-IR'?'rtl':'ltr')}}}>
+    <div style={{fontFamily:'EditorGPTVazir',fontSize:40,lineHeight:1.7,color:L.ink,direction:${quote(locale==='fa-IR'?'rtl':'ltr')}}}>
       {FEATURES[i].lines.map((line,k)=><div key={k} style={{marginBottom:12}}>{line}</div>)}
     </div>
   );`);
@@ -41,6 +41,20 @@ module.exports=function(source){
   source=source.replaceAll("letterSpacing: '0.16em'",'letterSpacing: 0').replaceAll("letterSpacing: '0.14em'",'letterSpacing: 0').replaceAll("letterSpacing: '0.18em'",'letterSpacing: 0');
   once('...type(158, 800)', '...type(120, 800)');
   once("letterSpacing: '-0.06em', lineHeight: 0.9",'letterSpacing: 0, lineHeight: 1.2');
-  once('...type(28, 450)','...type(32, 450)');
-  return source+'\nexport default CardFlipReveal;';
+  once('...type(28, 450)','...type(40, 450)');
+  source=source.replaceAll('...type(22, 700','...type(40, 700').replaceAll('fontSize: 24','fontSize: 40');
+  once('...type(26, 700','...type(40, 700');
+  once('...type(34, 550)','...type(40, 550)');
+  once('  const frame = useCurrentFrame();',`  const frame = useCurrentFrame();
+  useCardMetrics(${quote(spec.caption)},${quote(spec.kicker)},${quote([spec.front_label,spec.before_label,spec.after_label])},FEATURES);`);
+  if(locale==='fa-IR'){
+    source=source.replaceAll('X0 + i * (CW + GAP)','X0 + (2-i) * (CW + GAP)');
+    once("left: X0, top: 118","right: X0, top: 118");
+    source=source.replaceAll("left: 40, top: 40, display: 'flex'","right: 40, top: 40, direction:'rtl', display: 'flex'");
+    once("display: 'flex', alignItems: 'baseline'","display: 'flex', direction:'rtl', alignItems: 'baseline'");
+    source=source.replaceAll("marginLeft: 'auto'","marginRight: 'auto'");
+    once("transformOrigin: 'left bottom'","transformOrigin: 'right bottom'");
+  }
+  const hook=require('node:path').join(__dirname,'src/shotcraft/useCardMetrics');
+  return 'import {useCardMetrics} from '+quote(hook)+';\n'+source+'\nexport default CardFlipReveal;';
 };

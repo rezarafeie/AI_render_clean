@@ -8,6 +8,7 @@ const root=path.dirname(here), data=path.join(root,'creative/shotcraft_data');
 const sources={
   'shotcraft:bezier-source-converge-merge':['demos/ui-entrance/bezier-source-converge-merge/BezierSourceConvergeMerge.tsx','shotcraft-content-loader.cjs'],
   'shotcraft:text-column-converge':['demos/typography/text-column-converge/TextColumnConverge.tsx','shotcraft-text-loader.cjs'],
+  'shotcraft:card-flip-reveal':['demos/transition/card-flip-reveal/CardFlipReveal.tsx','shotcraft-card-loader.cjs'],
 };
 
 export function nativeShotcraftBundle(inputProps) {
