@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "items": {
+    "lemo:swiss-motion": {
+      "id": "lemo:swiss-motion",
+      "name": "lemo-swiss-motion",
+      "poster": "/creative-previews/lemo-swiss-motion-27.png",
+      "status": "upstream-demo-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": false,
+      "source_revision": "f17136060781a0068a7951245a3aa7835a7230de",
+      "backward_seek_verified": true,
+      "use": "Original Swiss Canvas code, original licensed fonts, no narration. Demo storyline is fixed; user-content parameterization and portrait integration are not completed.",
+      "poster_sha256": "e3f9a58c7a7642984d4040620b8d8fe4d5339c9392673971ad80457e3ed06dc9"
+    }
+  }
+}

@@ -1,0 +1,634 @@
+{
+  "schema_version": 1,
+  "items": {
+    "shotcraft:bezier-source-converge-merge": {
+      "id": "shotcraft:bezier-source-converge-merge",
+      "name": "shotcraft-native-bezier-source-converge-merge",
+      "status": "native-component-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1080,
+        "height": 1920,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_dark_pixels": 50,
+        "method": "all encoded frames, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_dark_pixels": 103,
+        "method": "first encoded frame, 288x512 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "a75ccf8545222cc38a0e2a32fcb5c34ed8dcd701e7c046e8c13243330122b0f6",
+      "hybrid_check_sha256": "ad5c52ce5816b1949a5bbf104ad1b2dc63e1c36a4074f2bce8c906eafdc9cfa0",
+      "poster": "/creative-previews/shotcraft-native-bezier-source-converge-merge.png",
+      "preview_video": "/creative-previews/shotcraft-native-bezier-source-converge-merge.mp4",
+      "poster_sha256": "3dfaa23a6c7fe0d2d5b271264e35280aa1a488e70d4609af2bfc3eff97abfb5c",
+      "video_sha256": "701aaebc710fef81811f9495fef3a0228fdea2fe77f4d41837bbe8571280df90",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:bezier-source-converge-merge",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "source_icons": {
+            "items": {
+              "enum": [
+                "shot",
+                "card",
+                "code",
+                "wave"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Source Icons",
+            "type": "array"
+          },
+          "output_icon": {
+            "default": "play",
+            "enum": [
+              "check",
+              "play",
+              "spark"
+            ],
+            "title": "Output Icon",
+            "type": "string"
+          },
+          "accent": {
+            "default": "#5b63d3",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Accent",
+            "type": "string"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "source_icons"
+        ],
+        "title": "ShotcraftNative",
+        "type": "object"
+      },
+      "use": "همگرایی چهار منبع تصویری، کارت، کد و صدا به یک خروجی. کد اصلی با متن فارسی، رنگ و آیکن کنترل‌شده اجرا می‌شود. نمونه بی‌صداست؛ صدا همچنان از مسیر فعلی EditorGPT می‌آید."
+    },
+    "shotcraft:text-column-converge": {
+      "id": "shotcraft:text-column-converge",
+      "name": "shotcraft-native-text-column-converge",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0000000000000002
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_bright_pixels": 14,
+        "method": "all encoded frames, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_bright_pixels": 15,
+        "method": "first encoded frame, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "ef53754ecd6690b0168c1b2d6f245ff7a88eb93f64c6a2b843937bd921c44cf6",
+      "hybrid_check_sha256": "502603269ba98aba40fef750f0762ad6cff7618c5a01f9bce1265e54f261e29a",
+      "poster": "/creative-previews/shotcraft-native-text-column-converge.png",
+      "preview_video": "/creative-previews/shotcraft-native-text-column-converge.mp4",
+      "poster_sha256": "216a34d4e2adca1079026e212e5935c17d7f3b53cc7ddddc5276598f57efaa8b",
+      "video_sha256": "469dd316b37aa11911e751f81d75fe1e085f1b7b07d54def8c99711c833238f0",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:text-column-converge",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "prefix": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Features",
+            "type": "array"
+          },
+          "subtitle": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "prefix",
+          "features",
+          "subtitle"
+        ],
+        "title": "TextColumnNative",
+        "type": "object"
+      },
+      "use": "چرخش ویژگی‌ها و یک بار جمع‌شدن به عبارت نهایی. متن فارسی با عرض واقعی فونت سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست."
+    },
+    "shotcraft:card-flip-reveal": {
+      "id": "shotcraft:card-flip-reveal",
+      "name": "shotcraft-native-card-flip-reveal",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 10.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 300,
+        "min_bright_pixels": 67,
+        "method": "all encoded frames, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "card_region_audit": {
+        "validator_revision": 1,
+        "decoded_frames": 300,
+        "checked_card_frames": 744,
+        "min_bright_pixels": 13,
+        "method": "each fixed card interior outside its own anticipation/flip/settling window; not OCR or aesthetic certification"
+      },
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_bright_pixels": 60,
+        "method": "first encoded frame, 288x162 grayscale, dark-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "886fbccbce837cc61f95bf95a99c06a31074d73cbbb945405b32934f938c4297",
+      "hybrid_check_sha256": "d028700de932b846adb8b045ede29033a1a882ff4d0297e11cea61b0b8792d53",
+      "poster": "/creative-previews/shotcraft-native-card-flip-reveal.png",
+      "preview_video": "/creative-previews/shotcraft-native-card-flip-reveal.mp4",
+      "poster_sha256": "5b8f7481652860eb555a36a9b5e25b0876f63b193cc26e1022c27461f10b2f0f",
+      "video_sha256": "ffb01ff60f9ad04bf8904900b132e2ac50ba28e57932e1800aaa12e417f83698",
+      "parameters": {
+        "$defs": {
+          "FlipCardContent": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "maxLength": 20,
+                "minLength": 1,
+                "title": "Name",
+                "type": "string"
+              },
+              "description": {
+                "maxLength": 48,
+                "minLength": 1,
+                "title": "Description",
+                "type": "string"
+              },
+              "front_lines": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "title": "Front Lines",
+                "type": "array"
+              },
+              "before": {
+                "maximum": 999.99,
+                "minimum": 0,
+                "title": "Before",
+                "type": "number"
+              },
+              "after": {
+                "maximum": 999.99,
+                "minimum": 0,
+                "title": "After",
+                "type": "number"
+              },
+              "unit": {
+                "maxLength": 8,
+                "minLength": 1,
+                "title": "Unit",
+                "type": "string"
+              },
+              "result_label": {
+                "maxLength": 32,
+                "minLength": 1,
+                "title": "Result Label",
+                "type": "string"
+              },
+              "evidence": {
+                "maxLength": 160,
+                "minLength": 1,
+                "title": "Evidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "description",
+              "front_lines",
+              "before",
+              "after",
+              "unit",
+              "result_label",
+              "evidence"
+            ],
+            "title": "FlipCardContent",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:card-flip-reveal",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "kicker": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Kicker",
+            "type": "string"
+          },
+          "front_label": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Front Label",
+            "type": "string"
+          },
+          "before_label": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Before Label",
+            "type": "string"
+          },
+          "after_label": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "After Label",
+            "type": "string"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/$defs/FlipCardContent"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Cards",
+            "type": "array"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "kicker",
+          "front_label",
+          "before_label",
+          "after_label",
+          "cards"
+        ],
+        "title": "CardFlipNative",
+        "type": "object"
+      },
+      "use": "سه کارت ویژگی با چرخش سه‌بعدی و نتیجهٔ عددی. اعداد این نمونه مصنوعی‌اند؛ استفادهٔ واقعی نیازمند داده و مرجع معتبر است. متن با فونت محلی سنجیده می‌شود؛ فعلاً فقط افقی. نمونه بی‌صداست."
+    },
+    "shotcraft:before-after-slider-scrub": {
+      "id": "shotcraft:before-after-slider-scrub",
+      "name": "shotcraft-native-before-after-slider-scrub",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_dark_pixels": 5380,
+        "method": "all encoded frames, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "input_sha256": [
+        "0d3ba527566871e7ea1cf05998a9d0249818cefee5ec09505523f185f948f711",
+        "0819baf414ee2c56b4ac98fe99b55bffdcdd13e31ed9177377a0747d2054d3a6"
+      ],
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_dark_pixels": 5382,
+        "method": "first encoded frame, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "8e6d50a4706083a7a156f9e9714928418cb0b8791dcc7131085692cc64f69354",
+      "hybrid_check_sha256": "33902e37ee4c01e080071edfa5000da5beaee75f221f3d74167f3504dec6b8b6",
+      "poster": "/creative-previews/shotcraft-native-before-after-slider-scrub.png",
+      "preview_video": "/creative-previews/shotcraft-native-before-after-slider-scrub.mp4",
+      "poster_sha256": "593cd224eba74ce8c2efb7bb9bab40c0571565bbf34e2693790f21c1f778ca1b",
+      "video_sha256": "e21451b83542a3288b163f92e536922bbbd6858b744adbf8c7a71227b12fc11d",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:before-after-slider-scrub",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "before_label": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Before Label",
+            "type": "string"
+          },
+          "after_label": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "After Label",
+            "type": "string"
+          },
+          "before_asset": {
+            "pattern": "^assets/compare-[0-9a-f]{64}\\.png$",
+            "title": "Before Asset",
+            "type": "string"
+          },
+          "after_asset": {
+            "pattern": "^assets/compare-[0-9a-f]{64}\\.png$",
+            "title": "After Asset",
+            "type": "string"
+          },
+          "comparison_basis": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Comparison Basis",
+            "type": "string"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "before_label",
+          "after_label",
+          "before_asset",
+          "after_asset",
+          "comparison_basis"
+        ],
+        "title": "BeforeAfterNative",
+        "type": "object"
+      },
+      "use": "مقایسهٔ دو تصویر واقعیِ ارائه‌شده با اسلایدر کد اصلی. دو تصویر این نمونه هندسی و مصنوعی‌اند؛ هیچ ادعای بهبود یا تخریب ساختگی تصویر اول وجود ندارد. تصاویر کامل حفظ می‌شوند؛ فعلاً فقط افقی و بی‌صدا."
+    },
+    "shotcraft:card-stack": {
+      "id": "shotcraft:card-stack",
+      "name": "shotcraft-native-card-stack",
+      "status": "native-component-checked",
+      "format": "horizontal",
+      "demonstration_only": true,
+      "production_template_ready": true,
+      "source_revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+      "encoded_output_verified": true,
+      "hybrid_browser_checked": true,
+      "media": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 6.0,
+        "codec": "h264",
+        "max_keyframe_interval": 1.0
+      },
+      "frame_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 180,
+        "min_dark_pixels": 8,
+        "method": "all encoded frames, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "input_sha256": [
+        "488201b70cbc174cdcf1fa92d7d1850c27430edebfa56e307c7e5beb86005c70",
+        "69f649a7d4a280cf8c2d1dd9e1ae4b133298433dcc934c76fc41e42718d394ba",
+        "658947a655d1ca7fddb0d9d325ed2b023f122bbf6bcfde8da281b715b43311f0",
+        "a77fa533204271b0cd8c8033361b9488c06121f3b64c2ba5d480dd48b0a30790",
+        "5ad86acccf4c1741ecea4f9d876f7d79654d910b32031c619121befb8f7ffe89",
+        "d5ea2c4d604e17b47849eacdcc554b8fa1cad74f228f6cbf06dc1da852e7252e",
+        "4a22eb73530bb09016832899b980d9dd0ed0a044a031f883d729290b37f309cc",
+        "c670aa680f55a979d1e3668c05d792e63f14f566e649e3aa748f00d4fc74a586",
+        "0d69275031b2b75b4a850fef7d192ae079bf59b284636c5f6a8b504f4b91093c"
+      ],
+      "hybrid_opening_audit": {
+        "validator_revision": 2,
+        "minimum_foreground_pixels": 1,
+        "decoded_frames": 1,
+        "min_dark_pixels": 7,
+        "method": "first encoded frame, 288x162 grayscale, light-fixture foreground gate; not aesthetic certification"
+      },
+      "source_adapter_sha256": "e9012a238859c19a76ae2474f3edfe82657e83608d5d7932b67675730a8ff664",
+      "hybrid_artifact_sha256": "b230d00dc701c39e030aeae4bb20d697be0183bab86a95b4b9c7065a968fabfc",
+      "hybrid_check_sha256": "9fae99a3e4dbbe9c83464974f09fa53f1d600593d0ce658af99d0e474097f0ef",
+      "poster": "/creative-previews/shotcraft-native-card-stack.png",
+      "preview_video": "/creative-previews/shotcraft-native-card-stack.mp4",
+      "poster_sha256": "7dce875fa3350b8340b0ee6cb4f72cbdad6e13b7b25fb87c30a3faf32f38ca5c",
+      "video_sha256": "d0b7a8207b41a3d12e275b6ed6ce83108301686d83a425440e89c17bca553afb",
+      "parameters": {
+        "$defs": {
+          "StackCard": {
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "maxLength": 12,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "meta": {
+                "maxLength": 16,
+                "minLength": 1,
+                "title": "Meta",
+                "type": "string"
+              },
+              "asset": {
+                "pattern": "^assets/compare-[0-9a-f]{64}\\.png$",
+                "title": "Asset",
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "meta",
+              "asset"
+            ],
+            "title": "StackCard",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "shotcraft:card-stack",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "kicker": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Kicker",
+            "type": "string"
+          },
+          "subtitle": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/$defs/StackCard"
+            },
+            "maxItems": 9,
+            "minItems": 9,
+            "title": "Cards",
+            "type": "array"
+          },
+          "locale": {
+            "default": "fa-IR",
+            "enum": [
+              "fa-IR",
+              "en-US"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "caption",
+          "kicker",
+          "subtitle",
+          "cards"
+        ],
+        "title": "CardStackNative",
+        "type": "object"
+      },
+      "use": "نه تصویر واقعیِ ارائه‌شده، ورود پشته‌ای و بازشدن بادبزنی با کد اصلی. کارت پنجم برجسته می‌شود. این نمونه فقط تصاویر هندسی مصنوعی دارد؛ جلد و آمار ساختگی تولید نمی‌شود. چیدمان برای نمای کلی است، نه خواندن هم‌زمان نه کارت. فعلاً افقی و بی‌صدا."
+    }
+  }
+}

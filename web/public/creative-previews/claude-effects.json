@@ -1,0 +1,873 @@
+{
+  "schema_version": 1,
+  "items": {
+    "claude-effects:orbit": {
+      "id": "claude-effects:orbit",
+      "name": "claude-orbit",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "قاب‌های ویدیو مثل مدار دور سرت می‌چرخند؛ پایین جلوی تو و بالا پشت سرت.",
+      "use": "نمایش چند نمونه یا ویدیو دور گوینده",
+      "parameters": [
+        {
+          "key": "count",
+          "label": "تعداد قاب",
+          "type": "number",
+          "min": 3,
+          "max": 10,
+          "default": 6,
+          "step": 1
+        },
+        {
+          "key": "speed",
+          "label": "سرعت چرخش",
+          "type": "number",
+          "min": 0.5,
+          "max": 4,
+          "default": 1.9,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-orbit.png",
+      "poster_sha256": "365b962c7db2569f5cd50223fb1cb15d1565c668c465e783849fb8b10bdf4e9f"
+    },
+    "claude-effects:noise": {
+      "id": "claude-effects:noise",
+      "name": "claude-noise",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "قاب‌های ریل یکی‌یکی پشت سرت جمع می‌شوند.",
+      "use": "پر شدن تدریجی نمونه‌ها یا ریل‌ها",
+      "parameters": [
+        {
+          "key": "size",
+          "label": "اندازه قاب‌ها",
+          "type": "number",
+          "min": 0.2,
+          "max": 0.5,
+          "default": 0.34,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-noise.png",
+      "poster_sha256": "8720eed45e44ad68c9e6de265efbc00d15a93acab687d92b8a6915da97f6f848"
+    },
+    "claude-effects:locked-on": {
+      "id": "claude-effects:locked-on",
+      "name": "claude-locked-on",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "چهار گوشه روی صورتت قفل می‌شود و دوربین دنبالت می‌آید.",
+      "use": "تمرکز روی گوینده در لحظه‌ی مهم",
+      "parameters": [
+        {
+          "key": "zoom",
+          "label": "بزرگ‌نمایی",
+          "type": "number",
+          "min": 1.0,
+          "max": 1.8,
+          "default": 1.35,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-locked-on.png",
+      "poster_sha256": "9ffce309fc970d3e7a44e578afa5bc1ba6340725a561e4fb91283d59ec45fe42"
+    },
+    "claude-effects:lean-in": {
+      "id": "claude-effects:lean-in",
+      "name": "claude-lean-in",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک نزدیک‌شدن سریع روی صورت، مناسب یک کلمهٔ مهم.",
+      "use": "تأکید روی یک کلمه‌ی کلیدی",
+      "parameters": [
+        {
+          "key": "zoom",
+          "label": "بزرگ‌نمایی",
+          "type": "number",
+          "min": 1.1,
+          "max": 2.0,
+          "default": 1.45,
+          "step": 0.05
+        },
+        {
+          "key": "speed",
+          "label": "مدت ورود (ثانیه)",
+          "type": "number",
+          "min": 0.08,
+          "max": 0.6,
+          "default": 0.18,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-lean-in.png",
+      "poster_sha256": "c1369d7f0949ed1d082dd11c301506d45098b5d4b702d7593a86d5652a7fa0ce"
+    },
+    "claude-effects:spotlight": {
+      "id": "claude-effects:spotlight",
+      "name": "claude-spotlight",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "نور محیط خاموش می‌شود و فقط تو روشن می‌مانی؛ می‌توانی یک کلمهٔ درخشان پشت سرت بگذاری.",
+      "use": "لحظه‌ی جدی یا افشاگری",
+      "parameters": [
+        {
+          "key": "push",
+          "label": "نزدیک‌شدن",
+          "type": "number",
+          "min": 1.0,
+          "max": 1.4,
+          "default": 1.1,
+          "step": 0.05
+        },
+        {
+          "key": "color",
+          "label": "رنگ کلمه",
+          "type": "color",
+          "default": "#FFB7A5"
+        }
+      ],
+      "poster": "/creative-previews/claude-spotlight.png",
+      "poster_sha256": "603356fcaed7eae894787eac77e34b5c23499e0ae25d1326ae40ba528ad31ddd"
+    },
+    "claude-effects:moody": {
+      "id": "claude-effects:moody",
+      "name": "claude-moody",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک حال‌وهوای رنگی روی تصویر.",
+      "use": "حال‌وهوای تیره و سینمایی",
+      "parameters": [
+        {
+          "key": "grade",
+          "label": "حالت",
+          "type": "choice",
+          "choices": [
+            "moody",
+            "bw",
+            "warm",
+            "cool",
+            "pop"
+          ],
+          "default": "moody"
+        }
+      ],
+      "poster": "/creative-previews/claude-moody.png",
+      "poster_sha256": "71295c97ae9d5ee81a7e505f5e4187d8a7bb6f7fc6d12b4e3c349caccec6f910"
+    },
+    "claude-effects:swipe": {
+      "id": "claude-effects:swipe",
+      "name": "claude-swipe",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک لغزندهٔ قبل/بعد روی تصویر می‌کشد.",
+      "use": "قبل و بعد",
+      "parameters": [
+        {
+          "key": "grade",
+          "label": "ظاهر «بعد»",
+          "type": "choice",
+          "choices": [
+            "moody",
+            "bw",
+            "warm",
+            "cool",
+            "pop"
+          ],
+          "default": "moody"
+        }
+      ],
+      "poster": "/creative-previews/claude-swipe.png",
+      "poster_sha256": "451f1cda06bf834309c17ae4690b6cc00e794f549e42522c79f4abe5f2ff347d"
+    },
+    "claude-effects:rabbit-hole": {
+      "id": "claude-effects:rabbit-hole",
+      "name": "claude-rabbit-hole",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "اتاق پشت سرت مثل تونل می‌چرخد و عمیق می‌شود.",
+      "use": "ورود به یک موضوع عمیق",
+      "parameters": [
+        {
+          "key": "ratio",
+          "label": "عمق",
+          "type": "number",
+          "min": 0.4,
+          "max": 0.8,
+          "default": 0.62,
+          "step": 0.05
+        },
+        {
+          "key": "speed",
+          "label": "سرعت",
+          "type": "number",
+          "min": 0.3,
+          "max": 2,
+          "default": 0.8,
+          "step": 0.05
+        },
+        {
+          "key": "spin",
+          "label": "چرخش",
+          "type": "number",
+          "min": 0,
+          "max": 25,
+          "default": 10,
+          "step": 1
+        }
+      ],
+      "poster": "/creative-previews/claude-rabbit-hole.png",
+      "poster_sha256": "e228fe62106081372b9b7fa6f8fca74e47045978977e393c52f6a29c1f928bb1"
+    },
+    "claude-effects:dot-reveal": {
+      "id": "claude-effects:dot-reveal",
+      "name": "claude-dot-reveal",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "تصویر از نقطه‌های درخشان ساخته می‌شود و بعد واضح می‌شود.",
+      "use": "شروع یا معرفی با حس تکنولوژی",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ نقطه‌ها",
+          "type": "color",
+          "default": "#FF8050"
+        },
+        {
+          "key": "cell",
+          "label": "اندازه نقطه‌ها",
+          "type": "number",
+          "min": 0.01,
+          "max": 0.04,
+          "default": 0.017,
+          "step": 0.001
+        }
+      ],
+      "poster": "/creative-previews/claude-dot-reveal.png",
+      "poster_sha256": "455ac5bcb34d26111f56743afbb41508860649e43f4e6fc5777479b0baffe16b"
+    },
+    "claude-effects:slow-push": {
+      "id": "claude-effects:slow-push",
+      "name": "claude-slow-push",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "آهسته به صورتت نزدیک می‌شود و اتاق کم‌کم محو می‌شود.",
+      "use": "لحظه‌ی احساسی یا نتیجه‌گیری",
+      "parameters": [
+        {
+          "key": "zoom",
+          "label": "بزرگ‌نمایی",
+          "type": "number",
+          "min": 1.1,
+          "max": 2.0,
+          "default": 1.6,
+          "step": 0.05
+        },
+        {
+          "key": "blur",
+          "label": "محوشدگی اتاق",
+          "type": "number",
+          "min": 0,
+          "max": 0.02,
+          "default": 0.006,
+          "step": 0.001
+        }
+      ],
+      "poster": "/creative-previews/claude-slow-push.png",
+      "poster_sha256": "f1444548f65f02f0995bb80ea13a3ee1e0b2f776704794bd5935cd8525a18ed3"
+    },
+    "claude-effects:lineup": {
+      "id": "claude-effects:lineup",
+      "name": "claude-lineup",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "کاشی‌های شماره‌دار مثل بادبزن بالای سرت باز می‌شوند.",
+      "use": "فهرست چندمرحله‌ای یا چند نکته‌ی پشت‌سرهم",
+      "parameters": [],
+      "poster": "/creative-previews/claude-lineup.png",
+      "poster_sha256": "dab0d3c798c4f611402403cf3da4f5f0082a55cf43e796f928775fdb64a0318c"
+    },
+    "claude-effects:backdrop-word": {
+      "id": "claude-effects:backdrop-word",
+      "name": "claude-backdrop-word",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک کلمه‌ی بزرگ پشت سرت می‌افتد و تو جلوی آن می‌مانی.",
+      "use": "یک کلمه‌ی کلیدی یا عنوان بحث",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ کلمه",
+          "type": "color",
+          "default": "#FFFFFF"
+        }
+      ],
+      "poster": "/creative-previews/claude-backdrop-word.png",
+      "poster_sha256": "1282b6066f534bc0130d0cf31bb535f1d19847a8050f6b40feeabcf37a4c967d"
+    },
+    "claude-effects:the-bill": {
+      "id": "claude-effects:the-bill",
+      "name": "claude-the-bill",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "هر مورد مثل یک فاکتور روی دیوار بالای سرت چاپ می‌شود.",
+      "use": "مرور سفارش، مراحل یا هزینه‌ها",
+      "parameters": [],
+      "poster": "/creative-previews/claude-the-bill.png",
+      "poster_sha256": "6fe96888eb8ffae399d10213dcffe78bf2cd86869b4a5d20298698cf06534b18"
+    },
+    "claude-effects:todo": {
+      "id": "claude-effects:todo",
+      "name": "claude-todo",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "کارت چک‌لیست کنار سر که با حرف زدنت تیک می‌خورد.",
+      "use": "مراحل یک روش یا کارهای لازم",
+      "parameters": [],
+      "poster": "/creative-previews/claude-todo.png",
+      "poster_sha256": "a98102aa82601f2f0a04c8418ce68b7be07e05f90e46565fb6153eee1dc1019b"
+    },
+    "claude-effects:tap": {
+      "id": "claude-effects:tap",
+      "name": "claude-tap",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "دکمه‌ی Follow ظاهر می‌شود و به Following تبدیل می‌شود.",
+      "use": "دعوت به دنبال‌کردن، معمولاً آخر ویدیو",
+      "parameters": [],
+      "poster": "/creative-previews/claude-tap.png",
+      "poster_sha256": "e94e0c07b898660dfc16ba4f280ce23f617dfde0fb31999c9348e8fee76bfa41"
+    },
+    "claude-effects:pause-point": {
+      "id": "claude-effects:pause-point",
+      "name": "claude-pause-point",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "تصویر می‌ایستد و یک فلش دست‌کشیده به نقطه‌ای اشاره می‌کند.",
+      "use": "جلب توجه به یک جزئیات",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ فلش",
+          "type": "color",
+          "default": "#FFD60A"
+        }
+      ],
+      "poster": "/creative-previews/claude-pause-point.png",
+      "poster_sha256": "957815dc58079c0518aab4f3b8c5269ea77f5a2c1323c846699bdee00d4cf054"
+    },
+    "claude-effects:uninstall": {
+      "id": "claude-effects:uninstall",
+      "name": "claude-uninstall",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک نوار پیشرفت گلیچی و بعد خرد‌شدن تصویر.",
+      "use": "حذف یک عادت یا باور غلط",
+      "parameters": [],
+      "poster": "/creative-previews/claude-uninstall.png",
+      "poster_sha256": "c80cfbdff6de4c46ee06265fdfc8a00256550226b8f4f2002e058c73d3beea1b"
+    },
+    "claude-effects:reel-frame": {
+      "id": "claude-effects:reel-frame",
+      "name": "claude-reel-frame",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "ویدیو در قاب یک ریلز اینستاگرام کوچک می‌شود.",
+      "use": "حس شبکه‌ی اجتماعی؛ معرفی یا جمع‌بندی",
+      "parameters": [],
+      "poster": "/creative-previews/claude-reel-frame.png",
+      "poster_sha256": "c6e94704d0ad2bb10b8d1c53fdafdd18885c37e3637ef98794b643caeb9ac5e4"
+    },
+    "claude-effects:shortcut-rain": {
+      "id": "claude-effects:shortcut-rain",
+      "name": "claude-shortcut-rain",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "کلیدهای کیبورد پشت سرت می‌بارند.",
+      "use": "ابزار، نرم‌افزار و میان‌بر",
+      "parameters": [
+        {
+          "key": "count",
+          "label": "تعداد",
+          "type": "number",
+          "min": 10,
+          "max": 40,
+          "default": 26,
+          "step": 1
+        }
+      ],
+      "poster": "/creative-previews/claude-shortcut-rain.png",
+      "poster_sha256": "9a46218715b6d3bc7a5f62605722f2a3818949b93fe31644d913c22675437f0f"
+    },
+    "claude-effects:reject-stamp": {
+      "id": "claude-effects:reject-stamp",
+      "name": "claude-reject-stamp",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک مهر بزرگ قرمز روی تصویر می‌خورد.",
+      "use": "رد یک باور یا اشتباه رایج",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ مهر",
+          "type": "color",
+          "default": "#E02020"
+        }
+      ],
+      "poster": "/creative-previews/claude-reject-stamp.png",
+      "poster_sha256": "628fa6afb55a2d2e492fccc00ecbd611c186f79eb6151187d3a3ac6edc496b98"
+    },
+    "claude-effects:countdown-flip": {
+      "id": "claude-effects:countdown-flip",
+      "name": "claude-countdown-flip",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "ساعت ورق‌خورِ ۳، ۲، ۱ بالای سرت.",
+      "use": "شروع یک بخش مهم یا هیجان",
+      "parameters": [
+        {
+          "key": "from",
+          "label": "شروع از",
+          "type": "number",
+          "min": 2,
+          "max": 9,
+          "default": 3,
+          "step": 1
+        }
+      ],
+      "poster": "/creative-previews/claude-countdown-flip.png",
+      "poster_sha256": "287cd2d9bdffe522d749d8f28536653c66a8ef6ba21577417dc5f1fe11faa05c"
+    },
+    "claude-effects:cover-star": {
+      "id": "claude-effects:cover-star",
+      "name": "claude-cover-star",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "تو کاور مجله می‌شوی و عنوان پشت سرت است.",
+      "use": "معرفی یک موضوع بزرگ یا دستاورد",
+      "parameters": [],
+      "poster": "/creative-previews/claude-cover-star.png",
+      "poster_sha256": "dcea13f7db63239e8bd597442990e08f09dfeccd38731037b51114e530ac03b6"
+    },
+    "claude-effects:scribble": {
+      "id": "claude-effects:scribble",
+      "name": "claude-scribble",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "دودل‌های مارکری دور سرت کشیده می‌شوند.",
+      "use": "حس خودمانی و خلاق",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ",
+          "type": "color",
+          "default": "#FFD60A"
+        }
+      ],
+      "poster": "/creative-previews/claude-scribble.png",
+      "poster_sha256": "b0091f84cb70d1c16d0df4c53c34f57946f8da3a8d2218593dd88f2ffe426ee8"
+    },
+    "claude-effects:red-collage": {
+      "id": "claude-effects:red-collage",
+      "name": "claude-red-collage",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "تصویر سیاه‌وسفید با کلمه‌ی قرمز بزرگ و تایپ متحرک.",
+      "use": "ادعای قوی و پرانرژی",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ",
+          "type": "color",
+          "default": "#E02020"
+        }
+      ],
+      "poster": "/creative-previews/claude-red-collage.png",
+      "poster_sha256": "95f58695f32bde4a9f822ee6a07a16737f37eac2af1188c201a45e7ff1342b4c"
+    },
+    "claude-effects:split-headline": {
+      "id": "claude-effects:split-headline",
+      "name": "claude-split-headline",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک کارت تیتر از بالا می‌لغزد و تو را پایین قاب می‌گذارد.",
+      "use": "گفتن موضوع یا وعده‌ی ویدیو",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ کلمه‌ی ویژه",
+          "type": "color",
+          "default": "#FFD60A"
+        }
+      ],
+      "poster": "/creative-previews/claude-split-headline.png",
+      "poster_sha256": "a8211a687ca976d778b65dcb0a7bdb2d31e756794d9e73a6be184ca46ebfdb8a"
+    },
+    "claude-effects:pastel-word": {
+      "id": "claude-effects:pastel-word",
+      "name": "claude-pastel-word",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "پس‌زمینه‌ی ملایم بنفش، کلمه‌ی بزرگ پشت سر و کارت پروفایل.",
+      "use": "معرفی خودت یا موضوع به‌صورت نرم",
+      "parameters": [],
+      "poster": "/creative-previews/claude-pastel-word.png",
+      "poster_sha256": "447c1c33db6ec63989ad2185db48c007a820f2e97b8116d5b54bb0dfec07b51f"
+    },
+    "claude-effects:check-pills": {
+      "id": "claude-effects:check-pills",
+      "name": "claude-check-pills",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "اتاق شبیه کاغذ شطرنجی می‌شود و قرص‌های آبی یکی‌یکی تیک می‌خورند.",
+      "use": "فهرست کوتاه موارد قابل‌انتخاب",
+      "parameters": [],
+      "poster": "/creative-previews/claude-check-pills.png",
+      "poster_sha256": "48e27905e4380a6dd4369b497bb2dd84697e558e7412663051b83ca76c419102"
+    },
+    "claude-effects:headline-box": {
+      "id": "claude-effects:headline-box",
+      "name": "claude-headline-box",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "نزدیک‌شدن سریع با یک تیتر دوخطی و خط دوم داخل جعبه‌ی سفید.",
+      "use": "عنوان بحث در لحظه‌ی شروع",
+      "parameters": [
+        {
+          "key": "zoom",
+          "label": "بزرگ‌نمایی",
+          "type": "number",
+          "min": 1.0,
+          "max": 1.6,
+          "default": 1.2,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-headline-box.png",
+      "poster_sha256": "01b295711fc7e759eb2034d44738038130c7ecadc1a2c176cc741d731cb63ab4"
+    },
+    "claude-effects:profile-wall": {
+      "id": "claude-effects:profile-wall",
+      "name": "claude-profile-wall",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "شبکه‌ی ویدیوهایت پشت سر پر می‌شود و شمارنده بالا می‌رود.",
+      "use": "اثبات اجتماعی و عدد بازدید",
+      "parameters": [
+        {
+          "key": "count",
+          "label": "عدد نهایی",
+          "type": "number",
+          "min": 1000,
+          "max": 9000000,
+          "default": 197000,
+          "step": 1000
+        }
+      ],
+      "poster": "/creative-previews/claude-profile-wall.png",
+      "poster_sha256": "85cd2e84760563773bac85ffe2dd6db46aa235eb66d3cc471a4a16410cf94f16"
+    },
+    "claude-effects:tier-list": {
+      "id": "claude-effects:tier-list",
+      "name": "claude-tier-list",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک جدول رتبه جلوی تو می‌افتد و یک مورد به بهترین ردیف می‌رود.",
+      "use": "مقایسه و انتخاب بهترین گزینه",
+      "parameters": [],
+      "poster": "/creative-previews/claude-tier-list.png",
+      "poster_sha256": "61407b305299ebf120fc0d3d49e6fcf904bea3bf976cf741e22d81aaf1f038f6"
+    },
+    "claude-effects:broll-split": {
+      "id": "claude-effects:broll-split",
+      "name": "claude-broll-split",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "صفحه دو نیم می‌شود؛ بالا تصویر دیگر با برچسب، پایین تو.",
+      "use": "قبل/بعد، عدد، صرفه‌جویی زمان یا هزینه",
+      "parameters": [],
+      "poster": "/creative-previews/claude-broll-split.png",
+      "poster_sha256": "219cd9ad47768484a5d5ed8786012bbe201892bad662567ea484d4312d23aed1"
+    },
+    "claude-effects:phone-fan": {
+      "id": "claude-effects:phone-fan",
+      "name": "claude-phone-fan",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "ریلزهایت مثل چند گوشی بادبزنی جلوی تو باز می‌شوند.",
+      "use": "نمونه‌کار یا چندین مثال",
+      "parameters": [],
+      "poster": "/creative-previews/claude-phone-fan.png",
+      "poster_sha256": "5ba486ddc05a029be6882a4c6d412eae3b2e2d6a33adff1543d5241e24d2e213"
+    },
+    "claude-effects:headline-wall": {
+      "id": "claude-effects:headline-wall",
+      "name": "claude-headline-wall",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "تیترهای ویدیوهایت پشت سر جمع می‌شوند و مجموع بازدید جلو می‌آید.",
+      "use": "اعتبار و سابقه",
+      "parameters": [],
+      "poster": "/creative-previews/claude-headline-wall.png",
+      "poster_sha256": "2a1f62d47199432287c4a1d569e23efcb64f64350bf79e20ebe024dbb9ae3320"
+    },
+    "claude-effects:checklist": {
+      "id": "claude-effects:checklist",
+      "name": "claude-checklist",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "یک لیست کار زیر چانه ساخته می‌شود و هر مرحله چرخیده تیک می‌خورد.",
+      "use": "فرآیند چندمرحله‌ای که انجام می‌شود",
+      "parameters": [],
+      "poster": "/creative-previews/claude-checklist.png",
+      "poster_sha256": "0ddd1c41415dcbc2e6fe107f81292227effafa000ba5a803b45b593981b99639"
+    },
+    "claude-effects:glass-widgets": {
+      "id": "claude-effects:glass-widgets",
+      "name": "claude-glass-widgets",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "ویجت‌های شیشه‌ای موبایل دور سرت شناور می‌شوند.",
+      "use": "حس مدرن و اپلیکیشنی",
+      "parameters": [],
+      "poster": "/creative-previews/claude-glass-widgets.png",
+      "poster_sha256": "ad36da0ded1fe69a2a459940d0b1fab0b83ce0d05ca17198249fe5c1576d2eee"
+    },
+    "claude-effects:timeline": {
+      "id": "claude-effects:timeline",
+      "name": "claude-timeline",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "گرید قرمز سینمایی با تایم‌لاین، REC و پلی‌هد درخشان.",
+      "use": "نشان‌دادن پشت‌صحنه‌ی ادیت",
+      "parameters": [],
+      "poster": "/creative-previews/claude-timeline.png",
+      "poster_sha256": "f9788993fa55f1d1953a07362b7bfaff60ecf6e7506fe6d42d3e111bc98ca062"
+    },
+    "claude-effects:comment-box": {
+      "id": "claude-effects:comment-box",
+      "name": "claude-comment-box",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "صفحه‌ی کامنت اینستاگرام بالای سرت کلمه را تایپ و ارسال می‌کند.",
+      "use": "دعوت به کامنت‌گذاشتن",
+      "parameters": [],
+      "poster": "/creative-previews/claude-comment-box.png",
+      "poster_sha256": "4176ed3685ef579e4deb00fd31ba6475a81f5b7501c4633dabba4ba994140705"
+    },
+    "claude-effects:liquid-glass-graph": {
+      "id": "claude-effects:liquid-glass-graph",
+      "name": "claude-liquid-glass-graph",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "کارت شیشه‌ای زیر چانه، نمودار بالا می‌رود و عدد شمرده می‌شود.",
+      "use": "رشد، درصد یا نتیجه‌ی عددی",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ نمودار",
+          "type": "color",
+          "default": "#30D158"
+        }
+      ],
+      "poster": "/creative-previews/claude-liquid-glass-graph.png",
+      "poster_sha256": "227537927a0304cfd5b445c3af2c098a0f82ac909f3bd79c5563c38d4e0d6740"
+    },
+    "claude-effects:carousel-spin": {
+      "id": "claude-effects:carousel-spin",
+      "name": "claude-carousel-spin",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "فریم‌های ویدیو دور تو مثل چرخ‌فلک سه‌بعدی می‌چرخند و می‌ایستند.",
+      "use": "تنوع، مجموعه یا نمونه‌های زیاد",
+      "parameters": [
+        {
+          "key": "turns",
+          "label": "تعداد دور",
+          "type": "number",
+          "min": 0.5,
+          "max": 3,
+          "default": 1.1,
+          "step": 0.05
+        },
+        {
+          "key": "size",
+          "label": "اندازه",
+          "type": "number",
+          "min": 0.2,
+          "max": 0.45,
+          "default": 0.3,
+          "step": 0.05
+        }
+      ],
+      "poster": "/creative-previews/claude-carousel-spin.png",
+      "poster_sha256": "f177738a4d9cfa068cdfffbaf85bd5c5a71a3547a5bcda261cb41f47c72a6909"
+    },
+    "claude-effects:match-cut": {
+      "id": "claude-effects:match-cut",
+      "name": "claude-match-cut",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "صفحه‌های خبر روی یک کلمه برش می‌خورند و پشت سر قفل می‌شوند.",
+      "use": "اشاره به خبر یا رویداد",
+      "parameters": [],
+      "poster": "/creative-previews/claude-match-cut.png",
+      "poster_sha256": "af6db79d13d724ca59a6fc8691240cc62c36133e3713533edae6048b76b5cb99"
+    },
+    "claude-effects:apple-toggles": {
+      "id": "claude-effects:apple-toggles",
+      "name": "claude-apple-toggles",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "کارت تنظیمات آیفون زیر چانه، سوییچ‌ها یکی‌یکی روشن می‌شوند.",
+      "use": "مزیت‌ها یا ویژگی‌های روشن‌شده",
+      "parameters": [],
+      "poster": "/creative-previews/claude-apple-toggles.png",
+      "poster_sha256": "a353cbea1940edf7ababf129eba06b98765350e1614fcf2801e3631fe780e5a5"
+    },
+    "claude-effects:led-sign": {
+      "id": "claude-effects:led-sign",
+      "name": "claude-led-sign",
+      "status": "synthetic-frame-checked",
+      "format": "vertical",
+      "demonstration_only": true,
+      "tracking_verified": false,
+      "fixture": "synthetic geometry and fixed matte",
+      "description": "نورها خاموش می‌شوند و یک تابلوی LED کلمه را پشت سرت تایپ می‌کند.",
+      "use": "شعار یا کلمه‌ی پایانی",
+      "parameters": [
+        {
+          "key": "color",
+          "label": "رنگ نور",
+          "type": "color",
+          "default": "#FF9230"
+        }
+      ],
+      "poster": "/creative-previews/claude-led-sign.png",
+      "poster_sha256": "0b529d411664bc0e6f17599b85efe6ace5401b120af9e950f43329c7bc868ae1"
+    }
+  }
+}

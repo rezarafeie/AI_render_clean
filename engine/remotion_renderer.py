@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def render(config: dict, output: Path, *, job_dir: Path, on_progress=None) -> None:
+def render(config: dict, output: Path, *, job_dir: Path, on_progress=None, timeout: float | None = None) -> None:
     root = job_dir.resolve()
     config = json.loads(json.dumps(config))
     # The cinematic look is heavier to rasterise: it is opt-in per installation (REMOTION_LOOK=cinematic) until a render on that machine is measured.
@@ -37,7 +37,10 @@ def render(config: dict, output: Path, *, job_dir: Path, on_progress=None) -> No
         if not 1 <= scene["frames"] <= 900:
             raise ValueError("Scene duration is outside render limits")
         supporting = []
-        for item in scene.get("supporting_assets", [])[:3]:
+        stack = config.get('version')==3 and (scene.get('shotcraft') or {}).get('resource_id')=='shotcraft:card-stack'
+        if stack and len(scene.get('supporting_assets',[]))!=9:
+            raise ValueError('Native collection requires exactly nine owned images')
+        for item in scene.get("supporting_assets", [])[:9 if stack else 3]:
             path = (root / item).resolve()
             if not path.is_relative_to(root) or not path.is_file():
                 raise ValueError("Invalid owned supporting asset")
@@ -54,7 +57,14 @@ def render(config: dict, output: Path, *, job_dir: Path, on_progress=None) -> No
         if not music.is_file():
             raise ValueError("Music asset is missing")
         config["music"] = str(music.resolve())
-    config["font"] = str(ROOT / "presets/fonts/RAY-EXTRABLACK.TTF")
+    if config.get("version") == 3:
+        from creative.shotcraft_native import parse_spec
+        if len(config["scenes"]) != 1:
+            raise ValueError("Native Shotcraft requires one typed component")
+        parse_spec(config["scenes"][0].get("shotcraft"))
+        config["font"] = str(ROOT / "presets/fonts/Vazirmatn-Regular.ttf")
+    else:
+        config["font"] = str(ROOT / "presets/fonts/RAY-EXTRABLACK.TTF")
     config_path = output.with_suffix(".remotion.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, ensure_ascii=False))
@@ -67,7 +77,8 @@ def render(config: dict, output: Path, *, job_dir: Path, on_progress=None) -> No
                 os.killpg(process.pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
-    timer = threading.Timer(float(os.environ.get("REMOTION_TIMEOUT_S", "5400")), stop)       # a shared 4-core server needs 20-35 minutes for a 35 s reel
+    deadline = float(os.environ.get("REMOTION_TIMEOUT_S", "5400"))
+    timer = threading.Timer(min(deadline,timeout) if timeout is not None else deadline, stop)       # preserve the existing installation deadline unless a bounded component requests less
     timer.daemon = True
     timer.start()
     tail = deque(maxlen=30)

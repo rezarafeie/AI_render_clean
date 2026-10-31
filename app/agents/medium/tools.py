@@ -41,6 +41,7 @@ class Storyboard(Args):
 
 class MotionGraphic(Args):
     request: str = Field(min_length=3, max_length=12000)
+    attachment_ids: list[str] = Field(default_factory=list,max_length=9,description='Existing owned image attachment IDs to include, in user-specified order. Never invent IDs or paths.')
 
 
 class Project(Args):
@@ -152,7 +153,8 @@ def execute(record, step):
         conversation = run(repo.get_conversation(cid, user))
         original = shared._ENGINE_MARKER.sub("", record["data"]["request"]["text"], count=1).strip()
         brief = original if args.request.strip() == original else original + "\n\n" + args.request.strip()
-        shared._start_motion_graphic(cid, user, conversation, brief, [], None)
+        images=run(repo.get_attachments(args.attachment_ids,cid,user))
+        shared._start_motion_graphic(cid, user, conversation, brief, images, None)
         latest = run(repo.get_conversation(cid, user))
         motion_id = ((latest.get("state") or {}).get("motion") or {}).get("motion_id")
         if not motion_id:

@@ -1,0 +1,11 @@
+{
+  "revision": "5a2e98daade313c4f376120f38427eb19a108e8c",
+  "license": "Apache-2.0",
+  "sha256": {
+    "demos/_fixtures/Brand.tsx": "7c2e412276a860605737952143050f2a316dfc95a5bd6ad4c517ebf52ee5adf4",
+    "demos/_fixtures/Fixtures.tsx": "e35c3ca4acaa29f745d46661d6e65fee7159eae32a3481649811c9e09317ce87",
+    "demos/_fixtures/Look.tsx": "88b97d49a5489126eaaaff2269d02fd491ccbd7f13f3e1d6df764a592635ae28",
+    "demos/_fixtures/Motion.tsx": "961a9ce2401e38b5fe22fce7f44d84fc656d76aad0b178082e447feb01494421",
+    "demos/_fixtures/Polish.tsx": "21dfe2f36325c07ccaa1a619007e24a2b5b3d6a82030d3c1772de902551c2842"
+  }
+}

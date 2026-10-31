@@ -154,19 +154,24 @@ def test_snapshot_indexes_existing_sources_without_claiming_execution():
     from engine.motion_recipes import RECIPES
     summary = registry.registry_summary()
     from creative.shotcraft import catalog as shotcraft_catalog
-    assert summary["total"] == len(load_catalog()["items"]) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES) + len(shotcraft_catalog())
+    from engine.face_effects import CATALOG
+    from creative.native_motion import source_names
+    hf_names = {v["name"] for v in load_catalog()["items"]} | set(source_names())
+    assert summary["total"] == len(hf_names) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES) + len(shotcraft_catalog()) + len(CATALOG)
     rows = registry.search_resources(limit=100)["items"]
     assert len({r["id"] for r in rows}) == len(rows)
     assert all(r["render_time_ms"] is None and r["peak_memory_mb"] is None for r in rows)
-    assert all(not r["license"]["verified"] for r in rows)
+    assert all(not r["license"]["commercial_use_approved"] for r in rows)
+    assert all(not r["license"]["verified"] for r in rows if r["provider"] != "claude-video-effects")
 
 
 def test_only_real_hyperframes_adapters_are_connected():
     from engine.hyperframes.registry_runtime import SUPPORTED_REGISTRY_ADAPTERS
+    from creative.native_motion import SUPPORTED
     rows = registry.search_resources(engine="hyperframes", provider="hyperframes-official",
-                                     availability="existing-pipeline")["items"]
-    assert {r["legacy_id"] for r in rows} == SUPPORTED_REGISTRY_ADAPTERS
-    assert all(r["contexts"] == ["talking_2"] for r in rows)
+                                     availability="existing-pipeline", limit=100)["items"]
+    assert {r["legacy_id"] for r in rows} == SUPPORTED_REGISTRY_ADAPTERS | {r.split(":")[1] for r in SUPPORTED}
+    assert all(r["contexts"] == (["talking_2"] if r["legacy_id"] in SUPPORTED_REGISTRY_ADAPTERS else ["motion-graphic"]) for r in rows)
     assert registry.get_resource("hyperframes:data-chart")["availability"] == "catalog-only"
 
 

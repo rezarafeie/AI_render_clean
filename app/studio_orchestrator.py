@@ -984,7 +984,8 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
     if not sources.ok:
         return                                           # the person has been told why nothing could be read, and what to send instead
     state = conversation.get("state") or {}
-    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style, state.get("voice_id", ""), state.get("voice_style", ""))
+    image_args={'attachments':attachments} if any(item.get('kind')=='image' for item in attachments or []) else {}
+    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style, state.get("voice_id", ""), state.get("voice_style", ""),**image_args)
     run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "motion": {"motion_id": record["id"]}}))
     basis = " و ".join(part for part in ("سبک رفرنس" if sources.style else "", "محتوای صفحه" if sources.pages else "") if part)
     _assistant(conversation_id, user_key, "شروع کردم: اول طرح و صحنه‌ها را از روی درخواست" + (f" و {basis}" if basis else "")

@@ -75,3 +75,4 @@ vendor/
 # Isolated Hermes local preview (credentials and test data).
 /.local-hermes-test/
 /web/node_modules
+/remotion/node_modules

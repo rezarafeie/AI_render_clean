@@ -1,0 +1,15 @@
+{
+  "repository":"https://github.com/lemomo-ai/lemo-opuscar",
+  "revision":"f17136060781a0068a7951245a3aa7835a7230de",
+  "code_license":"MIT",
+  "font_license":"SIL-OFL-1.1; notices alongside font files",
+  "font_source":"https://github.com/google/fonts; frozen local bytes; UnifrakturMaguntia-Book.ttf stored under upstream CSS filename",
+  "sha256":{
+    "swiss-motion/film.js":"3207a8dd264de6b1c1f6000e804d0edefcdd8e37f9080e4330614faf017b1994",
+    "swiss-motion/ease.js":"81fc5d6aa1d69e6fb2e900143b9c209929c1bc371e43a4481098ad1f16767d05",
+    "swiss-motion/score.json":"52874af6f42ce4e19b4471e496c6b0c3cc6a64da8bc3e8de3c280b9235fe3afe",
+    "swiss-motion/fonts/Archivo-VF.ttf":"0e094a7d3c7c4c25cf1310c4b30014f1dae9332220b1c2c88f4fa996f0b05053",
+    "swiss-motion/fonts/DMSerifDisplay-Regular.ttf":"8cc3643535edf039aa5d95440a8542735e9197e4f4b8d9303e980fefbf5ab616",
+    "swiss-motion/fonts/UnifrakturMaguntia-Regular.ttf":"d64afc0547059dd2e4a78da48bda0aba0a9901be58c7f8c201a8b2b6b4492cc8"
+  }
+}
