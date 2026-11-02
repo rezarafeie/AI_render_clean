@@ -73,10 +73,11 @@ export function Thread({ items, conversation, projects, localFiles, thinking, co
   thinking?: string; compactRender?: boolean; retryHref?: string; onOpenPreview: (projectId: string) => void; onEditAgain: (projectId: string) => void;
   onChoice: (choice: string) => void; onRetryMessage: () => void; sourceUrl?: string; linkTitles?: Record<string, string>; events?: StudioEvent[];
 }) {
+  const lastMotion = [...items].reverse().find(item => item.kind === "motion");
   return <ol className="thread" aria-label="Conversation">
     {items.map(item => {
       if (item.kind === "message") return <MessageRow key={item.id} item={item} conversationId={conversation?.id} localFiles={localFiles} linkTitles={linkTitles} onRetryMessage={onRetryMessage}/>;
-      if (item.kind === "motion") return <li key={item.id} className="thread-aux"><MotionGraphicCard motionId={item.motionId} events={events}/></li>;
+      if (item.kind === "motion") return <li key={item.id} className="thread-aux"><MotionGraphicCard motionId={item.motionId} events={events} version={item.version} latest={item === lastMotion}/></li>;
       if (item.kind === "discovery") return <li key={item.id} className="thread-aux thread-wide"><DiscoveryPanel analysisId={item.analysisId} events={events}/></li>;
       if (item.kind === "activity") return <li key={item.id} className="thread-aux"><ActivityBlock steps={item.steps} live={item.live} retryHref={retryHref}/></li>;
       if (item.kind === "render") {

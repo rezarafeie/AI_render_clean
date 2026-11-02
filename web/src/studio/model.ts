@@ -30,7 +30,7 @@ export type TimelineItem =
   | { kind: "render"; id: string; projectId: string; startedAt: number }
   | { kind: "question"; id: string; question: string; choices: QuestionChoice[]; seq: number; style: boolean }
   | { kind: "discovery"; id: string; analysisId: string }
-  | { kind: "motion"; id: string; motionId: string };
+  | { kind: "motion"; id: string; motionId: string; run?: number; version?: number };
 
 export interface QuestionChoice { label: string; /** What to send as the user's answer. */ value: string }
 /** Backend choices are either plain strings or { id, label } objects (talking styles). */
@@ -191,6 +191,8 @@ export interface TimelineInput {
 
 export function buildTimeline({ messages, events, projects, pending, processing, discoveryId, motionId }: TimelineInput): TimelineItem[] {
   const savedIds = new Set(messages.filter(m => m.role === 'assistant').map(m => String(m.id)));
+  const openRuns = new Map<string, Extract<TimelineItem, { kind: "motion" }>>();
+  const runCount = new Map<string, number>();
   const savedResponses = new Set(events.filter(e => e.type.startsWith('assistant.response.') && savedIds.has(String(e.data.message_id))).map(e => e.data.response_id));
   type Entry = { t: number; order: number; tie: number; message?: StudioMessage; event?: StudioEvent };
   const entries: Entry[] = [
@@ -246,9 +248,22 @@ export function buildTimeline({ messages, events, projects, pending, processing,
       }
       continue;
     }
-    if (event.type === "motion.created") {
-      flush();
-      if (!items.some(item => item.kind === "motion")) items.push({ kind: "motion", id: `mg-${event.data.motion_id}`, motionId: String(event.data.motion_id) });
+    // Every render run of the motion graphic is its own message, where it happened: a new version never rewrites an old card, and nothing is
+    // pinned to the end of the chat. A run ends when it completes; a failed run stays open so a retry reuses its card.
+    if (event.type === "motion.created" || event.type === "motion.progress" || event.type === "motion.completed") {
+      const motionKey = String(event.data.motion_id || "");
+      if (!motionKey) continue;
+      let run = openRuns.get(motionKey);
+      const live = event.type === "motion.progress" && !["completed", "failed"].includes(String(event.data.status));
+      if (!run && (event.type !== "motion.progress" || live)) {
+        flush();
+        const number = (runCount.get(motionKey) || 0) + 1;
+        runCount.set(motionKey, number);
+        run = { kind: "motion", id: `mg-${motionKey}-${number}`, motionId: motionKey, run: number };
+        items.push(run);
+        openRuns.set(motionKey, run);
+      }
+      if (run && event.type === "motion.completed") { run.version = Number(event.data.version) || undefined; openRuns.delete(motionKey); }
       continue;
     }
     if (event.type === "discovery.created") {
@@ -312,7 +327,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
   }
   flush();
   if (discoveryId && !items.some(item => item.kind === "discovery")) items.push({ kind: "discovery", id: `dv-${discoveryId}`, analysisId: discoveryId });
-  if (motionId && !items.some(item => item.kind === "motion")) items.push({ kind: "motion", id: `mg-${motionId}`, motionId });
+  if (motionId && !items.some(item => item.kind === "motion")) items.push({ kind: "motion", id: `mg-${motionId}`, motionId, run: 0 });
 
   // A render card for any project that is rendering or finished but whose events were not seen
   // in this session (e.g. a project opened from history).
@@ -348,9 +363,6 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     return !items.slice(items.indexOf(item) + 1).some(next => next.kind === "message" && next.role === "user");
   });
 
-  // The motion graphic's progress and result belong to the latest message: they stay at the end however many messages follow.
-  const motion = filtered.filter(item => item.kind === "motion");
-  if (motion.length) { const rest = filtered.filter(item => item.kind !== "motion"); filtered.length = 0; filtered.push(...rest, ...motion); }
 
   // The render card of the project being worked on (running, waiting for review, done or failed) belongs to the latest message: its first event
   // may have landed above later messages (a re-render started after others), and the finished video must appear at the bottom, not where the

@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api, StudioConversation } from "./api";
 import hermesApi from "./services/hermesApi";
+import { chatHomePath } from "./chatHome";
 import { peekCache, writeCache } from "./pages/hermes/hermesCache";
 import { Icon } from "./components/Icon";
 import { ProjectStatusDot } from "./components/ProjectStatusDot";
@@ -103,6 +104,7 @@ export default function EditorShell() {
   const startSearch = () => { if (collapsed && !isMobile) setCollapsed(false); setSearching(true); };
   const rail = collapsed && !isMobile;
   const tip = (label: string) => rail ? { "data-tip": label, className: "nav-item rail-tip" } : { className: "nav-item" };
+  const chatHome = chatHomePath(location.pathname);
   const topTitle = ROUTE_TITLES[location.pathname] || pageTitle || (routeKind(location.pathname) === "workspace" ? "InstaGPT" : "EditorGPT");
   const initial = user?.name?.trim()?.[0]?.toUpperCase();
   const settingsActive = /^\/(settings|new|my-effects|library|style-library|style-learner|fonts|hermes|content|localize|talking)/.test(location.pathname);
@@ -173,6 +175,7 @@ export default function EditorShell() {
           {topbarAction ? <button className="icon-btn icon-btn-lg" onClick={topbarAction.onClick} aria-pressed={topbarAction.active} aria-label={topbarAction.active ? "Exit full screen" : "Full screen"}><Icon name={topbarAction.active ? "fullscreenExit" : "fullscreen"}/></button> : null}
           {kind !== "studio" ? <NavLink to={hermesMode ? "/studio" : "/hermes"} className="switch-btn" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
             <Icon name={hermesMode ? "video" : "instagram"} size={17}/><span>{hermesMode ? "EditorGPT" : "InstaGPT"}</span></NavLink> : null}
+          {chatHome ? <NavLink to={chatHome} className="icon-btn icon-btn-lg" aria-label={hermesMode ? "InstaGPT home" : "Studio home"}><Icon name="home"/></NavLink> : null}
         </header>
         <main id="main-content" className={`main${kind === "legacy" ? " eg-legacy" : ""}`} data-route={kind} tabIndex={-1}>
           <React.Suspense fallback={<PaneSkeleton/>}>{kind === "legacy" ? <div className="legacy-frame"><Outlet/></div> : <Outlet/>}</React.Suspense>

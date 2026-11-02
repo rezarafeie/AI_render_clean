@@ -605,7 +605,7 @@ export default function Studio() {
     {layout === "tablet" && overlayOpen ? <button className="ws-backdrop" onClick={() => setOverlayOpen(false)} aria-label="Close workspace" tabIndex={-1}/> : null}
     <Workspace conversation={conversation} project={current} projects={projects} onSelectProject={setSelectedProject} tab={wsTab} onTab={setWsTab}
       sourceAttachment={sourceAttachment} onCancel={stop} onSaved={() => refresh()} showTabs={layout !== "mobile"} onCollapse={layout === "mobile" ? undefined : closeWorkspace}
-      panelRef={workspaceRef}
+      panelRef={workspaceRef} motionId={conversation?.state?.motion?.motion_id} events={events}
       topbarControls={layout === "mobile" && mobileView !== "chat"}
       working={processing && !renderLive ? (step?.label || thinking || "در حال بررسی درخواست شما…") : null}
       resizer={layout === "desktop" && wsVisible ? <Resizer panel={workspaceRef} edge="start" label="عرض پنل پیش‌نمایش" width={shownWorkspace}

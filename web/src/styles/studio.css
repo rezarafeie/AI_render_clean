@@ -230,8 +230,8 @@ button.act-row:hover { color: var(--text-2); }
 .studio[data-layout="mobile"] .chat-inner { padding-inline: var(--space-3); }
 .studio[data-layout="mobile"] .dock { padding-inline: var(--space-2); padding-bottom: var(--space-3); }
 .studio[data-layout="mobile"] .msg-user { max-width: 92%; }
-.studio-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--bg); border-top: 1px solid var(--border-subtle); padding-bottom: var(--safe-bottom); }
-.studio-tabs button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 52px; font-size: 11px; font-weight: 500; color: var(--text-3); }
+.studio-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--bg); border-top: 1px solid var(--border-subtle); padding-bottom: max(6px, calc(var(--safe-bottom) - 12px)); }
+.studio-tabs button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 48px; font-size: 11px; font-weight: 500; color: var(--text-3); }
 .studio-tabs button[aria-current="page"] { color: var(--text); }
 @media (max-width: 700px) {
   .assistant { gap: 10px; }
@@ -610,3 +610,7 @@ button.act-row:hover { color: var(--text-2); }
 .msg-copy:hover { color: var(--text); background: var(--active); }
 .msg { cursor: default; }
 @media (hover: none) { .msg-meta { opacity: 0; } .msg[data-meta] .msg-meta { opacity: 1; } }
+
+/* Typing on a phone: the keyboard covers the home indicator, so no safe-area padding, and the tab bar makes room for the composer. */
+html[data-keyboard-open] .studio-tabs { display: none; }
+html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mobile"] .dock { padding-bottom: var(--space-2); }

@@ -11,6 +11,9 @@
   transition: grid-template-columns var(--dur) var(--ease);
 }
 .app[data-collapsed] { --sb: var(--rail-w); }
+/* The on-screen keyboard is up: the page must not scroll under the frame, and the frame follows the visual viewport. */
+html[data-keyboard-open], html[data-keyboard-open] body { overflow: hidden; overscroll-behavior: none; }
+html[data-keyboard-open] .app { position: fixed; inset-inline: 0; top: var(--app-top, 0px); }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 .sidebar {

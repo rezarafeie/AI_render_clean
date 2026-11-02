@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { api, StudioConversation, StudioProject } from "../api";
+import { api, StudioConversation, StudioEvent, StudioProject } from "../api";
+import { MotionPanel } from "./MotionGraphic";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { useFullscreen } from "../components/useFullscreen";
@@ -297,7 +298,7 @@ function TalkingShade({jobId, onSaved}: {jobId:string; onSaved:()=>void}) {
   </section>;
 }
 
-export function Workspace({ conversation, project, projects, onSelectProject, tab, onTab, sourceAttachment, onCancel, onSaved, onCollapse, showTabs, panelRef, resizer, topbarControls = false, working = null }: {
+export function Workspace({ conversation, project, projects, onSelectProject, tab, onTab, sourceAttachment, onCancel, onSaved, onCollapse, showTabs, panelRef, resizer, topbarControls = false, working = null, motionId, events = [] }: {
   conversation: StudioConversation | null; project?: StudioProject; projects: StudioProject[]; onSelectProject: (id: string) => void;
   tab: WorkspaceTab; onTab: (tab: WorkspaceTab) => void; sourceAttachment?: string; onCancel: () => void; onSaved: () => void | Promise<unknown>;
   onCollapse?: () => void; showTabs: boolean; panelRef?: React.Ref<HTMLElement>;
@@ -306,6 +307,8 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
   topbarControls?: boolean;
   /** What the assistant is doing right now (a new edit request being worked on), shown in the Edit tab like in the chat. */
   working?: string | null;
+  /** A chat that holds a motion graphic but no project: Preview and Edit show its newest render. */
+  motionId?: string; events?: StudioEvent[];
 }) {
   const meta = statusMeta(project);
   const panel = usePanelFullscreen();
@@ -341,8 +344,8 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}
     <div className="ws-body">
-      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}><PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/></div>
-      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}><EditPane project={project} onSaved={onSaved} superseding={Boolean(working)}/></div>
+      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPanel motionId={motionId} events={events}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
+      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionPanel motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)}/>}</div>
     </div>
   </section>;
 }

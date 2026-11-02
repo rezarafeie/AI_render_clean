@@ -20,16 +20,41 @@ test("the pointer and the event never produce two cards", () => {
   assert.equal(items.filter(i => i.kind === "motion").length, 1);
 });
 
-test("the motion graphic stays at the end of the conversation however many messages come after it", () => {
-  const message = (id, role, content, created_at) => ({ id, role, content, attachments: [], created_at });
+const stamp = seconds => new Date(Date.parse("2026-10-24T10:00:00Z") + seconds * 1000).toISOString();
+const message = (id, role, content, seconds) => ({ id, role, content, attachments: [], created_at: stamp(seconds) });
+const at = (seconds, type, data, seq) => ({ seq, type, data, created_at: stamp(seconds) });
+const MG = "abc123abc123";
+
+test("each render is its own message where it happened; nothing is pinned to the end", () => {
   const items = buildTimeline({
     ...base,
-    motionId: "abc123abc123",
-    messages: [message(1, "user", "بساز", "2026-10-24T10:00:00Z"), message(2, "assistant", "طرح", "2026-10-24T10:00:30Z"), message(3, "user", "رنگ را عوض کن", "2026-10-24T10:02:00Z"), message(4, "assistant", "اعمال می‌کنم", "2026-10-24T10:02:05Z")],
-    events: [event("motion.created", { motion_id: "abc123abc123" })],
+    motionId: MG,
+    messages: [message(1, "user", "بساز", 0), message(2, "user", "نریشن رو درست کن", 100), message(3, "assistant", "باشه", 101)],
+    events: [at(1, "motion.created", { motion_id: MG }, 1), at(2, "motion.progress", { motion_id: MG, status: "queued" }, 2), at(60, "motion.completed", { motion_id: MG, version: 1 }, 3),
+             at(102, "motion.progress", { motion_id: MG, status: "queued" }, 4), at(160, "motion.completed", { motion_id: MG, version: 2 }, 5)],
   });
-  assert.equal(items[items.length - 1].kind, "motion");
-  assert.deepEqual(items.filter(i => i.kind === "message").map(i => i.content), ["بساز", "طرح", "رنگ را عوض کن", "اعمال می‌کنم"]);
+  const kinds = items.map(i => i.kind === "message" ? i.content : `render v${i.version}`);
+  assert.deepEqual(kinds, ["بساز", "render v1", "نریشن رو درست کن", "باشه", "render v2"]);        // v1 stays between the first request and the follow-up
+  assert.deepEqual(items.filter(i => i.kind === "motion").map(i => i.id), [`mg-${MG}-1`, `mg-${MG}-2`]);
+});
+
+test("a message sent after a finished render is not pushed above it", () => {
+  const items = buildTimeline({ ...base, messages: [message(1, "user", "بساز", 0), message(2, "user", "ممنون", 200)],
+    events: [at(1, "motion.created", { motion_id: MG }, 1), at(60, "motion.completed", { motion_id: MG, version: 1 }, 2)] });
+  assert.equal(items[items.length - 1].content, "ممنون");
+  assert.equal(items.find(i => i.kind === "motion").version, 1);
+});
+
+test("a failed run stays one card so the retry does not add another", () => {
+  const items = buildTimeline({ ...base, events: [at(1, "motion.created", { motion_id: MG }, 1), at(30, "motion.progress", { motion_id: MG, status: "failed" }, 2),
+    at(40, "motion.progress", { motion_id: MG, status: "queued" }, 3), at(90, "motion.completed", { motion_id: MG, version: 1 }, 4)] });
+  assert.deepEqual(items.filter(i => i.kind === "motion").map(i => i.version), [1]);
+});
+
+test("a revision announced only by progress (no created event) still gets its own card", () => {
+  const items = buildTimeline({ ...base, events: [at(1, "motion.created", { motion_id: MG }, 1), at(20, "motion.completed", { motion_id: MG, version: 1 }, 2),
+    at(50, "motion.progress", { motion_id: MG, status: "rendering" }, 3)] });
+  assert.deepEqual(items.filter(i => i.kind === "motion").map(i => i.version ?? "running"), [1, "running"]);
 });
 
 import { etaText, motionSteps } from "../src/studio/motionModel.ts";

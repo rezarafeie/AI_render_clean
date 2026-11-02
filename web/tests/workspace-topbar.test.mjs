@@ -7,14 +7,14 @@ const require=createRequire(new URL('../package.json',import.meta.url));
 const React=require('react'),{createRoot}=require('react-dom/client'),{flushSync}=require('react-dom');
 const compiled=await build({stdin:{contents:'export {Workspace} from "./studio/Workspace"; export {ShellContext} from "./components/ShellContext";',resolveDir:new URL('../src/',import.meta.url).pathname,loader:'tsx'},bundle:true,write:false,format:'cjs',platform:'node',external:['react'],plugins:[{
   name:'boundaries',setup(b){
-    b.onResolve({filter:/react-router-dom|\/(api|ui|model|plan|useFullscreen|AuthenticatedMedia|Activity|RenderProgress|MotionScenes|LocalizeEdit|PlanReview|TimelineView|CreativeResources)$/},a=>({path:a.path,namespace:'test'}));
+    b.onResolve({filter:/react-router-dom|\/(api|ui|model|plan|useFullscreen|AuthenticatedMedia|Activity|RenderProgress|MotionScenes|LocalizeEdit|PlanReview|TimelineView|CreativeResources|MotionGraphic)$/},a=>({path:a.path,namespace:'test'}));
     b.onLoad({filter:/.*/,namespace:'test'},a=>({contents:a.path.endsWith('/api')?'export const api={studioOutputs:async()=>[],studioOutputUrl:()=>"/output"};'
       :a.path==='react-router-dom'?'import React from "react";export const NavLink=p=>React.createElement("a",{href:p.to},p.children);'
       :a.path.endsWith('/model')?'export const renderView=()=>({phase:"idle"});'
       :a.path.endsWith('/plan')?'export const planPhase=()=>"none";export const currentVersion=()=>null;'
       :a.path.endsWith('/ui')?'export const friendlyError=e=>String(e);'
       :a.path.endsWith('/useFullscreen')?'export const useFullscreen=()=>({active:false,toggle:async()=>{}});'
-      :'export const AuthenticatedMedia=()=>null,ThinkingRow=()=>null,RenderProgress=()=>null,MotionScenes=()=>null,LocalizeEdit=()=>null,PlanReview=()=>null,TimelineView=()=>null,CreativeResources=()=>null;'}));
+      :'export const AuthenticatedMedia=()=>null,ThinkingRow=()=>null,RenderProgress=()=>null,MotionScenes=()=>null,LocalizeEdit=()=>null,PlanReview=()=>null,TimelineView=()=>null,CreativeResources=()=>null,MotionPanel=()=>null;'}));
   }
 }]});
 const settle=()=>new Promise(r=>setTimeout(r,20));

@@ -22,7 +22,15 @@ export function useStudioLayout(): StudioLayout {
   return desktop ? "desktop" : tablet ? "tablet" : "mobile";
 }
 
-/** Keep --app-h equal to the visual viewport so fixed bottom UI stays above the virtual keyboard (iOS Safari). */
+/** What the app frame should do for the current visual viewport. Pure, so it can be tested without a phone. */
+export function viewportFrame(input: { innerHeight: number; height: number; offsetTop: number; editing: boolean }) {
+  const keyboard = input.editing && input.innerHeight - input.height > 120;
+  // Without the keyboard the frame is 100dvh (no inline height): the visual viewport can report a stale or shortened height there.
+  return keyboard ? { keyboard: true as const, appHeight: Math.round(input.height), appTop: Math.max(0, Math.round(input.offsetTop)) } : { keyboard: false as const };
+}
+
+/** While the on-screen keyboard is up, pin the app frame to the visual viewport so the composer sits right above the keyboard (iOS scrolls the page
+ * to reveal the field, which used to leave the composer at the top with empty space under it). Otherwise leave the frame at 100dvh. */
 export function useVisualViewportHeight() {
   React.useEffect(() => {
     const vv = window.visualViewport;
@@ -32,9 +40,17 @@ export function useVisualViewportHeight() {
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        root.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
-        const editing = document.activeElement?.matches('input:not([type="range"]):not([type="checkbox"]), textarea, [contenteditable="true"]');
-        root.toggleAttribute("data-keyboard-open", Boolean(editing && window.innerHeight - vv.height > 120));
+        const editing = Boolean(document.activeElement?.matches('input:not([type="range"]):not([type="checkbox"]), textarea, [contenteditable="true"]'));
+        const next = viewportFrame({ innerHeight: window.innerHeight, height: vv.height, offsetTop: vv.offsetTop, editing });
+        root.toggleAttribute("data-keyboard-open", next.keyboard);
+        if (next.keyboard) {
+          root.style.setProperty("--app-h", `${next.appHeight}px`);
+          root.style.setProperty("--app-top", `${next.appTop}px`);
+          if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+        } else {
+          root.style.removeProperty("--app-h");
+          root.style.removeProperty("--app-top");
+        }
       });
     };
     update();
@@ -42,7 +58,7 @@ export function useVisualViewportHeight() {
     vv.addEventListener("scroll", update);
     document.addEventListener("focusin", update);
     document.addEventListener("focusout", update);
-    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update); root.removeAttribute("data-keyboard-open"); root.style.removeProperty("--app-h"); cancelAnimationFrame(frame); };
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update); root.removeAttribute("data-keyboard-open"); root.style.removeProperty("--app-h"); root.style.removeProperty("--app-top"); cancelAnimationFrame(frame); };
   }, []);
 }
 
