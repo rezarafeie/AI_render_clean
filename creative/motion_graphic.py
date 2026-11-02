@@ -204,7 +204,7 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
             problems.append(f"{field}: HM.{', HM.'.join(missing)} does not exist. HM has only: " + ", ".join(sorted(n for n in _KIT_NAMES if not n.startswith("_") and n not in {"width", "height", "duration", "colors"})) + " (anything else: use tl.* with a selector)")
         broken = js_syntax_error(getattr(page, field))
         if broken:
-            problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS")
+            problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS" + (" (T, D and tl already exist in build_js: never declare them; rename your own variable, e.g. const tt = ...)" if re.search(r"Identifier '(?:T|D|tl)' has already", str(broken)) else ""))
     if re.search(r"</?\s*script", page.build_js + page.update_js, re.I):
         problems.append("do not include <script> tags in build_js/update_js: they are function bodies")
     if not re.search(r"\btl\s*\.|\bHM\s*\.", _strip_strings(page.build_js)):
@@ -583,7 +583,7 @@ THE CONTRACT
   <br>, <script>, <style>, forms, remote URLs.
 - css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
   "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
-- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works); its entrance transition (a growing diamond) is added by the
+- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (a growing diamond) is added by the
   platform, so start your content tweens at T+0.15 or later, using ABSOLUTE times (T + offset) as the last argument, and finish them by T+D-0.3. Use
   tl.fromTo/tl.from/tl.to/tl.set or the HM helpers; never gsap.* directly, timers, Date, Math.random, window, fetch. Anything that appears later must start
   hidden through its own entrance tween.
