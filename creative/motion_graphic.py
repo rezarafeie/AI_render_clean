@@ -709,6 +709,23 @@ def apply_handoff(plan: MotionPlan, brief: str) -> MotionPlan:
     return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
 
 
+def fit_scene_timing(plan: MotionPlan) -> MotionPlan:
+    """Lengthen scenes whose narration cannot be spoken in time and re-tile the plan (a deterministic repair, never a cut of the words).
+
+    Only used when the scenes already tile the plan; the total may grow up to MAX_SECONDS. Anything else is left for the validator."""
+    scenes, cursor, changed = [], 0.0, False
+    for scene in plan.scenes:
+        length = scene.end - scene.start
+        need = speech.speech_seconds(scene.narration) * speech.MARGIN + 0.5 if scene.narration.strip() else 0.0
+        if need > length - 0.4:
+            length, changed = need + 0.4, True
+        scenes.append(scene.model_copy(update={"start": round(cursor, 2), "end": round(cursor + length, 2)}))
+        cursor += length
+    if not changed or cursor > MAX_SECONDS:
+        return plan
+    return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
+
+
 def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
     """The plan (or the questions to ask first). A plan that does not tile the duration is sent back with the reasons."""
     from . import handoff
@@ -727,6 +744,9 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         if approved:
             result = apply_handoff(result, brief)
         problems = validate_plan(result, max_scenes=8 if approved else 6)
+        if problems and all("the narration needs about" in item for item in problems):
+            result = fit_scene_timing(result)
+            problems = validate_plan(result, max_scenes=8 if approved else 6)
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
