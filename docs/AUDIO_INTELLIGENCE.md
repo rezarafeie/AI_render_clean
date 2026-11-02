@@ -24,6 +24,13 @@ Branch `feat/audio-intelligence-foundation`, built on the latest teammate branch
 - `creative/audio/quality.py` — objective report: missing/unreadable file, clipping, silence ratio, duration mismatch, loudness/true-peak vs preset, word-level completeness against a supplied transcript; states what it cannot judge.
 - Motion-graphic narration now speaks the normalized text, reads `Pronounce: Written = Spoken` lines from the request, and checks every narrated clip (problems reported, never fatal).
 
+## Added in the second slice (tested with synthetic audio and mocked recognition)
+
+- `creative/audio/rhythm.py` - tempo, beats, onsets, energy peaks, section changes and (only when distinguishable) downbeats from the audio itself. **numpy only**: no librosa, no new dependency, nothing to install on the server. Verified on click tracks (70-160 BPM) to within ~1 BPM. Known limitation: tempo is ambiguous by a factor of two, and a 140 BPM track can be reported as 70 (the beat grid still lands on real beats, every second one).
+- `snap_starts` and the `Rhythm:` directive (`speech first` default, `music first`, `balanced`, `cinematic`): in balanced / music-first a scene start waits for a near beat (0.35 s / 0.9 s), never moves earlier, and carries its narration with it; the 60 s cap is respected.
+- `creative/audio/verify.py` - narration is recognised by the existing speech-recognition path and compared with the script (word error, wrong script); a failed scene is voiced once more; a check that cannot run is reported as not checked. Bounded by a 120 s budget; switch off with `AUDIO_VERIFY_NARRATION=0`. The report is stored as `audio_report.json` in the motion folder.
+- `pyloudnorm` was not added: ffmpeg's EBU R128 implementation already measures and normalizes loudness.
+
 ## Not implemented (needs decisions or dependencies)
 
 Fish Audio and other TTS providers, emotion-per-sentence controls beyond ElevenLabs v3 tags, partial re-generation of a sentence, STT-based language/pronunciation verification wired into every render, WhisperX alignment, librosa beat/BPM/downbeat analysis, rhythm modes, music generation/search providers (Mubert), license tracking, SFX generation, per-track mixer and mastering, HyperFrames timing adapter, Hermes/LangGraph audio tools, Audio Studio UI, persistent audio project tables and cost budgets.

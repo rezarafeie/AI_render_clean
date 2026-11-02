@@ -146,7 +146,7 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
-              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes}
+              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first"}
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -408,11 +408,30 @@ def _fingerprint(*parts: str) -> str:
     return hashlib.sha1("\x00".join(parts).encode()).hexdigest()[:12]
 
 
+def _gate_clips(plan, clips) -> list[str]:
+    """Objective checks on each narrated scene (clipping, silence, an unreadable file). Problems are reported; the build goes on."""
+    from creative.audio import quality
+    notes = []
+    for number, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips), 1):
+        if not scene.narration.strip():
+            continue
+        try:
+            report = quality.analyse(Path(path), expected_duration_s=None)
+        except Exception as exc:                                  # a failing check must not stop the video
+            log.debug("audio check failed: %s", str(exc)[:120]); continue
+        for warning in report["warnings"]:
+            if warning["code"] in {"missing_or_empty", "unreadable", "silent", "clipping", "excess_silence"}:
+                notes.append(f"صدای صحنهٔ {number}: {warning['message']}")
+    return notes
+
+
 def _narrate(directory: Path, record: dict, plan, fp: str):
     """Voice every scene (one ElevenLabs request, cut per scene), then retime the plan so each scene lasts as long as its narration plus a breath.
     Returns (plan, clips, notes). A narration that cannot be made leaves the clip silent and says so; it never stops the build."""
     from creative import motion_graphic as mg
     voice_id, voice_style = record.get("voice_id", ""), record.get("voice_style", "")
+    pronunciations = record.get("pronunciations") or {}
+    fp = f"{fp}|{_fingerprint(json.dumps(pronunciations, sort_keys=True, ensure_ascii=False))}" if pronunciations else fp
     saved = directory / "voice.json"
     try:
         cached = json.loads(saved.read_text())
@@ -420,7 +439,9 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
             return mg.MotionPlan.model_validate(cached["plan"]), cached["audio"], cached.get("notes", [])
     except (OSError, ValueError):
         pass
-    texts = [scene.narration for scene in plan.scenes]
+    from creative.audio import persian
+    # What is spoken is derived from the script (digits spelled out, the project's pronunciation entries); the script itself is untouched.
+    texts = [persian.speakable(scene.narration, pronunciations) if scene.narration.strip() else scene.narration for scene in plan.scenes]
     if not any(text.strip() for text in texts):
         return plan, [], []
     _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
@@ -431,6 +452,8 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         log.warning("motion narration could not be made: %s", str(exc)[:200])
         _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
+    clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
+    gate_notes = [*_gate_clips(plan, clips), *verified]
     cursor, scenes, audio = 0.0, [], []
     for index, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips)):
         last = index == len(plan.scenes) - 1
@@ -443,9 +466,94 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
     retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
-    saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": []}, ensure_ascii=False))
+    saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
-    return retimed, audio, []
+    return retimed, audio, gate_notes
+
+
+def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_id: str, voice_style: str):
+    """Speech recognition on each narrated scene against the script; a scene that fails is voiced once more. Returns (clips, notes).
+    A check that cannot run is skipped quietly in the notes; it never blocks the video."""
+    import os
+    if os.environ.get("AUDIO_VERIFY_NARRATION", "1") == "0" or sum(len(t) for t in texts) > 4000:
+        return clips, []
+    from brain import localize
+    from creative.audio import persian, verify
+    language = "fa" if any(persian.is_persian(t) for t in texts) else "en"
+    work = directory / "verify"
+
+    def recognise(path: Path, index: int):
+        from brain import transcribe
+        out = work / f"s{index + 1}"
+        found = transcribe.transcribe(Path(path), out, language=language)
+        words = found.get("words") or []
+        return " ".join(str(w.get("text") or w.get("word") or "") for w in words).strip() or (found.get("text") or "")
+
+    def regenerate(index: int):
+        try:
+            return localize.synthesize_narration([texts[index]], directory / "voice" / f"retry{index + 1}", voice_id, voice_style)[0]
+        except Exception as exc:
+            log.warning("narration retry failed: %s", str(exc)[:160]); return None
+    try:
+        fixed, report = verify.verify_clips(texts, clips, recognise, regenerate)
+    except Exception as exc:
+        log.warning("narration verification failed: %s", str(exc)[:160])
+        return clips, []
+    try:
+        (directory / "audio_report.json").write_text(json.dumps({"recognition": report, "judgement": "recognition is evidence, not proof of pronunciation"}, ensure_ascii=False))
+    except OSError:
+        pass
+    notes = []
+    for row in report:
+        if row["status"] == "needs_review":
+            notes.append(f"صدای صحنهٔ {row['scene']} با متن اسکریپت نمی‌خواند ({row['error']:.0%} اختلاف)" + ("؛ یک بار دوباره تولید شد" if row["retried"] else "") + ". گوش بدهید و در صورت نیاز تلفظ را با Pronounce: اصلاح کنید.")
+        elif row["status"] == "repaired":
+            notes.append(f"صدای صحنهٔ {row['scene']} بار اول با اسکریپت نمی‌خواند و دوباره تولید شد.")
+    return fixed, notes
+
+
+def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
+    """Balanced / music-first: scene starts wait (never move earlier) for a near beat of the chosen music. Returns (plan, audio, notes)."""
+    mode = record.get("rhythm") or "speech_first"
+    wanted = record.get("music") or {}
+    if mode not in {"balanced", "music_first"} or wanted.get("mode") not in {"attached", "library"}:
+        return plan, audio, []
+    from creative import motion_graphic as mg
+    from creative import music_bed
+    from creative.audio import rhythm
+    try:
+        source = _music_source(wanted, plan)
+        if not source:
+            return plan, audio, []
+        analysis = rhythm.analyse(source[0], cache_dir=directory)
+        if analysis["bpm_confidence"] < 0.2 or len(analysis["beats_ms"]) < 8:
+            return plan, audio, [f"ضرب موسیقی «{source[1]}» قابل اتکا تشخیص داده نشد؛ زمان‌بندی بر پایهٔ گفتار ماند."]
+        starts = [sc.start for sc in plan.scenes]
+        new_starts, total, on_beat = rhythm.snap_starts(starts, plan.duration, analysis["beats_ms"], 0.35 if mode == "balanced" else 0.9, mg.MAX_SECONDS)
+        if not on_beat:
+            return plan, audio, [f"موسیقی {analysis['bpm']:.0f} BPM؛ هیچ صحنه‌ای بدون تأخیر زیاد روی بیت نیامد، زمان‌بندی بر پایهٔ گفتار ماند."]
+        scenes = []
+        for index, scene in enumerate(plan.scenes):
+            end = new_starts[index + 1] if index + 1 < len(plan.scenes) else total
+            scenes.append(scene.model_copy(update={"start": new_starts[index], "end": round(end, 3)}))
+        moved = []
+        for clip in audio:
+            owner = next((i for i, sc in enumerate(plan.scenes) if sc.start - 1e-6 <= clip["start"] < sc.end + 1e-6), None)
+            moved.append({**clip, "start": round(clip["start"] + (new_starts[owner] - starts[owner]), 2)} if owner is not None else clip)
+        return plan.model_copy(update={"scenes": scenes, "duration": round(total, 2)}), moved, [f"موسیقی {analysis['bpm']:.0f} BPM؛ شروع {len(on_beat)} صحنه روی بیت قرار گرفت (فیلم {total - plan.duration:.1f} ثانیه بلندتر شد)."]
+    except Exception as exc:
+        log.warning("rhythm sync skipped: %s", str(exc)[:160])
+        return plan, audio, []
+
+
+def _music_source(wanted: dict, plan):
+    """(path, label) of the requested music, or None."""
+    from creative import music_bed
+    if wanted.get("mode") == "attached" and wanted.get("path"):
+        return Path(wanted["path"]), wanted.get("name") or "attached track"
+    if wanted.get("mode") == "library":
+        return music_bed.pick_from_library(wanted.get("words", ""), plan.duration)
+    return None
 
 
 def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
@@ -565,8 +673,9 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         count = len(plan.scenes)
         _note(directory, "plan", f"از طرح قبلی ادامه می‌دهم: {count} صحنه، {plan.duration:g} ثانیه", "done")
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
+    plan, audio, rhythm_notes = _sync_rhythm(directory, record, plan, audio)
     audio, music_notes = _add_music(directory, record, plan, audio)
-    voice_notes = [*record.get("directive_notes", []), *voice_notes, *music_notes]
+    voice_notes = [*record.get("directive_notes", []), *voice_notes, *rhythm_notes, *music_notes]
     count = len(plan.scenes)
     import hashlib
     draft_inputs = [(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes]

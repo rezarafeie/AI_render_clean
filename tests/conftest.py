@@ -33,3 +33,9 @@ def forget_the_message_being_processed():
         studio_orchestrator._generation.set(None)
     except ImportError:
         pass
+
+
+@pytest.fixture(autouse=True)
+def no_live_speech_recognition(monkeypatch):
+    """Narration verification would call a real speech-recognition engine; tests that want it supply their own."""
+    monkeypatch.setenv("AUDIO_VERIFY_NARRATION", "0")
