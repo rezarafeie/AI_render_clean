@@ -913,9 +913,20 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
     key = directory.name
     count = len(build.plan.scenes)
     _note(directory, "check", f"مشکل اجرا پیدا شد ({mg.explain_problem(problems[0])}). دارم صحنهٔ مشکل‌دار را پیدا می‌کنم", "active")
+    # Test every designed scene on its own page (the others plain) so only the scenes that really fail lose their design.
+    plain = {i: mg.fallback_scene(build.plan, i) for i in range(1, count + 1)}
+    failing: list[int] = []
     for n in range(1, count + 1):
-        trial = dict(build.drafts)
-        trial[n] = mg.fallback_scene(build.plan, n)
+        trial = dict(plain)
+        trial[n] = build.drafts[n]
+        mg.write_project(work, mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)], build.audio))
+        result = standalone.check(work, should_cancel=lambda: _cancelled(key))
+        if _cancelled(key):
+            raise _Cancelled()
+        if result.blocking:
+            failing.append(n)
+    if failing and len(failing) < count:
+        trial = {i: (plain[i] if i in failing else build.drafts[i]) for i in range(1, count + 1)}
         candidate = mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)], build.audio)
         mg.write_project(work, candidate)
         result = standalone.check(work, should_cancel=lambda: _cancelled(key))
@@ -923,9 +934,10 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
             raise _Cancelled()
         if not result.blocking:
             build.drafts = trial
-            headline = build.plan.scenes[n - 1].headline
-            notes.append(f"صحنهٔ {n} («{headline}») با طرح ساده جایگزین شد چون در اجرا خطا می‌داد")
-            _note(directory, f"scene{n}", f"صحنهٔ {n} با طرح ساده جایگزین شد", "done")
+            for n in failing:
+                headline = build.plan.scenes[n - 1].headline
+                notes.append(f"صحنهٔ {n} («{headline}») با طرح ساده جایگزین شد چون در اجرا خطا می‌داد")
+                _note(directory, f"scene{n}", f"صحنهٔ {n} با طرح ساده جایگزین شد", "done")
             return candidate
     build.drafts = {i: mg.fallback_scene(build.plan, i) for i in range(1, count + 1)}
     notes.append("چند صحنه در اجرا خطا می‌دادند؛ همهٔ صحنه‌ها با طرح ساده ساخته شد")

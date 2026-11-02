@@ -176,7 +176,9 @@ def execute(record, step):
         conversation = run(repo.get_conversation(cid, user))
         original = shared._ENGINE_MARKER.sub("", record["data"]["request"]["text"], count=1).strip()
         brief = original if args.request.strip() == original else original + "\n\n" + args.request.strip()
-        images=run(repo.get_attachments(args.attachment_ids,cid,user))
+        # The planner often forgets the picture the person attached to this very message: use it when no ids were given.
+        ids = args.attachment_ids or list(record["data"]["request"].get("attachment_ids") or [])
+        images=run(repo.get_attachments(ids,cid,user))
         shared._start_motion_graphic(cid, user, conversation, brief, images, None)
         latest = run(repo.get_conversation(cid, user))
         motion_id = ((latest.get("state") or {}).get("motion") or {}).get("motion_id")

@@ -43,6 +43,7 @@ class MotionPage(BaseModel):
     summary: str = ""                                          # what the clip shows, one or two sentences, in the user's language
     format: Literal["vertical", "horizontal", "square"] = "vertical"
     duration: float = 15.0
+    direction: Literal["rtl", "ltr"] = "rtl"                   # reading direction of the copy: Persian is rtl, English is ltr
     scenes_html: str = ""
     css: str = ""
     build_js: str = ""
@@ -93,7 +94,7 @@ _FORBIDDEN_CSS = (
     (r"-?\d+(?:\.\d+)?\s*(?:vw|vh|vmin|vmax)\b", "viewport units (use pixels inside the stage)"),
     (r"font-family\s*:[^;}]*", None),
 )
-_FONTS = {"ray", "vazir", "kharazmi"}
+_FONTS = {"ray", "vazir", "kharazmi", "inter"}
 
 
 class _Scan(HTMLParser):
@@ -153,6 +154,9 @@ def js_syntax_error(code: str) -> str:
     return done.stdout.strip()[:200] if done.returncode == 1 else ""
 
 
+_LAYOUT_TWEEN = re.compile(r"\btl\s*\.\s*(?:to|from|fromTo)\s*\([^;]*?\b(left|right|top|bottom|margin\w*|fontSize|letterSpacing|roundProps)\s*:", re.S)
+
+
 def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
     """Human-readable problems (empty list = ready to assemble). They are sent back to the model verbatim."""
     problems: list[str] = []
@@ -183,7 +187,7 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
                 families = {f.strip(" '\"").lower() for f in match.group(0).split(":", 1)[1].split(",")}
                 other = sorted(f for f in families if f and f not in _FONTS and f not in {"sans-serif", "serif", "monospace", "inherit"})
                 if other:
-                    problems.append("fonts other than Ray, Vazir and Kharazmi are not available: " + ", ".join(other[:3]))
+                    problems.append("fonts other than Ray, Vazir, Kharazmi and Inter are not available: " + ", ".join(other[:3]))
             else:
                 problems.append(f"CSS: {label} is not allowed")
                 break
@@ -205,6 +209,9 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         broken = js_syntax_error(getattr(page, field))
         if broken:
             problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS" + (" (T, D and tl already exist in build_js: never declare them; rename your own variable, e.g. const tt = ...)" if re.search(r"Identifier '(?:T|D|tl)' has already", str(broken)) else ""))
+    for found in _LAYOUT_TWEEN.finditer(_strip_strings(page.build_js)):
+        problems.append(f"build_js tweens the layout property '{found.group(1)}': animate x/y/scale/opacity instead (left/top/margin/fontSize/letterSpacing stutter in the renderer and fail its check)")
+        break
     if re.search(r"</?\s*script", page.build_js + page.update_js, re.I):
         problems.append("do not include <script> tags in build_js/update_js: they are function bodies")
     if not re.search(r"\btl\s*\.|\bHM\s*\.", _strip_strings(page.build_js)):
@@ -216,6 +223,18 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
 
 
 # ── assembly ─────────────────────────────────────────────────────────────────
+
+_LTR_CSS = (
+    "@font-face{font-family:Inter;src:url('./assets/fonts/inter.ttf');font-weight:100 900;font-style:normal}\n"
+    "#root{direction:ltr;font-family:Inter,Ray,sans-serif}\n"
+    ".hm-scene{direction:ltr;text-align:left}")
+
+
+def direction_of(texts) -> str:
+    """ltr when the spoken copy is English, rtl for Persian (the studio default)."""
+    from brain.localize import language_of
+    return "ltr" if language_of(" ".join(str(t) for t in texts)) == "en" else "rtl"
+
 
 def _fonts_css() -> str:
     from engine.hyperframes.scenes import fonts_css
@@ -255,7 +274,7 @@ def assemble(page: MotionPage) -> str:
                  'style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"></video>')
         scene_html = scene_html.replace(slot,video)
     return f"""<!doctype html>
-<html lang="fa">
+<html lang="{"en" if page.direction == "ltr" else "fa"}" dir="{page.direction}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width={width}, height={height}">
@@ -265,6 +284,7 @@ def assemble(page: MotionPage) -> str:
 <style>
 {_fonts_css()}
 {(KIT / 'kit.css').read_text()}
+{_LTR_CSS if page.direction == "ltr" else ""}
 {page.css}
 </style>
 </head>
@@ -298,6 +318,8 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
     shutil.copy2(KIT / "kit.js", assets / "kit.js")
     for target, source in FONT_FILES.items():
         shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
+    if page.direction == "ltr":
+        shutil.copy2(ROOT / "assets" / "effects" / "fonts" / "Inter.ttf", assets / "fonts" / "inter.ttf")
     for i, clip in enumerate(page.audio, 1):
         source = Path(str(clip["path"]))
         if source.is_file():
@@ -583,7 +605,7 @@ THE CONTRACT
   <br>, <script>, <style>, forms, remote URLs.
 - css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
   "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
-- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (a growing diamond) is added by the
+- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER tween left/top/right/bottom/margin*/fontSize/letterSpacing (animate x, y, scale, rotation, opacity or clipPath instead; set layout once in CSS). NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (a growing diamond) is added by the
   platform, so start your content tweens at T+0.15 or later, using ABSOLUTE times (T + offset) as the last argument, and finish them by T+D-0.3. Use
   tl.fromTo/tl.from/tl.to/tl.set or the HM helpers; never gsap.* directly, timers, Date, Math.random, window, fetch. Anything that appears later must start
   hidden through its own entrance tween.
@@ -900,6 +922,10 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
         return SceneDraft(html=f'<div id="s{n}-native-slot"></div>', build_js='tl.to({}, {duration:.001}, 0);', timebase="local", native_component=spec)
     request = scene_request(plan, n, brief, context, style)
     guide = SCENE_GUIDE.replace("sN", f"s{n}").replace("using ABSOLUTE times (T + offset)", "using LOCAL times (T=0, offset)")
+    if direction_of(sc.narration for sc in plan.scenes) == "ltr":
+        guide = guide.replace("- dir is rtl and text is right-aligned; wrap Latin names, URLs and numbers-with-units in dir=\"ltr\" elements.",
+                              "- This clip is ENGLISH: the page is ltr and text is LEFT-aligned or centred (never right-aligned). Write the copy in English exactly as scripted. "
+                              "Use font-family Inter (weights 100-900 are available; use 200-300 for large light display text, 400-500 for UI text). Ignore the Persian rules above (half-space, joining, digits).")
     problems: list[str] = list(feedback or [])
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous answer was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems[:8])
@@ -922,10 +948,14 @@ def fallback_scene(plan: MotionPlan, n: int) -> SceneDraft:
     accent = plan.palette.accent
     width, height = FORMATS[plan.format]
     size = 150 if width >= 1080 and height > width else 120
+    if direction_of([scene.narration]) == "ltr":
+        side, align, face, weight = "left", "left", "Inter", 300
+    else:
+        side, align, face, weight = "right", "right", "Ray", 900
     return SceneDraft(
         html=f'<div class="s{n}-bar"></div><p class="s{n}-head"><span class="hm-mask"><span class="hm-rise">{escape(scene.headline)}</span></span></p>',
-        css=(f"#s{n} .s{n}-bar{{position:absolute;right:{int(width*.08)}px;top:{int(height*.4)}px;width:160px;height:14px;background:{accent}}}"
-             f"#s{n} .s{n}-head{{position:absolute;right:{int(width*.08)}px;left:{int(width*.08)}px;top:{int(height*.4)+50}px;margin:0;font:900 {size}px/1.4 Ray}}"),
+        css=(f"#s{n} .s{n}-bar{{position:absolute;{side}:{int(width*.08)}px;top:{int(height*.4)}px;width:160px;height:14px;background:{accent}}}"
+             f"#s{n} .s{n}-head{{position:absolute;right:{int(width*.08)}px;left:{int(width*.08)}px;top:{int(height*.4)+50}px;margin:0;text-align:{align};font:{weight} {size}px/1.4 {face}}}"),
         build_js=f'HM.fadeUp("#s{n} .s{n}-bar", {scene.start + 0.15:g});\nHM.rise("#s{n} .hm-rise", {scene.start + 0.35:g});')
 
 
@@ -975,5 +1005,5 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
     receipts = [{"scene": n, "resource_id": scene.shotcraft_id, "source_revision": REVISION,
                  "integration": "reference-guided-authoring", "native_remotion_execution": False}
                 for n, scene in enumerate(plan.scenes, 1) if scene.shotcraft_id and not (scene.native_component or scene.shotcraft_component)]
-    return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration,
+    return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration, direction=direction_of(sc.narration for sc in plan.scenes),
                       scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts, native_components=native,shotcraft_components=shotcraft)

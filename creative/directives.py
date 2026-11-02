@@ -71,7 +71,7 @@ def parse(text: str) -> tuple[str, Directives]:
             if entry: found.pronunciations.update(entry)
             else: found.notes.append(f"تلفظ «{value}» را نفهمیدم؛ قالب درست: Pronounce: Written = Spoken")
         elif kind == "style":
-            key = _STYLE_WORDS.get(value.strip().lower())
+            key = _STYLE_WORDS.get(value.strip().lower()) or next((_STYLE_WORDS[w] for w in re.findall(r"[\w\u0600-\u06FF]+", value.lower()) if w in _STYLE_WORDS), None)
             if key is None:
                 found.notes.append(f"سبک صدای «{value}» شناخته نشد؛ سبک طبیعی استفاده شد. سبک‌ها: calm, serious, energetic, reflective, natural")
             else:
