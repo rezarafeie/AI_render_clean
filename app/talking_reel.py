@@ -555,12 +555,35 @@ def _render_reporter(job_dir: Path, ceiling: int = 55):
     def report():
         _stage(job_dir, current["stage"], message=current["message"],
                progress=45 + int(current["pct"] * ceiling / 100))
+        state = load(job_dir)
+        if state.get('render_metrics', {}).get('stage') == current['stage']:
+            state['render_metrics']['reported_at'] = time.time()
+            save(job_dir, state)
     def progress(pct):
         current["pct"] = max(current["pct"], min(100, max(0, pct)))
         report()
     def stage(code, detail):
         current.update(stage=code, message=detail)
+        state = load(job_dir)
+        previous = state.pop('render_metrics', {})
+        if previous.get('render_eta_at'):
+            state['render_metrics'] = {k:v for k,v in previous.items() if k in {'render_eta_at','estimate_samples'}}
+            state['render_metrics'].update(stage=code, reported_at=time.time())
+        save(job_dir, state)
         report()
+    def metrics(values):
+        state = load(job_dir)
+        from app import render_stats
+        estimate = render_stats.estimate(f"talking:{state.get('style')}", values['duration_seconds'])
+        state['render_metrics'] = {**values, 'stage':current['stage']}
+        # Whole-render estimates require completed measurements on this server.
+        if estimate:
+            state['render_metrics']['render_eta_at'] = values['reported_at'] + max(
+                values.get('stage_eta_at', values['reported_at']) - values['reported_at'] if values.get('stage_eta_at') else 0,
+                estimate['high_s'] * max(0, 1 - current['pct'] / 100))
+            state['render_metrics']['estimate_samples'] = estimate['samples']
+        save(job_dir, state)
+    progress.metrics = metrics
     return progress, stage
 
 def pause(job_dir: Path) -> dict:

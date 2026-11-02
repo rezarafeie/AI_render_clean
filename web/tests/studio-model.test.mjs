@@ -221,6 +221,13 @@ test('the card of a finished render waiting for review is also the last item, af
   assert.equal(items[items.length - 1].kind, 'render');
 });
 
+test('a ready plan releases stale analysis busy state without unlocking subsequent work', () => {
+  const busy = ev(1, 'work.state', 0, { busy: true });
+  const ready = ev(2, 'plan.ready', 5, { project_id: 'p1', version: 1 });
+  assert.equal(serverBusy([busy, ready], true), false);
+  assert.equal(serverBusy([busy, ready, ev(3, 'work.state', 6, { busy: true })], false), true);
+});
+
 test('a motion job that failed after the last busy signal is not busy any more', () => {
   const busy = ev(1, 'work.state', 0, { busy: true });
   assert.equal(serverBusy([busy], false), true);

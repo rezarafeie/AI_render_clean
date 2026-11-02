@@ -631,7 +631,7 @@ def display_video_size(video: Path) -> tuple[int, int, float]:
     return width, height, float(data['format']['duration'])
 
 
-def prepare_render_source(video: Path, work_dir: Path, on_progress=None) -> Path:
+def prepare_render_source(video: Path, work_dir: Path, on_progress=None, on_metrics=None) -> Path:
     """Cache one SDR delivery-resolution decode before opening per-shot inputs.
 
     High resolution HDR decoded once per shot exhausts container memory and
@@ -664,7 +664,7 @@ def prepare_render_source(video: Path, work_dir: Path, on_progress=None) -> Path
         fcntl.flock(lock, fcntl.LOCK_EX)
         if target.is_file(): return target
         try:
-            convert(command, duration, on_progress)
+            convert(command, duration, on_progress, on_metrics=on_metrics)
         except BaseException:
             temporary.unlink(missing_ok=True)
             raise
@@ -928,7 +928,8 @@ def render(video: Path, plan: ReelPlan, out: Path, *, hook: str, highlight: list
     if ffmpeg is None:
         raise RuntimeError("Talking reels need an ffmpeg with libass (brew install ffmpeg-full)")
     if on_stage: on_stage('rendering source preparation', 'در حال بررسی و تبدیل فرمت فایل ورودی به نسخهٔ مناسب تدوین')
-    video = prepare_render_source(video, work_dir, (lambda pct: on_progress(round(pct * .1))) if on_progress else None)
+    video = prepare_render_source(video, work_dir, (lambda pct: on_progress(round(pct * .1))) if on_progress else None,
+                                  getattr(on_progress, 'metrics', None))
     if on_progress: on_progress(10)
     sw, sh, _ = display_video_size(video)
     # Always render social delivery at a fixed 30fps.  In particular, feeding

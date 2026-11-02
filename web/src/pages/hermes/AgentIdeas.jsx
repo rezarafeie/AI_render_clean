@@ -7,7 +7,7 @@ import { array, message } from './hermesUtils';
 import { useHermes } from './HermesContext';
 
 const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
-const STATUS = { proposed: 'پیشنهاد', in_production: 'در حال ساخت', produced: 'ساخته شد', queued: 'در صف انتشار', rejected: 'رد شد' };
+const STATUS = { proposed: 'ایده آماده است', in_production: 'در حال ساخت ویدیو', produced: 'ویدیو آماده است', needs_review: 'خروجی منتظر بازبینی', awaiting_confirmation: 'منتظر تأیید برنامه', failed: 'ساخت ویدیو متوقف شد', queued: 'در صف انتشار', rejected: 'رد شد' };
 const caption = (item) => (item.caption ? `\n\nکپشن برای انتشار:\n${item.caption}\n${array(item.hashtags).join(' ')}` : '');
 
 /** What the editor receives for an idea it produces from scratch: the whole creative direction, not a one-line topic. */
@@ -27,7 +27,7 @@ function IdeaShell({ item, tagline, children, className = '' }) {
     <button type="button" className="idea-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
       <span className="idea-icon" data-engine={item.engine} role="img" aria-label={talking ? 'صحبتی' : 'اکسپلینر'} title={talking ? 'صحبتی: خودتان ضبط می‌کنید' : 'اکسپلینر: ادیتور می‌سازد'}><Icon name={talking ? 'mic' : 'wand'} size={18}/></span>
       <span className="idea-heading"><strong dir="auto">{item.title}</strong>{tagline ? <small dir="auto">{tagline}</small> : null}</span>
-      {item.status !== 'proposed' ? <span className="idea-status">{STATUS[item.status] || item.status}</span> : null}
+      <span className="idea-status">{STATUS[item.status] || item.status}</span>
       <Icon name="chevronDown" size={16} className="idea-chev"/>
     </button>
     {open ? <div className="idea-body">{children}</div> : null}

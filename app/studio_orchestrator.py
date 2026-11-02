@@ -2174,6 +2174,8 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 failure_message = str(status.get("message") or "")
             observed = {"status": raw_status, "stage": stage, "progress": progress, "output": output,
                         "message": failure_message}
+            if engine == 'talking' and status.get('render_metrics', {}).get('stage') == stage:
+                observed['render_metrics'] = status['render_metrics']
             activity_changed = False
             if raw_status in {'running', 'analyzing', 'rendering', 'queued'}:
                 from app.studio_activity import phase_message

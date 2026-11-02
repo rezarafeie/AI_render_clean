@@ -79,7 +79,7 @@ button.act-row:hover { color: var(--text-2); }
 .act-label { min-width: 0; overflow-wrap: anywhere; }
 .act-label.is-active { color: var(--text-2); }
 .act-step[data-status="failed"] .act-label { color: var(--error); }
-.act-pct { margin-inline-start: auto; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.act-pct { flex: none; white-space: nowrap; unicode-bidi: isolate; font-variant-numeric: tabular-nums; color: var(--text-3); }
 .act-chevron { flex: none; transition: transform var(--dur) var(--ease); }
 .act-chevron.is-open { transform: rotate(180deg); }
 .act-row .act-chevron { margin-inline-start: 2px; }
@@ -561,8 +561,9 @@ button.act-row:hover { color: var(--text-2); }
 }
 :dir(rtl) > .act-shimmer, .act-shimmer:dir(rtl) { animation-direction: reverse; }
 @keyframes act-shimmer { from { background-position: 130% 0; } to { background-position: -130% 0; } }
-.act-elapsed { margin-inline-start: auto; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; flex: none; }
-.act-row .act-elapsed + .act-chevron { margin-inline-start: 6px; }
+.act-timing { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 2px 0 6px 24px; font-size: 12px; }
+.act-step[data-status="active"] .act-label { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.act-elapsed { direction: ltr; unicode-bidi: isolate; white-space: nowrap; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; flex: none; }
 @media (prefers-reduced-motion: reduce) {
   .act-shimmer { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--text-2); }
 }

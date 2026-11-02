@@ -53,6 +53,7 @@ function Stat({ label, value, ring }) {
 /** The home page's account summary: a compact profile line, three numbers and short lists, in the manner of an app, not a dashboard. */
 export default function HermesOverview() {
   const { agent, runAgent, running, runError } = useHermes();
+  const [allIdeas, setAllIdeas] = useState(false);
   const posts = useHermesData('posts', () => hermesApi.getPosts());
   const list = array(posts.data);
   const upcoming = list.filter((p) => p.status === 'scheduled' && new Date(p.scheduled_at) > new Date()).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)).slice(0, 3);
@@ -90,8 +91,8 @@ export default function HermesOverview() {
     </section> : !analysis ? <p className="ov-note">{running ? 'The agent is reading your profile and recent posts. The first review takes a few minutes.' : 'No review yet. Tap refresh to start one.'}</p> : null}
 
     <section className="ov-block">
-      <h3>Ideas for the editor</h3>
-      <AgentIdeas limit={3} embedded />
+      <h3>Ideas for the editor <button type="button" className="btn btn-ghost btn-sm" aria-expanded={allIdeas} onClick={() => setAllIdeas(value => !value)}>{allIdeas ? 'نمایش کمتر' : 'دیدن همهٔ ایده‌ها'}</button></h3>
+      <AgentIdeas limit={allIdeas ? 0 : 3} embedded />
     </section>
 
     {upcoming.length ? <section className="ov-block">

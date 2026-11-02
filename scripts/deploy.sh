@@ -3,6 +3,7 @@ set -euo pipefail
 COMPOSE=(docker compose -f docker-compose.yml)
 
 python3 scripts/check_vps_handoff.py
+python3 scripts/check_native_assets.py
 
 if [ ! -f .env ]; then
     echo "ERROR: .env is missing. Configure it from .env.example." >&2

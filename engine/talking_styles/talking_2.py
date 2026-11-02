@@ -424,7 +424,8 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
     if ffmpeg is None:
         raise RuntimeError("Talking reels need an ffmpeg with libass (brew install ffmpeg-full)")
     if on_stage: on_stage('rendering source preparation', 'در حال بررسی و تبدیل فرمت فایل ورودی')
-    video = base.prepare_render_source(video, work_dir, (lambda pct: on_progress(round(pct * .1))) if on_progress else None)
+    video = base.prepare_render_source(video, work_dir, (lambda pct: on_progress(round(pct * .1))) if on_progress else None,
+                                       getattr(on_progress, 'metrics', None))
     if on_progress: on_progress(10)
     if on_stage: on_stage('rendering captions', 'در حال آماده‌سازی زیرنویس و قاب‌های گوینده و تصاویر')
     sw, sh, _ = probe_video(video)

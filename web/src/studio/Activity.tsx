@@ -38,8 +38,6 @@ function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }
   const label = <>
     <span className="act-icon" data-status={step.status}>{icon}</span>
     <span className={`act-label${active ? " is-active" : ""}`}><span className={active ? "act-shimmer" : undefined}>{step.label}</span></span>
-    {active ? <Elapsed since={step.startedAt}/> : null}
-    {typeof step.progress === "number" && active ? <span className="act-pct">{step.progress}%</span> : null}
     {details ? <Icon name="chevronDown" size={14} className={`act-chevron${open ? " is-open" : ""}`}/> : null}
   </>;
   return <li className="act-step" data-status={step.status}>
@@ -48,6 +46,10 @@ function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }
       : <div className="act-row">{label}</div>}
     {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p>{retryHref ? <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={14}/>Open editor to retry</Link> : null}</div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
+    {active ? <div className="act-timing">
+      {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{step.progress}%</span> : null}
+      <Elapsed since={step.startedAt}/>
+    </div> : null}
     {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
     {details && open ? <div className="act-details">
       {details.notes.map((note, index) => <p key={index} dir="auto" className="bidi wrap-safe">{note}</p>)}

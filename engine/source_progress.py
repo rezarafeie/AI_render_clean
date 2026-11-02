@@ -5,7 +5,15 @@ import tempfile
 import time
 
 
-def convert(command, duration, on_progress=None, *, stall_seconds=180, deadline_seconds=None):
+def conversion_metrics(seconds, duration, elapsed, now):
+    percent = min(100.0, max(0.0, seconds / max(duration, .001) * 100))
+    remaining = (duration - seconds) * elapsed / seconds if seconds > 0 and elapsed >= 10 and percent >= 1 else None
+    return {"stage_percent": round(percent, 1), "processed_seconds": round(seconds, 2),
+            "duration_seconds": duration, "reported_at": now,
+            "stage_eta_at": now + max(0, remaining) if remaining is not None else None}
+
+
+def convert(command, duration, on_progress=None, *, on_metrics=None, stall_seconds=180, deadline_seconds=None):
     deadline = deadline_seconds or max(600, min(14400, duration * 40))
     with tempfile.TemporaryFile() as errors:
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
@@ -35,6 +43,8 @@ def convert(command, duration, on_progress=None, *, stall_seconds=180, deadline_
                                 advanced, last_time = time.monotonic(), current
                                 percent = min(99, max(0, int(current / 1e6 / max(duration, .001) * 100)))
                                 if on_progress: on_progress(percent)
+                                if on_metrics:
+                                    on_metrics(conversion_metrics(current / 1e6, duration, time.monotonic() - started, time.time()))
                 elif proc.poll() is not None:
                     break
             code = proc.wait(timeout=5)
