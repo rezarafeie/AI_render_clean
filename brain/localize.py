@@ -575,12 +575,18 @@ def narration_script(texts: list[str], style: str = "") -> tuple[str, list[tuple
     return " ".join(parts), spans
 
 
+def language_of(text: str) -> str:
+    """"fa" for Persian text, otherwise "en". Voice style tags such as [calm] do not count as text."""
+    from creative.audio.persian import is_persian
+    return "fa" if is_persian(re.sub(r"\[[^\]]*\]", " ", text)) else "en"
+
+
 def _cast(text: str, voice: str = "") -> tuple[str, str]:
     """The person's own pick from NARRATORS is used as chosen; otherwise the studio's Persian casting."""
     if voice and voice in narrator_ids():
         return voice, "eleven_v3"
     from .speech_policy import eleven_cast
-    return eleven_cast(text, tts_voice(), tts_model(), language="fa", context="narration educational")
+    return eleven_cast(text, tts_voice(), tts_model(), language=language_of(text), context="narration educational")
 
 
 def _narration_paths(full: str, out_dir: Path, voice: str = "") -> tuple[Path, Path]:
@@ -607,7 +613,7 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     response = httpx.post(
         elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"),
         headers={"xi-api-key": key},
-        json={"text": text, "model_id": model, "language_code": "fa"},
+        json={"text": text, "model_id": model, "language_code": language_of(text)},       # English text is not sent as Persian
         timeout=httpx.Timeout(300.0, connect=20.0),
     )
     if response.status_code == 403:
@@ -668,3 +674,15 @@ def synthesize_narration(texts: list[str], out_dir: Path, voice: str = "", style
         _trim_silence(raw, piece)
         clips.append((piece, audio_duration(piece)))
     return clips
+
+
+def narration_words(texts: list[str], out_dir: Path, voice: str = "", style: str = "") -> list[list[dict]]:
+    """Words of each line (seconds from its first voiced character), read from the cached character timestamps of the same take."""
+    from creative.audio import timing
+    full, spans = narration_script(texts, style)
+    _, timing_file = _narration_paths(full, out_dir, voice)
+    try:
+        alignment = json.loads(timing_file.read_text())
+    except (OSError, ValueError):
+        return [[] for _ in texts]
+    return [timing.words(alignment, span) for span in spans]

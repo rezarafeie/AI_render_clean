@@ -31,6 +31,13 @@ Branch `feat/audio-intelligence-foundation`, built on the latest teammate branch
 - `creative/audio/verify.py` - narration is recognised by the existing speech-recognition path and compared with the script (word error, wrong script); a failed scene is voiced once more; a check that cannot run is reported as not checked. Bounded by a 120 s budget; switch off with `AUDIO_VERIFY_NARRATION=0`. The report is stored as `audio_report.json` in the motion folder.
 - `pyloudnorm` was not added: ffmpeg's EBU R128 implementation already measures and normalizes loudness.
 
+## Added in the third slice (tested with synthetic audio; not yet heard with a real voice)
+
+- **English narration is no longer sent to ElevenLabs as Persian.** `brain/localize.py` hard-coded `language_code: "fa"` (and a Persian casting language); it now follows the text (`language_of`).
+- `creative/audio/mixer.py` - the final mix: narration clips on the timeline + the ducked music bed -> one master track at the delivery loudness (EBU R128 two-pass, true-peak protected). `Loudness: reels|tiktok|youtube|podcast|social|off` in the request; default social video (-14 LUFS). A failed master keeps the separate tracks.
+- The rendered MP4 is measured after rendering (`audio_report.json -> final`) and the version notes say when it is off target.
+- `creative/audio/timing.py` - word and pause events from the voice's own character timestamps, saved as `audio_timing.json` (times relative to the first spoken word; style tags are not words). **Not yet consumed** by scene design or captions.
+
 ## Not implemented (needs decisions or dependencies)
 
 Fish Audio and other TTS providers, emotion-per-sentence controls beyond ElevenLabs v3 tags, partial re-generation of a sentence, STT-based language/pronunciation verification wired into every render, WhisperX alignment, librosa beat/BPM/downbeat analysis, rhythm modes, music generation/search providers (Mubert), license tracking, SFX generation, per-track mixer and mastering, HyperFrames timing adapter, Hermes/LangGraph audio tools, Audio Studio UI, persistent audio project tables and cost budgets.

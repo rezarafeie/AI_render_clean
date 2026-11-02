@@ -344,3 +344,106 @@ def test_a_recogniser_that_returns_no_text_is_not_a_failed_narration_and_costs_n
     out, report = verify.verify_clips(["This is the script."], clips(2.0), lambda p, i: "   ", regenerate)
     assert report[0]["status"] == "not_checked" and "no text" in report[0]["reason"]
     assert voiced["n"] == 0 and out == clips(2.0)
+
+
+def test_the_speech_language_follows_the_text_not_a_fixed_default():
+    from brain import localize
+    assert localize.language_of("What if making a video felt like a conversation?") == "en"
+    assert localize.language_of("[calm] [softly] What if making a video felt natural?") == "en"       # style tags are not text
+    assert localize.language_of("[calm] قیمت دو هزار تومان است") == "fa"
+    assert localize.language_of("با EditorGPT ویدیو بساز") == "fa"
+
+
+def test_english_narration_is_not_sent_to_elevenlabs_as_persian(monkeypatch):
+    import httpx
+    from brain import localize
+    sent = {}
+    class Reply:
+        status_code = 200; text = ""
+        def raise_for_status(self): pass
+        def json(self): return {"audio_base64": "AAAA", "alignment": {}}
+    import brain.elevenlabs_transport as transport
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "k")
+    monkeypatch.setattr(transport, "url", lambda path: "https://relay.example/" + path)       # the real one insists on the HTTPS relay configuration
+    monkeypatch.setattr(localize, "_cast", lambda text, voice="": ("voice1", "eleven_v3"))
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.update(kw["json"]) or Reply())
+    localize._elevenlabs_with_timestamps("[calm] Meet EditorGPT.", "voice1")
+    assert sent["language_code"] == "en"
+    localize._elevenlabs_with_timestamps("سلام به همه", "voice1")
+    assert sent["language_code"] == "fa"
+
+
+# --- final mix, word timing, loudness directive
+import subprocess as _sp
+import shutil as _shutil
+
+
+def _tone(path, seconds, freq=440, volume="-30dB"):
+    _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={seconds}", "-af", f"volume={volume}", str(path)], check=True)
+    return path
+
+
+needs_ffmpeg2 = pytest.mark.skipif(not _shutil.which("ffmpeg"), reason="ffmpeg is required")
+
+
+@needs_ffmpeg2
+def test_the_master_brings_narration_and_music_to_the_delivery_loudness(tmp_path):
+    from creative.audio import loudness, mixer
+    voice = [{"path": str(_tone(tmp_path / "v1.wav", 3, 700)), "start": 0.25, "duration": 3.0}, {"path": str(_tone(tmp_path / "v2.wav", 3, 500)), "start": 6.0, "duration": 3.0}]
+    bed = {"path": str(_tone(tmp_path / "bed.wav", 10, 220, "-38dB")), "start": 0, "duration": 10}
+    result = mixer.master(voice, bed, 10.0, tmp_path / "master.m4a", "social_video")
+    assert result["before"]["integrated_lufs"] < -28                      # the raw mix was quiet
+    assert abs(result["after"]["integrated_lufs"] - (-14.0)) < 1.5 and result["after"]["true_peak_dbtp"] <= -1.0
+    final = loudness.measure(tmp_path / "master.m4a")
+    assert mixer.within_target(final["integrated_lufs"], "social_video")
+    duration = float(_sp.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(tmp_path / "master.m4a")], capture_output=True, text=True).stdout)
+    assert abs(duration - 10.0) < 0.3
+
+
+@needs_ffmpeg2
+def test_a_failed_master_keeps_the_separate_tracks(tmp_path):
+    from app import motion_graphic as app_mg
+    plan = type("P", (), {"duration": 10})()
+    audio = [{"path": str(tmp_path / "missing.wav"), "start": 0.25, "duration": 3.0}]
+    kept, notes = app_mg._master_audio(tmp_path, {"loudness": "social_video"}, plan, audio)
+    assert kept == audio and notes and "میکس نهایی انجام نشد" in notes[0]
+    assert app_mg._master_audio(tmp_path, {"loudness": "off"}, plan, audio) == (audio, [])
+
+
+@needs_ffmpeg2
+def test_a_successful_master_replaces_the_tracks_by_one_master_track(tmp_path):
+    from app import motion_graphic as app_mg
+    plan = type("P", (), {"duration": 6})()
+    audio = [{"path": str(_tone(tmp_path / "v.wav", 3, 600)), "start": 0.25, "duration": 3.0}]
+    mastered, notes = app_mg._master_audio(tmp_path, {"loudness": "social_video"}, plan, audio)
+    assert [c["role"] for c in mastered] == ["master"] and mastered[0]["duration"] == 6 and "LUFS" in notes[0]
+    assert "mix" in json.loads((tmp_path / "audio_report.json").read_text())
+
+
+def test_the_page_plays_the_master_track(tmp_path):
+    from creative import motion_graphic as mg
+    master = tmp_path / "master.m4a"; master.write_bytes(b"x")
+    page = mg.MotionPage(title="t", duration=5, scenes_html='<section class="hm-scene" id="s1"><p id="s1-a">hi</p></section>', build_js="tl.to('#s1-a',{opacity:1},0)",
+                         audio=[{"path": str(master), "start": 0, "duration": 5, "role": "master"}])
+    assert '<audio id="master" src="assets/master.m4a" data-start="0" data-duration="5" data-track-index="1">' in mg.assemble(page)
+
+
+def test_word_timing_comes_from_the_character_timestamps():
+    from creative.audio import timing
+    text = "[calm] Say it. Just ask."
+    alignment = {"characters": list(text), "character_start_times_seconds": [round(i * 0.1, 2) for i in range(len(text))],
+                 "character_end_times_seconds": [round(i * 0.1 + 0.08, 2) for i in range(len(text))]}
+    found = timing.words(alignment, (0, len(text)))
+    assert [w["word"] for w in found] == ["Say", "it.", "Just", "ask."]            # the style tag is not a word
+    assert found[0]["start"] == 0 and found[1]["start"] > found[0]["end"]
+    rows = timing.events([found], [1.25])
+    words = [r for r in rows if r.type == "word"]
+    assert words[0].time_ms == 1250 and words[0].metadata["text"] == "Say" and all(isinstance(r.time_ms, int) for r in rows)
+    assert timing.words({}, (0, 5)) == [] and timing.events([found], [None]) == []
+
+
+def test_the_loudness_directive():
+    from creative import directives
+    assert directives.parse("Loudness: reels")[1].loudness == "instagram_reels"
+    assert directives.parse("Loudness: off")[1].loudness == "off"
+    assert directives.parse("Loudness: loud")[1].notes

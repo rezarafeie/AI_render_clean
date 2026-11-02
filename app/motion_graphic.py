@@ -146,7 +146,7 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
-              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first"}
+              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first", "loudness": wanted.loudness or "social_video"}
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -387,7 +387,7 @@ def _run(directory: Path, change: str) -> None:
     notes: list[str] = []
     with _BROWSER:
         page, notes = _prepare_and_render(directory, page, brief, change, used, build)
-    notes = scene_notes + notes
+    notes = scene_notes + notes + _check_final_loudness(directory, record, page, directory / "work" / "motion.mp4")
     with _lock(key):
         if _cancelled(key):
             raise _Cancelled()                                   # Stop (or a newer start) arrived during the render: nothing of this run is kept
@@ -422,6 +422,18 @@ def _ask(directory: Path, record: dict, questions: list[str], change: str = "") 
 def _fingerprint(*parts: str) -> str:
     import hashlib
     return hashlib.sha1("\x00".join(parts).encode()).hexdigest()[:12]
+
+
+def _save_word_timing(directory: Path, texts: list[str], voice_id: str, voice_style: str, clip_starts: list) -> None:
+    """Word and pause events of the narration, from the take's own timestamps, saved for scene design and captions. Never blocks the build."""
+    try:
+        from brain import localize
+        from creative.audio import timing
+        found = localize.narration_words(texts, directory / "voice", voice_id, voice_style)
+        rows = timing.events(found, clip_starts)
+        (directory / "audio_timing.json").write_text(json.dumps({"source": "provider character timestamps", "events": [r.model_dump() for r in rows]}, ensure_ascii=False))
+    except Exception as exc:
+        log.debug("word timing not saved: %s", str(exc)[:100])
 
 
 def _gate_clips(plan, clips) -> list[str]:
@@ -488,14 +500,16 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     _remember_voice_error(directory, record, None)
     clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
     gate_notes = [*_gate_clips(plan, clips), *verified]
-    cursor, scenes, audio = 0.0, [], []
+    cursor, scenes, audio, clip_starts = 0.0, [], [], []
     for index, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips)):
         last = index == len(plan.scenes) - 1
         length = max(scene.end - scene.start, seconds + 0.7 + (1.0 if last else 0.0))
         scenes.append(scene.model_copy(update={"start": round(cursor, 2), "end": round(cursor + length, 2)}))
         if seconds > 0:
             audio.append({"path": str(path), "start": round(cursor + 0.25, 2), "duration": round(seconds, 2)})
+        clip_starts.append(round(cursor + 0.25, 2) if seconds > 0 else None)
         cursor += length
+    _save_word_timing(directory, texts, voice_id, voice_style, clip_starts)
     if cursor > mg.MAX_SECONDS:
         _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
@@ -542,7 +556,56 @@ def _revoice(directory: Path, record: dict, previous):
     if [(sc.start, sc.end) for sc in voiced.scenes] != [(sc.start, sc.end) for sc in plan.scenes]:
         return None
     audio, music_notes = _add_music(directory, record, voiced, audio)
-    return previous.model_copy(update={"audio": audio}), [*notes, *music_notes]
+    audio, master_notes = _master_audio(directory, record, voiced, audio)
+    return previous.model_copy(update={"audio": audio}), [*notes, *music_notes, *master_notes]
+
+
+def _merge_report(directory: Path, **sections) -> None:
+    """Add sections to audio_report.json (measurements stay apart from any model's judgement)."""
+    path = directory / "audio_report.json"
+    try: report = json.loads(path.read_text())
+    except (OSError, ValueError): report = {}
+    report.update(sections)
+    try: path.write_text(json.dumps(report, ensure_ascii=False))
+    except OSError: log.debug("audio report not written")
+
+
+def _master_audio(directory: Path, record: dict, plan, audio: list[dict]):
+    """Mix the narration and the music bed into one track at the delivery loudness. Any failure keeps the separate tracks (the film is
+    never left without sound because the mastering failed). Returns (audio, notes)."""
+    from creative.audio import loudness, mixer
+    preset = record.get("loudness") or "social_video"
+    voice = [clip for clip in audio if clip.get("role") not in {"music", "master"}]
+    if preset == "off" or not voice or preset not in loudness.PRESETS:
+        return audio, []
+    music = next((clip for clip in audio if clip.get("role") == "music"), None)
+    try:
+        result = mixer.master(voice, music, plan.duration, directory / "master.m4a", preset)
+    except Exception as exc:
+        log.warning("master mix failed: %s", str(exc)[:200])
+        return audio, ["میکس نهایی انجام نشد؛ صدا بدون نرمال‌سازی استفاده شد: " + str(exc)[:120]]
+    _merge_report(directory, mix={"preset": preset, **result})
+    before, after, target = result["before"]["integrated_lufs"], result["after"]["integrated_lufs"], result["target"]["lufs"]
+    return ([{"path": str(directory / "master.m4a"), "start": 0, "duration": plan.duration, "role": "master"}],
+            [f"میکس نهایی: لودنس {before:.1f} به {after:.1f} LUFS رسید (هدف {target:g}، true peak {result['after']['true_peak_dbtp']:.1f} dBTP)"])
+
+
+def _check_final_loudness(directory: Path, record: dict, page, mp4: Path) -> list[str]:
+    """Measure the rendered file itself and report when it is off the delivery target. Measurement only; never blocks the version."""
+    if not page.audio or (record.get("loudness") or "social_video") in {"off", None}:
+        return []
+    from creative.audio import loudness, mixer
+    preset = record.get("loudness") or "social_video"
+    try:
+        measured = loudness.measure(mp4)
+    except Exception as exc:
+        log.debug("final loudness not measured: %s", str(exc)[:100]); return []
+    _merge_report(directory, final={"preset": preset, **measured})
+    if measured.get("silent"):
+        return ["ویدیوی رندرشده بی‌صدا است، با اینکه صدا اضافه شده بود."]
+    if preset in loudness.PRESETS and not mixer.within_target(measured["integrated_lufs"], preset):
+        return [f"لودنس ویدیوی نهایی {measured['integrated_lufs']:.1f} LUFS است و از هدف {loudness.PRESETS[preset][0]:g} دور است."]
+    return []
 
 
 def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_id: str, voice_style: str):
@@ -749,7 +812,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
     plan, audio, rhythm_notes = _sync_rhythm(directory, record, plan, audio)
     audio, music_notes = _add_music(directory, record, plan, audio)
-    voice_notes = [*record.get("directive_notes", []), *voice_notes, *rhythm_notes, *music_notes]
+    audio, master_notes = _master_audio(directory, record, plan, audio)
+    voice_notes = [*record.get("directive_notes", []), *voice_notes, *rhythm_notes, *music_notes, *master_notes]
     count = len(plan.scenes)
     import hashlib
     draft_inputs = [(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes]

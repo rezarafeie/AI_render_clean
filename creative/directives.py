@@ -12,10 +12,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-_LINE = re.compile(r"^\s*(narrator|voice\s*style|voice|music|rhythm|pronounce|pronunciation|راوی|گوینده|سبک\s*صدا|موسیقی|ریتم|تلفظ)\s*[:：]\s*(.+?)\s*$", re.I | re.M)
+_LINE = re.compile(r"^\s*(narrator|voice\s*style|voice|music|rhythm|loudness|pronounce|pronunciation|راوی|گوینده|سبک\s*صدا|موسیقی|ریتم|تلفظ)\s*[:：]\s*(.+?)\s*$", re.I | re.M)
 _KIND = {"narrator": "narrator", "voice": "narrator", "راوی": "narrator", "گوینده": "narrator",
          "voicestyle": "style", "سبکصدا": "style", "music": "music", "موسیقی": "music",
-         "pronounce": "pron", "pronunciation": "pron", "تلفظ": "pron", "rhythm": "rhythm", "ریتم": "rhythm"}
+         "pronounce": "pron", "pronunciation": "pron", "تلفظ": "pron", "rhythm": "rhythm", "ریتم": "rhythm", "loudness": "loudness"}
 _STYLE_WORDS = {"natural": "", "neutral": "", "طبیعی": "", "calm": "calm", "soft": "calm", "آرام": "calm", "serious": "serious", "firm": "serious",
                 "جدی": "serious", "energetic": "energetic", "excited": "energetic", "پرانرژی": "energetic",
                 "reflective": "reflective", "thoughtful": "reflective", "emotional": "reflective", "تأمل‌برانگیز": "reflective"}
@@ -29,6 +29,7 @@ class Directives:
     style: str | None = None           # key of brain.localize.VOICE_STYLES
     music: str | None = None           # None = not stated, "off", "attached" or "library"
     music_words: str = ""
+    loudness: str | None = None                                # a preset of creative.audio.loudness.PRESETS, or "off"
     rhythm: str | None = None                                  # speech_first | music_first | balanced | cinematic
     pronunciations: dict = field(default_factory=dict)   # written form -> spoken form, e.g. EditorGPT -> ادیتور جی‌پی‌تی
     notes: list[str] = field(default_factory=list)
@@ -54,6 +55,11 @@ def parse(text: str) -> tuple[str, Directives]:
         value = match.group(2)
         if kind == "narrator":
             found.narrator = _narrator(value, found.notes)
+        elif kind == "loudness":
+            choice = {"reels": "instagram_reels", "instagram": "instagram_reels", "instagram_reels": "instagram_reels", "tiktok": "tiktok", "youtube": "youtube",
+                      "podcast": "podcast", "social": "social_video", "social_video": "social_video", "off": "off", "none": "off", "بدون": "off"}.get(re.sub(r"[\s\-]+", "_", value.strip().lower()))
+            if choice: found.loudness = choice
+            else: found.notes.append(f"لودنس «{value}» شناخته نشد؛ پیش‌فرض social video استفاده شد. گزینه‌ها: reels, tiktok, youtube, podcast, social, off")
         elif kind == "rhythm":
             mode = re.sub(r"[\s\-]+", "_", value.strip().lower())
             mode = {"speech": "speech_first", "music": "music_first", "گفتار": "speech_first", "موسیقی": "music_first", "متعادل": "balanced", "سینمایی": "cinematic"}.get(mode, mode)
