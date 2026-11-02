@@ -123,13 +123,14 @@ TASKS = {
     "photorealistic_image": _task("Photorealistic Image", "image", [("jarvis","GPT_IMAGE_2_5_SUNBURST"), ("sarovi","bytedance-seed/seedream-5-0-pro")], "image"),
     "creative_image": _task("Creative Image", "image", [("sarovi","google/gemini-3-pro-image"), ("sarovi","bytedance-seed/seedream-5-0-pro")], "image"),
     "storyboard_image": _task("Storyboard Image", "image", [("jarvis","gemini-3-1-flash-image"), ("sarovi","google/gemini-3.1-flash-image")], "image"),
-    "product_video": _task("Product Video", "video", [("sarovi","bytedance/seedance-2.5")], "video"),
-    "cinematic_video": _task("Cinematic Video", "video", [("sarovi","openai/sora-2-pro"), ("sarovi","google/veo-3.1")], "video"),
-    "fast_broll": _task("Fast B-roll", "video", [("sarovi","bytedance/seedance-2.0-fast"), ("sarovi","google/veo-3.1-fast")], "video"),
+    "product_video": _task("Product Video", "video", [("jarvis","GROK_IMAGINE_VIDEO_1_5"), ("sarovi","bytedance/seedance-2.5")], "video"),
+    "cinematic_video": _task("Cinematic Video", "video", [("jarvis","VEO_3_1"), ("sarovi","openai/sora-2-pro"), ("sarovi","google/veo-3.1")], "video"),
+    "fast_broll": _task("Fast B-roll", "video", [("jarvis","GROK_IMAGINE_VIDEO"), ("jarvis","OMNI_FLASH"), ("sarovi","bytedance/seedance-2.0-fast"), ("sarovi","google/veo-3.1-fast")], "video"),
     "image_to_video": _task("Image-to-Video", "video", [("sarovi","kwaivgi/kling-v3.0-std"), ("sarovi","bytedance/seedance-2.5")], "video"),
-    "narration": _task("Narration / TTS", "speech", [("sarovi","elevenlabs/eleven-v4")], "audio"),
-    # No registered Scribe/embedding pair was discovered; do not invent one.
-    "transcription": _task("Transcription", "transcription", [], "transcription"),
+    "narration": _task("Narration / TTS", "speech", [("jarvis","TTS_ELEVEN_V4"), ("jarvis","TTS_ELEVEN_V3"), ("sarovi","elevenlabs/eleven-v4")], "audio"),
+    # Jarvis lists one speech-to-text model (STT_AVEVOICE); there is still no registered embedding pair, so none is invented.
+    "transcription": _task("Transcription", "transcription", [("jarvis","STT_AVEVOICE")], "transcription"),
+    # Jarvis (per the operator's model list) has no music-generation model, so this stays on Sarovi.
     "music_generation": _task("Music Generation", "music", [("sarovi","google/lyria-3-clip-preview")], "audio"),
     "embeddings": _task("Embeddings", "embeddings", [], "embeddings"),
 }

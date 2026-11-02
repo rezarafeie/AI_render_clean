@@ -19,7 +19,10 @@ def test_policy_is_not_activation_evidence():
     for task in TASKS.values():
         assert "verified" not in task and "enabled" not in task
         assert len({p["id"] for p in task["preferences"]}) == len(task["preferences"])
-    assert TASKS["transcription"]["preferences"] == []
+    # The operator's Jarvis model list names one speech-to-text model; it is a preference only (still untested until probed).
+    assert [p["model_id"] for p in TASKS["transcription"]["preferences"]] == ["STT_AVEVOICE"]
+    assert [p["model_id"] for p in TASKS["narration"]["preferences"]][:2] == ["TTS_ELEVEN_V4", "TTS_ELEVEN_V3"]
+    assert not any(p["provider"] == "jarvis" for p in TASKS["music_generation"]["preferences"])   # Jarvis lists no music model
     assert TASKS["embeddings"]["preferences"] == []
     assert all("vercel" not in p["id"] for t in TASKS.values() for p in t["preferences"])
 
