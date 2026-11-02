@@ -42,8 +42,10 @@ def verify_clips(texts: list[str], clips: list[tuple[Path, float]], recognise: C
             heard = recognise(Path(clip[0]), index)
         except Exception as exc:
             heard = None; row["reason"] = type(exc).__name__
-        if heard is None:
-            row.setdefault("reason", "recognition unavailable"); report.append(row); continue
+        if heard is None or not heard.strip():
+            # No text came back at all: the recogniser failed or heard nothing it could use. That says nothing about the narration,
+            # so it is "not checked", and above all it must not trigger another (paid) voicing.
+            row.setdefault("reason", "recognition unavailable" if heard is None else "recognition returned no text"); report.append(row); continue
         current = completeness(text, heard)["word_error_rate"]
         wrong_script = script_mismatch(text, heard)
         attempt = 0

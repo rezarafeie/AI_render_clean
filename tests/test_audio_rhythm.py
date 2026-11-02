@@ -335,3 +335,12 @@ def test_the_chat_agent_is_told_when_the_latest_version_has_no_audio(monkeypatch
     record["versions"] = [{"n": 1, "title": "t", "summary": "s", "page": {"audio": [{"path": "/x.wav", "start": 0, "duration": 1}]}}]
     app_mg.save(directory, record)
     assert "problem" not in shared._motion_summary("u1", {"state": {"motion": {"motion_id": record["id"]}}})["narration"]
+
+
+def test_a_recogniser_that_returns_no_text_is_not_a_failed_narration_and_costs_no_retry():
+    voiced = {"n": 0}
+    def regenerate(i):
+        voiced["n"] += 1; return (Path("/tmp/again.wav"), 2.0)
+    out, report = verify.verify_clips(["This is the script."], clips(2.0), lambda p, i: "   ", regenerate)
+    assert report[0]["status"] == "not_checked" and "no text" in report[0]["reason"]
+    assert voiced["n"] == 0 and out == clips(2.0)
