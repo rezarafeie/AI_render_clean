@@ -1005,8 +1005,15 @@ def _motion_summary(user_key: str, conversation: dict) -> dict | None:
     except (KeyError, OSError, ValueError):
         return None
     latest = record["versions"][-1] if record["versions"] else {}
-    return {"status": record["status"], "title": latest.get("title", ""), "summary": latest.get("summary", "")[:200],
-            "versions": len(record["versions"]), "questions_asked": record.get("questions", [])}
+    summary = {"id": record["id"], "status": record["status"], "stage": record.get("stage"), "title": latest.get("title", ""), "summary": latest.get("summary", "")[:200],
+               "versions": len(record["versions"]), "questions_asked": record.get("questions", []), "request": (record.get("request") or "")[:300],
+               "narration": {"narrator": record.get("voice_id") or "studio default", "style": record.get("voice_style") or "natural",
+                             "music": (record.get("music") or {}).get("mode", "none"), "rhythm": record.get("rhythm") or "speech_first"}}
+    if record.get("voice_error"):
+        summary["narration"]["problem"] = "the narration could not be made, so the video is silent: " + record["voice_error"]
+    if record.get("error"):
+        summary["error"] = str(record["error"])[:200]
+    return summary
 
 
 def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, *, answering: bool) -> bool:

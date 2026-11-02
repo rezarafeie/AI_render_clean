@@ -38,6 +38,11 @@ def context(record):
                   "history": [{"role": m["role"], "content": m["content"][:3000]} for m in conversation["messages"][-16:]],
                   "assets": [{k: a[k] for k in ("id", "kind", "filename", "size_bytes")} for a in assets],
                   "projects": projects, "manual": conversation["state"].get("execution_mode") == "manual"}
+    # The motion graphic this chat already holds (its narration, music, problems) is not a Studio project, so say so explicitly.
+    from app import studio_orchestrator as _shared
+    motion = _shared._motion_summary(record["user_key"], conversation)
+    if motion:
+        normalized["motion_graphic"] = motion
     # Plan documents are bounded text data, not a second copy of the whole project database.
     if len(json.dumps(normalized)) > 60000:
         for p in projects: p["plan"] = {"id": (p["plan"] or {}).get("id"), "note": "Inspect the existing project before modifying it."}
@@ -76,6 +81,7 @@ Only inspect exact source URLs supplied by the user. Never invent or append quer
 Each label describes a real operation. Read-only inspections may run before later planning; if inspection is needed, ONLY plan inspections first.
 Never claim to have read a page or seen footage before inspection. Do not repeat source analysis already completed.
 For an explainer, educational or idea-led reel (an approved Instagram GPT idea, a request marked as explainer, a topic to explain) use create_motion_graphic: it designs animated scenes and narrates them. Use create_storyboard only when the person supplied real product photos, a product page URL, or asks for an editable photo storyboard.
+When the context has "motion_graphic", that clip already exists in this chat. A request to fix, change or redo its narration, voice, music, text, timing or look is revise_motion_graphic with a precise change; never ask the person for a project ID or to repeat what they already made. If motion_graphic.narration.problem is present the narration failed and the clip is silent: revise with the change "voice every scene again with the same script; keep the design". A different new subject is create_motion_graphic.
 Writes require explicit user approval. Talking and storyboard engines additionally require their existing plan/generation approval.
 Do not include a render step for a plan version that does not exist yet. No generated ID references, no placeholders.
 If a step creates a project, stop the plan at that step. Replan from its actual result later; never use unknown, pending, or guessed project IDs.

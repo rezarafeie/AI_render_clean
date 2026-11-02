@@ -597,3 +597,57 @@ def test_medium_can_plan_a_voiced_motion_graphic():
     assert any(item["name"] == "create_motion_graphic" and item["requires_approval"] for item in tools.catalog())
     plan = EditingPlan.model_validate({"summary": "s", "steps": [{"tool": "create_motion_graphic", "arguments": {"request": "سه اشتباه"}, "label": "ساخت ویدیو"}]})
     assert plan.steps[0].tool == "create_motion_graphic"
+
+
+def test_medium_sees_the_motion_graphic_this_chat_already_holds(monkeypatch, tmp_path):
+    from app import motion_graphic as mg
+    monkeypatch.setattr(mg, "ROOT", tmp_path)
+    record = seed()
+    cid = record["conversation_id"]
+    made = mg.create(cid, "alice", "Narrator: Eric\nVoice style: calm\nA 20-second explainer.")
+    made["voice_error"] = "OSError: [Errno -5] No address associated with hostname"
+    made["status"] = "completed"
+    mg.save(mg.folder("alice", cid, made["id"]), made)
+    call(s.repo.set_conversation(cid, "alice", state={"motion": {"motion_id": made["id"]}}))
+    shared = nodes.context(record)["context"]
+    summary = shared["motion_graphic"]
+    assert summary["id"] == made["id"] and summary["status"] == "completed"
+    assert summary["narration"]["style"] == "calm" and "silent" in summary["narration"]["problem"]
+
+
+def test_a_chat_without_a_motion_graphic_has_no_motion_context():
+    assert "motion_graphic" not in nodes.context(seed())["context"]
+
+
+def test_medium_can_revise_the_existing_motion_graphic(monkeypatch, tmp_path):
+    from app import motion_graphic as mg
+    from app import studio_orchestrator as shared
+    from app.agents.medium.state import EditingPlan
+    assert any(item["name"] == "revise_motion_graphic" and item["requires_approval"] for item in tools.catalog())
+    EditingPlan.model_validate({"summary": "s", "steps": [{"tool": "revise_motion_graphic", "arguments": {"change": "نریشن را دوباره بساز"}, "label": "اصلاح نریشن"}]})
+    monkeypatch.setattr(mg, "ROOT", tmp_path)
+    record = seed()
+    cid = record["conversation_id"]
+    made = mg.create(cid, "alice", "A 20-second explainer.")
+    made["status"] = "completed"; made["versions"] = [{"n": 1, "title": "t", "summary": "s"}]
+    mg.save(mg.folder("alice", cid, made["id"]), made)
+    call(s.repo.set_conversation(cid, "alice", state={"motion": {"motion_id": made["id"]}}))
+    seen = []
+    monkeypatch.setattr(mg, "revise", lambda directory, change: seen.append(change))
+    monkeypatch.setattr(shared, "_emit", lambda *a, **k: None)
+    result = tools.execute(record, {"tool": "revise_motion_graphic", "arguments": {"change": "نریشن را دوباره بساز"}})
+    assert seen == ["نریشن را دوباره بساز"] and result["motion_id"] == made["id"]
+
+
+def test_revising_without_a_motion_graphic_or_while_one_is_running_is_refused(monkeypatch, tmp_path):
+    from app import motion_graphic as mg
+    monkeypatch.setattr(mg, "ROOT", tmp_path)
+    record = seed()
+    with pytest.raises(tools.PreflightUnavailable):
+        tools.execute(record, {"tool": "revise_motion_graphic", "arguments": {"change": "نریشن را درست کن"}})
+    cid = record["conversation_id"]
+    made = mg.create(cid, "alice", "A film.")
+    made["status"] = "rendering"; mg.save(mg.folder("alice", cid, made["id"]), made)
+    call(s.repo.set_conversation(cid, "alice", state={"motion": {"motion_id": made["id"]}}))
+    with pytest.raises(tools.PreflightUnavailable):
+        tools.execute(record, {"tool": "revise_motion_graphic", "arguments": {"change": "نریشن را درست کن"}})
