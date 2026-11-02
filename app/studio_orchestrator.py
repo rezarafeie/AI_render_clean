@@ -1009,8 +1009,16 @@ def _motion_summary(user_key: str, conversation: dict) -> dict | None:
                "versions": len(record["versions"]), "questions_asked": record.get("questions", []), "request": (record.get("request") or "")[:300],
                "narration": {"narrator": record.get("voice_id") or "studio default", "style": record.get("voice_style") or "natural",
                              "music": (record.get("music") or {}).get("mode", "none"), "rhythm": record.get("rhythm") or "speech_first"}}
+    summary["narration"]["audible"] = bool((latest.get("page") or {}).get("audio"))
     if record.get("voice_error"):
         summary["narration"]["problem"] = "the narration could not be made, so the video is silent: " + record["voice_error"]
+    else:
+        try:
+            planned = json.loads((motion_graphic.locate(pointer["motion_id"], user_key) / "plan.json").read_text())["plan"]
+            if latest and not summary["narration"]["audible"] and any((sc.get("narration") or "").strip() for sc in planned.get("scenes", [])):
+                summary["narration"]["problem"] = "the latest version has no audio track although its scenes have narration text"
+        except (KeyError, OSError, ValueError):
+            pass
     if record.get("error"):
         summary["error"] = str(record["error"])[:200]
     return summary

@@ -353,7 +353,23 @@ def _run(directory: Path, change: str) -> None:
     used: list[str] = []
     scene_notes: list[str] = []
     build = None
-    if previous is not None:
+    revoiced = None
+    if previous is not None and _VOICE_CHANGE.search(change):
+        _progress(directory, "writing", 8, "دارم نریشن را دوباره می‌سازم.", stage="writing")
+        _note(directory, "voice", "دارم نریشن را دوباره با همان اسکریپت می‌سازم")
+        revoiced = _revoice(directory, record, previous)
+        if revoiced is None:
+            previous = None                          # the voice changed the scene timing: rebuild the clip from its plan
+        else:
+            _note(directory, "voice", "نریشن آماده و به ویدیو اضافه شد", "done")
+    if revoiced is not None:
+        page, extra = revoiced
+        scene_notes.extend(extra)
+        if _LOOK_CHANGE.search(change):               # the same request also changes how it looks: apply that on top, keeping the audio
+            audio = list(page.audio)
+            page = mg.author(brief, context=record.get("context", ""), previous=page, change=change, style=record.get("style", ""), used=used)
+            page = page.model_copy(update={"audio": audio})
+    elif previous is not None:
         _progress(directory, "writing", 8, "دارم تغییر را روی آخرین نسخه اعمال می‌کنم.", stage="writing")
         _note(directory, "revise", f"دارم این تغییر را اعمال می‌کنم: «{change[:80]}»")
         page = mg.author(brief, context=record.get("context", ""), previous=previous, change=change, style=record.get("style", ""), used=used)
@@ -467,8 +483,9 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     except Exception as exc:
         log.warning("motion narration could not be made: %s", str(exc)[:200])
         _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
-        record["voice_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
         return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
+    _remember_voice_error(directory, record, None)
     clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
     gate_notes = [*_gate_clips(plan, clips), *verified]
     cursor, scenes, audio = 0.0, [], []
@@ -486,6 +503,46 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
     return retimed, audio, gate_notes
+
+
+def _remember_voice_error(directory: Path, record: dict, message: str | None) -> None:
+    """Keep the narration problem in the saved record (the chat agent reads it); clear it once narration works."""
+    if message: record["voice_error"] = message
+    else: record.pop("voice_error", None)
+    try:
+        with _lock(directory.name):
+            saved = load(directory)
+            if message: saved["voice_error"] = message
+            else: saved.pop("voice_error", None)
+            save(directory, saved)
+    except Exception as exc:                                    # remembering must never cost the build
+        log.debug("voice error not stored: %s", str(exc)[:100])
+
+
+_VOICE_CHANGE = re.compile(r"نریشن|نریشین|روایت|گوینده|راوی|لحن|صدا|voice|narrat|speech|audio|tts", re.I)
+_LOOK_CHANGE = re.compile(r"رنگ|متن|فونت|اندازه|سایز|زمان|سرعت|انیمیشن|تصویر|color|colour|text|font|size|timing|speed|animation|image", re.I)
+
+
+def _revoice(directory: Path, record: dict, previous):
+    """A change about the voice: voice the saved plan again and put the audio on the clip's current page, without redesigning anything.
+    Returns (page, notes), or None when the narration moved the scene timing (then the clip has to be rebuilt). Raises when no audio can be made,
+    so a request to fix the voice never ends in another silent version."""
+    from creative import motion_graphic as mg
+    try:
+        saved = json.loads((directory / "plan.json").read_text())
+        plan = mg.MotionPlan.model_validate(saved["plan"])
+    except (OSError, ValueError, KeyError):
+        return None
+    if not any(scene.narration.strip() for scene in plan.scenes):
+        return None
+    (directory / "voice.json").unlink(missing_ok=True)           # an explicit request to voice it again never reuses an earlier result
+    voiced, audio, notes = _narrate(directory, record, plan, saved.get("fp", ""))
+    if not audio:
+        raise RuntimeError("نریشن ساخته نشد: " + (notes[0] if notes else "دلیلش ثبت نشد") + " (نسخهٔ بی‌صدای دیگری ساخته نمی‌شود؛ بعداً دوباره تلاش کنید)")
+    if [(sc.start, sc.end) for sc in voiced.scenes] != [(sc.start, sc.end) for sc in plan.scenes]:
+        return None
+    audio, music_notes = _add_music(directory, record, voiced, audio)
+    return previous.model_copy(update={"audio": audio}), [*notes, *music_notes]
 
 
 def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_id: str, voice_style: str):

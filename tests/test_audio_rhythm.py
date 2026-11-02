@@ -1,3 +1,4 @@
+import json
 import wave
 from pathlib import Path
 
@@ -247,3 +248,90 @@ def test_a_network_failure_is_retried_but_a_refusal_is_not():
     with pytest.raises(OSError):
         app_mg._with_retries(down, pause=lambda s: None)
     assert always["n"] == 3
+
+
+# --- a request about the voice must end with a voiced clip (the revision path used to edit the old, silent page)
+def _saved_plan(tmp_path, narration=("What if?", "Meet EditorGPT.")):
+    from creative import motion_graphic as mg
+    plan = mg.MotionPlan(title="t", duration=20.0, scenes=[_scene(0, 10, narration[0]), _scene(10, 20, narration[1])])
+    (tmp_path / "plan.json").write_text(json.dumps({"fp": "abc", "plan": plan.model_dump()}))
+    return plan
+
+
+def _page(audio=None):
+    from creative import motion_graphic as mg
+    return mg.MotionPage(title="t", duration=20, scenes_html='<section class="hm-scene" id="s1"><p id="s1-a">x</p></section>', build_js="tl.to('#s1-a',{opacity:1},0)", audio=audio or [])
+
+
+def test_a_voice_request_voices_the_saved_plan_and_attaches_the_audio(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    plan = _saved_plan(tmp_path)
+    clip = [{"path": "/x/a.wav", "start": 0.25, "duration": 3.0}]
+    monkeypatch.setattr(app_mg, "_narrate", lambda directory, record, p, fp: (p, clip, []))
+    monkeypatch.setattr(app_mg, "_add_music", lambda directory, record, p, audio: (audio, []))
+    page, notes = app_mg._revoice(tmp_path, {}, _page())
+    assert page.audio == clip and page.duration == 20
+
+
+def test_a_voice_that_moves_the_timing_rebuilds_the_clip_instead(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    plan = _saved_plan(tmp_path)
+    stretched = plan.model_copy(update={"scenes": [plan.scenes[0].model_copy(update={"end": 12.0}), plan.scenes[1].model_copy(update={"start": 12.0, "end": 22.0})], "duration": 22.0})
+    monkeypatch.setattr(app_mg, "_narrate", lambda directory, record, p, fp: (stretched, [{"path": "/x/a.wav", "start": 0.25, "duration": 11.0}], []))
+    assert app_mg._revoice(tmp_path, {}, _page()) is None
+
+
+def test_a_voice_request_that_cannot_make_audio_fails_instead_of_making_another_silent_version(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    _saved_plan(tmp_path)
+    monkeypatch.setattr(app_mg, "_narrate", lambda directory, record, p, fp: (p, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: dns"]))
+    with pytest.raises(RuntimeError) as err:
+        app_mg._revoice(tmp_path, {}, _page())
+    assert "نریشن ساخته نشد" in str(err.value)
+
+
+def test_a_plan_without_narration_text_has_nothing_to_voice(tmp_path):
+    from app import motion_graphic as app_mg
+    _saved_plan(tmp_path, narration=("", ""))
+    assert app_mg._revoice(tmp_path, {}, _page()) is None
+
+
+def test_which_requests_are_voice_changes():
+    from app import motion_graphic as app_mg
+    for text in ("نریشن رو درست کن", "نریشن هر دو صحنه را دوباره تولید کن", "change the voice to Daniel", "the narration is missing"):
+        assert app_mg._VOICE_CHANGE.search(text), text
+    assert not app_mg._VOICE_CHANGE.search("رنگ پس‌زمینه را آبی کن")
+    assert app_mg._LOOK_CHANGE.search("نریشن را درست کن و رنگ را آبی کن")
+
+
+def test_the_narration_problem_is_remembered_in_the_record_and_cleared_when_it_works(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    from brain import localize
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    plan = _saved_plan(directory)
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    def broken(texts, out, voice="", style=""): raise OSError("[Errno -5] No address associated with hostname")
+    monkeypatch.setattr(localize, "synthesize_narration", broken)
+    monkeypatch.setattr(app_mg.time, "sleep", lambda s: None)
+    app_mg._narrate(directory, record, plan, "abc")
+    assert "Errno -5" in app_mg.load(directory)["voice_error"]
+    monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(directory / f"c{i}.wav", 2.0) for i in range(len(texts))])
+    monkeypatch.setattr(app_mg, "_gate_clips", lambda p, c: [])
+    app_mg._narrate(directory, record, plan, "abc")
+    assert "voice_error" not in app_mg.load(directory)
+
+
+def test_the_chat_agent_is_told_when_the_latest_version_has_no_audio(monkeypatch, tmp_path):
+    from app import motion_graphic as app_mg
+    from app import studio_orchestrator as shared
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    _saved_plan(directory)
+    record["status"] = "completed"; record["versions"] = [{"n": 1, "title": "t", "summary": "s", "page": {"audio": []}}]
+    app_mg.save(directory, record)
+    summary = shared._motion_summary("u1", {"state": {"motion": {"motion_id": record["id"]}}})
+    assert summary["narration"]["audible"] is False and "no audio track" in summary["narration"]["problem"]
+    record["versions"] = [{"n": 1, "title": "t", "summary": "s", "page": {"audio": [{"path": "/x.wav", "start": 0, "duration": 1}]}}]
+    app_mg.save(directory, record)
+    assert "problem" not in shared._motion_summary("u1", {"state": {"motion": {"motion_id": record["id"]}}})["narration"]
