@@ -173,8 +173,8 @@ export default function EditorShell() {
           <div className="topbar-title">{topTitle}</div>
           {topbarAction?.status ? <ProjectStatusDot status={topbarAction.status}/> : null}
           {topbarAction ? <button className="icon-btn icon-btn-lg" onClick={topbarAction.onClick} aria-pressed={topbarAction.active} aria-label={topbarAction.active ? "Exit full screen" : "Full screen"}><Icon name={topbarAction.active ? "fullscreenExit" : "fullscreen"}/></button> : null}
-          {kind !== "studio" ? <NavLink to={hermesMode ? "/studio" : "/hermes"} className="switch-btn" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
-            <Icon name={hermesMode ? "video" : "instagram"} size={17}/><span>{hermesMode ? "EditorGPT" : "InstaGPT"}</span></NavLink> : null}
+          {kind !== "studio" ? <NavLink to={hermesMode ? "/studio" : "/hermes"} className="icon-btn icon-btn-lg" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} data-tip={hermesMode ? "EditorGPT" : "InstaGPT"} data-tip-pos="bottom" onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
+            <Icon name={hermesMode ? "video" : "instagram"}/></NavLink> : null}
           {chatHome ? <NavLink to={chatHome} className="icon-btn icon-btn-lg" aria-label={hermesMode ? "InstaGPT home" : "Studio home"}><Icon name="home"/></NavLink> : null}
         </header>
         <main id="main-content" className={`main${kind === "legacy" ? " eg-legacy" : ""}`} data-route={kind} tabIndex={-1}>
