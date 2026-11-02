@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     JOBS_DIR: str = "/app/job_data"
     # Hosts a Composio download link may point at (suffix match). Anything else is refused.
     # Parallel connections used to fetch one cloud file; one connection from this server is slow.
+    # Hosts whose DNS answers are cached (the resolver in the containers is intermittent); empty turns the cache off.
+    DNS_CACHE_HOSTS: str = "api.elevenlabs.io,api.jarvis.you,lmapi.rafiei.co,generativelanguage.googleapis.com,api.openai.com,backend.composio.dev"
     CLOUD_DOWNLOAD_CONNECTIONS: int = 6
     CLOUD_DOWNLOAD_HOSTS: str = ".r2.cloudflarestorage.com,.amazonaws.com,.composio.dev"
     # Localization (Persian voice-over) projects; defaults to a "localize_jobs"

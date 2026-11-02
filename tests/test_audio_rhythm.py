@@ -186,3 +186,64 @@ def test_the_rhythm_directive_is_understood():
     assert directives.parse("Rhythm: music first")[1].rhythm == "music_first"
     assert directives.parse("ریتم: متعادل")[1].rhythm == "balanced"
     assert directives.parse("Rhythm: jazz")[1].notes
+
+
+# --- resilience: DNS cache and provider retries
+def test_the_dns_cache_keeps_answers_and_survives_a_failed_lookup(monkeypatch):
+    import socket
+    from app import dns_cache
+    calls = {"n": 0, "fail": False}
+    def fake(host, port, family=0, type=0, proto=0, flags=0):
+        calls["n"] += 1
+        if calls["fail"]: raise socket.gaierror(-5, "No address associated with hostname")
+        return [(2, 1, 6, "", ("1.2.3.4", port))]
+    monkeypatch.setattr(dns_cache, "_original", fake)
+    monkeypatch.setattr(dns_cache.time, "sleep", lambda s: None)
+    dns_cache.reset_for_tests(); monkeypatch.setattr(dns_cache, "_original", fake)
+    original = socket.getaddrinfo
+    try:
+        dns_cache.install({"api.example.com"}, ttl=0.0)           # ttl 0: every call looks up again, the stale answer is the safety net
+        assert socket.getaddrinfo("api.example.com", 443)[0][4][0] == "1.2.3.4"
+        calls["fail"] = True
+        assert socket.getaddrinfo("api.example.com", 443)[0][4][0] == "1.2.3.4"      # failed twice, last good answer returned
+        with pytest.raises(socket.gaierror):
+            socket.getaddrinfo("other.example.com", 443)                              # a host that was never resolved still fails
+    finally:
+        dns_cache.reset_for_tests(); socket.getaddrinfo = original
+
+
+def test_other_hosts_are_not_touched_by_the_cache(monkeypatch):
+    import socket
+    from app import dns_cache
+    seen = []
+    monkeypatch.setattr(dns_cache, "_original", lambda host, port, *a: seen.append(host) or [(2, 1, 6, "", ("9.9.9.9", port))])
+    dns_cache.reset_for_tests(); monkeypatch.setattr(dns_cache, "_original", lambda host, port, *a: seen.append(host) or [(2, 1, 6, "", ("9.9.9.9", port))])
+    original = socket.getaddrinfo
+    try:
+        dns_cache.install({"cached.example.com"})
+        socket.getaddrinfo("plain.example.com", 80); socket.getaddrinfo("plain.example.com", 80)
+        assert seen == ["plain.example.com", "plain.example.com"]
+    finally:
+        dns_cache.reset_for_tests(); socket.getaddrinfo = original
+
+
+def test_a_network_failure_is_retried_but_a_refusal_is_not():
+    from app import motion_graphic as app_mg
+    calls = {"n": 0}
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3: raise OSError("[Errno -5] No address associated with hostname")
+        return "voiced"
+    assert app_mg._with_retries(flaky, pause=lambda s: None) == "voiced" and calls["n"] == 3
+    denied = {"n": 0}
+    def refused():
+        denied["n"] += 1; raise RuntimeError("HTTP 401 invalid api key")
+    with pytest.raises(RuntimeError):
+        app_mg._with_retries(refused, pause=lambda s: None)
+    assert denied["n"] == 1
+    always = {"n": 0}
+    def down():
+        always["n"] += 1; raise OSError("timed out")
+    with pytest.raises(OSError):
+        app_mg._with_retries(down, pause=lambda s: None)
+    assert always["n"] == 3

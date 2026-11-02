@@ -425,6 +425,22 @@ def _gate_clips(plan, clips) -> list[str]:
     return notes
 
 
+_PERMANENT = re.compile(r"\b(401|402|403|unauthori[sz]ed|forbidden|quota|insufficient|invalid[_ ]api[_ ]key|payment)\b", re.I)
+
+
+def _with_retries(call, attempts: int = 3, pause=time.sleep):
+    """A provider call that fails on the network (DNS, timeout, reset) is tried again a couple of times; a refusal that
+    repeating cannot fix (key, quota, payment) is raised at once."""
+    for number in range(1, attempts + 1):
+        try:
+            return call()
+        except Exception as exc:
+            if number == attempts or _PERMANENT.search(str(exc)):
+                raise
+            log.warning("provider call failed (%s), attempt %d of %d: %s", type(exc).__name__, number, attempts, str(exc)[:120])
+            pause(2 * number)
+
+
 def _narrate(directory: Path, record: dict, plan, fp: str):
     """Voice every scene (one ElevenLabs request, cut per scene), then retime the plan so each scene lasts as long as its narration plus a breath.
     Returns (plan, clips, notes). A narration that cannot be made leaves the clip silent and says so; it never stops the build."""
@@ -447,10 +463,11 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
     try:
         from brain import localize
-        clips = localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style)
+        clips = _with_retries(lambda: localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style))
     except Exception as exc:
         log.warning("motion narration could not be made: %s", str(exc)[:200])
         _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
+        record["voice_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
         return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
     clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
     gate_notes = [*_gate_clips(plan, clips), *verified]

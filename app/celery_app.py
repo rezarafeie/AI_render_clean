@@ -13,6 +13,9 @@ celery = None
 
 def _init_celery() -> None:
     global celery, CELERY_AVAILABLE
+    from app import dns_cache
+    from app.config import settings
+    dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(",")))
     try:
         from app.config import settings
 

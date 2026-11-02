@@ -200,6 +200,8 @@ app.include_router(fonts.router)
 app.include_router(fonts.legacy_router)
 app.include_router(localize.router)
 app.include_router(studio.router)
+from app import dns_cache as _dns_cache
+_dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
 from app.resumable_upload import router as resumable_router
 app.include_router(resumable_router)
