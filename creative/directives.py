@@ -12,9 +12,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-_LINE = re.compile(r"^\s*(narrator|voice\s*style|voice|music|راوی|گوینده|سبک\s*صدا|موسیقی)\s*[:：]\s*(.+?)\s*$", re.I | re.M)
+_LINE = re.compile(r"^\s*(narrator|voice\s*style|voice|music|pronounce|pronunciation|راوی|گوینده|سبک\s*صدا|موسیقی|تلفظ)\s*[:：]\s*(.+?)\s*$", re.I | re.M)
 _KIND = {"narrator": "narrator", "voice": "narrator", "راوی": "narrator", "گوینده": "narrator",
-         "voicestyle": "style", "سبکصدا": "style", "music": "music", "موسیقی": "music"}
+         "voicestyle": "style", "سبکصدا": "style", "music": "music", "موسیقی": "music",
+         "pronounce": "pron", "pronunciation": "pron", "تلفظ": "pron"}
 _STYLE_WORDS = {"natural": "", "neutral": "", "طبیعی": "", "calm": "calm", "soft": "calm", "آرام": "calm", "serious": "serious", "firm": "serious",
                 "جدی": "serious", "energetic": "energetic", "excited": "energetic", "پرانرژی": "energetic",
                 "reflective": "reflective", "thoughtful": "reflective", "emotional": "reflective", "تأمل‌برانگیز": "reflective"}
@@ -28,6 +29,7 @@ class Directives:
     style: str | None = None           # key of brain.localize.VOICE_STYLES
     music: str | None = None           # None = not stated, "off", "attached" or "library"
     music_words: str = ""
+    pronunciations: dict = field(default_factory=dict)   # written form -> spoken form, e.g. EditorGPT -> ادیتور جی‌پی‌تی
     notes: list[str] = field(default_factory=list)
 
 
@@ -51,6 +53,11 @@ def parse(text: str) -> tuple[str, Directives]:
         value = match.group(2)
         if kind == "narrator":
             found.narrator = _narrator(value, found.notes)
+        elif kind == "pron":
+            from creative.audio.persian import parse_dictionary
+            entry = parse_dictionary([value])
+            if entry: found.pronunciations.update(entry)
+            else: found.notes.append(f"تلفظ «{value}» را نفهمیدم؛ قالب درست: Pronounce: Written = Spoken")
         elif kind == "style":
             key = _STYLE_WORDS.get(value.strip().lower())
             if key is None:

@@ -96,6 +96,7 @@ def test_narration_retimes_scenes_to_the_voice(monkeypatch, tmp_path):
     plan = mg.MotionPlan(title="t", duration=9, scenes=[mg.ScenePlan(headline=f"h{i}", idea="i", start=3 * i, end=3 * i + 3, narration="x") for i in range(3)])
     monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(tmp_path / f"c{i}.wav", s) for i, s in enumerate((4.0, 1.0, 2.0))])
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    monkeypatch.setattr(app_mg, "_gate_clips", lambda plan, clips: [])          # the clips are placeholders here; the checks have their own tests
     retimed, audio, notes = app_mg._narrate(tmp_path, {"voice_id": "", "voice_style": ""}, plan, "fp")
     assert [round(s.end - s.start, 2) for s in retimed.scenes] == [4.7, 3.0, 3.7]      # long voice stretches its scene; short ones keep the plan; the last holds 1 s
     assert retimed.duration == 11.4 and audio[0]["start"] == 0.25 and audio[1]["start"] == 4.95 and notes == []
