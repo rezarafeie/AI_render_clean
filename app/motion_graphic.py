@@ -131,16 +131,25 @@ def _assistant(conversation_id: str, user_key: str, text: str) -> None:
 # ── records ──────────────────────────────────────────────────────────────────
 
 def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "", *, attachments: list[dict] | None = None) -> dict:
+    from creative import directives
+    request, wanted = directives.parse(request)
+    if wanted.narrator is not None: voice_id = wanted.narrator
+    if wanted.style is not None: voice_style = wanted.style
+    music = {"mode": wanted.music, "words": wanted.music_words} if wanted.music else None
+    if music and wanted.music == "attached":
+        track = next((item for item in attachments or [] if item.get("kind") == "audio" and item.get("path")), None)
+        if track: music["path"], music["name"] = track["path"], track.get("filename", "")
+        else: wanted.notes.append("موسیقی «attached» خواسته شد ولی فایل صوتی پیوست نبود؛ ویدیو بدون موسیقی ساخته می‌شود.")
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
     directory.mkdir(parents=True, exist_ok=True)
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
-              "voice_id": voice_id, "voice_style": voice_style}
+              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes}
     if attachments:
         from creative.shotcraft_compare import stage_images
-        record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',attachments)
+        record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
     return save(directory, record)
 
 
@@ -439,6 +448,47 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     return retimed, audio, []
 
 
+def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
+    """The requested background music as one more audio clip (already trimmed, faded and ducked under the narration).
+    Returns (audio, notes). Music that cannot be made never stops the build."""
+    wanted = record.get("music") or {}
+    if wanted.get("mode") not in {"attached", "library"}:
+        return audio, []
+    from creative import music_bed
+
+    def progress(text: str, state: str = "active") -> None:
+        try: _note(directory, "music", text, state)
+        except _Cancelled: raise
+        except Exception: log.debug("music progress line not stored")    # a progress line must never cost the music
+    try:
+        if wanted["mode"] == "attached":
+            source, label = Path(wanted["path"]), wanted.get("name") or "attached track"
+        else:
+            picked = music_bed.pick_from_library(wanted.get("words", ""), plan.duration)
+            if not picked:
+                return audio, ["در کتابخانهٔ موسیقی ترکی پیدا نشد؛ ویدیو بدون موسیقی ساخته شد. یک ترک در «Media library» آپلود کنید یا فایل صوتی پیوست کنید."]
+            source, label = picked
+        voice = [clip for clip in audio if clip.get("role") != "music"]
+        stamp = f"{source.name}|{source.stat().st_size}|{plan.duration}|" + ",".join(f"{c['start']}-{c['duration']}" for c in voice)
+        output = directory / "music_bed.m4a"
+        marker = directory / "music_bed.json"
+        try:
+            if json.loads(marker.read_text()).get("stamp") == stamp and output.is_file():
+                return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], [f"موسیقی: {label}"]
+        except (OSError, ValueError):
+            pass
+        progress(f"موسیقی پس‌زمینه را با افت خودکار زیر صدا می‌سازم: {label}")
+        music_bed.make_bed(source, output, plan.duration, voice)
+        marker.write_text(json.dumps({"stamp": stamp}))
+        progress("موسیقی پس‌زمینه آماده شد", "done")
+        return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], [f"موسیقی: {label}"]
+    except _Cancelled:
+        raise
+    except Exception as exc:
+        log.warning("motion music bed could not be made: %s", str(exc)[:200])
+        return audio, ["ساخت موسیقی پس‌زمینه انجام نشد و ویدیو بدون موسیقی ساخته شد: " + str(exc)[:140]]
+
+
 def _image_input_questions(plan, record: dict) -> list[str]:
     """Ask for missing owned sources before paid narration or scene authoring."""
     available={row['asset']:row for row in record.get('image_inputs',[])}
@@ -515,6 +565,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         count = len(plan.scenes)
         _note(directory, "plan", f"از طرح قبلی ادامه می‌دهم: {count} صحنه، {plan.duration:g} ثانیه", "done")
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
+    audio, music_notes = _add_music(directory, record, plan, audio)
+    voice_notes = [*record.get("directive_notes", []), *voice_notes, *music_notes]
     count = len(plan.scenes)
     import hashlib
     draft_inputs = [(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes]

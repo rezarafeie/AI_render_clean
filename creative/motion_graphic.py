@@ -233,8 +233,13 @@ def assemble(page: MotionPage) -> str:
         f"tl.to(__clock, {{ t: {duration}, duration: {duration}, ease: 'none', onUpdate() {{ __update(__clock.t); }} }}, 0);\n"
         f"__update(0);\n" if update else ""
     )
-    audio_tags = "\n".join(f'<audio id="vo{i}" src="assets/vo{i}.{Path(str(clip["path"])).suffix.lstrip(".") or "wav"}" data-start="{float(clip["start"]):g}" '
-                           f'data-duration="{float(clip["duration"]):g}" data-track-index="1"></audio>' for i, clip in enumerate(page.audio, 1))
+    def _tag(i, clip):
+        music = clip.get("role") == "music"
+        name = "music" if music else f"vo{i}"
+        suffix = Path(str(clip["path"])).suffix.lstrip(".") or "wav"
+        return (f'<audio id="{name}" src="assets/{name}.{suffix}" data-start="{float(clip["start"]):g}" '
+                f'data-duration="{float(clip["duration"]):g}" data-track-index="{3 if music else 1}"></audio>')
+    audio_tags = "\n".join(_tag(i, clip) for i, clip in enumerate(page.audio, 1))
     scene_html = page.scenes_html
     seen = set()
     for raw in page.shotcraft_components:
@@ -296,7 +301,7 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
     for i, clip in enumerate(page.audio, 1):
         source = Path(str(clip["path"]))
         if source.is_file():
-            shutil.copy2(source, assets / f"vo{i}{source.suffix or '.wav'}")
+            shutil.copy2(source, assets / f"{'music' if clip.get('role') == 'music' else f'vo{i}'}{source.suffix or '.wav'}")
     if page.native_components:
         from .native_motion import materialize
         receipts = [materialize(directory, NativeMotion.model_validate(e["spec"]), e["instance"], e["duration"])
