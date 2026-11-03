@@ -197,7 +197,13 @@ export interface StudioConversation {
   /** The server's own answer to "is anything working for this chat" (any process: the API, the worker, a narration, a motion graphic). */
   busy?: boolean;
   agent_runs?: StudioAgentRun[];
+  /** Present when only the newest messages were asked for: whether older ones exist and the event sequence their history starts after. */
+  messages_has_more?: boolean; events_from?: number;
 }
+export type HomeStatus = "running" | "needs_input" | "failed" | "ready" | "draft";
+export interface HomeRecent { id: string; title: string; updated_at: string; kind: string; kind_label: string; status: HomeStatus; status_label: string; thumb: string | null }
+export type HomeSuggestion = { kind: "prompt"; label: string; prompt: string; reason?: string } | { kind: "open"; label: string; conversation_id: string; reason?: string };
+export interface StudioHome { recent: HomeRecent[]; suggestions: HomeSuggestion[]; instagpt: { connected: boolean; chats: string[] } }
 export interface StudioEvent { id: number; seq: number; type: string; data: Record<string, any>; created_at: string }
 
 /** Motion graphics made in chat (app/motion_graphic.py). */
@@ -1179,8 +1185,15 @@ export const api = {
   async openLegacyInStudio(engine: "motion" | "talking" | "localize", external_ref: string, title: string): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/studio/legacy/open`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ engine, external_ref, title }) }));
   },
-  async getStudioConversation(id: string): Promise<StudioConversation> {
-    return j(await authFetch(`${BASE}/studio/conversations/${id}`));
+  /** `messages` asks for only the newest N messages (the rest page in as the reader scrolls up); without it the whole chat comes back. */
+  async getStudioConversation(id: string, options: { messages?: number } = {}): Promise<StudioConversation> {
+    return j(await authFetch(`${BASE}/studio/conversations/${id}${options.messages ? `?messages=${options.messages}` : ""}`));
+  },
+  async olderStudioMessages(id: string, before: number | string, limit = 30): Promise<{ messages: StudioMessage[]; has_more: boolean; events_from: number }> {
+    return j(await authFetch(`${BASE}/studio/conversations/${id}/messages?before=${before}&limit=${limit}`));
+  },
+  async studioHome(signal?: AbortSignal): Promise<StudioHome> {
+    return j(await authFetch(`${BASE}/studio/home`, { signal }));
   },
   async agentPreferences(): Promise<{default_agent_mode: AgentMode}> {
     return j(await authFetch(`${BASE}/studio/agent-preferences`));
@@ -1391,7 +1404,7 @@ export const api = {
     // reconnect loop that would repeatedly authenticate and query PostgreSQL.
     if (!signal.aborted) await new Promise(resolve => setTimeout(resolve, 750));
   },
-  async studioEventHistory(id: string, after: number, signal: AbortSignal): Promise<StudioEvent[]> {
-    return j(await authFetch(`${BASE}/studio/conversations/${id}/event-history?after=${after}`, {signal}));
+  async studioEventHistory(id: string, after: number, signal: AbortSignal, before?: number): Promise<StudioEvent[]> {
+    return j(await authFetch(`${BASE}/studio/conversations/${id}/event-history?after=${after}${before === undefined ? "" : `&before=${before}`}`, {signal}));
   },
 };

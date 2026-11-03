@@ -175,6 +175,13 @@ async def resume_agent(request: Request, run_id: str, body: AgentResume):
     except ValueError as exc: raise HTTPException(409, str(exc))
 
 
+@router.get("/home")
+async def studio_home(request: Request):
+    """The start page: latest edits with their real state, suggestions made from the person's own work and the InstaGPT connection."""
+    from app import studio_home
+    return await studio_home.build(_user(request))
+
+
 @router.get("/conversations")
 async def list_conversations(request: Request):
     return await repo.list_conversations(_user(request))
@@ -212,19 +219,20 @@ async def open_legacy_project(request: Request, body: LegacyProjectOpen):
 
 
 @router.get('/conversations/{conversation_id}/event-history')
-async def event_history(request: Request, conversation_id: str, after: int = Query(0, ge=0)):
+async def event_history(request: Request, conversation_id: str, after: int = Query(0, ge=0), before: Optional[int] = Query(None, ge=0)):
     try:
-        events = await repo.events(conversation_id, _user(request), after, limit=500)
+        events = await repo.events(conversation_id, _user(request), after, limit=500, before=before)
         return [_public_event(event) for event in events]
     except KeyError:
         raise HTTPException(404, 'conversation not found')
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(request: Request, conversation_id: str):
+async def get_conversation(request: Request, conversation_id: str, messages: Optional[int] = Query(None, ge=1, le=200)):
+    """`messages=N` returns only the newest N messages (`messages_has_more`, `events_from` say what lies before); without it, all of them as before."""
     try:
         await sync_conversation(conversation_id, _user(request))
-        conversation = await repo.get_conversation(conversation_id, _user(request))
+        conversation = await repo.get_conversation(conversation_id, _user(request), message_limit=messages)
         from app.studio_orchestrator import conversation_busy
         payload = _public_conversation(conversation)
         from app.agents.store import runs
@@ -233,6 +241,15 @@ async def get_conversation(request: Request, conversation_id: str):
                                  for r in await runs(conversation_id, _user(request))]
         payload["busy"] = await asyncio.to_thread(conversation_busy, conversation, _user(request))      # the server's own word, whichever process is working
         return payload
+    except KeyError:
+        raise HTTPException(404, "conversation not found")
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def older_messages(request: Request, conversation_id: str, before: int = Query(..., ge=1), limit: int = Query(30, ge=1, le=100)):
+    """The messages just before message `before`, for scrolling up in a long chat."""
+    try:
+        return await repo.older_messages(conversation_id, _user(request), before, limit)
     except KeyError:
         raise HTTPException(404, "conversation not found")
 

@@ -173,7 +173,7 @@ export default function EditorShell() {
           <div className="topbar-title">{topTitle}</div>
           {topbarAction?.status ? <ProjectStatusDot status={topbarAction.status}/> : null}
           {topbarAction ? <button className="icon-btn icon-btn-lg" onClick={topbarAction.onClick} aria-pressed={topbarAction.active} aria-label={topbarAction.active ? "Exit full screen" : "Full screen"}><Icon name={topbarAction.active ? "fullscreenExit" : "fullscreen"}/></button> : null}
-          {kind !== "studio" ? <NavLink to={hermesMode ? "/studio" : "/hermes"} className="switch-btn" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
+          {kind !== "studio" || location.pathname === "/studio" || location.pathname === "/" ? <NavLink to={hermesMode ? "/studio" : "/hermes"} className="switch-btn" aria-label={hermesMode ? "Switch to EditorGPT" : "Switch to InstaGPT"} onPointerEnter={() => void (hermesMode ? preloadEditor() : preloadHermes())} onTouchStart={() => void (hermesMode ? preloadEditor() : preloadHermes())}>
             <Icon name={hermesMode ? "video" : "instagram"} size={17}/><span>{hermesMode ? "EditorGPT" : "InstaGPT"}</span></NavLink> : null}
           {chatHome ? <NavLink to={chatHome} className="icon-btn icon-btn-lg" aria-label={hermesMode ? "InstaGPT home" : "Studio home"}><Icon name="home"/></NavLink> : null}
         </header>

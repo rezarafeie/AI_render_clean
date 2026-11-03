@@ -97,6 +97,11 @@ def _conversation(row: StudioConversation) -> dict:
             "created_at": iso(row.created_at), "updated_at": iso(row.updated_at)}
 
 
+def _message(item) -> dict:
+    return {"id": item.id, "role": item.role, "content": item.content, "attachments": item.attachments or [], "agent_mode": item.agent_mode,
+            "created_at": iso(item.created_at)}
+
+
 def _project(row: StudioProject) -> dict:
     return {"id": row.id, "conversation_id": row.conversation_id, "engine": row.engine,
             "title": row.title, "status": row.status, "external_ref": row.external_ref,
@@ -180,19 +185,28 @@ class Repository:
             rows = [v for v in _read()["conversations"].values() if v["user_key"] == user_key]
         return sorted(copy.deepcopy(rows), key=lambda item: item["updated_at"], reverse=True)
 
-    async def get_conversation(self, conversation_id: str, user_key: str) -> dict:
+    async def get_conversation(self, conversation_id: str, user_key: str, *, message_limit: int | None = None) -> dict:
+        """The conversation with its messages. With `message_limit` only the newest messages come back (oldest first), `messages_has_more` says whether
+        older ones exist, and `events_from` is the last event sequence that predates the first returned message (where the live history should start)."""
         if DB_AVAILABLE:
             assert AsyncSessionLocal is not None
             async with AsyncSessionLocal() as db:
                 row = await db.get(StudioConversation, conversation_id)
                 if row is None or row.user_key != user_key: raise KeyError(conversation_id)
-                messages = (await db.execute(select(StudioMessage).where(StudioMessage.conversation_id == conversation_id).order_by(StudioMessage.id))).scalars()
+                query = select(StudioMessage).where(StudioMessage.conversation_id == conversation_id)
+                if message_limit:
+                    found = list((await db.execute(query.order_by(StudioMessage.id.desc()).limit(message_limit + 1))).scalars())
+                    has_more = len(found) > message_limit
+                    messages = list(reversed(found[:message_limit]))
+                else:
+                    messages, has_more = list((await db.execute(query.order_by(StudioMessage.id))).scalars()), False
                 projects = (await db.execute(select(StudioProject).where(StudioProject.conversation_id == conversation_id).order_by(StudioProject.created_at))).scalars()
                 actions = (await db.execute(select(StudioAction).where(StudioAction.conversation_id == conversation_id).order_by(StudioAction.created_at))).scalars()
                 value = _conversation(row)
-                value["messages"] = [{"id": item.id, "role": item.role, "content": item.content,
-                                      "attachments": item.attachments or [], "agent_mode": item.agent_mode,
-                                      "created_at": iso(item.created_at)} for item in messages]
+                value["messages"] = [_message(item) for item in messages]
+                if message_limit:
+                    value["messages_has_more"] = has_more
+                    value["events_from"] = await self._events_before(db, conversation_id, messages[0].created_at) if has_more and messages else 0
                 value["projects"] = [_project(item) for item in projects]
                 value["actions"] = [{"id": item.id, "project_id": item.project_id, "kind": item.kind,
                                      "status": item.status, "payload": item.payload or {},
@@ -203,10 +217,55 @@ class Repository:
             data = _read(); row = data["conversations"].get(conversation_id)
             if row is None or row["user_key"] != user_key: raise KeyError(conversation_id)
             value = copy.deepcopy(row)
-            value["messages"] = copy.deepcopy(data["messages"].get(conversation_id, []))
+            everything = copy.deepcopy(data["messages"].get(conversation_id, []))
+            value["messages"] = everything[-message_limit:] if message_limit else everything
+            if message_limit:
+                value["messages_has_more"] = len(everything) > message_limit
+                value["events_from"] = 0
             value["projects"] = [copy.deepcopy(v) for v in data["projects"].values() if v["conversation_id"] == conversation_id]
             value["actions"] = [copy.deepcopy(v) for v in data["actions"].values() if v["conversation_id"] == conversation_id]
             return value
+
+    async def projects_for(self, conversation_ids: list[str]) -> dict[str, list[dict]]:
+        """Projects of several conversations in one query, grouped by conversation (the start page needs each one's state, not their messages)."""
+        out: dict[str, list[dict]] = {cid: [] for cid in conversation_ids}
+        if not conversation_ids:
+            return out
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                rows = (await db.execute(select(StudioProject).where(StudioProject.conversation_id.in_(conversation_ids)))).scalars()
+                for row in rows:
+                    out[row.conversation_id].append(_project(row))
+            return out
+        with _lock:
+            for value in _read()["projects"].values():
+                if value["conversation_id"] in out:
+                    out[value["conversation_id"]].append(copy.deepcopy(value))
+        return out
+
+    @staticmethod
+    async def _events_before(db, conversation_id: str, moment) -> int:
+        """The highest event sequence recorded before `moment` (0 when none): live history for a window of messages starts after it."""
+        return int(await db.scalar(select(func.coalesce(func.max(StudioEvent.seq), 0)).where(
+            StudioEvent.conversation_id == conversation_id, StudioEvent.created_at < moment)) or 0)
+
+    async def older_messages(self, conversation_id: str, user_key: str, before_id: int, limit: int = 30) -> dict:
+        """The `limit` messages before `before_id` (oldest first) with whether more exist and where their events start."""
+        await self._owns(conversation_id, user_key)
+        limit = max(1, min(100, int(limit)))
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                found = list((await db.execute(select(StudioMessage).where(StudioMessage.conversation_id == conversation_id, StudioMessage.id < before_id)
+                                               .order_by(StudioMessage.id.desc()).limit(limit + 1))).scalars())
+                has_more = len(found) > limit
+                messages = list(reversed(found[:limit]))
+                events_from = await self._events_before(db, conversation_id, messages[0].created_at) if has_more and messages else 0
+                return {"messages": [_message(item) for item in messages], "has_more": has_more, "events_from": events_from}
+        with _lock:
+            rows = [m for m in copy.deepcopy(_read()["messages"].get(conversation_id, [])) if int(m["id"]) < before_id]
+        return {"messages": rows[-limit:], "has_more": len(rows) > limit, "events_from": 0}
 
     async def set_conversation(self, conversation_id: str, user_key: str, **changes: Any) -> dict:
         allowed = {"title", "language", "status_voice_enabled", "state"}
@@ -463,19 +522,20 @@ class Repository:
             return
         await self.get_conversation(conversation_id, user_key)
 
-    async def events(self, conversation_id: str, user_key: str, after: int = 0, limit: int = 200, *, check: bool = True) -> list[dict]:
+    async def events(self, conversation_id: str, user_key: str, after: int = 0, limit: int = 200, *, check: bool = True, before: int | None = None) -> list[dict]:
         if check:
             await self._owns(conversation_id, user_key)
         if DB_AVAILABLE:
             assert AsyncSessionLocal is not None
             async with AsyncSessionLocal() as db:
-                rows = (await db.execute(select(StudioEvent).where(
-                    StudioEvent.conversation_id == conversation_id, StudioEvent.seq > after
-                ).order_by(StudioEvent.seq).limit(limit))).scalars()
+                condition = [StudioEvent.conversation_id == conversation_id, StudioEvent.seq > after]
+                if before is not None:
+                    condition.append(StudioEvent.seq <= before)
+                rows = (await db.execute(select(StudioEvent).where(*condition).order_by(StudioEvent.seq).limit(limit))).scalars()
                 return [{"id": row.id, "seq": row.seq, "type": row.event_type,
                          "data": row.data or {}, "created_at": iso(row.created_at)} for row in rows]
         with _lock:
-            return copy.deepcopy([item for item in _read()["events"].get(conversation_id, []) if item["seq"] > after][:limit])
+            return copy.deepcopy([item for item in _read()["events"].get(conversation_id, []) if item["seq"] > after and (before is None or item["seq"] <= before)][:limit])
 
 
 repo = Repository()

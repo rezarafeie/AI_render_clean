@@ -5,7 +5,7 @@ import { verifyLocalBackend } from "./local/backend";
 const ProjectRender = React.lazy(() => import("./local/ProjectRender").then(m => ({default:m.ProjectRender})));
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioEvent } from "./api";
+import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioEvent, StudioMessage } from "./api";
 import { AgentRunControls } from "./studio/AgentMode";
 import { useAuth } from "./auth/AuthContext";
 import { Icon } from "./components/Icon";
@@ -23,7 +23,9 @@ import { Thread, LocalFileInfo } from "./studio/Thread";
 import { Workspace, WorkspaceTab, advancedEditorUrl } from "./studio/Workspace";
 import { currentVersion, planPhase } from "./studio/plan";
 import { PendingMessage, TimelineItem, activeStep, buildTimeline, isProcessing, renderView, serverBusy, thinkingLabel } from "./studio/model";
-import { suggestions, templatePrompts } from "./templateData";
+import { templatePrompts } from "./templateData";
+import { mergeEvents, mergeMessages, nearTop, keepPosition } from "./studio/windowing";
+import { StudioHomePage } from "./studio/Home";
 
 type MobileView = "chat" | WorkspaceTab;
 const WORKSPACE_BOUNDS = { min: 340, max: 1100 };
@@ -54,6 +56,16 @@ export default function Studio() {
   const [conversations, setConversations] = React.useState<StudioConversation[]>([]);
   const [conversation, setConversation] = React.useState<StudioConversation | null>(null);
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
+  // Messages are loaded newest-first in a window; older pages come in as the reader scrolls up. `ready` is true once the newest window and the live
+  // history that belongs to it have both arrived (until then a skeleton is shown, never old messages first).
+  const MESSAGE_WINDOW = 40;
+  const [loadedMessages, setLoadedMessages] = React.useState<StudioMessage[]>([]);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [loadingOlder, setLoadingOlder] = React.useState(false);
+  const [windowFor, setWindowFor] = React.useState<string | null>(null);
+  const [historyFor, setHistoryFor] = React.useState<string | null>(null);
+  const eventsFromRef = React.useRef(0);
+  const windowRef = React.useRef<string | null>(null);
   const [text, setText] = React.useState(() => searchParams.get("prompt") || templatePrompts[searchParams.get("template") || ""] || "");
   const [files, setFiles] = React.useState<PendingFile[]>([]);
   const [cloudOpen, setCloudOpen] = React.useState(false);
@@ -154,11 +166,23 @@ export default function Studio() {
   // `quiet` is for background updates (a live event arrived, the tab came back): a dropped connection there is not worth an error, the next update catches up.
   const refresh = React.useCallback(async (id = activeId, quiet = false) => {
     if (!id) return;
-    try { setConversation(await api.getStudioConversation(id)); } catch (e) { if (!quiet) setError(friendlyError(e, "load conversation")); }
+    try {
+      const value = await api.getStudioConversation(id, { messages: MESSAGE_WINDOW });
+      setConversation(value);
+      setLoadedMessages(previous => mergeMessages(previous, value.messages || []));
+      if (windowRef.current !== id) {                                 // the first answer for this chat decides where its history starts
+        windowRef.current = id;
+        setHasMore(Boolean(value.messages_has_more));
+        eventsFromRef.current = value.events_from || 0;
+        cursorRef.current = Math.max(cursorRef.current, value.events_from || 0);
+        setWindowFor(id);
+      }
+    } catch (e) { if (!quiet) setError(friendlyError(e, "load conversation")); }
   }, [activeId]);
   React.useEffect(() => { void refreshList(); }, [refreshList]);
   React.useEffect(() => {
     setEvents([]); cursorRef.current = 0; setSelectedProject(null);
+    setLoadedMessages([]); setHasMore(false); setWindowFor(null); setHistoryFor(null); eventsFromRef.current = 0; windowRef.current = null;
     if (authenticated && activeId) void refresh(activeId); else setConversation(null);
   }, [authenticated, activeId, refresh]);
 
@@ -176,7 +200,7 @@ export default function Studio() {
 
   // Live events (SSE) with cursor-based reconnect.
   React.useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || windowFor !== activeId) return;
     const controller = new AbortController(); let stopped = false;
     let connection: AbortController | null = null;      // the current live connection; replaced when the tab comes back, its socket is likely dead
     const resume = () => {
@@ -200,6 +224,7 @@ export default function Studio() {
           if (history.length < 500) break;
         }
       } catch { /* Older servers can still replay through the existing SSE cursor. */ }
+      if (!stopped) setHistoryFor(activeId);
       while (!stopped) {
         try {
           connection = new AbortController();
@@ -227,7 +252,7 @@ export default function Studio() {
       if (listTimerRef.current != null) window.clearTimeout(listTimerRef.current);
       refreshTimerRef.current = null; listTimerRef.current = null;
     };
-  }, [activeId, refresh, refreshList]);
+  }, [activeId, windowFor, refresh, refreshList]);
   React.useEffect(() => () => filesRef.current.forEach(item => item.url && URL.revokeObjectURL(item.url)), []);
 
   // ── derived state ────────────────────────────────────────────
@@ -293,7 +318,7 @@ export default function Studio() {
   };
   const styles = current?.state?.styles || [];
   const sourceAttachment = current?.state?.attachment_ids?.[0];
-  const messages = conversation?.messages || [];
+  const messages = loadedMessages;
   const lastUserMessage = [...messages].reverse().find(message => message.role === 'user');
   const motionActive = useMotionActive(conversation?.state?.motion?.motion_id, events);
   const discoveryActive = useDiscoveryActive(conversation?.state?.discovery?.analysis_id, events);
@@ -341,7 +366,44 @@ export default function Studio() {
   const canStop = processing && Boolean(conversationId);
 
   // ── scrolling: stick to bottom unless the reader scrolled up ──
-  const onScroll = () => { const node = scrollRef.current; if (node) setStuck(node.scrollHeight - node.scrollTop - node.clientHeight < 140); };
+  const loadOlder = React.useCallback(async () => {
+    const id = activeId; const oldest = loadedMessages[0];
+    if (!id || !oldest || !hasMore || loadingOlder) return;
+    setLoadingOlder(true);
+    const node = scrollRef.current; const heightBefore = node?.scrollHeight || 0; const topBefore = node?.scrollTop || 0;
+    try {
+      const page = await api.olderStudioMessages(id, oldest.id, 30);
+      // The history of those older messages: events after where this page starts, up to where the loaded history began.
+      const upTo = eventsFromRef.current;
+      if (upTo > page.events_from) {
+        let after = page.events_from;
+        for (;;) {
+          const batch = await api.studioEventHistory(id, after, new AbortController().signal, upTo);
+          if (windowRef.current !== id) return;
+          if (batch.length) setEvents(value => mergeEvents(value, batch));
+          if (batch.length < 500) break;
+          after = Math.max(...batch.map(event => event.seq));
+        }
+      }
+      if (windowRef.current !== id) return;
+      eventsFromRef.current = page.events_from;
+      setLoadedMessages(previous => mergeMessages(previous, page.messages));
+      setHasMore(page.has_more);
+      window.requestAnimationFrame(() => { const after = scrollRef.current; if (after) after.scrollTop = keepPosition(heightBefore, topBefore, after.scrollHeight); });
+    } catch { /* the next scroll to the top tries again */ }
+    finally { setLoadingOlder(false); }
+  }, [activeId, loadedMessages, hasMore, loadingOlder]);
+  const onScroll = () => {
+    const node = scrollRef.current; if (!node) return;
+    setStuck(node.scrollHeight - node.scrollTop - node.clientHeight < 140);
+    if (nearTop(node.scrollTop)) void loadOlder();
+  };
+  const ready = Boolean(conversation) && windowFor === activeId && historyFor === activeId;
+  // A short first window may not fill the screen, so no scroll could ever reach the top: fetch the next page right away in that case.
+  React.useEffect(() => {
+    const node = scrollRef.current;
+    if (ready && hasMore && !loadingOlder && node && node.scrollHeight <= node.clientHeight + 40) void loadOlder();
+  }, [ready, hasMore, loadingOlder, loadedMessages.length, loadOlder]);
   React.useLayoutEffect(() => {
     const node = scrollRef.current; if (!node || !stuck) return;
     node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
@@ -536,18 +598,7 @@ export default function Studio() {
     onCloud={authenticated && processingPreferences().mode === "online" ? () => setCloudOpen(true) : undefined}/>
     {cloudOpen ? <CloudPicker onClose={() => setCloudOpen(false)} onImport={importCloud}/> : null}</>;
 
-  if (!showConversation) return <div className="studio-home">
-    <div className="home-inner">
-      <h1>What would you like to create?</h1>
-      {composer("home")}
-      <div className="chip-row home-chips">{suggestions.map(item => <button key={item} className="chip" onClick={() => { setText(item); textareaRef.current?.focus(); }}>{item}</button>)}</div>
-      {authenticated && conversations.length ? <section className="home-recent" aria-label="Recent projects">
-        <div className="home-recent-head"><h2>Recent</h2><NavLink to="/projects">View all</NavLink></div>
-        <ul>{[...conversations].sort((a, b) => parseTime(b.updated_at) - parseTime(a.updated_at)).slice(0, 3).map(item => <li key={item.id}><NavLink to={`/studio/${item.id}`} title={item.title}><span className="bidi wrap-safe" dir="auto">{displayTitle(item.title, 60)}</span><small>{relativeTime(parseTime(item.updated_at), now)}</small><Icon name="chevron" size={16}/></NavLink></li>)}</ul>
-      </section> : null}
-      {!authenticated ? <p className="home-note">Log in to save projects and start creating.</p> : null}
-    </div>
-  </div>;
+  if (!showConversation) return <StudioHomePage composer={composer("home")} authenticated={authenticated} onPrompt={prompt => { setText(prompt); textareaRef.current?.focus(); }}/>;
 
   const shownWorkspace = liveWorkspace ?? workspaceWidth;
   return <div className="studio" ref={studioRef} data-layout={layout} data-ws={wsVisible ? "open" : "closed"} data-view={mobileView} data-resizing={resizingWorkspace || undefined}
@@ -560,11 +611,12 @@ export default function Studio() {
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="chat-inner">
           {current ? <React.Suspense fallback={null}><ProjectRender key={current.id} project={current} onChanged={()=>void refresh()}/></React.Suspense> : null}
-          {!conversation && !pending ? <div className="thread-loading" role="status" aria-label="Loading conversation"><span className="skeleton"/><span className="skeleton"/><span className="skeleton"/></div> : null}
-          <Thread items={shown} events={events} conversation={conversation} projects={projects} localFiles={localFiles} thinking={thinking} sourceUrl={sourceUrl} linkTitles={linkTitles} compactRender={layout === "desktop" && desktopOpen}
+          {!ready && !pending ? <div className="thread-loading" role="status" aria-label="در حال بارگذاری گفتگو"><span className="skeleton skeleton-bubble"/><span className="skeleton skeleton-line"/><span className="skeleton skeleton-bubble skeleton-end"/><span className="skeleton skeleton-line"/></div> : null}
+          {ready && hasMore ? <div className="older-row" role="status">{loadingOlder ? <><span className="spinner"/> در حال بارگذاری پیام‌های قبلی…</> : <button type="button" className="btn btn-sm btn-ghost" onClick={() => void loadOlder()}>پیام‌های قبلی</button>}</div> : null}
+          {ready || pending ? <Thread items={shown} events={events} conversation={conversation} projects={projects} localFiles={localFiles} thinking={thinking} sourceUrl={sourceUrl} linkTitles={linkTitles} compactRender={layout === "desktop" && desktopOpen}
             onOpenPreview={id => openWorkspace("preview", id)} onEditAgain={editAgain}
             retryHref={current?.status === "error" && !qualityBlocked ? advancedEditorUrl(current) || undefined : undefined}
-            onChoice={choice => void send(choice)} onRetryMessage={retryMessage}/>
+            onChoice={choice => void send(choice)} onRetryMessage={retryMessage}/> : null}
           <AgentRunControls runs={conversation?.agent_runs || []} onChanged={() => void refresh()}/>
           {qualityBlocked && current ? <div className="rc-actions" aria-label="بازبینی خروجی">
             <button className="btn btn-secondary" disabled={resuming} onClick={() => void acceptOutput()}>تأیید خروجی</button>

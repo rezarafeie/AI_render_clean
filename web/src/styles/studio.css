@@ -170,6 +170,37 @@ button.act-row:hover { color: var(--text-2); }
 .home-recent li small { margin-inline-start: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .home-recent li svg { color: var(--text-3); flex: none; }
 .home-note { text-align: center; font-size: 13px; color: var(--text-3); }
+.home-skeleton { display: grid; gap: 8px; }
+.home-skeleton .skeleton { height: 44px; border-radius: var(--radius-md); }
+.home-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.home-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-chip small { color: var(--text-3); font-size: 11px; white-space: nowrap; }
+.home-insta { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); color: inherit; text-decoration: none; }
+.home-insta:hover { background: var(--hover); }
+.home-insta-mark { display: inline-grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; background: var(--surface-2, var(--hover)); }
+.home-insta-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.home-insta-copy small { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-insta-state { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.home-insta-state[data-on] { color: var(--success); }
+.home-recent li a { min-height: 56px; padding-block: 6px; }
+.home-thumb { display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none; overflow: hidden; border-radius: 8px; background: var(--surface-2, var(--hover)); color: var(--text-3); }
+.home-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.home-recent-copy { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.home-recent-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-recent-copy small { margin: 0; }
+.home-status { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.home-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.home-status[data-tone="success"] i { background: var(--success); }
+.home-status[data-tone="warning"] i { background: var(--warning); }
+.home-status[data-tone="error"] i { background: var(--error); }
+.home-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }
+@keyframes home-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .home-status[data-tone="working"] i { animation: none; } }
+.thread-loading { display: grid; gap: 14px; padding: 8px 0; }
+.thread-loading .skeleton-bubble { height: 64px; width: min(78%, 420px); border-radius: 16px; }
+.thread-loading .skeleton-line { height: 14px; width: min(52%, 260px); }
+.thread-loading .skeleton-end { justify-self: end; }
+.older-row { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; color: var(--text-3); }
 
 /* ── Workspace (Preview | Edit) ──────────────────────────── */
 .workspace { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--sidebar); border-inline-start: 1px solid var(--border-subtle); }
