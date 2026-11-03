@@ -140,13 +140,16 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
         track = next((item for item in attachments or [] if item.get("kind") == "audio" and item.get("path")), None)
         if track: music["path"], music["name"] = track["path"], track.get("filename", "")
         else: wanted.notes.append("موسیقی «attached» خواسته شد ولی فایل صوتی پیوست نبود؛ ویدیو بدون موسیقی ساخته می‌شود.")
+    from creative.audio import direction
+    audio_plan, plan_notes = direction.plan(request, wanted)
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
     directory.mkdir(parents=True, exist_ok=True)
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
-              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first", "loudness": wanted.loudness or "social_video"}
+              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first", "loudness": wanted.loudness or "social_video",
+              "audio_plan": audio_plan.model_dump(), "audio_plan_notes": plan_notes}
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -469,6 +472,24 @@ def _with_retries(call, attempts: int = 3, pause=time.sleep):
             pause(2 * number)
 
 
+def _save_audio_direction(directory: Path, record: dict, plan, texts: list[str]) -> None:
+    """Write the director's audio plan, per-line emotion arc and sound-design cues next to the project. Informational: it never changes the
+    audio and a failure here never stops the build."""
+    try:
+        from creative.audio import direction, sound_design
+        from creative.audio.contracts import AudioDirectionPlan
+        audio_plan = AudioDirectionPlan.model_validate(record.get("audio_plan") or {})
+        scenes = plan.scenes
+        moments = [{"time_ms": int(scene.start * 1000), "kind": "reveal" if i == len(scenes) - 1 and len(scenes) > 1 else "transition",
+                    "importance": 0.9 if i == len(scenes) - 1 else 0.4} for i, scene in enumerate(scenes) if i > 0]
+        cues = sound_design.plan(moments, audio_plan.sound_design, [], total_ms=int(plan.duration * 1000))
+        (directory / "audio_direction.json").write_text(json.dumps(
+            {"plan": audio_plan.model_dump(), "notes": record.get("audio_plan_notes", []), "emotion_arc": direction.emotion_arc(texts, audio_plan),
+             "sound_design": cues}, ensure_ascii=False))
+    except Exception as exc:
+        log.warning("audio direction not saved: %s", str(exc)[:160])
+
+
 def _narrate(directory: Path, record: dict, plan, fp: str):
     """Voice every scene (one ElevenLabs request, cut per scene), then retime the plan so each scene lasts as long as its narration plus a breath.
     Returns (plan, clips, notes). A narration that cannot be made leaves the clip silent and says so; it never stops the build."""
@@ -514,6 +535,7 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
     retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
+    _save_audio_direction(directory, record, retimed, texts)
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
     return retimed, audio, gate_notes
