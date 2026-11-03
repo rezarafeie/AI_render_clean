@@ -143,6 +143,8 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
         else: wanted.notes.append("موسیقی «attached» خواسته شد ولی فایل صوتی پیوست نبود؛ ویدیو بدون موسیقی ساخته می‌شود.")
     from creative.audio import direction
     audio_plan, plan_notes = direction.plan(request, wanted)
+    if music and music.get("mode") == "library" and audio_plan.music_energy:
+        music["energy"] = audio_plan.music_energy
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -786,7 +788,7 @@ def _music_source(wanted: dict, plan):
     if wanted.get("mode") == "attached" and wanted.get("path"):
         return Path(wanted["path"]), wanted.get("name") or "attached track"
     if wanted.get("mode") == "library":
-        return music_bed.pick_from_library(wanted.get("words", ""), plan.duration)
+        return music_bed.pick_from_library(wanted.get("words", ""), plan.duration, energy=wanted.get("energy"))
     return None
 
 
@@ -806,7 +808,7 @@ def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
         if wanted["mode"] == "attached":
             source, label = Path(wanted["path"]), wanted.get("name") or "attached track"
         else:
-            picked = music_bed.pick_from_library(wanted.get("words", ""), plan.duration)
+            picked = music_bed.pick_from_library(wanted.get("words", ""), plan.duration, energy=wanted.get("energy"))
             if not picked:
                 return audio, ["در کتابخانهٔ موسیقی ترکی پیدا نشد؛ ویدیو بدون موسیقی ساخته شد. یک ترک در «Media library» آپلود کنید یا فایل صوتی پیوست کنید."]
             source, label = picked

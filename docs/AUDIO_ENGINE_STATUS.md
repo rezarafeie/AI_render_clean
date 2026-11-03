@@ -13,7 +13,8 @@ Audited from the code (branch `feat/audio-direction`, on top of `fix/motion-inte
 | Sound design: intensity presets, purpose-based cues, provenance, unfilled-cue reporting | implemented, tested (new) | `creative/audio/sound_design.py` |
 | Loudness (EBU R128 via ffmpeg), presets, final master mix | implemented, tested | `loudness.py`, `mixer.py` |
 | Quality gate: completeness (WER), clipping, silence, duration, loudness; ASR-based verify with one bounded repair | implemented, tested | `quality.py`, `verify.py` |
-| Music bed: library pick, trim, fade, ducking | implemented (basic) | `creative/music_bed.py` |
+| Music choice by brief (calm/energetic vocabulary, "no drums", optional measured energy, reasons and licence kept) | implemented, tested (new); measured energy hook not yet fed by `rhythm.analyse` | `creative/audio/music_select.py` |
+| Music bed: trim, fade, sidechain ducking | implemented (basic; ducking values fixed, not user-adjustable yet) | `creative/music_bed.py` |
 
 Not done yet (do not treat as available):
 - Wiring `direction.plan`, `providers.prepare` and `sound_design.plan` into the motion pipeline and `brain/tts.py` (new modules are not called yet).

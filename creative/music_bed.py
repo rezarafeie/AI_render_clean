@@ -19,20 +19,17 @@ def _words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-zA-Z؀-ۿ]{3,}", (text or "").lower())}
 
 
-def pick_from_library(words: str, duration: float) -> tuple[Path, str] | None:
-    """The music track whose tags, mood and name best match the words; a longer track wins a tie."""
+def pick_from_library(words: str, duration: float, *, energy: float | None = None) -> tuple[Path, str] | None:
+    """The track that best fits the brief (see creative.audio.music_select); the reasons are logged."""
+    from creative.audio import music_select
     from engine import library
-    wanted = _words(words)
-    best, best_score = None, None
-    for asset in library.scan_category("music"):
-        path = Path(asset.path)
-        if not path.is_file():
-            continue
-        text = " ".join([asset.filename, asset.mood or "", *asset.tags])
-        score = (len(wanted & _words(text)), 1 if (asset.duration_sec or 0) >= duration else 0, asset.duration_sec or 0)
-        if best_score is None or score > best_score:
-            best, best_score = (path, asset.filename), score
-    return best
+    tracks = [{"path": asset.path, "filename": asset.filename, "tags": list(asset.tags or []), "mood": asset.mood, "duration_sec": asset.duration_sec}
+              for asset in library.scan_category("music") if Path(asset.path).is_file()]
+    ranked = music_select.rank(words, duration, tracks, energy=energy)
+    if not ranked:
+        return None
+    log.info("music chosen: %s (%s)", ranked[0]["filename"], "; ".join(ranked[0]["reasons"]) or "no match, first available")
+    return Path(ranked[0]["path"]), ranked[0]["filename"]
 
 
 def make_bed(source: Path, output: Path, duration: float, voice: list[dict]) -> Path:
