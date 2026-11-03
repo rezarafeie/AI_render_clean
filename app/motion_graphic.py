@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -166,7 +167,7 @@ def view(directory: Path) -> dict:
     versions = [{k: v for k, v in item.items() if k != "page"} for item in record["versions"]]
     return {"id": record["id"], "conversation_id": record["conversation_id"], "status": record["status"], "stage": record["stage"],
             "progress": record["progress"], "message": record["message"], "questions": record["questions"], "error": record["error"],
-            "request": record["request"], "versions": versions, "current": record["current"], "updated_at": record["updated_at"], "log": record.get("log", [])[-14:], "eta_s": record.get("eta_s"), "eta_at": record.get("eta_at"),
+            "request": record["request"], "versions": versions, "current": record["current"], "updated_at": record["updated_at"], "log": record.get("log", [])[-14:], "snapshots": record.get("snapshots", []), "eta_s": record.get("eta_s"), "eta_at": record.get("eta_at"),
             "active": record["status"] in ACTIVE}
 
 
@@ -541,6 +542,41 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
     return retimed, audio, gate_notes
+
+
+def _snapshot_scenes(directory: Path, work: Path, plan) -> None:
+    """One still per scene (at 60 % of the scene, where its text and motion are in place) from the checked page, so the person sees the design
+    while the video renders. Bounded, never costs the build, and never uses the vision-model description."""
+    try:
+        from engine.hyperframes.cli import cli_command
+        scenes = list(getattr(plan, "scenes", None) or [])
+        if not scenes:
+            return
+        times = [round(min(scene.start + (scene.end - scene.start) * 0.6, plan.duration - 0.1), 2) for scene in scenes]
+        shots = directory / "snapshots"
+        raw = work / ".snapshots"
+        shutil.rmtree(raw, ignore_errors=True); shots.mkdir(exist_ok=True); raw.mkdir(parents=True)
+        done = subprocess.run([*cli_command(), "snapshot", ".", "--at", ",".join(f"{t:g}" for t in times), "--no-end", "--keep", "--describe", "false", "-o", str(raw)],
+                              cwd=work, capture_output=True, text=True, timeout=150, env={**os.environ, "NO_COLOR": "1"})
+        items = []
+        for n, (scene, t) in enumerate(zip(scenes, times), 1):
+            source = raw / f"at-{t:g}s.png"
+            if not source.is_file():
+                continue
+            target = shots / f"{n}.jpg"
+            made = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-vf", "scale=640:-2", "-q:v", "5", str(target)], capture_output=True, timeout=60)
+            if made.returncode == 0 and target.is_file():
+                items.append({"n": n, "headline": scene.headline[:80], "t": t})
+        if not items:
+            log.warning("scene snapshots not made: %s", (done.stderr or done.stdout or "")[-200:])
+            return
+        with _lock(directory.name):
+            record = load(directory)
+            record["snapshots"] = items
+            save(directory, record)
+        _note(directory, "snapshots", f"عکس {len(items)} صحنه آماده شد", "done")
+    except Exception as exc:
+        log.warning("scene snapshots failed: %s", str(exc)[:160])
 
 
 def _remember_voice_error(directory: Path, record: dict, message: str | None) -> None:
@@ -1062,6 +1098,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         _progress(directory, "rendering", 40 + int(percent * 0.55), "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=max(4.0, estimate - elapsed))
 
     _note(directory, "check", "بررسی صفحه تمام شد", "done")
+    _snapshot_scenes(directory, work, build.plan if build else None)
     _note(directory, "render", f"دارم {page.duration:g} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     _progress(directory, "rendering", 40, "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=estimate)
     standalone.render(work, output, timeout=RENDER_TIMEOUT_S, on_progress=on_progress, should_cancel=lambda: _cancelled(key))

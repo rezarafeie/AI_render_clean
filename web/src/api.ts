@@ -204,7 +204,7 @@ export interface StudioEvent { id: number; seq: number; type: string; data: Reco
 export interface MotionVersion { n: number; created_at: number; change: string; notes: string[]; title: string; summary: string; format: "vertical" | "horizontal" | "square"; duration: number; width: number; height: number; }
 export interface MotionGraphic {
   id: string; conversation_id: string; status: "queued" | "writing" | "checking" | "rendering" | "needs_input" | "completed" | "failed"; stage: string;
-  progress: number; message: string; questions: string[]; error: string | null; request: string; versions: MotionVersion[]; current: number; active: boolean; updated_at: number; log: { key: string; text: string; state: "active" | "done" | "note"; at: number }[]; eta_s: number | null; eta_at: number | null;
+  progress: number; message: string; questions: string[]; error: string | null; request: string; versions: MotionVersion[]; current: number; active: boolean; updated_at: number; snapshots?: { n: number; headline: string; t: number }[]; log: { key: string; text: string; state: "active" | "done" | "note"; at: number }[]; eta_s: number | null; eta_at: number | null;
 }
 
 /** Long-video content discovery (app/long_video.py). */
@@ -1314,6 +1314,7 @@ export const api = {
   async motionRevise(id: string, change: string): Promise<void> {
     await j(await authFetch(`${BASE}/studio/motion/${id}/revise`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ change }) }));
   },
+  motionSnapshotUrl(id: string, n: number): string { return `${BASE}/studio/motion/${id}/snapshot/${n}`; },
   motionMediaUrl(id: string, kind: "video" | "thumb" | "source", version?: number): string { return `${BASE}/studio/motion/${id}/${kind}${version ? `?v=${version}` : ""}`; },
   async conversationDiscovery(conversationId: string): Promise<{ analysis: DiscoveryAnalysis | null }> {
     return j(await authFetch(`${BASE}/studio/conversations/${conversationId}/discovery`));

@@ -1276,6 +1276,15 @@ async def motion_view(request: Request, motion_id: str):
     return await asyncio.to_thread(motion_graphic.view, _motion_dir(request, motion_id))
 
 
+@router.get("/motion/{motion_id}/snapshot/{n}")
+async def motion_snapshot(request: Request, motion_id: str, n: int):
+    directory = _motion_dir(request, motion_id)
+    path = directory / "snapshots" / f"{int(n)}.jpg"
+    if not path.is_file():
+        raise HTTPException(404, "snapshot not ready")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+
+
 @router.get("/motion/{motion_id}/{kind}")
 async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[int] = None):
     from app import motion_graphic

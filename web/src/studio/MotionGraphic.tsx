@@ -66,6 +66,9 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length)) ? <div className="mg-progress">
       <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
+      {motion.snapshots?.length ? <ul className="mg-shots" aria-label="پیش‌نمایش صحنه‌ها">{motion.snapshots.map(shot => <li key={`${shot.n}-${motion.updated_at}`}>
+        <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt={`صحنهٔ ${shot.n}: ${shot.headline}`} loading="lazy"/>
+        <span>{shot.n}. {shot.headline}</span></li>)}</ul> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" ? <div className="notice" data-tone="error" role="alert">{motion.error === "stopped" ? "ساخت متوقف شد." : motion.error || "ساخت کامل نشد."}</div> : null}

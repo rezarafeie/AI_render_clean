@@ -550,6 +550,10 @@ button.act-row:hover { color: var(--text-2); }
 .mg-notes { font-size: 12px; color: var(--text-3); }
 .mg-notes ul { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; }
 @media (max-width: 640px) { .mg-result { grid-template-columns: 1fr; } .mg-player { max-width: 300px; } }
+.mg-shots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.mg-shots li { display: grid; gap: 4px; min-width: 0; }
+.mg-shots img { width: 100%; height: auto; border-radius: var(--radius-sm, 6px); border: 1px solid var(--border-subtle); background: var(--surface-2, transparent); }
+.mg-shots span { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 .mg-eta { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
 /* ── "Working" feel for the live step: the title carries a travelling highlight, and its elapsed time counts up ───────────── */
