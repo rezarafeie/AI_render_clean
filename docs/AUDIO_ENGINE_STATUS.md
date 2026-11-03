@@ -5,7 +5,7 @@ Audited from the code (branch `feat/audio-direction`, on top of `fix/motion-inte
 | Area | State | Where |
 |---|---|---|
 | Timing contract (ms timebase, `AudioTimingEvent`) | implemented, tested | `creative/audio/contracts.py` |
-| Persian normalisation, numbers, pronunciation dictionary (script kept apart from spoken text) | implemented, tested | `creative/audio/persian.py` |
+| Persian normalisation: whole numbers, percentages, Jalali dates, times, simple decimals, phone-like digit runs, project pronunciation dictionary (script kept apart from spoken text). Gregorian dates, version numbers and default acronym readings (AI, API) are NOT normalised | implemented, tested (text only; not heard) | `creative/audio/persian.py` |
 | Voice request contract + provider capability reduction (unsupported wishes dropped and reported, no language fallback) | implemented, tested (new) | `creative/audio/providers.py` |
 | Audio Direction Plan from brief + directives, per-line emotion arc | implemented, tested (new) | `creative/audio/direction.py` |
 | Word/pause timing from provider timestamps | implemented, tested | `creative/audio/timing.py` |

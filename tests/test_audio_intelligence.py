@@ -45,8 +45,9 @@ def test_speakable_spells_digits_in_any_script_and_percentages():
 
 
 def test_decimals_dates_and_codes_are_left_as_written():
-    assert "۳.۵" not in persian.speakable("نسخه 3.5 آمد") and "3.5" in persian.speakable("نسخه 3.5 آمد")
-    assert "1405/08/12" in persian.speakable("تاریخ 1405/08/12 است")
+    assert persian.speakable("نسخه 3.5 آمد") == "نسخه سه ممیز پنج آمد" and persian.speakable("نسخه 1.2.3 آمد") == "نسخه 1.2.3 آمد"
+    assert persian.speakable("تاریخ 1405/08/12 است") == "تاریخ دوازدهم آبان هزار و چهارصد و پنج است"
+    assert "2025/08/12" in persian.speakable("date 2025/08/12")             # a Gregorian-looking date is left as written
 
 
 def test_english_text_is_untouched_except_for_dictionary():
@@ -147,3 +148,12 @@ def test_verification_stops_asking_a_recogniser_that_keeps_failing(tmp_path):
     clips = [(tmp_path / f"{i}.wav", 1.0) for i in range(5)]
     _, report = verify.verify_clips(["a b c"] * 5, clips, recognise, lambda i: None)
     assert calls == [0, 1] and [r["status"] for r in report] == ["not_checked"] * 5 and "skipped" in report[4]["reason"]
+
+
+def test_times_phone_numbers_and_years_are_read_as_people_say_them():
+    assert persian.speakable("ساعت 14:30 بیایید") == "ساعت چهارده و سی دقیقه بیایید" and persian.speakable("ساعت 9:00") == "ساعت نه"
+    assert persian.speakable("شماره ۰۹۱۲۳۴۵۶۷۸۹") == "شماره صفر نه یک دو سه چهار پنج شش هفت هشت نه"
+    assert persian.speakable("سال ۱۴۰۳ و ۰٫۰۵") .startswith("سال هزار و چهارصد و سه")
+    assert persian.speakable("از 1403/01/01 تا 1403/12/30") == "از اول فروردین هزار و چهارصد و سه تا سی‌ام اسفند هزار و چهارصد و سه"
+    assert persian.speakable("روز 23 و 3.05") == "روز بیست و سه و سه ممیز صفر پنج"
+    assert [persian.ordinal(d) for d in (1, 3, 12, 21, 23)] == ["اول", "سوم", "دوازدهم", "بیست و یکم", "بیست و سوم"]
