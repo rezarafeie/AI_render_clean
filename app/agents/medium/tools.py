@@ -176,6 +176,12 @@ def execute(record, step):
         conversation = run(repo.get_conversation(cid, user))
         original = shared._ENGINE_MARKER.sub("", record["data"]["request"]["text"], count=1).strip()
         brief = original if args.request.strip() == original else original + "\n\n" + args.request.strip()
+        # A narration script the person wrote (in this message or an earlier one) is passed on as they wrote it, never as the agent's paraphrase.
+        from creative import script_given
+        if not script_given.extract(original):
+            earlier = next((m["content"] for m in reversed(conversation.get("messages") or []) if m.get("role") == "user" and script_given.extract(m.get("content") or "")), None)
+            if earlier:
+                brief = shared._ENGINE_MARKER.sub("", earlier, count=1).strip() + "\n\n" + original
         # The planner often forgets the picture the person attached to this very message: use it when no ids were given.
         ids = args.attachment_ids or list(record["data"]["request"].get("attachment_ids") or [])
         images=run(repo.get_attachments(ids,cid,user))

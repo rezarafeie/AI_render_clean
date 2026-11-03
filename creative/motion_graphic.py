@@ -589,6 +589,7 @@ PLAN
   for word: the headline is the short on-screen punch, the narration is the explanation. The first scene's narration is the hook. Up to 60 seconds in total;
   20-40 seconds is typical when the request carries a script.
 - When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
+- A SUPPLIED NARRATION SCRIPT in the request is final: use its lines exactly, one scene per line, and never regenerate it. With no script supplied, write the narration yourself. If a supplied script really needs improvement, ask in `questions` and wait; do not edit it.
 - Include design_direction: one shared visual system for the whole film (grid, typography hierarchy, framing, illustration/material language,
   whitespace, foreground/background relationship, motion energy and a reason for the transition). Palette alone is not a design system.
 - transition (scenes 2+): how the scene enters, chosen by what the cut means and the film's editing style, never in turn. One of: @ENTRANCES@. Calm, premium films use fade/blur/zoom and rarely more than one hard cut;
@@ -780,6 +781,12 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         guide = PLAN_GUIDE.replace("Persian-first", "English-language").replace("natural spoken Persian", "natural spoken English").replace("the exact Persian words", "the exact English words").replace("Persian", "English")
         request = ("LANGUAGE OF THE FILM: English. Write every headline, idea, narration, title and summary in English (never Persian), "
                    "whatever language the instructions around the brief are written in.\n\n") + request
+    from . import script_given
+    supplied = script_given.extract(brief)
+    if supplied:
+        request = (f"SUPPLIED NARRATION SCRIPT ({len(supplied)} lines): the person wrote it, so it is final. Make exactly {len(supplied)} scenes, one per line in order; "
+                   "each scene's narration is that line word for word. Never rewrite, shorten, extend, translate or add to it. If you believe the script has a real "
+                   "problem, do not change it: ask one short question in `questions` instead.\n" + "\n".join(f"{i}. {line}" for i, line in enumerate(supplied, 1)) + "\n\n") + request
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -788,10 +795,14 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             return result
         if approved:
             result = apply_handoff(result, brief)
-        problems = validate_plan(result, max_scenes=8 if approved else 6)
+        if supplied and len(result.scenes) == len(supplied):
+            result = script_given.apply(result, supplied)
+        problems = validate_plan(result, max_scenes=8 if approved or supplied else 6)
+        if supplied and len(result.scenes) != len(supplied):
+            problems.insert(0, f"the person's narration script has {len(supplied)} lines: make exactly {len(supplied)} scenes, one per line, narration word for word")
         if problems and all("the narration needs about" in item for item in problems):
             result = fit_scene_timing(result)
-            problems = validate_plan(result, max_scenes=8 if approved else 6)
+            problems = validate_plan(result, max_scenes=8 if approved or supplied else 6)
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
