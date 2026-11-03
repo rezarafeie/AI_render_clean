@@ -17,6 +17,7 @@ Audited from the code (branch `feat/audio-direction`, on top of `fix/motion-inte
 | Music bed: trim, fade, sidechain ducking | implemented (basic; ducking values fixed, not user-adjustable yet) | `creative/music_bed.py` |
 
 Not done yet (do not treat as available):
+- Agent tools: `audio_check` (ffmpeg measurements of an attachment) and `plan_audio_direction` are registered read-only in the Medium agent (implemented, tested). The generating tools (`audio.generate_voice`, `audio.generate_music`, `audio.mix`, `audio.repair`) are not.
 - Wiring `direction.plan`, `providers.prepare` and `sound_design.plan` into the motion pipeline and `brain/tts.py` (new modules are not called yet).
 - SFX: the library holds no licensed SFX (one test file), so every cue is reported `no_licensed_asset`. Needs a licensed pack or a generation provider.
 - Music: provider search/generation (Mubert etc.), licence tracking, key/instrumentation analysis, loop and crossfade editing.
