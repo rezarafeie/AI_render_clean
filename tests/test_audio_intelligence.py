@@ -137,3 +137,13 @@ def test_a_bad_clip_is_reported_but_never_stops_the_build(tmp_path):
     plan = mg.MotionPlan(title="t", duration=3, scenes=[mg.ScenePlan(headline="h", idea="i", start=0, end=3, narration="سلام")])
     notes = app_mg._gate_clips(plan, [(tmp_path / "missing.wav", 1.0)])
     assert notes and "صحنهٔ 1" in notes[0]
+
+
+def test_verification_stops_asking_a_recogniser_that_keeps_failing(tmp_path):
+    from creative.audio import verify
+    calls = []
+    def recognise(path, index):
+        calls.append(index); return None
+    clips = [(tmp_path / f"{i}.wav", 1.0) for i in range(5)]
+    _, report = verify.verify_clips(["a b c"] * 5, clips, recognise, lambda i: None)
+    assert calls == [0, 1] and [r["status"] for r in report] == ["not_checked"] * 5 and "skipped" in report[4]["reason"]

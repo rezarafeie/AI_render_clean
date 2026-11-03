@@ -32,10 +32,13 @@ def verify_clips(texts: list[str], clips: list[tuple[Path, float]], recognise: C
     """Returns (clips, report). Each report row: scene, status (ok | repaired | needs_review | not_checked), error, retried."""
     started = clock()
     out, report = list(clips), []
+    unavailable = 0                           # recognition that fails or returns nothing twice in a row is not going to work for the rest either
     for index, (text, clip) in enumerate(zip(texts, clips)):
         if not text.strip():
             continue
         row = {"scene": index + 1, "status": "not_checked", "error": None, "retried": 0}
+        if unavailable >= 2:
+            row["reason"] = "recognition unavailable (skipped after two failures)"; report.append(row); continue
         if clock() - started > budget_s:
             row["reason"] = "time budget used up"; report.append(row); continue
         try:
@@ -45,7 +48,8 @@ def verify_clips(texts: list[str], clips: list[tuple[Path, float]], recognise: C
         if heard is None or not heard.strip():
             # No text came back at all: the recogniser failed or heard nothing it could use. That says nothing about the narration,
             # so it is "not checked", and above all it must not trigger another (paid) voicing.
-            row.setdefault("reason", "recognition unavailable" if heard is None else "recognition returned no text"); report.append(row); continue
+            row.setdefault("reason", "recognition unavailable" if heard is None else "recognition returned no text"); report.append(row); unavailable += 1; continue
+        unavailable = 0
         current = completeness(text, heard)["word_error_rate"]
         wrong_script = script_mismatch(text, heard)
         attempt = 0

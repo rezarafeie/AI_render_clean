@@ -510,6 +510,7 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     texts = [persian.speakable(scene.narration, pronunciations) if scene.narration.strip() else scene.narration for scene in plan.scenes]
     if not any(text.strip() for text in texts):
         return plan, [], []
+    _soft_progress(directory, 7, "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم.")
     _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
     try:
         from brain import localize
@@ -542,6 +543,21 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
     return retimed, audio, gate_notes
+
+
+def _soft_progress(directory: Path, percent: int, message: str) -> None:
+    """A progress update for a step inside narration; a project folder without a record (a unit of work run on its own) is not an error."""
+    try:
+        _progress(directory, "writing", percent, message, stage="writing")
+    except FileNotFoundError:
+        pass
+
+
+def _soft_note(directory: Path, key: str, text: str, state: str = "active") -> None:
+    try:
+        _note(directory, key, text, state)
+    except FileNotFoundError:
+        pass
 
 
 def _snapshot_scenes(directory: Path, work: Path, plan) -> None:
@@ -668,6 +684,9 @@ def _check_final_loudness(directory: Path, record: dict, page, mp4: Path) -> lis
     return []
 
 
+VERIFY_WALL_S = 90.0
+
+
 def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_id: str, voice_style: str):
     """Speech recognition on each narrated scene against the script; a scene that fails is voiced once more. Returns (clips, notes).
     A check that cannot run is skipped quietly in the notes; it never blocks the video."""
@@ -691,11 +710,29 @@ def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_
             return localize.synthesize_narration([texts[index]], directory / "voice" / f"retry{index + 1}", voice_id, voice_style)[0]
         except Exception as exc:
             log.warning("narration retry failed: %s", str(exc)[:160]); return None
+    _soft_progress(directory, 8, "دارم صدای نریشن را با متن سناریو مقایسه می‌کنم.")
+    _soft_note(directory, "verify", "دارم صدای نریشن را با متن سناریو مقایسه می‌کنم (حداکثر یک دقیقه و نیم)")
+    # A recogniser that is slow or down must not hold the clip: the check runs in a worker thread with a wall-clock limit. On timeout the
+    # worker is left to finish by itself (it writes only into its own folder) and the narration is used as it is, marked "not checked".
+    import concurrent.futures
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="verify")
     try:
-        fixed, report = verify.verify_clips(texts, clips, recognise, regenerate)
+        fixed, report = pool.submit(verify.verify_clips, texts, clips, recognise, regenerate).result(timeout=VERIFY_WALL_S)
+    except concurrent.futures.TimeoutError:
+        log.warning("narration verification used up %.0f s and was skipped", VERIFY_WALL_S)
+        _soft_note(directory, "verify", "مقایسهٔ صدا با سناریو به‌موقع تمام نشد؛ نریشن همان‌طور که ساخته شد استفاده می‌شود", "done")
+        try:
+            (directory / "audio_report.json").write_text(json.dumps({"recognition": [{"scene": i + 1, "status": "not_checked", "reason": "time limit"} for i, t in enumerate(texts) if t.strip()],
+                                                                    "judgement": "recognition is evidence, not proof of pronunciation"}, ensure_ascii=False))
+        except OSError:
+            pass
+        return clips, ["مقایسهٔ خودکار صدا با سناریو انجام نشد (زمان تمام شد)."]
     except Exception as exc:
         log.warning("narration verification failed: %s", str(exc)[:160])
         return clips, []
+    finally:
+        pool.shutdown(wait=False)
+    _soft_note(directory, "verify", "مقایسهٔ صدا با سناریو تمام شد", "done")
     try:
         (directory / "audio_report.json").write_text(json.dumps({"recognition": report, "judgement": "recognition is evidence, not proof of pronunciation"}, ensure_ascii=False))
     except OSError:
