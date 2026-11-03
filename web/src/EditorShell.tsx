@@ -25,10 +25,10 @@ type RouteKind = "studio" | "page" | "legacy" | "workspace";
 function routeKind(pathname: string): RouteKind {
   if (pathname === "/" || pathname.startsWith("/studio")) return "studio";
   if (pathname === "/hermes" || pathname.startsWith("/hermes/")) return "workspace";   // laid out like the Studio chat: a page column and a side panel
-  if (/^\/(projects|templates|settings)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
+  if (/^\/(projects|templates|settings|motion-library)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
   return "legacy";
 }
-const ROUTE_TITLES: Record<string, string> = { "/projects": "Projects", "/templates": "Templates", "/settings": "Settings" };
+const ROUTE_TITLES: Record<string, string> = { "/projects": "Projects", "/templates": "Templates", "/settings": "Settings", "/motion-library": "Motion library" };
 
 export default function EditorShell() {
   const { authenticated, user, openAuth, logout } = useAuth();

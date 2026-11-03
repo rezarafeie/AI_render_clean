@@ -1323,6 +1323,36 @@ async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
+class MotionEditBody(BaseModel):
+    changes: dict = Field(min_length=1, max_length=80)
+
+
+@router.get("/motion/{motion_id}/editable")
+async def motion_editable(request: Request, motion_id: str):
+    """Everything this motion graphic lets the person change, read from the project (fields, current values, accepted options, what each costs)."""
+    from app import motion_edit, motion_graphic
+    directory = _motion_dir(request, motion_id)
+    record = await asyncio.to_thread(motion_graphic.load, directory)
+    try:
+        return await asyncio.to_thread(motion_edit.editable, directory, record)
+    except (OSError, ValueError, KeyError):
+        return {"groups": [], "busy": record["status"] in motion_graphic.ACTIVE, "version": record.get("current"), "reason": "The plan is not ready yet."}
+
+
+@router.post("/motion/{motion_id}/edit")
+async def motion_edit_apply(request: Request, motion_id: str, body: MotionEditBody):
+    from app import motion_edit, motion_graphic
+    directory = _motion_dir(request, motion_id)
+    try:
+        return await asyncio.to_thread(motion_graphic.edit, directory, body.changes)
+    except motion_edit.EditError as exc:
+        raise HTTPException(422, str(exc))
+    except RuntimeError:
+        raise HTTPException(409, "already running")
+    except (OSError, ValueError, KeyError):
+        raise HTTPException(409, "The plan is not ready yet.")
+
+
 @router.post("/motion/{motion_id}/stop")
 async def motion_stop(request: Request, motion_id: str):
     from app import motion_graphic

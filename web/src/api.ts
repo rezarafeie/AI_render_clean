@@ -200,6 +200,12 @@ export interface StudioConversation {
   /** Present when only the newest messages were asked for: whether older ones exist and the event sequence their history starts after. */
   messages_has_more?: boolean; events_from?: number;
 }
+/** What a motion graphic lets the person change, as the server reads it from the project: every field, its current value and the options it accepts. */
+export interface MotionField {
+  key: string; group: string; label: string; type: "text" | "textarea" | "select" | "color" | "number"; value: string | number; impact: string;
+  maxlength?: number; min?: number; max?: number; step?: number; help?: string; disabled?: boolean; scene?: number; options?: { value: string; label: string }[];
+}
+export interface MotionEditable { groups: { id: string; title: string; fields: MotionField[] }[]; busy: boolean; version: number | null; reason?: string }
 export type HomeStatus = "running" | "needs_input" | "failed" | "ready" | "draft";
 export interface HomeRecent { id: string; title: string; updated_at: string; kind: string; kind_label: string; status: HomeStatus; status_label: string; thumb: string | null }
 export type HomeSuggestion = { kind: "prompt"; label: string; prompt: string; reason?: string } | { kind: "open"; label: string; conversation_id: string; reason?: string };
@@ -1191,6 +1197,10 @@ export const api = {
   },
   async olderStudioMessages(id: string, before: number | string, limit = 30): Promise<{ messages: StudioMessage[]; has_more: boolean; events_from: number }> {
     return j(await authFetch(`${BASE}/studio/conversations/${id}/messages?before=${before}&limit=${limit}`));
+  },
+  async motionEditable(id: string): Promise<MotionEditable> { return j(await authFetch(`${BASE}/studio/motion/${id}/editable`)); },
+  async motionEdit(id: string, changes: Record<string, string | number>): Promise<{ changed: string[]; summary: string[] }> {
+    return j(await authFetch(`${BASE}/studio/motion/${id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) }));
   },
   async studioHome(signal?: AbortSignal): Promise<StudioHome> {
     return j(await authFetch(`${BASE}/studio/home`, { signal }));

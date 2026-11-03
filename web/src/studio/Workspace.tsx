@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { api, StudioConversation, StudioEvent, StudioProject } from "../api";
-import { MotionPanel } from "./MotionGraphic";
+import { MotionEditPane, MotionPreviewPane } from "./MotionWorkspace";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { useFullscreen } from "../components/useFullscreen";
@@ -344,8 +344,8 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}
     <div className="ws-body">
-      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPanel motionId={motionId} events={events}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
-      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionPanel motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)}/>}</div>
+      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPreviewPane motionId={motionId} events={events} onCancel={onCancel}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
+      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionEditPane motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)}/>}</div>
     </div>
   </section>;
 }

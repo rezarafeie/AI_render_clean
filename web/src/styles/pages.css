@@ -114,3 +114,46 @@ a.proj-card:hover { background: var(--surface); border-color: var(--border-subtl
 .landing-features li { display: grid; gap: 6px; align-content: start; padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface); }
 .landing-features li > span:last-child { color: var(--text-2); font-size: 14px; }
 .landing-features .empty-icon { width: 40px; height: 40px; border-radius: 12px; margin-bottom: 6px; }
+
+
+/* Motion library */
+.ml-page { max-width: 1240px; }
+.ml-toolbar { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
+.ml-search { position: relative; display: flex; align-items: center; }
+.ml-search > svg { position: absolute; inset-inline-start: 12px; color: var(--text-3); pointer-events: none; }
+.ml-search .input { width: 100%; padding-inline-start: 36px; }
+.ml-count { margin: 0 0 var(--space-3); font-size: 13px; color: var(--text-3); }
+.ml-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); align-items: start; }
+.ml-card { display: grid; gap: 10px; padding: 10px 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface); min-width: 0; }
+.ml-card:hover { border-color: var(--border-strong, var(--border)); }
+.ml-media { position: relative; width: 100%; max-height: 380px; border-radius: var(--radius-md); overflow: hidden; background: var(--sidebar); border: 1px solid var(--border-subtle); display: grid; place-items: center; }
+.ml-media img, .ml-media video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ml-poster { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.ml-noposter { color: var(--text-3); }
+.ml-format { position: absolute; inset-block-end: 6px; inset-inline-start: 6px; font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill, 999px); background: rgba(0, 0, 0, .6); color: #fff; }
+.ml-play { position: absolute; inset-block-end: 6px; inset-inline-end: 6px; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; cursor: pointer; }
+.ml-play:hover { background: rgba(0, 0, 0, .85); }
+.ml-body { display: grid; gap: 6px; min-width: 0; padding-inline: 2px; }
+.ml-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.ml-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.ml-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.ml-status[data-tone="ok"] i { background: var(--success); }
+.ml-status[data-tone="info"] i { background: var(--ink, var(--text-2)); }
+.ml-status[data-tone="warn"] i { background: var(--warning); }
+.ml-use { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ml-more > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; cursor: pointer; list-style: none; font-size: 13px; color: var(--text-2); }
+.ml-more > summary::-webkit-details-marker { display: none; }
+.ml-more > summary svg { transition: transform var(--dur-fast); color: var(--text-3); }
+.ml-more[open] > summary svg { transform: rotate(180deg); }
+.ml-more-body { display: grid; gap: 10px; padding-top: 4px; }
+.ml-note, .ml-empty { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-3); }
+.ml-empty { padding: var(--space-6) 0; text-align: center; font-size: 14px; }
+.ml-params { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ml-params th { text-align: start; font-weight: 500; color: var(--text-3); padding: 4px 6px 4px 0; border-bottom: 1px solid var(--border-subtle); }
+.ml-params td { padding: 6px 6px 6px 0; vertical-align: top; border-bottom: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.ml-params td small { display: block; color: var(--text-3); line-height: 1.5; }
+.ml-tech > summary { cursor: pointer; font-size: 12px; color: var(--text-3); }
+.ml-tech pre { margin: 6px 0 0; padding: 8px 10px; font: 11px/1.6 var(--font-mono, ui-monospace, monospace); color: var(--text-2); background: var(--surface-2, rgba(127,127,127,.08)); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm, 6px); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+.ml-more-row { display: flex; justify-content: center; margin-top: var(--space-6); }
+.ml-skel { display: block; height: 260px; border-radius: var(--radius-md); }
+@media (max-width: 560px) { .ml-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); } }

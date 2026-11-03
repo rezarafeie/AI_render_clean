@@ -370,7 +370,10 @@ def _run(directory: Path, change: str) -> None:
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     previous = None
     current = _version(record)
-    if change and current:
+    edit = record.get("edit_pending")
+    if edit:
+        change = edit.get("label") or change                   # a structured edit (Edit tab): rebuilt from its changed plan, never by the model editing the page
+    elif change and current:
         previous = mg.MotionPage.model_validate(current["page"])
     brief = record["request"] + "".join(f"\nپاسخ کاربر: {a}" for a in record.get("answers", []))
     used: list[str] = []
@@ -422,7 +425,7 @@ def _run(directory: Path, change: str) -> None:
         record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": used,
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
         record["versions"] = record["versions"][-MAX_VERSIONS:]
-        record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, eta_s=None, eta_at=None)
+        record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None, eta_s=None, eta_at=None)
         save(directory, record)
     _emit(cid, "motion.completed", motion_id=key, version=number, duration=page.duration, format=page.format)
     from app import studio_narrator
@@ -961,8 +964,10 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     plan = None
     try:
         cached = json.loads(saved_plan.read_text())
-        if cached.get("fp") == plan_fp:
+        # A structured edit (the Edit tab) changed the saved plan itself: that plan is the one to build, whatever the request text now hashes to.
+        if cached.get("fp") == plan_fp or record.get("edit_pending"):
             plan = mg.MotionPlan.model_validate(cached["plan"])
+            plan_fp = cached.get("fp", plan_fp)
     except (OSError, ValueError):
         pass
     stats = _stats()
@@ -1011,15 +1016,25 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     # Keep the exact legacy fingerprint shape when no new component is selected.
     if any(sc.shotcraft_component for sc in plan.scenes):
         draft_inputs = {"existing":draft_inputs,"shotcraft":[sc.shotcraft_component.model_dump() if sc.shotcraft_component else None for sc in plan.scenes]}
-    fingerprint = plan_fp + hashlib.sha256(json.dumps(draft_inputs, ensure_ascii=False).encode()).hexdigest()[:8]
+    fingerprint = plan_fp + hashlib.sha256(json.dumps(draft_inputs, ensure_ascii=False).encode()).hexdigest()[:8]       # the whole plan: how older drafts were saved
+
+    def scene_fp(n: int) -> str:
+        """A scene's own identity: its length, its narration and its components. A change to another scene does not touch it."""
+        sc = plan.scenes[n - 1]
+        own = [round(sc.end - sc.start, 2), sc.narration, sc.native_component.model_dump() if sc.native_component else None,
+               sc.shotcraft_component.model_dump() if sc.shotcraft_component else None]
+        return plan_fp + "s" + hashlib.sha256(json.dumps(own, ensure_ascii=False).encode()).hexdigest()[:8]
     scenes_dir = directory / "scenes"
     scenes_dir.mkdir(exist_ok=True)
     drafts: dict[int, Any] = {}
     for n in range(1, count + 1):                                   # scenes finished by an earlier attempt are not redone
         try:
             cached = json.loads((scenes_dir / f"s{n}.json").read_text())
-            if cached.get("fp") == fingerprint:
-                drafts[n] = mg.SceneDraft.model_validate(cached["draft"])
+            loaded = mg.SceneDraft.model_validate(cached["draft"])
+            # Local-clock drafts do not depend on where the scene starts; an older absolute-clock draft also needs the same start.
+            same_place = loaded.timebase == "local" or cached.get("start") == plan.scenes[n - 1].start
+            if (cached.get("fp") == scene_fp(n) and same_place) or cached.get("fp") == fingerprint:
+                drafts[n] = loaded
                 _note(directory, f"scene{n}", f"صحنهٔ {n} از قبل آماده بود: «{plan.scenes[n - 1].headline}»", "done")
         except (OSError, ValueError):
             pass
@@ -1073,7 +1088,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
                     if plain:
                         scene_notes.append(f"صحنهٔ {n} («{scene.headline}») با طرح ساده جایگزین شد چون طراحی کامل از بررسی رد شد")
                     else:
-                        (scenes_dir / f"s{n}.json").write_text(json.dumps({"fp": fingerprint, "draft": draft.model_dump()}, ensure_ascii=False))
+                        (scenes_dir / f"s{n}.json").write_text(json.dumps({"fp": scene_fp(n), "start": scene.start, "draft": draft.model_dump()}, ensure_ascii=False))
                     _note(directory, f"scene{n}", f"صحنهٔ {n} آماده شد: «{scene.headline}»" + (" (طرح ساده)" if plain else ""), "done",
                           detail=f"صحنهٔ {n} · {scene.start:g}–{scene.end:g} ثانیه\nایده: {scene.idea}\nنریشن: {scene.narration or '—'}" + ("\nطراحی کامل از بررسی رد شد؛ طرح ساده جایگزین شد." if plain else ""))
                     _progress(directory, "writing", 8 + int(24 * (done + finished) / count), f"صحنهٔ {n} از {count} آماده شد.", stage="writing",
@@ -1328,6 +1343,20 @@ def revise(directory: Path, change: str) -> None:
         record.update(status="queued", stage="queued", progress=0, error=None)
         save(directory, record)
     start(directory, change=change.strip()[:3000])
+
+
+def edit(directory: Path, changes: dict) -> dict:
+    """A structured change from the Edit tab: validated against what this project can change, applied to only what it touches, built as a new version."""
+    from app import motion_edit
+    with _lock(directory.name):
+        record = load(directory)
+        if record["status"] in ACTIVE:
+            raise RuntimeError("busy")
+        result = motion_edit.apply(directory, record, changes)
+        record.update(status="queued", stage="queued", progress=0, error=None, questions=[], pending_change=None)
+        save(directory, record)
+    start(directory)
+    return result
 
 
 def recover_interrupted() -> int:

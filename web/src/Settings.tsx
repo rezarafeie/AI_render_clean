@@ -17,6 +17,7 @@ const groups: { title: string; hint: string; tools: Tool[] }[] = [
     { label: "Talking reels", description: "Talking-head analysis, captions and render settings.", to: "/talking", icon: "mic2" },
     { label: "Localization", description: "Persian dubbing, subtitles and voice for existing video.", to: "/localize", icon: "globe" },
     { label: "Effects", description: "Review and tune the effects the editor prefers.", to: "/my-effects", icon: "spark" },
+    { label: "Motion library", description: "Preview every motion component, effect and shot recipe the editor can use.", to: "/motion-library", icon: "motion" },
   ] },
   { title: "Libraries", hint: "Reusable assets and learned looks.", tools: [
     { label: "Styles & fonts", description: "Approved visual styles and the font library.", to: "/style-library", icon: "captions" },

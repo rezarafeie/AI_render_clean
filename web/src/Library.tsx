@@ -143,7 +143,7 @@ export default function Library() {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Asset Library / <span dir="rtl" lang="fa">کتابخانه</span></h1>
-        <a className="btn-secondary" href="/creative-previews/gallery.html" target="_blank" rel="noopener noreferrer">پیش‌نمایش کامپوننت‌ها</a>
+        <a className="btn-secondary" href="/motion-library">پیش‌نمایش کامپوننت‌ها</a>
         <button onClick={handleRescan} disabled={rescanning || loading || mutating || uploading} title={rescanning ? "Rescan in progress" : loading || mutating || uploading ? "Wait for the current library operation" : undefined}
           className="btn-secondary" style={{ marginLeft: "auto" }}>
           {rescanning ? "Rescanning..." : "Rescan folders"}

@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../src/Settings.tsx', import.meta.url), 'ut
 test('settings are grouped into tabs, and nothing that existed was removed', () => {
   for (const part of ['<InstallationSettings/>', '<AgentSettings/>', '<DeviceSettings/>', '<IntegrationsSettings/>', 'id="set-appearance"', 'id="set-account"', 'id="set-admin"', '`set-g${index}`'])
     assert.ok(source.includes(part), `${part} must still be on the settings page`);
-  for (const link of ['/new', '/content', '/talking', '/localize', '/my-effects', '/style-library', '/style-learner', '/library', '/hermes', '/settings/ai'])
+  for (const link of ['/new', '/content', '/talking', '/localize', '/my-effects', '/style-library', '/style-learner', '/library', '/hermes', '/settings/ai', '/motion-library'])
     assert.ok(source.includes(`"${link}"`), `${link} must still be reachable`);
   for (const tab of ['general', 'editing', 'connections', 'tools']) assert.ok(source.includes(`id: "${tab}"`));
 });
