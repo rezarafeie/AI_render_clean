@@ -13,7 +13,7 @@ Audited from the code (branch `feat/audio-direction`, on top of `fix/motion-inte
 | Sound design: intensity presets, purpose-based cues, provenance, unfilled-cue reporting | implemented, tested (new) | `creative/audio/sound_design.py` |
 | Loudness (EBU R128 via ffmpeg), presets, final master mix | implemented, tested | `loudness.py`, `mixer.py` |
 | Quality gate: completeness (WER), clipping, silence, duration, loudness; ASR-based verify with one bounded repair | implemented, tested | `quality.py`, `verify.py` |
-| Music choice by brief (calm/energetic vocabulary, "no drums", optional measured energy, reasons and licence kept) | implemented, tested (new); measured energy hook not yet fed by `rhythm.analyse` | `creative/audio/music_select.py` |
+| Music choice by brief (calm/energetic vocabulary, "no drums", optional measured energy, reasons and licence kept) | implemented, tested (new); the optional measured-energy hook is not fed: onset-density measurement did not separate the three library tracks (soft_lofi_loop scored busiest), so it is not used | `creative/audio/music_select.py` |
 | Music bed: trim, fade, sidechain ducking | implemented (basic; ducking values fixed, not user-adjustable yet) | `creative/music_bed.py` |
 
 Not done yet (do not treat as available):
