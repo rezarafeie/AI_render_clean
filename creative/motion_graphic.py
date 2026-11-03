@@ -274,7 +274,7 @@ def assemble(page: MotionPage) -> str:
                  'style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"></video>')
         scene_html = scene_html.replace(slot,video)
     return f"""<!doctype html>
-<html lang="{"en" if page.direction == "ltr" else "fa"}" dir="{page.direction}">
+<html lang="{"en" if page.direction == "ltr" else "fa"}"{' dir="ltr"' if page.direction == "ltr" else ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width={width}, height={height}">
@@ -752,6 +752,20 @@ def fit_scene_timing(plan: MotionPlan) -> MotionPlan:
     return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
 
 
+_SAYS_ENGLISH = re.compile(r"english\s+(?:narration|voice|script|copy|text)|narration\s*\(?\s*english|(?:narrat\w+|voice\w*|written|speak\w*)\s+in\s+english|روایت\s+انگلیسی|به\s*انگلیسی", re.I)
+_SAYS_PERSIAN = re.compile(r"persian\s+(?:narration|voice|script|copy|text)|(?:narrat\w+|voice\w*|written|speak\w*)\s+in\s+persian|به\s*فارسی|روایت\s+فارسی", re.I)
+
+
+def film_language(brief: str) -> str:
+    """The language the film is in: said outright, else the language most of the request is written in (a short Persian instruction
+    in front of an English brief does not make the film Persian)."""
+    from creative.audio.persian import is_persian
+    english, persian = _SAYS_ENGLISH.search(brief or ""), _SAYS_PERSIAN.search(brief or "")
+    if english and not persian: return "en"
+    if persian and not english: return "fa"
+    return "fa" if is_persian(brief or "") else "en"
+
+
 def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
     """The plan (or the questions to ask first). A plan that does not tile the duration is sent back with the reasons."""
     from . import handoff
@@ -761,10 +775,15 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
     if approved:
         apply_handoff(MotionPlan(), brief)
     request = plan_request(brief, context=context, brand=brand, style=style)
+    guide = PLAN_GUIDE
+    if film_language(brief) == "en":
+        guide = PLAN_GUIDE.replace("Persian-first", "English-language").replace("natural spoken Persian", "natural spoken English").replace("the exact Persian words", "the exact English words").replace("Persian", "English")
+        request = ("LANGUAGE OF THE FILM: English. Write every headline, idea, narration, title and summary in English (never Persian), "
+                   "whatever language the instructions around the brief are written in.\n\n") + request
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
-        result = llm.ask(MotionPlan, PLAN_GUIDE, user, route=PLAN_ROUTE, tokens=3500, attempts=2, used=used)
+        result = llm.ask(MotionPlan, guide, user, route=PLAN_ROUTE, tokens=3500, attempts=2, used=used)
         if result.asks():
             return result
         if approved:
