@@ -3,7 +3,9 @@ import { api, MotionGraphic, StudioEvent } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { friendlyError } from "../ui";
 import { etaText, motionSteps } from "./motionModel";
-import { ActivityBlock } from "./Activity";
+import { Icon } from "../components/Icon";
+import { formatDuration } from "../format";
+import type { ActivityStep } from "./model";
 
 const FORMAT_LABEL = { vertical: "عمودی ۹:۱۶", horizontal: "افقی ۱۶:۹", square: "مربعی ۱:۱" } as const;
 const secondsText = (n: number) => `${new Intl.NumberFormat("fa-IR").format(Math.round(n * 10) / 10)} ثانیه`;
@@ -22,8 +24,37 @@ export function useMotionActive(motionId: string | undefined, events: StudioEven
   return active;
 }
 
+/** What each stage of the build uses, so the person sees which tool is working (the keys are the server's log keys). */
+const STEP_TOOLS: [RegExp, string[]][] = [
+  [/^plan$/, ["مدل برنامه‌ریز"]], [/^voice$/, ["ElevenLabs"]], [/^verify$/, ["تشخیص گفتار"]], [/^music$/, ["کتابخانهٔ موسیقی", "ffmpeg"]],
+  [/^scene\d+$/, ["طراح صحنه"]], [/^check$/, ["HyperFrames check"]], [/^snapshots$/, ["HyperFrames snapshot"]], [/^render$/, ["HyperFrames render"]],
+];
+
+/** The build's steps, all visible: the step's own line, the tools it used, how long it took (live while it runs) and, where the agent wrote one, its summary. */
+export function MotionSteps({ steps, live, now, summaries }: { steps: ActivityStep[]; live: boolean; now: number; summaries?: { plan?: string; ready?: string } }) {
+  return <ol className="mg-steps" aria-label="مراحل ساخت">
+    {steps.map(step => {
+      const tools = STEP_TOOLS.find(([pattern]) => pattern.test(step.key))?.[1] || [];
+      const active = step.status === "active";
+      const ms = Math.max(0, (active ? now : step.endedAt) - step.startedAt);
+      const summary = step.key === "plan" ? summaries?.plan : undefined;
+      return <li key={step.key} className="mg-step" data-status={step.status}>
+        <span className="mg-step-mark" aria-hidden="true">{active ? <span className="spinner"/> : <Icon name={step.status === "failed" ? "alert" : "check"} size={14}/>}</span>
+        <div className="mg-step-body">
+          <div className="mg-step-line"><span className={active ? "act-shimmer" : undefined} dir="auto">{step.label}</span>
+            {ms >= 1000 ? <span className="mg-step-time" dir="ltr">{formatDuration(ms)}</span> : null}
+            {active && typeof step.progress === "number" ? <span className="mg-step-time" dir="ltr">{step.progress}%</span> : null}</div>
+          {tools.length ? <div className="mg-step-tools">{tools.map(tool => <span key={tool} className="mg-tool">{tool}</span>)}</div> : null}
+          {summary ? <p className="mg-step-summary" dir="auto">{summary}</p> : null}
+        </div>
+      </li>;
+    })}
+    {summaries?.ready && !live ? <li className="mg-step mg-step-ready"><div className="mg-step-body"><p className="mg-step-summary" dir="auto">{summaries.ready}</p></div></li> : null}
+  </ol>;
+}
+
 /** The clip made from the chat request: live stages while it is made, then the player, downloads and versions. Part of the conversation, not a panel. */
-export function MotionGraphicCard({ motionId, events, version: fixedVersion, latest = true }: { motionId: string; events: StudioEvent[]; version?: number; latest?: boolean }) {
+export function MotionGraphicCard({ motionId, events, version: fixedVersion, latest = true, summaries }: { motionId: string; events: StudioEvent[]; version?: number; latest?: boolean; summaries?: { plan?: string; ready?: string } }) {
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
   const [error, setError] = React.useState("");
   const [version, setVersion] = React.useState<number | null>(null);
@@ -65,7 +96,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length)) ? <div className="mg-progress">
-      <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
+      <MotionSteps steps={motionSteps(motion, now * 1000)} live={motion.active} now={now * 1000} summaries={summaries}/>
       {motion.snapshots?.length ? <ul className="mg-shots" aria-label="پیش‌نمایش صحنه‌ها">{motion.snapshots.map(shot => <li key={`${shot.n}-${motion.updated_at}`}>
         <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt={`صحنهٔ ${shot.n}: ${shot.headline}`} loading="lazy"/>
         <span>{shot.n}. {shot.headline}</span></li>)}</ul> : null}

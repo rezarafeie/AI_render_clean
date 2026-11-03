@@ -30,7 +30,7 @@ export type TimelineItem =
   | { kind: "render"; id: string; projectId: string; startedAt: number }
   | { kind: "question"; id: string; question: string; choices: QuestionChoice[]; seq: number; style: boolean }
   | { kind: "discovery"; id: string; analysisId: string }
-  | { kind: "motion"; id: string; motionId: string; run?: number; version?: number };
+  | { kind: "motion"; id: string; motionId: string; run?: number; version?: number; startedAt?: number; summaries?: { plan?: string; ready?: string } };
 
 export interface QuestionChoice { label: string; /** What to send as the user's answer. */ value: string }
 /** Backend choices are either plain strings or { id, label } objects (talking styles). */
@@ -200,6 +200,16 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     ...events.map(event => ({ t: parseTime(event.created_at), order: 1, tie: event.seq, event })),
   ].sort((a, b) => a.t - b.t || a.order - b.order || a.tie - b.tie);
 
+  // The agent's one-line narration of the motion graphic's phases is the summary of that step inside the progress card, not a separate bubble.
+  const responseKinds = new Map<string, string>();
+  const messageKinds = new Map<string, string>();
+  for (const event of events) {
+    if (event.type === "assistant.response.started") responseKinds.set(String(event.data.response_id), String(event.data.narration || ""));
+    if (event.type === "assistant.response.completed" && event.data.message_id != null) messageKinds.set(String(event.data.message_id), responseKinds.get(String(event.data.response_id)) || "");
+  }
+  const MOTION_SUMMARY: Record<string, "plan" | "ready"> = { motion_plan: "plan", motion_ready: "ready" };
+  const summaries: { kind: "plan" | "ready"; text: string; t: number }[] = [];
+
   const items: TimelineItem[] = [];
   const placedRender = new Set<string>();
   let block: { id: string; steps: Map<string, ActivityStep> } | null = null;
@@ -215,6 +225,10 @@ export function buildTimeline({ messages, events, projects, pending, processing,
   };
 
   for (const entry of entries) {
+    if (entry.message && entry.message.role === "assistant" && MOTION_SUMMARY[messageKinds.get(String(entry.message.id)) || ""]) {
+      summaries.push({ kind: MOTION_SUMMARY[messageKinds.get(String(entry.message.id)) || ""], text: publicAssistantText(entry.message.content), t: entry.t });
+      continue;
+    }
     if (entry.message) {
       flush();
       const message = entry.message;
@@ -227,6 +241,8 @@ export function buildTimeline({ messages, events, projects, pending, processing,
       if (savedResponses.has(event.data.response_id)) continue;
       const id = `response:${event.data.response_id}`;
       const content = String(event.data.text || '');
+      const summaryKind = MOTION_SUMMARY[responseKinds.get(String(event.data.response_id)) || ""];
+      if (summaryKind) { if (content && event.type !== 'assistant.response.failed') summaries.push({ kind: summaryKind, text: content, t: entry.t }); continue; }
       const previous = items.find(item => item.kind === 'message' && item.id === id);
       // A streamed message keeps its pictures (the page's images, the reference frame review): the completed event names them.
       const attached = Array.isArray(event.data.attachments) ? event.data.attachments.map(String) : [];
@@ -259,11 +275,15 @@ export function buildTimeline({ messages, events, projects, pending, processing,
         flush();
         const number = (runCount.get(motionKey) || 0) + 1;
         runCount.set(motionKey, number);
-        run = { kind: "motion", id: `mg-${motionKey}-${number}`, motionId: motionKey, run: number };
+        run = { kind: "motion", id: `mg-${motionKey}-${number}`, motionId: motionKey, run: number, startedAt: entry.t };
         items.push(run);
         openRuns.set(motionKey, run);
       }
-      if (run && event.type === "motion.completed") { run.version = Number(event.data.version) || undefined; openRuns.delete(motionKey); }
+      if (run && event.type === "motion.completed") {
+        run.version = Number(event.data.version) || undefined; openRuns.delete(motionKey);
+        const at = items.indexOf(run);                                   // it finished now: it sits below what was said while it ran
+        if (at >= 0) { items.splice(at, 1); items.push(run); }
+      }
       continue;
     }
     if (event.type === "discovery.created") {
@@ -381,6 +401,19 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     }
     const rest = filtered.filter(item => item !== latest);
     filtered.length = 0; filtered.push(...rest, { ...card, startedAt } as TimelineItem);
+  }
+
+  // Summaries belong to the run that was current when they were said (the latest summary of each kind wins).
+  const runs = filtered.filter((item): item is Extract<TimelineItem, { kind: "motion" }> => item.kind === "motion");
+  for (const summary of summaries) {
+    const owner = [...runs].reverse().find(run => (run.startedAt || 0) <= summary.t) || runs[runs.length - 1];
+    if (owner) owner.summaries = { ...owner.summaries, [summary.kind]: summary.text };
+  }
+  // A run in progress is the last message of the chat; a finished run stays where it finished (below), and a new run (an edit, a new version)
+  // starts a new card at the end while the earlier one stays on its own message.
+  for (const run of openRuns.values()) {
+    const at = filtered.indexOf(run);
+    if (at >= 0) { filtered.splice(at, 1); filtered.push(run); }
   }
 
   if (pending) filtered.push({ kind: "message", id: pending.id, role: "user", content: pending.content, attachments: pending.attachments, createdAt: pending.createdAt, pending: !pending.failed, failed: pending.failed });

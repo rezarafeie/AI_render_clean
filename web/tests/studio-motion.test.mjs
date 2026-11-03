@@ -98,3 +98,23 @@ test("the motion graphic's log becomes the same activity steps every other chat 
   assert.equal(failed[1].status, "failed");                              // what was running when it stopped is shown as stopped, not as working
   assert.deepEqual(motionSteps({ log: [], active: true, status: "queued", progress: 0, message: "صف" }, 5).map(s => [s.label, s.status]), [["صف", "active"]]);
 });
+
+test("a run in progress is the last message; a finished run keeps its place when new work starts", () => {
+  const running = buildTimeline({ ...base, messages: [message(1, "user", "بساز", 0), message(2, "assistant", "شروع کردم", 2), message(3, "assistant", "طرح آماده شد", 20)],
+    events: [at(1, "motion.created", { motion_id: MG }, 1), at(5, "motion.progress", { motion_id: MG, status: "writing" }, 2)] });
+  assert.equal(running[running.length - 1].kind, "motion");                                   // below the start message and the narration
+  const afterEdit = buildTimeline({ ...base, messages: [message(1, "user", "بساز", 0), message(2, "assistant", "تمام", 70), message(3, "user", "کند کن", 100), message(4, "assistant", "باشه", 101)],
+    events: [at(1, "motion.created", { motion_id: MG }, 1), at(60, "motion.completed", { motion_id: MG, version: 1 }, 2),
+             at(102, "motion.progress", { motion_id: MG, status: "writing" }, 3)] });
+  const order = afterEdit.map(i => i.kind === "message" ? i.content : `card v${i.version ?? "running"}`);
+  assert.deepEqual(order, ["بساز", "card v1", "تمام", "کند کن", "باشه", "card vrunning"]);        // v1 stays after the request it answered
+});
+
+test("the agent's narration of the plan and the result becomes the card's step summary, not a separate bubble", () => {
+  const items = buildTimeline({ ...base, messages: [message(1, "user", "بساز", 0), message(5, "assistant", "طرح حرکت آماده شد؛ شش صحنه", 20)],
+    events: [at(1, "motion.created", { motion_id: MG }, 1), at(19, "assistant.response.started", { response_id: "narration:p", narration: "motion_plan" }, 2),
+             at(21, "assistant.response.completed", { response_id: "narration:p", text: "طرح حرکت آماده شد؛ شش صحنه", message_id: 5 }, 3),
+             at(30, "motion.progress", { motion_id: MG, status: "writing" }, 4)] });
+  assert.equal(items.filter(i => i.kind === "message" && i.role === "assistant").length, 0);
+  assert.equal(items.find(i => i.kind === "motion").summaries.plan, "طرح حرکت آماده شد؛ شش صحنه");
+});
