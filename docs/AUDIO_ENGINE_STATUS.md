@@ -16,6 +16,8 @@ Audited from the code (branch `feat/audio-direction`, on top of `fix/motion-inte
 | Music choice by brief (calm/energetic vocabulary, "no drums", optional measured energy, reasons and licence kept) | implemented, tested (new); the optional measured-energy hook is not fed: onset-density measurement did not separate the three library tracks (soft_lofi_loop scored busiest), so it is not used | `creative/audio/music_select.py` |
 | Music bed: trim, fade, sidechain ducking | implemented (basic; ducking values fixed, not user-adjustable yet) | `creative/music_bed.py` |
 
+| Partial narration regeneration: only the lines whose spoken text changed are voiced again (same voice and style), level-matched to a kept line; the others keep their clips and word timing | implemented, tested with a stand-in voice; not yet run against the real provider | `creative/audio/partial.py`, `app/motion_graphic.py` (`_partial_clips`) |
+
 Not done yet (do not treat as available):
 - Agent tools: `audio_check` (ffmpeg measurements of an attachment) and `plan_audio_direction` are registered read-only in the Medium agent (implemented, tested). The generating tools (`audio.generate_voice`, `audio.generate_music`, `audio.mix`, `audio.repair`) are not.
 - Wiring `direction.plan`, `providers.prepare` and `sound_design.plan` into the motion pipeline and `brain/tts.py` (new modules are not called yet).

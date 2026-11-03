@@ -430,16 +430,63 @@ def _fingerprint(*parts: str) -> str:
     return hashlib.sha1("\x00".join(parts).encode()).hexdigest()[:12]
 
 
-def _save_word_timing(directory: Path, texts: list[str], voice_id: str, voice_style: str, clip_starts: list) -> None:
+def _save_word_timing(directory: Path, texts: list[str], voice_id: str, voice_style: str, clip_starts: list, found: list | None = None):
     """Word and pause events of the narration, from the take's own timestamps, saved for scene design and captions. Never blocks the build."""
     try:
         from brain import localize
         from creative.audio import timing
-        found = localize.narration_words(texts, directory / "voice", voice_id, voice_style)
+        if found is None:
+            found = localize.narration_words(texts, directory / "voice", voice_id, voice_style)
         rows = timing.events(found, clip_starts)
         (directory / "audio_timing.json").write_text(json.dumps({"source": "provider character timestamps", "events": [r.model_dump() for r in rows]}, ensure_ascii=False))
+        return found
     except Exception as exc:
         log.debug("word timing not saved: %s", str(exc)[:100])
+    return None
+
+
+def _partial_clips(directory: Path, texts: list[str], voice_id: str, voice_style: str):
+    """When only some narrated lines changed since the last take (same voice and style), voice just those and keep the rest. Returns
+    {"clips", "words", "changed"} or None (then the whole narration is voiced as before). Any failure here means None, never a half-made result."""
+    from creative.audio import partial
+    try:
+        previous = json.loads((directory / "voice_takes.json").read_text())
+        if previous.get("voice") != [voice_id, voice_style] or len(previous.get("texts", [])) != len(texts):
+            return None
+        changed = partial.changed_lines(previous["texts"], texts)
+        kept = [i for i in range(len(texts)) if i not in changed and texts[i].strip()]
+        if not changed or not kept:
+            return None
+        old = [(Path(path), float(seconds)) for path, seconds in previous["clips"]]
+        if any(not old[i][0].is_file() for i in kept):
+            return None
+        from brain import localize
+        words = previous.get("words") if len(previous.get("words") or []) == len(texts) else [[] for _ in texts]
+        clips = list(old)
+        for i in changed:
+            if not texts[i].strip():
+                clips[i], words[i] = (old[i][0], 0.0), []
+                continue
+            line_dir = directory / "voice" / f"line{i + 1}-{_fingerprint(texts[i])[:8]}"
+            fresh = _with_retries(lambda: localize.synthesize_narration([texts[i]], line_dir, voice_id, voice_style))[0]
+            leveled, _ = partial.match_level(old[kept[0]][0], Path(fresh[0]), line_dir / "leveled.wav")
+            clips[i] = (leveled, localize.audio_duration(leveled) if leveled != Path(fresh[0]) else fresh[1])
+            words[i] = localize.narration_words([texts[i]], line_dir, voice_id, voice_style)[0]
+        return {"clips": clips, "words": words, "changed": changed}
+    except _Cancelled:
+        raise
+    except Exception as exc:
+        log.warning("partial narration not used: %s", str(exc)[:160])
+        return None
+
+
+def _save_takes(directory: Path, texts: list[str], voice_id: str, voice_style: str, clips, words) -> None:
+    """The lines and clips of this take, so a later change to a few lines can keep the others."""
+    try:
+        (directory / "voice_takes.json").write_text(json.dumps({"voice": [voice_id, voice_style], "texts": texts, "words": words,
+                                                                "clips": [[str(path), seconds] for path, seconds in clips]}, ensure_ascii=False))
+    except OSError:
+        log.debug("narration takes not saved")
 
 
 def _gate_clips(plan, clips) -> list[str]:
@@ -514,16 +561,21 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         return plan, [], []
     _soft_progress(directory, 7, "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم.")
     _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
+    partial = None
     try:
         from brain import localize
-        clips = _with_retries(lambda: localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style))
+        partial = _partial_clips(directory, texts, voice_id, voice_style)
+        clips = partial["clips"] if partial else _with_retries(lambda: localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style))
     except Exception as exc:
         log.warning("motion narration could not be made: %s", str(exc)[:200])
         _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
         return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
     _remember_voice_error(directory, record, None)
-    clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
+    if partial:
+        verified = ["نریشن فقط برای صحنه‌های " + "، ".join(str(i + 1) for i in partial["changed"]) + " دوباره ساخته شد؛ بقیهٔ صحنه‌ها همان صدای قبلی را نگه داشتند."]
+    else:
+        clips, verified = _verify_clips(directory, record, texts, clips, voice_id, voice_style)
     gate_notes = [*_gate_clips(plan, clips), *verified]
     cursor, scenes, audio, clip_starts = 0.0, [], [], []
     for index, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips)):
@@ -536,7 +588,8 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
             audio.append({"path": str(path), "start": round(cursor + 0.25, 2), "duration": round(seconds, 2)})
         clip_starts.append(round(cursor + 0.25, 2) if seconds > 0 else None)
         cursor += length
-    _save_word_timing(directory, texts, voice_id, voice_style, clip_starts)
+    found = _save_word_timing(directory, texts, voice_id, voice_style, clip_starts, partial["words"] if partial else None)
+    _save_takes(directory, texts, voice_id, voice_style, clips, found if found is not None else [[] for _ in texts])
     if cursor > mg.MAX_SECONDS:
         _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
         return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
@@ -628,6 +681,7 @@ def _revoice(directory: Path, record: dict, previous):
     if not any(scene.narration.strip() for scene in plan.scenes):
         return None
     (directory / "voice.json").unlink(missing_ok=True)           # an explicit request to voice it again never reuses an earlier result
+    (directory / "voice_takes.json").unlink(missing_ok=True)
     voiced, audio, notes = _narrate(directory, record, plan, saved.get("fp", ""))
     if not audio:
         raise RuntimeError("نریشن ساخته نشد: " + (notes[0] if notes else "دلیلش ثبت نشد") + " (نسخهٔ بی‌صدای دیگری ساخته نمی‌شود؛ بعداً دوباره تلاش کنید)")
