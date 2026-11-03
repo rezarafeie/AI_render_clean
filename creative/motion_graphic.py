@@ -784,9 +784,10 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
     from . import script_given
     supplied = script_given.extract(brief)
     if supplied:
-        request = (f"SUPPLIED NARRATION SCRIPT ({len(supplied)} lines): the person wrote it, so it is final. Make exactly {len(supplied)} scenes, one per line in order; "
+        request = (f"SUPPLIED NARRATION SCRIPT ({len(supplied)} lines): the person wrote it, so it is final. Make exactly {len(supplied)} scenes, one per line in order (the usual 2-6 scene limit does not apply to a supplied script, and you never ask to group lines); "
                    "each scene's narration is that line word for word. Never rewrite, shorten, extend, translate or add to it. If you believe the script has a real "
                    "problem, do not change it: ask one short question in `questions` instead.\n" + "\n".join(f"{i}. {line}" for i, line in enumerate(supplied, 1)) + "\n\n") + request
+    cap = max(8, len(supplied)) if supplied else 8 if approved else 6          # a script's own line count is not a scene limit
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -797,12 +798,12 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             result = apply_handoff(result, brief)
         if supplied and len(result.scenes) == len(supplied):
             result = script_given.apply(result, supplied)
-        problems = validate_plan(result, max_scenes=8 if approved or supplied else 6)
+        problems = validate_plan(result, max_scenes=cap)
         if supplied and len(result.scenes) != len(supplied):
             problems.insert(0, f"the person's narration script has {len(supplied)} lines: make exactly {len(supplied)} scenes, one per line, narration word for word")
         if problems and all("the narration needs about" in item for item in problems):
             result = fit_scene_timing(result)
-            problems = validate_plan(result, max_scenes=8 if approved or supplied else 6)
+            problems = validate_plan(result, max_scenes=cap)
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
