@@ -513,6 +513,7 @@ class ScenePlan(BaseModel):
     shotcraft_id: str = ""
     native_component: NativeMotion | None = None
     shotcraft_component: NativeSpec | None = None
+    transition: str = ""               # how this scene enters (a key of ENTRANCE_LIBRARY); empty or unknown = chosen from the film's style
 
     @model_validator(mode="after")
     def one_native_source(self):
@@ -590,6 +591,8 @@ PLAN
 - When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
 - Include design_direction: one shared visual system for the whole film (grid, typography hierarchy, framing, illustration/material language,
   whitespace, foreground/background relationship, motion energy and a reason for the transition). Palette alone is not a design system.
+- transition (scenes 2+): how the scene enters, chosen by what the cut means and the film's editing style, never in turn. One of: @ENTRANCES@. Calm, premium films use fade/blur/zoom and rarely more than one hard cut;
+  energetic films use slice/shutter/push. Do not repeat the same transition twice in a row and do not use diamond more than once.
 - Each scene may include shotcraft_id from the supplied catalog. Select the recipe by its explanatory meaning, not its name or visual noise.
   Vary the visual mechanism across scenes; do not choose data charts unless verified numerical facts are supplied. Use the supplied source reference
   as a design recipe, not an executable Remotion tool. Do not promise unsupported runtime capabilities.
@@ -960,8 +963,46 @@ def fallback_scene(plan: MotionPlan, n: int) -> SceneDraft:
         build_js=f'HM.fadeUp("#s{n} .s{n}-bar", {scene.start + 0.15:g});\nHM.rise("#s{n} .hm-rise", {scene.start + 0.35:g});')
 
 
-# Scene entrances, used in turn so a clip never repeats one shape at every cut.
-ENTRANCES = ("iris", "slice", "fade", "rise", "diamond")
+# The entrance library: (energy 0-1, what it says). The planner picks from it by what the cut means; `choose_entrance` is the fallback.
+ENTRANCE_LIBRARY = {
+    "fade": (0.1, "the same idea continues; calm, quiet continuity"),
+    "blur": (0.2, "soft focus pull: reflective, emotional or dreamy shifts"),
+    "zoom": (0.45, "settle in on a detail: going deeper, focus, a product close-up"),
+    "rise": (0.45, "building up: growth, a result forming"),
+    "push": (0.5, "next step in a sequence: then, after, step two"),
+    "iris": (0.55, "a reveal or landing: the answer, the name, the closing line"),
+    "shutter": (0.6, "precise and technical: tools, interface, features"),
+    "slice": (0.7, "fast hard-edged sweep: energetic, punchy changes of topic"),
+    "diamond": (0.85, "bold brand accent with a coloured edge: use rarely, for a big turn"),
+}
+ENTRANCES = tuple(ENTRANCE_LIBRARY)
+PLAN_GUIDE = PLAN_GUIDE.replace("@ENTRANCES@", "; ".join(f"{k} ({v[1]})" for k, v in ENTRANCE_LIBRARY.items()))
+_CALM = re.compile(r"calm|soft|elegant|minimal|quiet|gentle|premium|apple|آرام|ظریف|مینیمال|ملایم", re.I)
+_FAST = re.compile(r"fast|bold|energetic|dynamic|punchy|kinetic|loud|پرانرژی|پویا|تند|جسور", re.I)
+_STEP = re.compile(r"\b(then|next|after|step|first|second|finally)\b|سپس|بعد|مرحله|اول|دوم|نهایت", re.I)
+_TECH = re.compile(r"tool|interface|feature|timeline|editor|screen|app\b|ابزار|ویژگی|تایم‌لاین|صفحه|ادیتور", re.I)
+_SOFT = re.compile(r"dream|feel|imagine|memory|idea|what if|تصور|حس|خیال|ایده|\?|؟", re.I)
+
+
+def choose_entrance(plan: MotionPlan, n: int, previous: str | None = None) -> str:
+    """The entrance for scene n (n >= 2), from the film's style and the scene's own words; never from its position in a rotation."""
+    scene = plan.scenes[n - 1]
+    style = f"{plan.design_direction} {plan.signature} {plan.summary}"
+    target = 0.25 if _CALM.search(style) else 0.7 if _FAST.search(style) else 0.5
+    words = len(scene.narration.split())
+    text = f"{scene.headline} {scene.idea} {scene.narration}"
+    if words and words <= 7: target += 0.1                              # a short line wants a sharper cut
+    if words >= 22: target -= 0.1
+    last = n == len(plan.scenes)
+    bonus = {name: 0.0 for name in ENTRANCE_LIBRARY}
+    if last: bonus["iris"] += 0.3; bonus["zoom"] += 0.15
+    if _STEP.search(text): bonus["push"] += 0.3
+    if _TECH.search(text): bonus["shutter"] += 0.2; bonus["zoom"] += 0.1
+    if _SOFT.search(text): bonus["blur"] += 0.25; bonus["fade"] += 0.1
+    if scene.native_component or scene.shotcraft_component: bonus["fade"] += 0.2
+    def score(name: str) -> float:
+        return -abs(ENTRANCE_LIBRARY[name][0] - target) + bonus[name] - (0.5 if name == previous else 0.0) - (0.25 if name == "diamond" and target < 0.7 else 0.0)
+    return max(ENTRANCE_LIBRARY, key=score)
 
 
 def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict] | None = None) -> MotionPage:
@@ -970,6 +1011,7 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
     palette = plan.palette
     html, css, build, update, native, shotcraft = [], [], [], [], [], []
     page_direction = direction_of(sc.narration for sc in plan.scenes)
+    chosen: list[str] = []
     corners = [(width / 2, height / 2), (width * .85, height * .75), (width * .15, height * .25), (width / 2, height * .9), (width * .85, height * .2), (width * .2, height * .8)]
     for n, (scene, draft) in enumerate(zip(plan.scenes, drafts), 1):
         if draft.shotcraft_component:
@@ -994,7 +1036,8 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
         css.append(f"#s{n}{{background:{palette.bg};color:{palette.ink}}}\n{scope_css(n, draft.css)}")
         if n > 1:
             x, y = corners[(n - 1) % len(corners)]
-            kind = ENTRANCES[(n - 2) % len(ENTRANCES)]
+            kind = scene.transition if scene.transition in ENTRANCE_LIBRARY else choose_entrance(plan, n, chosen[-1] if chosen else None)
+            chosen.append(kind)
             side = "left" if (n % 2 == 0) == (page_direction == "ltr") else "right"
             build.append(f'HM.wipe("#s{n}", {max(0.0, scene.start - 0.9):g}, {{kind: "{kind}", dir: "{side}", band: "{palette.accent}", x: {int(x)}, y: {int(y)}}});')
         # T and D (the scene's start and length) are real variables in its code: the designer's prompt names them, and a scene that writes T + 0.5

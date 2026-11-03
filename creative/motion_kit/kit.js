@@ -81,7 +81,7 @@
   };
 
   /* A scene revealed on top of the previous ones. kind: diamond (default, a coloured band leads the edge), iris (circle from x, y),
-     slice (hard-edged sweep, dir "right" or "left"), rise (from the bottom edge) or fade. */
+     slice (hard-edged sweep, dir "right" or "left"), rise (from the bottom edge), fade, blur (soft focus pull), zoom (settles from slightly large), shutter (opens from the centre line) or push (slides in with a trailing edge). */
   HM.wipe = function (scene, at, o) {
     var el = list(scene)[0], W = HM.width, H = HM.height;
     var kind = opt(o, "kind", "diamond"), dir = opt(o, "dir", "right");
@@ -93,6 +93,10 @@
       if (kind === "iris") return "circle(" + (p * reach) + "px at " + cx + "px " + cy + "px)";
       if (kind === "slice") { var gone = (1 - p) * 100; return dir === "left" ? "inset(0 0 0 " + gone + "%)" : "inset(0 " + gone + "% 0 0)"; }
       if (kind === "rise") return "inset(" + (1 - p) * 100 + "% 0 0 0)";
+      if (kind === "shutter") return "inset(" + (1 - p) * 50 + "% 0 " + (1 - p) * 50 + "% 0)";
+      if (kind === "push") { el.style.transform = "translateX(" + (dir === "left" ? -1 : 1) * (1 - p) * W * .14 + "px)"; var cut = (1 - p) * 100; return dir === "left" ? "inset(0 0 0 " + cut + "%)" : "inset(0 " + cut + "% 0 0)"; }
+      if (kind === "zoom") { el.style.opacity = String(p); el.style.transform = "scale(" + (1 + .12 * (1 - p)) + ")"; return null; }
+      if (kind === "blur") { el.style.opacity = String(p); el.style.filter = p >= 1 ? "none" : "blur(" + (1 - p) * 22 + "px)"; return null; }
       return poly(p * reach);
     }
     function apply(p) { var clip = shape(p); if (clip !== null) el.style.clipPath = clip; }
