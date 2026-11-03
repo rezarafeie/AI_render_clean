@@ -30,6 +30,28 @@ a.proj-card:hover { background: var(--surface); border-color: var(--border-subtl
 .tpl-use { display: inline-flex; align-items: center; gap: 4px; padding-inline: 4px; font-size: 13px; font-weight: 500; color: var(--text); }
 
 /* Settings */
+.set-page { max-width: 1000px; }
+.set-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: var(--space-8); align-items: start; margin-top: var(--space-4); }
+.set-nav { position: sticky; top: var(--space-4); display: grid; gap: 2px; }
+.set-nav-item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-radius: var(--radius-md); color: var(--text-2); font-size: 14px; text-decoration: none; }
+.set-nav-item:hover { background: var(--hover); color: var(--text); }
+.set-nav-item[aria-current="page"] { background: var(--active); color: var(--text); font-weight: 500; }
+.set-nav-item svg { flex: none; color: var(--text-3); }
+.set-nav-item[aria-current="page"] svg { color: var(--text); }
+.set-pane { min-width: 0; max-width: 720px; }
+.set-pane-head h2 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.set-pane-head p { margin: 4px 0 0; color: var(--text-3); font-size: 14px; line-height: 1.6; }
+.set-pane > .set-section:first-of-type { margin-top: var(--space-6); }
+.set-pane .set-section > h2 { font-size: 12px; letter-spacing: .02em; text-transform: uppercase; }
+@media (max-width: 760px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+  .set-nav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; margin-inline: calc(var(--space-4) * -1); padding-inline: var(--space-4); background: var(--bg); border-bottom: 1px solid var(--border-subtle); scrollbar-width: none; }
+  .set-nav::-webkit-scrollbar { display: none; }
+  .set-nav-item { flex: none; min-height: 36px; padding: 0 14px; border: 1px solid var(--border-subtle); border-radius: 999px; }
+  .set-nav-item[aria-current="page"] { border-color: var(--border); }
+  .set-pane-head { display: none; }
+  .set-pane > .set-section:first-of-type { margin-top: var(--space-2); }
+}
 .set-section { margin-top: var(--space-8); }
 .set-section > h2 { font-size: 13px; font-weight: 500; color: var(--text-3); margin-bottom: var(--space-2); }
 .set-hint { color: var(--text-2); font-size: 14px; margin-bottom: var(--space-3); }
