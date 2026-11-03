@@ -32,16 +32,19 @@ def pick_from_library(words: str, duration: float, *, energy: float | None = Non
     return Path(ranked[0]["path"]), ranked[0]["filename"]
 
 
-def make_bed(source: Path, output: Path, duration: float, voice: list[dict]) -> Path:
+def make_bed(source: Path, output: Path, duration: float, voice: list[dict], *, gain_db: float | None = None, duck_db: float | None = None) -> Path:
     """Loop or cut `source` to `duration`, fade it, and let the narration push it down smoothly (sidechain ducking)."""
     from brain.music import probe_music
     probe_music(source)                              # raises ValueError for an unreadable or non-audio file
     duration = round(float(duration), 3)
+    gain = BASE_GAIN if gain_db is None else round(10 ** (max(-40.0, min(0.0, gain_db)) / 20), 4)
+    depth = 12.0 if duck_db is None else max(0.0, min(30.0, duck_db))
+    ratio = 9.0 if duck_db is None else round(1 + 0.67 * depth, 2)      # unchanged default; a deeper request means a higher ratio
     base = ("[0:a]atrim=0:{d},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={g},"
             "afade=t=in:st=0:d={fi},afade=t=out:st={fo_start:g}:d={fo}[m]").format(
-        d=duration, g=BASE_GAIN, fi=FADE_IN, fo=FADE_OUT, fo_start=max(0.0, duration - FADE_OUT))
+        d=duration, g=gain, fi=FADE_IN, fo=FADE_OUT, fo_start=max(0.0, duration - FADE_OUT))
     command = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-stream_loop", "-1", "-i", str(source)]
-    clips = [clip for clip in voice if Path(str(clip["path"])).is_file()]
+    clips = [clip for clip in voice if Path(str(clip["path"])).is_file()] if depth > 0 else []      # no ducking: the voice is not needed here
     for clip in clips:
         command += ["-i", str(clip["path"])]
     if clips:
@@ -51,7 +54,7 @@ def make_bed(source: Path, output: Path, duration: float, voice: list[dict]) -> 
             parts.append(f"[{index}:a]aresample=48000,aformat=channel_layouts=stereo,adelay={delay}|{delay}[v{index}]")
         mixed = "".join(f"[v{i}]" for i in range(1, len(clips) + 1))
         parts.append(f"{mixed}amix=inputs={len(clips)}:normalize=0:duration=longest,apad=whole_dur={duration}[vox]")
-        parts.append("[m][vox]sidechaincompress=threshold=0.02:ratio=9:attack=20:release=500:makeup=1[out]")
+        parts.append(f"[m][vox]sidechaincompress=threshold=0.02:ratio={ratio:g}:attack=20:release=500:makeup=1[out]")
         graph = ";".join(parts)
     else:
         graph = base.replace("[m]", "[out]")

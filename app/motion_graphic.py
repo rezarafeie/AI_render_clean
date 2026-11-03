@@ -152,7 +152,8 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
               "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first", "loudness": wanted.loudness or "social_video",
-              "audio_plan": audio_plan.model_dump(), "audio_plan_notes": plan_notes}
+              "audio_plan": audio_plan.model_dump(), "audio_plan_notes": plan_notes,
+              "music_gain_db": wanted.music_gain_db, "ducking_db": wanted.ducking_db}
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -867,7 +868,8 @@ def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
                 return audio, ["در کتابخانهٔ موسیقی ترکی پیدا نشد؛ ویدیو بدون موسیقی ساخته شد. یک ترک در «Media library» آپلود کنید یا فایل صوتی پیوست کنید."]
             source, label = picked
         voice = [clip for clip in audio if clip.get("role") != "music"]
-        stamp = f"{source.name}|{source.stat().st_size}|{plan.duration}|" + ",".join(f"{c['start']}-{c['duration']}" for c in voice)
+        stamp = (f"{source.name}|{source.stat().st_size}|{plan.duration}|{record.get('music_gain_db')}|{record.get('ducking_db')}|"
+                 + ",".join(f"{c['start']}-{c['duration']}" for c in voice))
         output = directory / "music_bed.m4a"
         marker = directory / "music_bed.json"
         try:
@@ -876,7 +878,7 @@ def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
         except (OSError, ValueError):
             pass
         progress(f"موسیقی پس‌زمینه را با افت خودکار زیر صدا می‌سازم: {label}")
-        music_bed.make_bed(source, output, plan.duration, voice)
+        music_bed.make_bed(source, output, plan.duration, voice, gain_db=record.get("music_gain_db"), duck_db=record.get("ducking_db"))
         marker.write_text(json.dumps({"stamp": stamp}))
         progress("موسیقی پس‌زمینه آماده شد", "done")
         return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], [f"موسیقی: {label}"]
