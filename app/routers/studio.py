@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import copy
 import json
 import re
@@ -355,22 +356,26 @@ async def stream_events(request: Request, conversation_id: str,
 
     async def generate():
         nonlocal cursor
-        idle = 0
+        quiet, last_sent, last_sync = 0, time.monotonic(), 0.0
         while not await request.is_disconnected():
-            await sync_conversation(conversation_id, user_key)
-            events = await repo.events(conversation_id, user_key, cursor)
+            now = time.monotonic()
+            if now - last_sync >= 2.0:                       # the conversation sync is the heavy part: every two seconds is enough
+                await sync_conversation(conversation_id, user_key)
+                last_sync = now
+            events = await repo.events(conversation_id, user_key, cursor, check=False)       # access was verified above
             if events:
-                idle = 0
+                quiet = 0
                 for event in events:
                     cursor = event["seq"]
                     public_event = _public_event(event)
                     yield f"id: {cursor}\nevent: {event['type']}\ndata: {json.dumps(public_event, ensure_ascii=False)}\n\n"
+                last_sent = time.monotonic()
             else:
-                idle += 1
-                if idle % 15 == 0: yield ": keep-alive\n\n"
-            # Two seconds is responsive enough for user-facing progress while
-            # avoiding a database poll storm across several open browser tabs.
-            await asyncio.sleep(2)
+                quiet += 1
+                if time.monotonic() - last_sent > 25:
+                    yield ": keep-alive\n\n"; last_sent = time.monotonic()
+            # Text that is being written arrives in small events: poll fast while events are flowing, relax when nothing happens.
+            await asyncio.sleep(0.25 if quiet < 8 else 1.0 if quiet < 40 else 2.0)
     return StreamingResponse(generate(), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

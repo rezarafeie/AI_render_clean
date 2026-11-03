@@ -185,7 +185,8 @@ def tool(record, state):
             raise ValueError("نتیجهٔ عملیات قبلی مشخص نیست؛ برای جلوگیری از هزینه یا رندر تکراری، اجرای مجدد خودکار متوقف شد. پروژه را بررسی کنید.")
         ledger[key] = {"status": "started", "tool": step["tool"]}
         run(store.update(record["id"], record["user_key"], patch={"operations": ledger}))
-        event(record, "tool.started", tool=step["tool"], message=step["label"])
+        event(record, "tool.started", tool=step["tool"], message=step["label"],
+              request=json.dumps(step.get("arguments", {}), ensure_ascii=False, indent=1)[:1500])
         try:
             result = tools.execute(record, step)
         except (tools.PreflightUnavailable, ValueError, CreativeUnavailable) as exc:          # rejected before anything was submitted (incl. pydantic validation): safe to retry
@@ -244,6 +245,7 @@ def finish(record, state):
     content = ""
     messages = [{"role": "system", "content": "Reply briefly in Persian or English, matching the request, never in another language unless the person wrote in it. Report only observed results. No reasoning, fictional progress or claims a render is complete without evidence. Mention any existing plan approval still needed. If no tools ran, answer or ask the essential question from the plan summary."},
                 {"role": "user", "content": json.dumps({"request": record["data"]["request"]["text"], "summary": state["plan"]["summary"], "results": state.get("results", [])}, ensure_ascii=False)}]
+    last_flush, flushed = 0.0, ""
     # Existing gateway supplies provider choice, streaming, accounting and configured provider fallbacks.
     for part in stream_chat("conversation_response", messages, tokens=1400, timeout_seconds=90):
         if isinstance(part, dict) and part.get("type") == "delta":
@@ -251,6 +253,10 @@ def finish(record, state):
         elif isinstance(part, str): delta = part
         else: continue
         content += delta
+        if time.monotonic() - last_flush >= 0.12:                    # one event per token made the text arrive in slow bursts
+            event(record, "assistant.response.delta", response_id=stream_id, text=content)
+            last_flush, flushed = time.monotonic(), content
+    if content and content != flushed:
         event(record, "assistant.response.delta", response_id=stream_id, text=content)
     if not content.strip(): raise ValueError("Medium پاسخ قابل استفاده‌ای از Gateway دریافت نکرد؛ موتور تغییر نکرده است.")
     message = run(repo.add_message(cid, user, "assistant", content, agent_mode="medium"))

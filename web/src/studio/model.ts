@@ -23,6 +23,10 @@ export interface ActivityStep {
   events: StudioEvent[];
   /** Distinct backend descriptions for this step, oldest first. */
   notes: string[];
+  /** The exact request this step was given (the tool's arguments), when the server sent it. */
+  request?: string;
+  /** The exact material of the step (its lines, choices, results) when the server wrote it, shown when the step is opened. */
+  detail?: string;
 }
 export type TimelineItem =
   | { kind: "message"; id: string; role: "user" | "assistant"; content: string; attachments: string[]; createdAt: number; pending?: boolean; failed?: boolean; narration?: boolean }
@@ -88,6 +92,22 @@ export const TOOL_LABELS: Record<string, string> = {
   visual_review: "بررسی کیفیت بصری",
   translation: "آماده‌سازی ترجمه",
   script: "نوشتن سناریو",
+  medium_plan: "برنامه‌ریزی مراحل کار",
+  medium_job: "اجرای کار در پس‌زمینه",
+  medium_retry: "اتصال دوباره به مدل",
+  create_motion_graphic: "ساخت موشن‌گرافیک",
+  revise_motion_graphic: "اعمال تغییر روی موشن‌گرافیک",
+  inspect_media: "بررسی فایل پیوست",
+  inspect_project: "بررسی پروژهٔ فعلی",
+  modify_project: "ویرایش پروژه",
+  render_approved_plan: "رندر نسخهٔ تأییدشده",
+  check_render_status: "بررسی وضعیت رندر",
+  instagram_content_check: "بررسی متن اینستاگرام",
+  discover_connected_app_tools: "جست‌وجوی ابزارهای برنامهٔ متصل",
+  read_connected_app: "خواندن از برنامهٔ متصل",
+  search_creative_resources: "جست‌وجوی منابع خلاقانه",
+  audio_check: "سنجش صدای فایل",
+  plan_audio_direction: "طرح صوتی ویدیو",
 };
 export const STAGE_LABELS: Record<string, string> = {
   "loading transcript": "خواندن متن ذخیره‌شدهٔ گفتار", "planning render": "آماده‌سازی برنامهٔ رندر",
@@ -132,7 +152,9 @@ function stepLabel(event: StudioEvent): string {
   if (event.type === "agent.thinking_summary") return "بررسی درخواست شما";
   if (event.type === "storyboard.ready") return "استوری‌بورد آماده است";
   if (event.type === "tool.failed") return "این مرحله نیاز به بررسی دارد";
-  return "در حال تدوین";
+  const said = String(message || "").trim();
+  if (said && said.length <= 70) return said;                               // the step's own description beats a generic word
+  return "در حال پردازش درخواست";
 }
 
 function stepKey(event: StudioEvent): string | null {
@@ -331,6 +353,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     step.events.push(event);
     step.endedAt = entry.t;
     if (typeof event.data.progress === "number") step.progress = Math.round(event.data.progress);
+    if (typeof event.data.request === "string" && event.data.request.trim() && event.data.request.trim() !== "{}") step.request = event.data.request;
     const rawNote = String(event.data.message || "").trim();
     const note = /^Planning the edit\.?$/i.test(rawNote) ? STAGE_LABELS.planning : rawNote;
     if (note && !step.notes.includes(note)) {
@@ -455,8 +478,17 @@ export function isProcessing(args: { sending: boolean; messages: StudioMessage[]
 
 /** Label for the bottom-of-conversation indicator when no step is active. */
 export function thinkingLabel(events: StudioEvent[], messages: StudioMessage[]): string {
-  void events; void messages;
-  return "در حال بررسی…";
+  const last = events[events.length - 1];
+  if (last) {
+    if (last.type === "assistant.response.started" || last.type === "assistant.response.delta") return "دارم پاسخ را می‌نویسم…";
+    if (/^tool\.(started|progress)$/.test(last.type)) return `${stepLabel(last)}…`;
+    if (last.type === "tool.completed" && last.data.tool) return "مرحلهٔ بعدی را آماده می‌کنم…";
+    if (last.type.startsWith("motion.")) return "ساخت موشن‌گرافیک در جریان است…";
+    if (last.type.startsWith("render.")) return "رندر ویدیو در جریان است…";
+  }
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || lastMessage.role === "user") return "دارم درخواست شما را می‌خوانم…";
+  return "دارم کار بعدی را آماده می‌کنم…";
 }
 
 export function activeStep(items: TimelineItem[]): ActivityStep | undefined {
@@ -468,11 +500,11 @@ export function activeStep(items: TimelineItem[]): ActivityStep | undefined {
 }
 
 /** Details worth expanding. Empty means: show no expand control at all. */
-export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean } | null {
+export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string } | null {
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
-  const informative = notes.some(note => note !== step.label) || step.status === "failed" || updates > 1 || Boolean(step.tool);
+  const informative = notes.some(note => note !== step.label) || step.status === "failed" || updates > 1 || Boolean(step.tool) || Boolean(step.request);
   if (!informative) return null;
-  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed" };
+  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request };
 }

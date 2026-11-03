@@ -52,6 +52,7 @@ function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }
     </div> : null}
     {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
     {details && open ? <div className="act-details">
+      {details.request ? <div className="act-request"><span>درخواست این مرحله</span><pre dir="auto">{details.request}</pre></div> : null}
       {details.notes.map((note, index) => <p key={index} dir="auto" className="bidi wrap-safe">{note}</p>)}
       <dl>
         <div><dt>شروع</dt><dd>{clock(step.startedAt)}</dd></div>

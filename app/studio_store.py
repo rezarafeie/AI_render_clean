@@ -451,8 +451,9 @@ class Repository:
                      "data": data_value, "created_at": iso(created)}
             events.append(value); _write(store); return copy.deepcopy(value)
 
-    async def events(self, conversation_id: str, user_key: str, after: int = 0, limit: int = 200) -> list[dict]:
-        await self.get_conversation(conversation_id, user_key)
+    async def events(self, conversation_id: str, user_key: str, after: int = 0, limit: int = 200, *, check: bool = True) -> list[dict]:
+        if check:
+            await self.get_conversation(conversation_id, user_key)
         if DB_AVAILABLE:
             assert AsyncSessionLocal is not None
             async with AsyncSessionLocal() as db:

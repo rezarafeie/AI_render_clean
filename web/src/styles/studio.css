@@ -551,7 +551,15 @@ button.act-row:hover { color: var(--text-2); }
 .mg-notes ul { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; }
 @media (max-width: 640px) { .mg-result { grid-template-columns: 1fr; } .mg-player { max-width: 300px; } }
 .mg-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.mg-step { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; }
+.mg-step { display: block; }
+.mg-step-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; width: 100%; padding: 0; margin: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; }
+button.mg-step-row { cursor: pointer; border-radius: var(--radius-sm, 6px); }
+button.mg-step-row:hover .mg-step-line { color: var(--text-1); }
+button.mg-step-row:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.mg-step-detail { margin: 2px 0 0; padding: 8px 10px; font: 12px/1.65 var(--font-mono, ui-monospace, monospace); color: var(--text-2); background: var(--surface-2, rgba(127,127,127,.08)); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm, 6px); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.act-request { display: grid; gap: 4px; margin-bottom: 6px; }
+.act-request span { font-size: 12px; color: var(--text-3); }
+.act-request pre { margin: 0; padding: 8px 10px; font: 12px/1.6 var(--font-mono, ui-monospace, monospace); color: var(--text-2); background: var(--surface-2, rgba(127,127,127,.08)); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm, 6px); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 .mg-step-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; color: var(--text-3); }
 .mg-step[data-status="active"] .mg-step-mark { color: var(--text-1); }
 .mg-step[data-status="failed"] .mg-step-mark { color: var(--danger, #e5484d); }
@@ -562,7 +570,7 @@ button.act-row:hover { color: var(--text-2); }
 .mg-step-tools { display: flex; flex-wrap: wrap; gap: 4px; }
 .mg-tool { font-size: 11px; padding: 1px 7px; border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-2); }
 .mg-step-summary { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
-.mg-step-ready { grid-template-columns: 1fr; padding-top: 4px; border-top: 1px solid var(--border-subtle); }
+.mg-step-ready { padding-top: 4px; border-top: 1px solid var(--border-subtle); }
 .mg-shots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
 .mg-shots li { display: grid; gap: 4px; min-width: 0; }
 .mg-shots img { width: 100%; height: auto; border-radius: var(--radius-sm, 6px); border: 1px solid var(--border-subtle); background: var(--surface-2, transparent); }

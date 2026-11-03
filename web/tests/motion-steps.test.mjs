@@ -27,3 +27,23 @@ test('each build step shows its tools, its duration and the agent summary', asyn
   const done=new JSDOM(renderToStaticMarkup(React.createElement(mod.exports.MotionSteps,{steps:[steps[0]],live:false,now:t,summaries:{ready:'تمام شد'}}))).window.document;
   assert.equal(done.querySelector('.mg-step-ready .mg-step-summary').textContent,'تمام شد');
 });
+
+test('an active step shows a one-decimal percentage and a step with details can be opened', async () => {
+  const require = createRequire(new URL('../package.json', import.meta.url));
+  const compiled = await build({entryPoints:[new URL('../src/studio/MotionGraphic.tsx', import.meta.url).pathname],bundle:true,write:false,format:'cjs',platform:'node',external:['react','react-dom','react-router-dom'],define:{'import.meta.env':'{"DEV":false,"BASE_URL":"/"}','import.meta.env.DEV':'false'}});
+  const mod={exports:{}};
+  new Function('require','module','exports',compiled.outputFiles[0].text)(require,mod,mod.exports);
+  const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
+  const t=Date.now();
+  const steps=[
+    {key:'plan',label:'طرح آماده شد',status:'done',startedAt:t-90000,endedAt:t-60000,events:[],notes:[],detail:'درخواست:\nمتن\n\nطرح: ...'},
+    {key:'voice',label:'دارم نریشن را می‌سازم',status:'active',startedAt:t-12000,endedAt:t,progress:7,events:[],notes:[]},
+  ];
+  const doc=new JSDOM(renderToStaticMarkup(React.createElement(mod.exports.MotionSteps,{steps,live:true,now:t}))).window.document;
+  const buttons=[...doc.querySelectorAll('button.mg-step-row')];
+  assert.equal(buttons.length,2);                                                 // plan has details, voice has tools: both can be opened
+  assert.equal(buttons[0].getAttribute('aria-expanded'),'false');
+  assert.equal(doc.querySelector('.mg-step-detail'),null);                         // closed until clicked
+  const percent=[...doc.querySelectorAll('.mg-step-time')].map(n=>n.textContent).find(x=>x.endsWith('%'));
+  assert.match(percent,/^7\.0%$/);                                                 // one decimal; it starts at the server's value and creeps up
+});

@@ -158,8 +158,21 @@ test("processing flags", () => {
   assert.equal(isProcessing({ sending: false, messages: m, events: [], now: T0 + 10 * 60000 }), false);
   assert.equal(isProcessing({ sending: false, messages: m, events: [ev(1, "tool.failed", 2)], now: T0 + 5000 }), false);
   assert.equal(isProcessing({ sending: false, messages: [msg(1, "user", 0), msg(2, "assistant", 1)], events: [], now: T0 + 2000 }), false);
-  assert.equal(thinkingLabel([ev(1, "message.started", 1)], m), "در حال بررسی…");
-  assert.equal(thinkingLabel([], m), "در حال بررسی…");
+  assert.equal(thinkingLabel([ev(1, "message.started", 1)], m), "دارم درخواست شما را می‌خوانم…");
+  assert.equal(thinkingLabel([], m), "دارم درخواست شما را می‌خوانم…");
+});
+
+test("the waiting line and the step names say what is actually happening", () => {
+  const m = [msg(1, "user", 0)];
+  const tool = (type, data, seq) => ({ ...ev(seq, type, seq), type, data });
+  assert.equal(thinkingLabel([tool("tool.started", { tool: "create_motion_graphic" }, 1)], m), "ساخت موشن‌گرافیک…");
+  assert.equal(thinkingLabel([tool("tool.started", { tool: "medium_plan" }, 1)], m), "برنامه‌ریزی مراحل کار…");
+  assert.equal(thinkingLabel([tool("assistant.response.delta", { response_id: "a", text: "x" }, 1)], m), "دارم پاسخ را می‌نویسم…");
+  assert.equal(thinkingLabel([tool("motion.progress", { status: "writing" }, 1)], m), "ساخت موشن‌گرافیک در جریان است…");
+  const items = buildTimeline({ messages: [], events: [{ ...tool("tool.started", { tool: "future_tool", message: "بررسی نام‌ها در فایل" }, 1), created_at: "2026-10-24T10:00:00Z" }], projects: [], pending: null, processing: true });
+  assert.equal(items[0].steps[0].label, "بررسی نام‌ها در فایل");                  // an unknown tool shows its own description, not "در حال تدوین"
+  const requested = buildTimeline({ messages: [], events: [{ ...tool("tool.started", { tool: "inspect_media", request: "{\n \"attachment_id\": \"a1\"\n}" }, 1), created_at: "2026-10-24T10:00:00Z" }], projects: [], pending: null, processing: true });
+  assert.match(requested.find(i => i.kind === "activity").steps[0].request, /attachment_id/);
 });
 
 test("AI waiting updates share one operation and preserve a later attempt", () => {

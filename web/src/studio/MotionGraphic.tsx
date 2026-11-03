@@ -30,25 +30,45 @@ const STEP_TOOLS: [RegExp, string[]][] = [
   [/^scene\d+$/, ["طراح صحنه"]], [/^check$/, ["HyperFrames check"]], [/^snapshots$/, ["HyperFrames snapshot"]], [/^render$/, ["HyperFrames render"]],
 ];
 
-/** The build's steps, all visible: the step's own line, the tools it used, how long it took (live while it runs) and, where the agent wrote one, its summary. */
+/** A percentage that is seen to move: the server's whole-number progress plus a slow, capped creep between its updates (never past the next
+ * whole number), shown with one decimal. It is an estimate of motion, not a measurement; the next server update replaces it. */
+function useCreep(base: number | undefined, active: boolean, now: number): number | undefined {
+  const seen = React.useRef<{ base: number; at: number } | null>(null);
+  if (typeof base === "number" && (!seen.current || seen.current.base !== base)) seen.current = { base, at: now };
+  if (typeof base !== "number" || !active || !seen.current) return base;
+  const seconds = Math.max(0, (now - seen.current.at) / 1000);
+  return base + 0.95 * (1 - Math.exp(-seconds / 30));
+}
+
+function StepItem({ step, now, summary }: { step: ActivityStep; now: number; summary?: string }) {
+  const [open, setOpen] = React.useState(false);
+  const tools = STEP_TOOLS.find(([pattern]) => pattern.test(step.key))?.[1] || [];
+  const active = step.status === "active";
+  const ms = Math.max(0, (active ? now : step.endedAt) - step.startedAt);
+  const percent = useCreep(step.progress, active, now);
+  const canOpen = Boolean(step.detail || tools.length);
+  const body = <>
+    <span className="mg-step-mark" aria-hidden="true">{active ? <span className="spinner"/> : <Icon name={step.status === "failed" ? "alert" : "check"} size={14}/>}</span>
+    <div className="mg-step-body">
+      <div className="mg-step-line"><span className={active ? "act-shimmer" : undefined} dir="auto">{step.label}</span>
+        {ms >= 1000 ? <span className="mg-step-time" dir="ltr">{formatDuration(ms)}</span> : null}
+        {active && typeof percent === "number" ? <span className="mg-step-time" dir="ltr">{percent.toFixed(1)}%</span> : null}
+        {canOpen ? <Icon name="chevronDown" size={14} className={`act-chevron${open ? " is-open" : ""}`}/> : null}</div>
+      {tools.length ? <div className="mg-step-tools">{tools.map(tool => <span key={tool} className="mg-tool">{tool}</span>)}</div> : null}
+      {summary ? <p className="mg-step-summary" dir="auto">{summary}</p> : null}
+      {open && step.detail ? <pre className="mg-step-detail" dir="auto">{step.detail}</pre> : null}
+    </div>
+  </>;
+  return <li className="mg-step" data-status={step.status}>
+    {canOpen ? <button type="button" className="mg-step-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{body}</button> : <div className="mg-step-row">{body}</div>}
+  </li>;
+}
+
+/** The build's steps, all visible: the step's own line, the tools it used, how long it took (live while it runs), a live percentage, the agent's
+ * summary where there is one, and (opened by a click on the step) the exact material of that step. */
 export function MotionSteps({ steps, live, now, summaries }: { steps: ActivityStep[]; live: boolean; now: number; summaries?: { plan?: string; ready?: string } }) {
   return <ol className="mg-steps" aria-label="مراحل ساخت">
-    {steps.map(step => {
-      const tools = STEP_TOOLS.find(([pattern]) => pattern.test(step.key))?.[1] || [];
-      const active = step.status === "active";
-      const ms = Math.max(0, (active ? now : step.endedAt) - step.startedAt);
-      const summary = step.key === "plan" ? summaries?.plan : undefined;
-      return <li key={step.key} className="mg-step" data-status={step.status}>
-        <span className="mg-step-mark" aria-hidden="true">{active ? <span className="spinner"/> : <Icon name={step.status === "failed" ? "alert" : "check"} size={14}/>}</span>
-        <div className="mg-step-body">
-          <div className="mg-step-line"><span className={active ? "act-shimmer" : undefined} dir="auto">{step.label}</span>
-            {ms >= 1000 ? <span className="mg-step-time" dir="ltr">{formatDuration(ms)}</span> : null}
-            {active && typeof step.progress === "number" ? <span className="mg-step-time" dir="ltr">{step.progress}%</span> : null}</div>
-          {tools.length ? <div className="mg-step-tools">{tools.map(tool => <span key={tool} className="mg-tool">{tool}</span>)}</div> : null}
-          {summary ? <p className="mg-step-summary" dir="auto">{summary}</p> : null}
-        </div>
-      </li>;
-    })}
+    {steps.map(step => <StepItem key={step.key} step={step} now={now} summary={step.key === "plan" ? summaries?.plan : undefined}/>)}
     {summaries?.ready && !live ? <li className="mg-step mg-step-ready"><div className="mg-step-body"><p className="mg-step-summary" dir="auto">{summaries.ready}</p></div></li> : null}
   </ol>;
 }

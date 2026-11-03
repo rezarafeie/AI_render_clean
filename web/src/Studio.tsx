@@ -206,6 +206,7 @@ export default function Studio() {
           await api.streamStudioEvents(activeId, cursorRef.current, event => {
             cursorRef.current = Math.max(cursorRef.current, event.seq);
             setEvents(value => value.some(item => item.seq === event.seq) ? value : [...value, event]);
+            if (event.type === "assistant.response.delta") return;          // streamed text only grows the message; nothing on the server needs re-reading per word
             if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
             refreshTimerRef.current = window.setTimeout(() => void refresh(activeId, true), 180);
             if (listTimerRef.current == null) listTimerRef.current = window.setTimeout(() => {

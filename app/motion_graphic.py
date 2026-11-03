@@ -172,7 +172,7 @@ def view(directory: Path) -> dict:
     versions = [{k: v for k, v in item.items() if k != "page"} for item in record["versions"]]
     return {"id": record["id"], "conversation_id": record["conversation_id"], "status": record["status"], "stage": record["stage"],
             "progress": record["progress"], "message": record["message"], "questions": record["questions"], "error": record["error"],
-            "request": record["request"], "versions": versions, "current": record["current"], "updated_at": record["updated_at"], "log": record.get("log", [])[-14:], "snapshots": record.get("snapshots", []), "eta_s": record.get("eta_s"), "eta_at": record.get("eta_at"),
+            "request": record["request"], "versions": versions, "current": record["current"], "updated_at": record["updated_at"], "log": record.get("log", [])[-60:], "snapshots": record.get("snapshots", []), "eta_s": record.get("eta_s"), "eta_at": record.get("eta_at"),
             "active": record["status"] in ACTIVE}
 
 
@@ -191,8 +191,9 @@ def _progress(directory: Path, status: str, progress: int, message: str, *, stag
     return record
 
 
-def _note(directory: Path, key: str, text: str, state: str = "active") -> None:
-    """One line of what is really happening (about this clip's own content). A line with the same key is updated, not repeated."""
+def _note(directory: Path, key: str, text: str, state: str = "active", detail: str | None = None) -> None:
+    """One line of what is really happening (about this clip's own content). A line with the same key is updated, not repeated.
+    `detail` is the exact material of that step (the request, the lines, the choices), shown when the person opens the step."""
     if _cancelled(directory.name):
         raise _Cancelled()
     with _lock(directory.name):
@@ -203,6 +204,13 @@ def _note(directory: Path, key: str, text: str, state: str = "active") -> None:
             line.update(text=text, state=state)
         else:
             lines.append({"key": key, "text": text, "state": state, "at": time.time()})
+            line = lines[-1]
+        if detail is not None:
+            line["detail"] = str(detail)[:3500]
+        if state == "done":
+            line["done_at"] = time.time()
+        else:
+            line.pop("done_at", None)
         save(directory, record)
     _emit(record["conversation_id"], "motion.log", motion_id=record["id"], key=key, text=text, state=state)
 
@@ -599,8 +607,16 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
     _save_audio_direction(directory, record, retimed, texts)
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
-    _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done")
+    _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done",
+          detail=f"راوی: {voice_id or 'پیش‌فرض'} · سبک: {voice_style or 'طبیعی'}\n" + "\n".join(f"{i}. ({c['duration']:.1f} s) {t}" for i, (c, t) in enumerate(zip(audio, [t for t in texts if t.strip()]), 1)))
     return retimed, audio, gate_notes
+
+
+def _plan_detail(brief: str, plan) -> str:
+    """The request the planner was given (start of the brief) and what it decided, scene by scene."""
+    scenes = "\n".join(f"{i}. {sc.headline}  [{sc.start:g}–{sc.end:g} s]\n   {sc.idea}\n   «{sc.narration}»" if sc.narration else f"{i}. {sc.headline}  [{sc.start:g}–{sc.end:g} s]\n   {sc.idea}"
+                        for i, sc in enumerate(plan.scenes, 1))
+    return f"درخواست:\n{brief.strip()[:900]}\n\nطرح: «{plan.title}» · {plan.format} · {plan.duration:g} ثانیه\n{scenes}"
 
 
 def _soft_progress(directory: Path, percent: int, message: str) -> None:
@@ -611,9 +627,9 @@ def _soft_progress(directory: Path, percent: int, message: str) -> None:
         pass
 
 
-def _soft_note(directory: Path, key: str, text: str, state: str = "active") -> None:
+def _soft_note(directory: Path, key: str, text: str, state: str = "active", detail: str | None = None) -> None:
     try:
-        _note(directory, key, text, state)
+        _note(directory, key, text, state, detail)
     except FileNotFoundError:
         pass
 
@@ -956,7 +972,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         _learn("plan_s", time.monotonic() - started)
         saved_plan.write_text(json.dumps({"fp": plan_fp, "plan": plan.model_dump()}, ensure_ascii=False))
         count = len(plan.scenes)
-        _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done")
+        _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done", detail=_plan_detail(brief, plan))
         outline = "\n".join(f"{i}) {sc.headline} — {sc.idea}" for i, sc in enumerate(plan.scenes, 1))
         from app import studio_narrator
         studio_narrator.narrate(cid, user, "motion_plan", {"title": plan.title, "duration_seconds": plan.duration, "format": plan.format, "signature_idea": plan.signature,
@@ -1043,7 +1059,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
                         scene_notes.append(f"صحنهٔ {n} («{scene.headline}») با طرح ساده جایگزین شد چون طراحی کامل از بررسی رد شد")
                     else:
                         (scenes_dir / f"s{n}.json").write_text(json.dumps({"fp": fingerprint, "draft": draft.model_dump()}, ensure_ascii=False))
-                    _note(directory, f"scene{n}", f"صحنهٔ {n} آماده شد: «{scene.headline}»" + (" (طرح ساده)" if plain else ""), "done")
+                    _note(directory, f"scene{n}", f"صحنهٔ {n} آماده شد: «{scene.headline}»" + (" (طرح ساده)" if plain else ""), "done",
+                          detail=f"صحنهٔ {n} · {scene.start:g}–{scene.end:g} ثانیه\nایده: {scene.idea}\nنریشن: {scene.narration or '—'}" + ("\nطراحی کامل از بررسی رد شد؛ طرح ساده جایگزین شد." if plain else ""))
                     _progress(directory, "writing", 8 + int(24 * (done + finished) / count), f"صحنهٔ {n} از {count} آماده شد.", stage="writing",
                               eta=_remaining(len(pending) - finished, plan.duration))
         finally:
@@ -1201,13 +1218,13 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         elapsed = time.monotonic() - render_started
         _progress(directory, "rendering", 40 + int(percent * 0.55), "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=max(4.0, estimate - elapsed))
 
-    _note(directory, "check", "بررسی صفحه تمام شد", "done")
+    _note(directory, "check", "بررسی صفحه تمام شد", "done", detail="\n".join(notes) if notes else "بررسی چیدمان، خوانایی و خطاهای اجرا بدون هشدار تمام شد.")
     _snapshot_scenes(directory, work, build.plan if build else None)
     _note(directory, "render", f"دارم {page.duration:g} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     _progress(directory, "rendering", 40, "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=estimate)
     standalone.render(work, output, timeout=RENDER_TIMEOUT_S, on_progress=on_progress, should_cancel=lambda: _cancelled(key))
     _learn("render_per_s", min(60.0, max(0.3, (time.monotonic() - render_started) / max(page.duration, 1.0))))
-    _note(directory, "render", "رندر تمام شد؛ دارم ویدیو را وارسی می‌کنم", "done")
+    _note(directory, "render", "رندر تمام شد؛ دارم ویدیو را وارسی می‌کنم", "done", detail=f"{page.duration:g} ثانیه · {page.size[0]}×{page.size[1]} · {time.monotonic() - render_started:.0f} ثانیه رندر")
     problem = verify_video(output, page.duration)
     if problem:
         raise RuntimeError(problem)
