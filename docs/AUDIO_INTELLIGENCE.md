@@ -1,5 +1,7 @@
 # Audio Intelligence — repository audit and status
 
+> Older notes from the first slices. Current status: `AUDIO_ENGINE_STATUS.md`. Setup, directives and costs: `AUDIO_ENGINE_SETUP.md`.
+
 Branch `feat/audio-intelligence-foundation`, built on the latest teammate branch (`fix/studio-render-hermes-20261102` + voice/music directives).
 
 ## Audit: what already exists (read from the code)
@@ -40,7 +42,7 @@ Branch `feat/audio-intelligence-foundation`, built on the latest teammate branch
 
 ## Not implemented (needs decisions or dependencies)
 
-Fish Audio and other TTS providers, emotion-per-sentence controls beyond ElevenLabs v3 tags, partial re-generation of a sentence, STT-based language/pronunciation verification wired into every render, WhisperX alignment, librosa beat/BPM/downbeat analysis, rhythm modes, music generation/search providers (Mubert), license tracking, SFX generation, per-track mixer and mastering, HyperFrames timing adapter, Hermes/LangGraph audio tools, Audio Studio UI, persistent audio project tables and cost budgets.
+Fish Audio and other TTS providers, emotion-per-sentence controls beyond ElevenLabs v3 tags, (partial re-generation of changed lines now exists, see the status file) STT-based language/pronunciation verification wired into every render, WhisperX alignment, librosa beat/BPM/downbeat analysis, rhythm modes, music generation/search providers (Mubert), license tracking, SFX generation, per-track mixer and mastering, HyperFrames timing adapter, Hermes/LangGraph audio tools, Audio Studio UI, persistent audio project tables and cost budgets.
 
 ## Honest limits
 
