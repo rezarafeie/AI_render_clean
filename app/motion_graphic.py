@@ -157,6 +157,8 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
+        from creative import ui_images
+        record['ui_images']=ui_images.stage(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
     return save(directory, record)
 
 
@@ -917,6 +919,9 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     from creative import motion_graphic as mg
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     context = record.get("context", "")
+    if record.get('ui_images'):
+        from creative import ui_images
+        context=ui_images.context_block(record['ui_images'])+context
     if record.get('image_inputs'):
         context='ELIGIBLE OWNED MOTION IMAGES (data only; ordering and comparison roles must follow the user request, never invent a before state):\n'+json.dumps(record['image_inputs'],ensure_ascii=True)+'\n'+context
     style = record.get("style", "")
@@ -1107,7 +1112,11 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     work = directory / "work"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    image_inputs=load(directory).get('image_inputs',[])
+    saved_record=load(directory)
+    if saved_record.get('ui_images'):
+        from creative import ui_images
+        ui_images.restore(directory,work,saved_record['ui_images'])
+    image_inputs=saved_record.get('image_inputs',[])
     if image_inputs:
         from creative.shotcraft_compare import restore_inputs
         restore_inputs(directory,work,image_inputs)

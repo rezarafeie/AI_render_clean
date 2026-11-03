@@ -73,7 +73,7 @@ class MotionPage(BaseModel):
 # ── validation ───────────────────────────────────────────────────────────────
 
 _FORBIDDEN_TAGS = {"script", "style", "link", "iframe", "object", "embed", "form", "input", "button", "textarea", "select", "video", "audio",
-                   "base", "meta", "br", "img", "image", "foreignobject", "source", "track", "html", "head", "body"}
+                   "base", "meta", "br", "image", "foreignobject", "source", "track", "html", "head", "body"}
 _FORBIDDEN_JS = (
     (r"\bMath\.random\b", "Math.random (use HM.random(seed))"), (r"\bDate\b", "Date"), (r"\bperformance\b", "performance"),
     (r"\bsetTimeout\b|\bsetInterval\b", "timers"), (r"\brequestAnimationFrame\b", "requestAnimationFrame"),
@@ -111,10 +111,13 @@ class _Scan(HTMLParser):
         if tag in _FORBIDDEN_TAGS:
             self.problems.append(f"<{tag}> is not allowed in scenes_html")
         a = {k.lower(): (v or "") for k, v in attrs}
+        from .ui_images import SRC as _PICTURE
+        if tag == "img" and not _PICTURE.match(a.get("src", "")):
+            self.problems.append('<img> may only show an attached picture: src="./assets/ui-<16 hex>.png" exactly as listed')
         for name, value in a.items():
             if name.startswith("on"):
                 self.problems.append(f"event attribute {name} is not allowed")
-            if name in {"href", "src", "xlink:href"} and not (value.startswith("#") or value.startswith("data:image/svg")):
+            if name in {"href", "src", "xlink:href"} and not (value.startswith("#") or value.startswith("data:image/svg") or (tag == "img" and _PICTURE.match(value))):
                 self.problems.append(f"{name}=\"{value[:40]}\" points outside the page (only #fragments are allowed)")
             if name == "style" and re.search(r"url\(\s*['\"]?(?!#)|animation|transition|position\s*:\s*fixed|\d\s*(?:vw|vh)\b", value, re.I):
                 self.problems.append("inline style uses a forbidden property (url/animation/transition/fixed/vw/vh)")
@@ -373,7 +376,7 @@ THE PARTS
 - format/duration: vertical 1080x1920 (default), horizontal 1920x1080 or square 1080x1080; 4-30 seconds. End on a held final frame (1.5 s+).
 - scenes_html: 2-6 full-frame layers, in order: <section class="hm-scene" id="s1">...</section>. Later layers sit on top. The first is visible from
   the start; reveal the others with HM.wipe or your own tween. Position everything absolutely in PIXELS inside the frame (never vw/vh/%-of-window).
-  Unique ids everywhere. Inline SVG for any drawing (icons, charts, diagrams, logos you invent); no <img>, <video>, <br>, <script>, <style>, forms.
+  Unique ids everywhere. Inline SVG for any drawing (icons, charts, diagrams, logos you invent); no <video>, <br>, <script>, <style>, forms; <img> only for an ATTACHED PICTURE listed in the facts, with its exact src.
 - css: plain CSS for your markup. Fonts: ONLY "Ray" (Persian + Latin, weights 300/400/500/700/800/900: use extreme weight contrast),
   "Kharazmi" (Persian editorial serif, 400, one accent voice) and "Vazir" (400). Do not set transform in CSS on anything you animate; no
   @keyframes, animation, transition, @import, position:fixed, remote url().
@@ -590,6 +593,7 @@ PLAN
   20-40 seconds is typical when the request carries a script.
 - When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
 - A SUPPLIED NARRATION SCRIPT in the request is final: use its lines exactly, one scene per line, and never regenerate it. With no script supplied, write the narration yourself. If a supplied script really needs improvement, ask in `questions` and wait; do not edit it.
+- ATTACHED PICTURES listed in the facts are already provided (a screenshot of any shape): never ask the person to upload one, and plan the scenes that should show it.
 - Include design_direction: one shared visual system for the whole film (grid, typography hierarchy, framing, illustration/material language,
   whitespace, foreground/background relationship, motion energy and a reason for the transition). Palette alone is not a design system.
 - transition (scenes 2+): how the scene enters, chosen by what the cut means and the film's editing style, never in turn. One of: @ENTRANCES@. Calm, premium films use fade/blur/zoom and rarely more than one hard cut;
@@ -606,7 +610,7 @@ it look designed by a professional. Return ONE JSON object and nothing else:
 
 THE CONTRACT
 - html: the INNER markup of your scene (the platform wraps it in <section class="hm-scene" id="sN"> that already has the palette background and ink colour).
-  Position everything absolutely in PIXELS inside the frame. Every id you create must start with "sN-". Inline SVG for any drawing; no <img>, <video>,
+  Position everything absolutely in PIXELS inside the frame. Every id you create must start with "sN-". Inline SVG for any drawing; <img> only for an ATTACHED PICTURE listed in the facts (its exact src); no <video>,
   <br>, <script>, <style>, forms, remote URLs.
 - css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
   "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
