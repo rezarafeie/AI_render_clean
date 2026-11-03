@@ -217,11 +217,19 @@ def audit_key(project_dir: Path) -> str:
     return value.hexdigest()
 
 
+def render_workers() -> int:
+    """Capture workers (HYPERFRAMES_WORKERS, 1 to 4, default 2): frames are captured by browsers in parallel; one worker took longer than the limit on a busy 4-vCPU server."""
+    try:
+        return max(1, min(4, int(os.environ.get("HYPERFRAMES_WORKERS", "2"))))
+    except ValueError:
+        return 2
+
+
 def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=None, should_cancel=None) -> Path:
     env = {**os.environ, 'NO_COLOR':'1'}
     command = (
         [*cli_command(), "render", ".",
-         "--output", str(output.resolve()), "--quality", "standard", "--workers", "1", "--sdr"]
+         "--output", str(output.resolve()), "--quality", "standard", "--workers", str(render_workers()), "--sdr"]
     )
     process = subprocess.Popen(
         command, cwd=project_dir, env=env, text=True,

@@ -451,9 +451,21 @@ class Repository:
                      "data": data_value, "created_at": iso(created)}
             events.append(value); _write(store); return copy.deepcopy(value)
 
+    async def _owns(self, conversation_id: str, user_key: str) -> None:
+        """Raise KeyError unless the conversation exists and is this person's, reading only its own row (get_conversation also loads every message,
+        project and action, which made each event poll cost most of a second)."""
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                row = await db.get(StudioConversation, conversation_id)
+                if row is None or row.user_key != user_key:
+                    raise KeyError(conversation_id)
+            return
+        await self.get_conversation(conversation_id, user_key)
+
     async def events(self, conversation_id: str, user_key: str, after: int = 0, limit: int = 200, *, check: bool = True) -> list[dict]:
         if check:
-            await self.get_conversation(conversation_id, user_key)
+            await self._owns(conversation_id, user_key)
         if DB_AVAILABLE:
             assert AsyncSessionLocal is not None
             async with AsyncSessionLocal() as db:

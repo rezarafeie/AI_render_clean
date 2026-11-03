@@ -9,6 +9,7 @@ Work runs in a background thread, one render at a time on this server (the check
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -36,7 +37,12 @@ _SCENE_WORKERS = 3
 _STAT_DEFAULTS = {"plan_s": 15.0, "scene_s": 35.0, "check_s": 40.0, "render_per_s": 18.0}
 _stats_lock = threading.Lock()
 MAX_VERSIONS = 30
-RENDER_TIMEOUT_S = 1200
+RENDER_TIMEOUT_S = 1200                       # the floor; a long clip on a slow server gets more (see _render_timeout)
+
+
+def _render_timeout(duration: float, per_second: float) -> float:
+    """How long a render may take: three times what this server measured per second of video, never less than the floor, never more than an hour."""
+    return min(3600.0, max(float(RENDER_TIMEOUT_S), per_second * duration * 3))
 
 
 def _safe(user_key: str) -> str:
@@ -1164,8 +1170,16 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                   eta=_remaining(0, page.duration))
         _note(directory, "check", "دارم صحنه‌ها را در مرورگر بررسی می‌کنم: چیدمان، خوانایی متن و خطاهای اجرا")
         started = time.monotonic()
-        result = standalone.check(work, should_cancel=lambda: _cancelled(key))
-        if result.ran:
+        page_fp = hashlib.sha256((work / "index.html").read_bytes()).hexdigest()
+        if load(directory).get("checked_page") == page_fp:
+            # The same page already passed the browser check (this is a retry after a failed render): it is not run, and scene stills are not taken, again.
+            _note(directory, "check", "همین صفحه قبلاً بررسی شده بود؛ بررسی دوباره لازم نیست", "done")
+            result = standalone.CheckResult(ran=True)
+            skipped_check = True
+        else:
+            skipped_check = False
+            result = standalone.check(work, should_cancel=lambda: _cancelled(key))
+        if result.ran and not skipped_check:
             _learn("check_s", time.monotonic() - started)
         if _cancelled(key):
             raise _Cancelled()
@@ -1176,6 +1190,9 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             # Layout and contrast findings are not fatal and do not justify rewriting the page with a slow model: they are reported.
             notes = (notes + ([f"بررسی خودکار چیدمان/خوانایی: {len(result.quality)} مورد"] if result.quality else [])
                      + [q[:220] for q in result.quality[:4]] + result.notes)[:8]
+            if not skipped_check and result.ran:
+                with _lock(directory.name):
+                    saved = load(directory); saved["checked_page"] = page_fp; save(directory, saved)
             break
         reasons = "؛ ".join(dict.fromkeys(mg.explain_problem(p) for p in problems[:3]))
         hit = _scenes_in(problems, len(build.plan.scenes)) if build else []
@@ -1228,10 +1245,11 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         _progress(directory, "rendering", 40 + int(percent * 0.55), "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=max(4.0, estimate - elapsed))
 
     _note(directory, "check", "بررسی صفحه تمام شد", "done", detail="\n".join(notes) if notes else "بررسی چیدمان، خوانایی و خطاهای اجرا بدون هشدار تمام شد.")
-    _snapshot_scenes(directory, work, build.plan if build else None)
+    if not (skipped_check and (directory / "snapshots").is_dir() and load(directory).get("snapshots")):
+        _snapshot_scenes(directory, work, build.plan if build else None)
     _note(directory, "render", f"دارم {page.duration:g} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     _progress(directory, "rendering", 40, "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=estimate)
-    standalone.render(work, output, timeout=RENDER_TIMEOUT_S, on_progress=on_progress, should_cancel=lambda: _cancelled(key))
+    standalone.render(work, output, timeout=_render_timeout(page.duration, stats["render_per_s"]), on_progress=on_progress, should_cancel=lambda: _cancelled(key))
     _learn("render_per_s", min(60.0, max(0.3, (time.monotonic() - render_started) / max(page.duration, 1.0))))
     _note(directory, "render", "رندر تمام شد؛ دارم ویدیو را وارسی می‌کنم", "done", detail=f"{page.duration:g} ثانیه · {page.size[0]}×{page.size[1]} · {time.monotonic() - render_started:.0f} ثانیه رندر")
     problem = verify_video(output, page.duration)
