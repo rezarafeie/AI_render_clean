@@ -22,6 +22,11 @@ def execute_run(run_id, user):
             run(store.update(run_id, user, status="failed", patch={"error": message}))
             run(repo.emit(record["conversation_id"], "tool.failed", {"message": message, "agent_mode": mode, "run_id": run_id}))
             return
+        try:
+            from app.studio_title import title_in_background
+            title_in_background(record["conversation_id"], user, request.get("text", ""))
+        except Exception:                                   # a title is never worth a failed run
+            pass
         return execute(record)
     if not run(store.update(run_id, user, status="running", claim={"queued"})): return
     from app.studio_orchestrator import process_message
