@@ -388,7 +388,7 @@ KIT (global HM; build helpers add to the timeline at the given time in seconds)
   target the .hm-rise. HM.sink(targets, at) exits upward.
 - HM.fadeUp(targets, at, {y, stagger, duration}), HM.fadeOut(targets, at), HM.pop(targets, at, {from}) scale-in with overshoot,
   HM.slide(targets, at, {x, dir:"right"|"left"}).
-- HM.wipe(scene, at, {x, y, band, duration}) reveals a .hm-scene with a growing diamond from (x, y) (default: centre); band is a colour that
+- HM.wipe(scene, at, {kind, x, y, band, duration}) reveals a .hm-scene (kind: diamond, iris, slice, rise or fade; the assembler already adds one entrance per scene and varies the kind, so you rarely need it) from (x, y) (default: centre); band is a colour that
   leads the edge; it also hides the scenes it covers. If you reveal a scene by your own tween, call HM.hide(earlierScene, at) once covered.
   HM.draw(svgPaths, at, {duration, stagger}) strokes SVG paths drawing themselves (give them stroke, fill none). Never write el.style.strokeDasharray
   or any .style by hand: the element may not exist yet and the page crashes; tween with tl/HM and a selector string instead.
@@ -606,7 +606,7 @@ THE CONTRACT
   <br>, <script>, <style>, forms, remote URLs.
 - css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
   "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
-- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER tween left/top/right/bottom/margin*/fontSize/letterSpacing (animate x, y, scale, rotation, opacity or clipPath instead; set layout once in CSS). NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (a growing diamond) is added by the
+- build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER tween left/top/right/bottom/margin*/fontSize/letterSpacing (animate x, y, scale, rotation, opacity or clipPath instead; set layout once in CSS). NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (varied per scene) is added by the
   platform, so start your content tweens at T+0.15 or later, using ABSOLUTE times (T + offset) as the last argument, and finish them by T+D-0.3. Use
   tl.fromTo/tl.from/tl.to/tl.set or the HM helpers; never gsap.* directly, timers, Date, Math.random, window, fetch. Anything that appears later must start
   hidden through its own entrance tween.
@@ -960,11 +960,16 @@ def fallback_scene(plan: MotionPlan, n: int) -> SceneDraft:
         build_js=f'HM.fadeUp("#s{n} .s{n}-bar", {scene.start + 0.15:g});\nHM.rise("#s{n} .hm-rise", {scene.start + 0.35:g});')
 
 
+# Scene entrances, used in turn so a clip never repeats one shape at every cut.
+ENTRANCES = ("iris", "slice", "fade", "rise", "diamond")
+
+
 def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict] | None = None) -> MotionPage:
     """The clip: every scene in its own layer, entrance wipes added here, each scene's code isolated in its own function."""
     width, height = FORMATS[plan.format]
     palette = plan.palette
     html, css, build, update, native, shotcraft = [], [], [], [], [], []
+    page_direction = direction_of(sc.narration for sc in plan.scenes)
     corners = [(width / 2, height / 2), (width * .85, height * .75), (width * .15, height * .25), (width / 2, height * .9), (width * .85, height * .2), (width * .2, height * .8)]
     for n, (scene, draft) in enumerate(zip(plan.scenes, drafts), 1):
         if draft.shotcraft_component:
@@ -989,7 +994,9 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
         css.append(f"#s{n}{{background:{palette.bg};color:{palette.ink}}}\n{scope_css(n, draft.css)}")
         if n > 1:
             x, y = corners[(n - 1) % len(corners)]
-            build.append(f'HM.wipe("#s{n}", {max(0.0, scene.start - 0.9):g}, {{band: "{palette.accent}", x: {int(x)}, y: {int(y)}}});')
+            kind = ENTRANCES[(n - 2) % len(ENTRANCES)]
+            side = "left" if (n % 2 == 0) == (page_direction == "ltr") else "right"
+            build.append(f'HM.wipe("#s{n}", {max(0.0, scene.start - 0.9):g}, {{kind: "{kind}", dir: "{side}", band: "{palette.accent}", x: {int(x)}, y: {int(y)}}});')
         # T and D (the scene's start and length) are real variables in its code: the designer's prompt names them, and a scene that writes T + 0.5
         # must not crash the page with "T is not defined".
         span = f"{scene.start:g}, {round(scene.end - scene.start, 3):g}"

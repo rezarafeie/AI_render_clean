@@ -524,7 +524,9 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     cursor, scenes, audio, clip_starts = 0.0, [], [], []
     for index, (scene, (path, seconds)) in enumerate(zip(plan.scenes, clips)):
         last = index == len(plan.scenes) - 1
-        length = max(scene.end - scene.start, seconds + 0.7 + (1.0 if last else 0.0))
+        # A scene lasts as long as its narration plus a breath that outlasts the next entrance (it starts 0.9 s early): it shrinks when the
+        # planned length was longer, instead of leaving seconds of silence after every line. A scene without narration keeps its planned length.
+        length = seconds + 0.25 + 1.2 + (0.8 if last else 0.0) if seconds > 0 else scene.end - scene.start
         scenes.append(scene.model_copy(update={"start": round(cursor, 2), "end": round(cursor + length, 2)}))
         if seconds > 0:
             audio.append({"path": str(path), "start": round(cursor + 0.25, 2), "duration": round(seconds, 2)})

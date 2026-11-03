@@ -80,30 +80,39 @@
     return T().fromTo(list(targets), { opacity: 0, x: x }, { opacity: 1, x: 0, duration: opt(o, "duration", .7), ease: "power3.out", stagger: opt(o, "stagger", .1) }, at);
   };
 
-  /* A scene revealed through a growing diamond that starts at (x, y); a coloured band leads the edge. */
+  /* A scene revealed on top of the previous ones. kind: diamond (default, a coloured band leads the edge), iris (circle from x, y),
+     slice (hard-edged sweep, dir "right" or "left"), rise (from the bottom edge) or fade. */
   HM.wipe = function (scene, at, o) {
     var el = list(scene)[0], W = HM.width, H = HM.height;
+    var kind = opt(o, "kind", "diamond"), dir = opt(o, "dir", "right");
     var cx = opt(o, "x", W / 2), cy = opt(o, "y", H / 2), dur = opt(o, "duration", .9), band = opt(o, "band", null);
     var reach = Math.max(cx, W - cx) + Math.max(cy, H - cy) + 40;
     function poly(r) { return "polygon(" + cx + "px " + (cy - r) + "px," + (cx + r) + "px " + cy + "px," + cx + "px " + (cy + r) + "px," + (cx - r) + "px " + cy + "px)"; }
-    var prior = [];       // scenes this one fully covers: hidden once the wipe completes, so they never show through or collide
+    function shape(p) {
+      if (kind === "fade") { el.style.opacity = String(p); return null; }
+      if (kind === "iris") return "circle(" + (p * reach) + "px at " + cx + "px " + cy + "px)";
+      if (kind === "slice") { var gone = (1 - p) * 100; return dir === "left" ? "inset(0 0 0 " + gone + "%)" : "inset(0 " + gone + "% 0 0)"; }
+      if (kind === "rise") return "inset(" + (1 - p) * 100 + "% 0 0 0)";
+      return poly(p * reach);
+    }
+    function apply(p) { var clip = shape(p); if (clip !== null) el.style.clipPath = clip; }
+    var prior = [];       // scenes this one fully covers: hidden once the reveal completes, so they never show through or collide
     for (var sib = el.previousElementSibling; sib; sib = sib.previousElementSibling) if (sib.classList.contains("hm-scene")) prior.push(sib);
     var state = { p: 0 }, strip = null;
-    if (band) {
+    if (band && kind === "diamond") {
       strip = document.createElement("div"); strip.className = "hm-band";
       el.parentNode.insertBefore(strip, el); strip.style.background = band; strip.style.opacity = "0";
     }
-    el.style.clipPath = poly(0);
+    apply(0);
     var tl = T();
     tl.fromTo(state, { p: 0 }, {
-      p: 1, duration: dur, ease: "power2.inOut",
+      p: 1, duration: dur, ease: kind === "fade" ? "power1.inOut" : "power2.inOut",
       onUpdate: function () {
-        var r = state.p * reach;
-        el.style.clipPath = poly(r);
-        if (strip) { strip.style.opacity = state.p > 0 && state.p < 1 ? "1" : "0"; strip.style.clipPath = poly(Math.min(reach, r + 90)); }
+        apply(state.p);
+        if (strip) { strip.style.opacity = state.p > 0 && state.p < 1 ? "1" : "0"; strip.style.clipPath = poly(Math.min(reach, state.p * reach + 90)); }
         for (var i = 0; i < prior.length; i++) prior[i].style.visibility = state.p >= 1 ? "hidden" : "";
       },
-      onReverseComplete: function () { el.style.clipPath = poly(0); if (strip) strip.style.opacity = "0"; }
+      onReverseComplete: function () { apply(0); if (strip) strip.style.opacity = "0"; }
     }, at);
     return tl;
   };

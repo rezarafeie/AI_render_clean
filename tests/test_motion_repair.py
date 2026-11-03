@@ -98,8 +98,8 @@ def test_narration_retimes_scenes_to_the_voice(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
     monkeypatch.setattr(app_mg, "_gate_clips", lambda plan, clips: [])          # the clips are placeholders here; the checks have their own tests
     retimed, audio, notes = app_mg._narrate(tmp_path, {"voice_id": "", "voice_style": ""}, plan, "fp")
-    assert [round(s.end - s.start, 2) for s in retimed.scenes] == [4.7, 3.0, 3.7]      # long voice stretches its scene; short ones keep the plan; the last holds 1 s
-    assert retimed.duration == 11.4 and audio[0]["start"] == 0.25 and audio[1]["start"] == 4.95 and notes == []
+    assert [round(s.end - s.start, 2) for s in retimed.scenes] == [5.45, 2.45, 4.25]      # every scene lasts its voice plus a breath (no dead air after a short line); the last holds 0.8 s more
+    assert retimed.duration == 12.15 and audio[0]["start"] == 0.25 and audio[1]["start"] == 5.7 and notes == []
 
 
 def test_narration_failure_keeps_the_clip_silent_but_alive(monkeypatch, tmp_path):
