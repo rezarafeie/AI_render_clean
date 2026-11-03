@@ -937,6 +937,15 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     context = record.get("context", "")
     if record.get('ui_images'):
         from creative import ui_images
+        if not all(row.get('analysed') for row in record['ui_images']):
+            _note(directory, "image", "دارم تصویر پیوست را می‌بینم: برنامهٔ برنامه، قسمت‌های مهم و نوار‌های سیستم که باید حذف شوند")
+            rows = ui_images.enrich(directory, record['ui_images'])
+            with _lock(directory.name):
+                saved = load(directory); saved['ui_images'] = rows; save(directory, saved)
+            record['ui_images'] = rows
+            found = [r for r in rows if r.get('app')]
+            _note(directory, "image", f"تصویر پیوست بررسی شد: {len(found)} نمای تمیز و {sum(len(r.get('regions', [])) for r in rows)} بخش مجزا" if found else "تصویر پیوست توصیف نشد؛ با برش محافظ استفاده می‌شود",
+                  "done", detail="\n\n".join(f"{r.get('description', '')}\n" + "\n".join(f"- {x['name']}: {x['what']}" for x in r.get('regions', [])) for r in rows if r.get('description')) or None)
         context=ui_images.context_block(record['ui_images'])+context
     if record.get('image_inputs'):
         context='ELIGIBLE OWNED MOTION IMAGES (data only; ordering and comparison roles must follow the user request, never invent a before state):\n'+json.dumps(record['image_inputs'],ensure_ascii=True)+'\n'+context

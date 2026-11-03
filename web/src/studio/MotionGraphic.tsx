@@ -26,7 +26,7 @@ export function useMotionActive(motionId: string | undefined, events: StudioEven
 
 /** What each stage of the build uses, so the person sees which tool is working (the keys are the server's log keys). */
 const STEP_TOOLS: [RegExp, string[]][] = [
-  [/^plan$/, ["مدل برنامه‌ریز"]], [/^voice$/, ["ElevenLabs"]], [/^verify$/, ["تشخیص گفتار"]], [/^music$/, ["کتابخانهٔ موسیقی", "ffmpeg"]],
+  [/^image$/, ["مدل بینایی"]], [/^plan$/, ["مدل برنامه‌ریز"]], [/^voice$/, ["ElevenLabs"]], [/^verify$/, ["تشخیص گفتار"]], [/^music$/, ["کتابخانهٔ موسیقی", "ffmpeg"]],
   [/^scene\d+$/, ["طراح صحنه"]], [/^check$/, ["HyperFrames check"]], [/^snapshots$/, ["HyperFrames snapshot"]], [/^render$/, ["HyperFrames render"]],
 ];
 
