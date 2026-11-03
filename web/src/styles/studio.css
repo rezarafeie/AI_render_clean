@@ -571,10 +571,17 @@ button.mg-step-row:focus-visible { outline: 2px solid var(--focus, currentColor)
 .mg-tool { font-size: 11px; padding: 1px 7px; border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-2); }
 .mg-step-summary { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
 .mg-step-ready { padding-top: 4px; border-top: 1px solid var(--border-subtle); }
-.mg-shots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
-.mg-shots li { display: grid; gap: 4px; min-width: 0; }
-.mg-shots img { width: 100%; height: auto; border-radius: var(--radius-sm, 6px); border: 1px solid var(--border-subtle); background: var(--surface-2, transparent); }
-.mg-shots span { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.mg-album { list-style: none; margin: 0; padding: 2px 0 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.mg-album li { flex: 0 0 auto; }
+.mg-thumb { position: relative; display: block; padding: 0; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-2, transparent); overflow: hidden; cursor: pointer; }
+.mg-thumb:hover { border-color: var(--text-3); }
+.mg-thumb:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.mg-thumb img { display: block; height: 64px; width: auto; max-width: 120px; object-fit: cover; }
+.mg-thumb-n { position: absolute; inset-inline-start: 3px; bottom: 3px; min-width: 16px; padding: 0 4px; border-radius: 8px; font-size: 10px; line-height: 16px; text-align: center; color: #fff; background: rgba(0, 0, 0, .62); font-variant-numeric: tabular-nums; }
+.mg-lightbox { position: relative; margin: 0; display: grid; gap: 8px; justify-items: center; max-width: min(92vw, 560px); max-height: calc(100dvh - 32px); }
+.mg-lightbox img { max-width: 100%; max-height: calc(100dvh - 96px); border-radius: var(--radius-md, 10px); border: 1px solid var(--border); }
+.mg-lightbox figcaption { font-size: 13px; color: var(--text-1); text-align: center; overflow-wrap: anywhere; }
+.mg-lightbox-close { position: absolute; top: 6px; inset-inline-end: 6px; background: rgba(0, 0, 0, .55); color: #fff; }
 .mg-eta { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
 /* ── "Working" feel for the live step: the title carries a travelling highlight, and its elapsed time counts up ───────────── */

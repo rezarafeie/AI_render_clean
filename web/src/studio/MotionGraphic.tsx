@@ -24,6 +24,40 @@ export function useMotionActive(motionId: string | undefined, events: StudioEven
   return active;
 }
 
+/** The scenes as a small album: one row of thumbnails (scrolls sideways), a click opens one larger with the arrow keys to move along. It stays
+ * compact so the steps above it remain in view. */
+function ShotStrip({ motionId, shots, stamp }: { motionId: string; shots: { n: number; headline: string; t: number }[]; stamp: number }) {
+  const [open, setOpen] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (open === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(null);
+      else if (event.key === "ArrowLeft") setOpen(value => value === null ? value : Math.min(shots.length - 1, value + 1));
+      else if (event.key === "ArrowRight") setOpen(value => value === null ? value : Math.max(0, value - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, shots.length]);
+  const current = open === null ? null : shots[open];
+  return <>
+    <ul className="mg-album" aria-label="صحنه‌ها">
+      {shots.map((shot, index) => <li key={`${shot.n}-${stamp}`}>
+        <button type="button" className="mg-thumb" onClick={() => setOpen(index)} aria-label={`صحنهٔ ${shot.n}: ${shot.headline}`} title={`${shot.n}. ${shot.headline}`}>
+          <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt="" loading="lazy" draggable={false}/>
+          <span className="mg-thumb-n" aria-hidden="true">{shot.n}</span>
+        </button>
+      </li>)}
+    </ul>
+    {current ? <div className="overlay" role="dialog" aria-modal="true" aria-label={`صحنهٔ ${current.n}`} onMouseDown={event => { if (event.target === event.currentTarget) setOpen(null); }}>
+      <figure className="mg-lightbox">
+        <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, current.n)} alt={`صحنهٔ ${current.n}: ${current.headline}`}/>
+        <figcaption dir="auto">{current.n}. {current.headline}</figcaption>
+        <button type="button" className="icon-btn mg-lightbox-close" onClick={() => setOpen(null)} aria-label="بستن"><Icon name="close" size={18}/></button>
+      </figure>
+    </div> : null}
+  </>;
+}
+
 /** What each stage of the build uses, so the person sees which tool is working (the keys are the server's log keys). */
 const STEP_TOOLS: [RegExp, string[]][] = [
   [/^image$/, ["مدل بینایی"]], [/^plan$/, ["مدل برنامه‌ریز"]], [/^voice$/, ["ElevenLabs"]], [/^verify$/, ["تشخیص گفتار"]], [/^music$/, ["کتابخانهٔ موسیقی", "ffmpeg"]],
@@ -117,9 +151,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length)) ? <div className="mg-progress">
       <MotionSteps steps={motionSteps(motion, now * 1000)} live={motion.active} now={now * 1000} summaries={summaries}/>
-      {motion.snapshots?.length ? <ul className="mg-shots" aria-label="پیش‌نمایش صحنه‌ها">{motion.snapshots.map(shot => <li key={`${shot.n}-${motion.updated_at}`}>
-        <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt={`صحنهٔ ${shot.n}: ${shot.headline}`} loading="lazy"/>
-        <span>{shot.n}. {shot.headline}</span></li>)}</ul> : null}
+      {motion.snapshots?.length ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" ? <div className="notice" data-tone="error" role="alert">{motion.error === "stopped" ? "ساخت متوقف شد." : motion.error || "ساخت کامل نشد."}</div> : null}

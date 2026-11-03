@@ -47,3 +47,10 @@ test('an active step shows a one-decimal percentage and a step with details can 
   const percent=[...doc.querySelectorAll('.mg-step-time')].map(n=>n.textContent).find(x=>x.endsWith('%'));
   assert.match(percent,/^7\.0%$/);                                                 // one decimal; it starts at the server's value and creeps up
 });
+
+test('scene snapshots are a compact album of small thumbnails, not a grid of large pictures', async () => {
+  const css = (await import('node:fs')).readFileSync(new URL('../src/styles/studio.css', import.meta.url), 'utf8');
+  assert.match(css, /\.mg-album \{[^}]*display: flex[^}]*overflow-x: auto/);
+  assert.match(css, /\.mg-thumb img \{[^}]*height: 64px/);
+  assert.doesNotMatch(css, /\.mg-shots/);
+});
