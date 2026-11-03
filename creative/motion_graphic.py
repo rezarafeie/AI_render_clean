@@ -318,8 +318,9 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
     shutil.copy2(KIT / "kit.js", assets / "kit.js")
     for target, source in FONT_FILES.items():
         shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
-    if page.direction == "ltr":
-        shutil.copy2(ROOT / "assets" / "effects" / "fonts" / "Inter.ttf", assets / "fonts" / "inter.ttf")
+    inter = ROOT / "presets" / "fonts" / "Inter.ttf"
+    if page.direction == "ltr" and inter.is_file():
+        shutil.copy2(inter, assets / "fonts" / "inter.ttf")
     for i, clip in enumerate(page.audio, 1):
         source = Path(str(clip["path"]))
         if source.is_file():
