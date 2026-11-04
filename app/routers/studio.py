@@ -1314,6 +1314,18 @@ async def motion_snapshot(request: Request, motion_id: str, n: int):
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
 
 
+@router.get("/motion/{motion_id}/editable")
+async def motion_editable(request: Request, motion_id: str):
+    """(Declared before the generic /{kind} file route, which would otherwise answer 404 for it.) Everything this motion graphic lets the person change, read from the project (fields, current values, accepted options, what each costs)."""
+    from app import motion_edit, motion_graphic
+    directory = _motion_dir(request, motion_id)
+    record = await asyncio.to_thread(motion_graphic.load, directory)
+    try:
+        return await asyncio.to_thread(motion_edit.editable, directory, record)
+    except (OSError, ValueError, KeyError):
+        return {"groups": [], "busy": record["status"] in motion_graphic.ACTIVE, "version": record.get("current"), "reason": "The plan is not ready yet."}
+
+
 @router.get("/motion/{motion_id}/{kind}")
 async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[int] = None):
     from app import motion_graphic
@@ -1332,18 +1344,6 @@ async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[
 
 class MotionEditBody(BaseModel):
     changes: dict = Field(min_length=1, max_length=80)
-
-
-@router.get("/motion/{motion_id}/editable")
-async def motion_editable(request: Request, motion_id: str):
-    """Everything this motion graphic lets the person change, read from the project (fields, current values, accepted options, what each costs)."""
-    from app import motion_edit, motion_graphic
-    directory = _motion_dir(request, motion_id)
-    record = await asyncio.to_thread(motion_graphic.load, directory)
-    try:
-        return await asyncio.to_thread(motion_edit.editable, directory, record)
-    except (OSError, ValueError, KeyError):
-        return {"groups": [], "busy": record["status"] in motion_graphic.ACTIVE, "version": record.get("current"), "reason": "The plan is not ready yet."}
 
 
 @router.post("/motion/{motion_id}/edit")

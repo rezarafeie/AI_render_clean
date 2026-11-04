@@ -1266,7 +1266,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         _snapshot_scenes(directory, work, build.plan if build else None)
     _note(directory, "render", f"دارم {page.duration:g} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     _progress(directory, "rendering", 40, "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=estimate)
-    standalone.render(work, output, timeout=_render_timeout(page.duration, stats["render_per_s"]), on_progress=on_progress, should_cancel=lambda: _cancelled(key))
+    standalone.render(work, output, timeout=_render_timeout(page.duration, stats["render_per_s"]), on_progress=on_progress, should_cancel=lambda: _cancelled(key), frames=round(page.duration * 30))
     _learn("render_per_s", min(60.0, max(0.3, (time.monotonic() - render_started) / max(page.duration, 1.0))))
     _note(directory, "render", "رندر تمام شد؛ دارم ویدیو را وارسی می‌کنم", "done", detail=f"{page.duration:g} ثانیه · {page.size[0]}×{page.size[1]} · {time.monotonic() - render_started:.0f} ثانیه رندر")
     problem = verify_video(output, page.duration)

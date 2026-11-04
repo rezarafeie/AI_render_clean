@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import json
+import math
 import hashlib
 import re
 import signal
@@ -225,7 +226,23 @@ def render_workers() -> int:
         return 2
 
 
-def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=None, should_cancel=None) -> Path:
+def _captured_frames(project_dir: Path) -> int:
+    """Frames the render has captured so far: the CLI writes each one into work-*/captured-frames inside the project folder."""
+    try:
+        folders = sorted(project_dir.glob("work-*/captured-frames"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return sum(1 for _ in os.scandir(folders[0])) if folders else 0
+    except OSError:
+        return 0
+
+
+def _frame_progress(captured: int, total: int, encoding_for: float) -> int:
+    """0-99 from what is really on disk: capturing is the first 90%, encoding the rest (its length is unknown, so it creeps towards 99 and never reaches it)."""
+    if captured < total:
+        return int(90 * captured / total)
+    return 90 + int(8.99 * (1 - math.exp(-encoding_for / 90)))
+
+
+def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=None, should_cancel=None, frames: int = 0) -> Path:
     env = {**os.environ, 'NO_COLOR':'1'}
     command = (
         [*cli_command(), "render", ".",
@@ -236,6 +253,8 @@ def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=No
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
     )
     started = time.monotonic()
+    captured_at: float | None = None
+    last_reported = -1
     while True:
         if should_cancel and should_cancel():
             os.killpg(process.pid, signal.SIGTERM)
@@ -254,8 +273,14 @@ def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=No
                 os.killpg(process.pid, signal.SIGTERM)
                 stdout, stderr = process.communicate(timeout=15)
                 raise HyperFramesError(f"HyperFrames render timed out after {timeout} seconds")
-            # No elapsed-time percentage: the CLI does not expose frame progress
-            # here. Keep the last real milestone until encoding completes.
+            if on_progress and frames > 0:
+                captured = _captured_frames(project_dir)
+                if captured >= frames and captured_at is None:
+                    captured_at = time.monotonic()
+                percent = _frame_progress(captured, frames, time.monotonic() - captured_at if captured_at else 0.0)
+                if percent > last_reported:
+                    last_reported = percent
+                    on_progress(percent)
     if process.returncode or not output.is_file():
         detail = (stderr or stdout or "unknown render failure")[-2400:]
         if "HDR pre-extraction" in detail:
