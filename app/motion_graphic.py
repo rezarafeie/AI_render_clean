@@ -357,6 +357,8 @@ def _public_error(exc: Exception) -> str:
         return "صفحهٔ ساخته‌شده از بررسی خودکار رد شد و اصلاحش ممکن نشد: " + explain_problem(text.split(":", 1)[1])
     if "did not pass validation" in text or "rejected" in text:
         return "طرح پیشنهادی مدل چند بار از بررسی خودکار رد شد."
+    if type(exc).__name__ == "CreativeUnavailable" and any(ord(c) > 127 for c in text):
+        return text[:220]                                     # a reason written for the person (e.g. the script has too many scenes), not an outage
     if "not configured" in text or "Unavailable" in type(exc).__name__:
         return "سرویس هوش مصنوعی در دسترس نبود."
     if "timed out" in text:

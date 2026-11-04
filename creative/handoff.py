@@ -6,7 +6,7 @@ import re
 
 from .schemas import Beat, Concept, ContentBrief, CreativePlan, Critique, ScriptDraft, ScriptLine
 
-SCENE = re.compile(r"^\s*(\d+)\.\s*\((?P<sec>[\d.]+)\s*s\)\s*تصویر:\s*(?P<see>.*?)\s*\|\s*متن روی صفحه:\s*(?P<title>.*?)\s*\|\s*روایت:\s*(?P<say>.*?)\s*$")
+SCENE = re.compile(r"^\s*(?P<num>\d+)\.\s*\((?P<sec>[\d.]+)\s*s\)\s*تصویر:\s*(?P<see>.*?)\s*\|\s*متن روی صفحه:\s*(?P<title>.*?)\s*\|\s*روایت:\s*(?P<say>.*?)\s*$")
 
 
 def _field(text: str, label: str) -> str:
@@ -18,10 +18,13 @@ def parse(text: str) -> dict | None:
     """The scenes and direction of an approved handoff, or None when the text is not one or has too few usable scenes."""
     if not text or "متن روی صفحه:" not in text:       # the scene lines below only ever come from a handoff
         return None
-    lines = []
+    lines, seen = [], set()
     for raw in text.splitlines():
         found = SCENE.match(raw)
         if found and found["say"].strip():
+            if found["num"] in seen:                   # the same numbered scene again (a handoff may repeat its scene list in the execution notes): the first one counts
+                continue
+            seen.add(found["num"])
             lines.append({"seconds": float(found["sec"]), "see": found["see"], "title": found["title"], "say": found["say"]})
     if len(lines) < 3:
         return None
