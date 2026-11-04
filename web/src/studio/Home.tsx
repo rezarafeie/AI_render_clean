@@ -6,6 +6,10 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { displayTitle, relativeTime } from "../format";
 import { parseTime } from "./model";
 
+/** The chrome of the app is English; only a person's own titles are in their language, so a row never mixes two scripts in its labels. */
+const KIND_LABEL: Record<string, string> = { motion: "Motion graphic", motion_graphic: "Motion graphic", talking: "Talking reel", localize: "Dub & subtitles", chat: "Chat" };
+const STATUS_LABEL: Record<HomeStatus, string> = { running: "Working", needs_input: "Needs you", failed: "Failed", ready: "", draft: "" };
+
 const KIND_ICON: Record<string, IconName> = { motion: "motion", talking: "video", localize: "captions", chat: "thinking" };
 
 /** The word and tone of a piece of work's state, so an unfinished or failed edit is never mistaken for a finished one. */
@@ -48,23 +52,23 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
       <h1>What would you like to create?</h1>
       {composer}
       {authenticated ? <>
-        <section className="home-suggest" aria-label="پیشنهادها برای شما">
+        <section className="home-suggest" aria-label="Suggestions">
           {loading ? <HomeSkeleton/> : <div className="chip-row home-chips">
             {(home?.suggestions || []).slice(0, 3).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip"
               onClick={() => item.kind === "open" ? navigate(`/studio/${item.conversation_id}`) : onPrompt(item.prompt)}>
-              {item.kind === "open" ? <Icon name="chevron" size={14}/> : null}<span>{item.label}</span></button>)}
+              <span dir="auto">{item.label}</span></button>)}
           </div>}
         </section>
-        <section className="home-recent" aria-label="آخرین ادیت‌ها">
-          <div className="home-recent-head"><h2>آخرین ادیت‌ها</h2><NavLink to="/projects">همه</NavLink></div>
-          {loading ? <HomeSkeleton/> : failed ? <p className="home-note">بارگذاری آخرین ادیت‌ها ممکن نشد.</p> : home?.recent.length ? <ul>
+        <section className="home-recent" aria-label="Recent edits">
+          <div className="home-recent-head"><h2>Recent edits</h2><NavLink to="/projects">All</NavLink></div>
+          {loading ? <HomeSkeleton/> : failed ? <p className="home-note">Recent edits could not be loaded.</p> : home?.recent.length ? <ul>
             {home.recent.slice(0, 3).map(item => <li key={item.id}><NavLink to={`/studio/${item.id}`} title={item.title}>
               <span className="home-thumb" aria-hidden="true">{item.thumb ? <AuthenticatedMedia as="img" src={api.motionMediaUrl(item.thumb.split("/")[3], "thumb")} alt="" loading="lazy" draggable={false}/> : <Icon name={KIND_ICON[item.kind] || "thinking"} size={18}/>}</span>
-              <span className="home-recent-copy"><span className="bidi wrap-safe" dir="auto">{displayTitle(item.title, 60) || "ادیت جدید"}</span>
-                <small>{item.kind_label} · {relativeTime(parseTime(item.updated_at), now)}</small></span>
-              <span className="home-status" data-tone={statusTone(item.status)}><i aria-hidden="true"/>{item.status === "ready" ? null : item.status_label}</span>
+              <span className="home-recent-copy"><span className="home-title" dir="auto">{displayTitle(item.title, 60) || "New edit"}</span>
+                <span className="home-meta"><span>{KIND_LABEL[item.kind] || "Chat"}</span><span>{relativeTime(parseTime(item.updated_at), now)}</span></span></span>
+              {STATUS_LABEL[item.status] ? <span className="home-status" data-tone={statusTone(item.status)}><i aria-hidden="true"/>{STATUS_LABEL[item.status]}</span> : null}
             </NavLink></li>)}
-          </ul> : <p className="home-note">هنوز ادیتی نساخته‌اید. اولین درخواست را بالا بنویسید.</p>}
+          </ul> : <p className="home-note">No edits yet. Describe your first video above.</p>}
         </section>
       </> : <p className="home-note">Log in to save projects and start creating.</p>}
     </div>

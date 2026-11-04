@@ -186,3 +186,18 @@
 .idea, .ov-block, .ov-stats { animation: ov-in .3s ease both; }
 @keyframes ov-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .ov-run, .idea, .ov-block, .ov-stats { animation: none; } }
+
+/* InstaGPT start page: the same quiet rows as the Studio's */
+.ov-list li { align-items: center; padding: 12px 2px; }
+.ov-list li > span { font-size: 14px; unicode-bidi: plaintext; text-align: start; }
+.ov-list li > small { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-3); font-size: 12px; }
+.idea-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; width: 100%; text-align: start; }
+.idea-heading { display: grid; gap: 2px; min-width: 0; }
+.idea-heading strong { display: block; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea-heading small { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea-status { display: inline-grid; place-items: center; width: 18px; height: 18px; }
+.idea-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.idea-status[data-tone="success"] i { background: var(--success); }
+.idea-status[data-tone="warning"] i { background: var(--warning); }
+.idea-status[data-tone="error"] i { background: var(--error); }
+.idea-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }

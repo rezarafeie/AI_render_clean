@@ -81,16 +81,30 @@ async def _projects_by_conversation(ids: list[str]) -> dict[str, list[dict]]:
 
 
 async def hermes_state(user_key: str) -> dict:
-    """Whether InstaGPT has an Instagram account for this person and its latest chat titles; never raises (Hermes may be off)."""
+    """The InstaGPT connection (Instagram through Composio, as InstaGPT itself reads it) with the page's public numbers and the latest chat titles.
+    `connected` is None when the answer is not known yet (slow or unreachable), never a guess; the function never raises (Hermes may be off)."""
+    import asyncio
+    state: dict = {"connected": None, "username": None, "followers": None, "follows": None, "media_count": None, "picture": None, "chats": []}
     try:
-        from hermes.database import list_rows
-        from hermes.services import chats
-        accounts = [row for row in await list_rows("accounts") if str(row.get("user_id")) == str(user_key)]
-        titles = [c["title"] for c in (await chats.list_chats(user_key))[:5] if c.get("title") and c["title"] != "گفتگوی جدید"]
-        return {"connected": bool(accounts), "chats": titles}
+        from hermes.services import chats, composio_account
+        try:
+            row = await asyncio.wait_for(composio_account.account(user_key), 6)
+            state["connected"] = bool(row)
+            if row:
+                state.update({k: row.get(k) for k in ("username", "followers", "follows", "media_count", "picture")})
+                if str(row.get("username") or "") == "instagram":
+                    state["username"] = None
+        except asyncio.TimeoutError:
+            pass
+        state["chats"] = [c["title"] for c in (await chats.list_chats(user_key))[:5] if c.get("title") and c["title"] != "گفتگوی جدید"]
     except Exception as exc:
         log.info("hermes state unavailable: %s", type(exc).__name__)
-        return {"connected": False, "chats": []}
+    return state
+
+
+def instagram_summary(state: dict) -> dict:
+    """The few fields the header button shows."""
+    return {k: state.get(k) for k in ("connected", "username", "followers", "follows", "media_count", "picture")}
 
 
 def fallback_suggestions(recent: list[dict], hermes: dict) -> list[dict]:
@@ -101,7 +115,7 @@ def fallback_suggestions(recent: list[dict], hermes: dict) -> list[dict]:
     finished = next((r for r in recent if r["status"] == "ready" and r["id"] != (waiting or {}).get("id")), None)
     if finished:
         out.append({"kind": "open", "label": f"ویرایش یا نسخهٔ جدید «{finished['title'][:40]}»", "conversation_id": finished["id"], "reason": "آماده"})
-    if hermes.get("connected") and hermes.get("chats"):
+    if hermes.get("chats"):
         out.append({"kind": "prompt", "label": f"ریلز از ایدهٔ «{hermes['chats'][0][:36]}»", "prompt": f"از ایدهٔ «{hermes['chats'][0]}» که در InstaGPT داشتم یک ریلز بساز", "reason": "از InstaGPT"})
     for item in _GENERIC:
         if len(out) >= 4: break
@@ -165,4 +179,4 @@ async def build(user_key: str) -> dict:
     recent = [summarize(c, by_id.get(c["id"], []), m) for c, m in zip(conversations, motions)]
     recent = [r for r in recent if not (r["kind"] == "chat" and r["status"] == "draft")][:6] or recent[:3]          # a chat nothing was made in is not "work"
     hermes = await hermes_state(user_key)
-    return {"recent": recent, "suggestions": await suggestions(user_key, recent, hermes), "instagpt": {"connected": hermes["connected"], "chats": hermes["chats"][:3]}}
+    return {"recent": recent, "suggestions": await suggestions(user_key, recent, hermes), "instagpt": {**instagram_summary(hermes), "chats": hermes["chats"][:3]}}

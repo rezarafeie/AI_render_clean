@@ -182,6 +182,13 @@ async def studio_home(request: Request):
     return await studio_home.build(_user(request))
 
 
+@router.get("/instagpt")
+async def studio_instagpt(request: Request):
+    """The InstaGPT page's connection and public numbers for the header button (connected is null while unknown)."""
+    from app import studio_home
+    return studio_home.instagram_summary(await studio_home.hermes_state(_user(request)))
+
+
 @router.get("/conversations")
 async def list_conversations(request: Request):
     return await repo.list_conversations(_user(request))

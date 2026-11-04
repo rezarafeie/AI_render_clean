@@ -209,7 +209,9 @@ export interface MotionEditable { groups: { id: string; title: string; fields: M
 export type HomeStatus = "running" | "needs_input" | "failed" | "ready" | "draft";
 export interface HomeRecent { id: string; title: string; updated_at: string; kind: string; kind_label: string; status: HomeStatus; status_label: string; thumb: string | null }
 export type HomeSuggestion = { kind: "prompt"; label: string; prompt: string; reason?: string } | { kind: "open"; label: string; conversation_id: string; reason?: string };
-export interface StudioHome { recent: HomeRecent[]; suggestions: HomeSuggestion[]; instagpt: { connected: boolean; chats: string[] } }
+/** The InstaGPT page as the header button shows it; `connected` is null while the server could not tell yet (never read as "not connected"). */
+export interface InstagramSummary { connected: boolean | null; username: string | null; followers: number | null; follows: number | null; media_count: number | null; picture: string | null }
+export interface StudioHome { recent: HomeRecent[]; suggestions: HomeSuggestion[]; instagpt: InstagramSummary & { chats: string[] } }
 export interface StudioEvent { id: number; seq: number; type: string; data: Record<string, any>; created_at: string }
 
 /** Motion graphics made in chat (app/motion_graphic.py). */
@@ -1201,6 +1203,9 @@ export const api = {
   async motionEditable(id: string): Promise<MotionEditable> { return j(await authFetch(`${BASE}/studio/motion/${id}/editable`)); },
   async motionEdit(id: string, changes: Record<string, string | number>): Promise<{ changed: string[]; summary: string[] }> {
     return j(await authFetch(`${BASE}/studio/motion/${id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) }));
+  },
+  async studioInstagram(signal?: AbortSignal): Promise<InstagramSummary> {
+    return j(await authFetch(`${BASE}/studio/instagpt`, { signal }));
   },
   async studioHome(signal?: AbortSignal): Promise<StudioHome> {
     return j(await authFetch(`${BASE}/studio/home`, { signal }));

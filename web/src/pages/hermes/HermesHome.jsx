@@ -35,7 +35,7 @@ export default function HermesHome() {
       <Composer variant="home" text={text} setText={setText} files={[]} onRemoveFile={() => {}} onFiles={() => {}} processing={busy} onSend={() => void start()}
         error={error} onDismissError={() => setError('')} hasSpeech={false} listening={false} onListen={() => {}} autoFocus textareaRef={textareaRef}
         placeholder="Ask about your page, content, ideas, or schedule…" textOnly />
-      <div className="chip-row home-chips">{SUGGESTIONS.map((item) => <button key={item} className="chip" onClick={() => void start(item)}>{item}</button>)}</div>
+      <div className="chip-row home-chips">{SUGGESTIONS.map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}</div>
       <div className="hs-home-overview" data-hermes-main><HermesOverview /></div>
     </div>
   </div>;

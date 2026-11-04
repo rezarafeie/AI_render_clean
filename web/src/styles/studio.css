@@ -157,43 +157,15 @@ button.act-row:hover { color: var(--text-2); }
 .studio-home { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; padding: var(--space-6) var(--space-4) calc(var(--space-8) + var(--safe-bottom)); }
 .home-inner { width: min(100%, 720px); margin-inline: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
 .home-inner h1 { text-align: center; font-size: clamp(24px, 4.2vw, 32px); font-weight: 600; letter-spacing: -.02em; }
-.home-chips { justify-content: center; flex-wrap: wrap; overflow: visible; }
 .home-recent { display: grid; gap: 6px; margin-top: var(--space-4); }
 .home-recent-head { display: flex; justify-content: space-between; align-items: baseline; padding-inline: 4px; }
 .home-recent-head h2 { font-size: 13px; font-weight: 500; color: var(--text-3); }
 .home-recent-head a { font-size: 13px; color: var(--text-2); }
 .home-recent-head a:hover { color: var(--text); }
 .home-recent ul { list-style: none; padding: 0; display: grid; }
-.home-recent li a { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radius-md); }
-.home-recent li a:hover { background: var(--hover); }
-.home-recent li span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-recent li small { margin-inline-start: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
-.home-recent li svg { color: var(--text-3); flex: none; }
 .home-note { text-align: center; font-size: 13px; color: var(--text-3); }
 .home-skeleton { display: grid; gap: 8px; }
 .home-skeleton .skeleton { height: 44px; border-radius: var(--radius-md); }
-.home-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
-.home-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-chip small { color: var(--text-3); font-size: 11px; white-space: nowrap; }
-.home-insta { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); color: inherit; text-decoration: none; }
-.home-insta:hover { background: var(--hover); }
-.home-insta-mark { display: inline-grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; background: var(--surface-2, var(--hover)); }
-.home-insta-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.home-insta-copy small { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-insta-state { font-size: 12px; color: var(--text-3); white-space: nowrap; }
-.home-insta-state[data-on] { color: var(--success); }
-.home-recent li a { min-height: 56px; padding-block: 6px; }
-.home-thumb { display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none; overflow: hidden; border-radius: 8px; background: var(--surface-2, var(--hover)); color: var(--text-3); }
-.home-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.home-recent-copy { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
-.home-recent-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-recent-copy small { margin: 0; }
-.home-status { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; color: var(--text-2); white-space: nowrap; }
-.home-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
-.home-status[data-tone="success"] i { background: var(--success); }
-.home-status[data-tone="warning"] i { background: var(--warning); }
-.home-status[data-tone="error"] i { background: var(--error); }
-.home-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }
 @keyframes home-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .home-status[data-tone="working"] i { animation: none; } }
 .thread-loading { display: grid; gap: 14px; padding: 8px 0; }
@@ -678,11 +650,28 @@ button.mg-step-row:focus-visible { outline: 2px solid var(--focus, currentColor)
 html[data-keyboard-open] .studio-tabs { display: none; }
 html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mobile"] .dock { padding-bottom: var(--space-2); }
 
-/* a calm start page: one row of suggestions that scrolls sideways, three recent edits, nothing else */
-.home-chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; margin-inline: calc(var(--space-4) * -1); padding-inline: var(--space-4); }
+
+
+/* ── Start page (EditorGPT and InstaGPT): calm. Suggestions are one quiet row, recent edits are three plain rows. ── */
+.home-chips { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-block: 2px;
+  scroll-snap-type: x proximity; }
 .home-chips::-webkit-scrollbar { display: none; }
-.home-chip { flex: none; white-space: nowrap; max-width: 78vw; }
-.home-recent { margin-top: var(--space-3); }
-.home-recent li a { min-height: 52px; }
-.home-thumb { width: 36px; height: 36px; }
-.home-status { font-size: 12px; }
+.home-chip { flex: none; height: 36px; padding: 0 16px; max-width: 80vw; scroll-snap-align: start; border-color: var(--border-subtle); background: transparent; }
+.home-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-recent { display: grid; gap: 4px; margin-top: var(--space-2); }
+.home-recent ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.home-recent li a { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 60px; padding: 8px 10px; border-radius: var(--radius-md); color: var(--text); }
+.home-recent li a:hover { background: var(--hover); }
+.home-thumb { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; overflow: hidden; background: var(--active); color: var(--text-3); }
+.home-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.home-recent-copy { display: grid; gap: 3px; min-width: 0; text-align: start; }
+.home-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 500; unicode-bidi: plaintext; direction: ltr; text-align: left; }
+.home-meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--text-3); white-space: nowrap; direction: ltr; justify-content: flex-start; }
+.home-meta > span { overflow: hidden; text-overflow: ellipsis; }
+.home-meta > span + span::before { content: "·"; margin-inline-end: 6px; }
+.home-status { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: var(--active); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.home-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.home-status[data-tone="warning"] i { background: var(--warning); }
+.home-status[data-tone="error"] i { background: var(--error); }
+.home-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }
+@media (max-width: 520px) { .home-recent li a { grid-template-columns: 40px minmax(0, 1fr); } .home-status { grid-column: 2; justify-self: start; margin-top: -2px; } }

@@ -37,7 +37,8 @@ async def profile(user_id: str) -> dict | None:
     result = await read.execute(user_id, "instagram", PROFILE_TOOL, {"ig_user_id": "me"})
     data = result.get("data")
     return {"username": _find(data, "username"), "followers_count": _find(data, "followers_count"), "follows_count": _find(data, "follows_count"),
-            "media_count": _find(data, "media_count"), "ig_user_id": _find(data, "id") or _find(data, "user_id")}
+            "media_count": _find(data, "media_count"), "ig_user_id": _find(data, "id") or _find(data, "user_id"),
+            "picture": _find(data, "profile_picture_url")}
 
 
 async def account(user_id: str, fresh: bool = False) -> dict | None:
@@ -60,7 +61,7 @@ async def account(user_id: str, fresh: bool = False) -> dict | None:
                         info = {}
                 row = {"id": VIRTUAL_ID, "user_id": user_id, "source": "composio", "username": info.get("username") or "instagram",
                        "ig_user_id": info.get("ig_user_id"), "followers": info.get("followers_count"), "follows": info.get("follows_count"),
-                       "media_count": info.get("media_count"), "token_expires_at": None}
+                       "media_count": info.get("media_count"), "picture": info.get("picture"), "token_expires_at": None}
     except HTTPException:
         row = None
     _cache[user_id] = (now, row)
