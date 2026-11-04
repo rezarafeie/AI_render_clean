@@ -791,12 +791,16 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         request = (f"SUPPLIED NARRATION SCRIPT ({len(supplied)} lines): the person wrote it, so it is final. Make exactly {len(supplied)} scenes, one per line in order (the usual 2-6 scene limit does not apply to a supplied script, and you never ask to group lines); "
                    "each scene's narration is that line word for word. Never rewrite, shorten, extend, translate or add to it. If you believe the script has a real "
                    "problem, do not change it: ask one short question in `questions` instead.\n" + "\n".join(f"{i}. {line}" for i, line in enumerate(supplied, 1)) + "\n\n") + request
+    if approved:
+        request = ("APPROVED SCRIPT: the person already approved this idea in Instagram GPT, so do not ask any question. The numbered scene lines are final: "
+                   "where the brief also holds a whole-narration text, a caption, a call to action or notes that differ from them, the scene lines win and the rest is context. "
+                   "Never merge, drop or retime scenes to fit a rule; choose palette, device and title yourself.\n\n") + request
     cap = max(8, len(supplied)) if supplied else 8 if approved else 6          # a script's own line count is not a scene limit
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
         result = llm.ask(MotionPlan, guide, user, route=PLAN_ROUTE, tokens=3500, attempts=2, used=used)
-        if result.asks():
+        if result.asks() and not approved:          # an approved handoff has its scenes already; a question from the model is not a reason to stop
             return result
         if approved:
             result = apply_handoff(result, brief)
