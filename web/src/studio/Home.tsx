@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api, HomeStatus, StudioHome } from "../api";
 import { Icon, IconName } from "../components/Icon";
+import { ScrollRow } from "../components/ScrollRow";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { displayTitle, relativeTime } from "../format";
 import { parseTime } from "./model";
@@ -17,8 +18,14 @@ export function statusTone(status: HomeStatus): "working" | "warning" | "error" 
   return status === "running" ? "working" : status === "needs_input" ? "warning" : status === "failed" ? "error" : status === "ready" ? "success" : "idle";
 }
 
-function HomeSkeleton() {
-  return <div className="home-skeleton" role="status" aria-label="در حال بارگذاری"><span className="skeleton"/><span className="skeleton"/><span className="skeleton"/></div>;
+function ChipsSkeleton() {
+  return <div className="home-skeleton home-skeleton-chips" role="status" aria-label="Loading"><span className="skeleton"/><span className="skeleton"/><span className="skeleton"/></div>;
+}
+
+function RowsSkeleton() {
+  return <div className="home-skeleton home-skeleton-rows" role="status" aria-label="Loading">
+    {[0, 1, 2].map(i => <div key={i} className="home-skeleton-row"><span className="skeleton"/><span className="home-skeleton-lines"><span className="skeleton"/><span className="skeleton"/></span></div>)}
+  </div>;
 }
 
 /**
@@ -53,15 +60,15 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
       {composer}
       {authenticated ? <>
         <section className="home-suggest" aria-label="Suggestions">
-          {loading ? <HomeSkeleton/> : <div className="chip-row home-chips">
+          {loading ? <ChipsSkeleton/> : <ScrollRow>
             {(home?.suggestions || []).slice(0, 3).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip"
               onClick={() => item.kind === "open" ? navigate(`/studio/${item.conversation_id}`) : onPrompt(item.prompt)}>
               <span dir="auto">{item.label}</span></button>)}
-          </div>}
+          </ScrollRow>}
         </section>
         <section className="home-recent" aria-label="Recent edits">
           <div className="home-recent-head"><h2>Recent edits</h2><NavLink to="/projects">All</NavLink></div>
-          {loading ? <HomeSkeleton/> : failed ? <p className="home-note">Recent edits could not be loaded.</p> : home?.recent.length ? <ul>
+          {loading ? <RowsSkeleton/> : failed ? <p className="home-note">Recent edits could not be loaded.</p> : home?.recent.length ? <ul>
             {home.recent.slice(0, 3).map(item => <li key={item.id}><NavLink to={`/studio/${item.id}`} title={item.title}>
               <span className="home-thumb" aria-hidden="true">{item.thumb ? <AuthenticatedMedia as="img" src={api.motionMediaUrl(item.thumb.split("/")[3], "thumb")} alt="" loading="lazy" draggable={false}/> : <Icon name={KIND_ICON[item.kind] || "thinking"} size={18}/>}</span>
               <span className="home-recent-copy"><span className="home-title" dir="auto">{displayTitle(item.title, 60) || "New edit"}</span>

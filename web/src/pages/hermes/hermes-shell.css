@@ -201,3 +201,10 @@
 .idea-status[data-tone="warning"] i { background: var(--warning); }
 .idea-status[data-tone="error"] i { background: var(--error); }
 .idea-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }
+
+/* nothing on the InstaGPT start page may be wider than the screen: every grid column can shrink and long text wraps */
+.ov, .hs-home-overview, .ov-block { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.ov > *, .ov-block > *, .hs-home-overview > * { min-width: 0; max-width: 100%; }
+.ov-block p, .ov-block h3, .ov-chip, .idea-heading { overflow-wrap: anywhere; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.ov-profile { min-width: 0; }

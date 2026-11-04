@@ -6,6 +6,7 @@ import { message } from './hermesUtils';
 import { useHermes } from './HermesContext';
 import HermesOnboarding from './HermesOnboarding';
 import HermesOverview from './HermesOverview';
+import { ScrollRow } from '../../components/ScrollRow';
 
 const SUGGESTIONS = ['پیجم را تحلیل کن', 'یک ایده‌ی ریلز بده', 'برنامه‌ی این هفته را بچین', 'بهترین زمان انتشار چیست؟'];
 
@@ -35,7 +36,7 @@ export default function HermesHome() {
       <Composer variant="home" text={text} setText={setText} files={[]} onRemoveFile={() => {}} onFiles={() => {}} processing={busy} onSend={() => void start()}
         error={error} onDismissError={() => setError('')} hasSpeech={false} listening={false} onListen={() => {}} autoFocus textareaRef={textareaRef}
         placeholder="Ask about your page, content, ideas, or schedule…" textOnly />
-      <div className="chip-row home-chips">{SUGGESTIONS.map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}</div>
+      <ScrollRow>{SUGGESTIONS.map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}</ScrollRow>
       <div className="hs-home-overview" data-hermes-main><HermesOverview /></div>
     </div>
   </div>;

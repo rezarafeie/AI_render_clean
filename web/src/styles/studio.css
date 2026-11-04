@@ -675,3 +675,24 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .home-status[data-tone="error"] i { background: var(--error); }
 .home-status[data-tone="working"] i { background: var(--ink); animation: home-pulse 1.4s ease-in-out infinite; }
 @media (max-width: 520px) { .home-recent li a { grid-template-columns: 40px minmax(0, 1fr); } .home-status { grid-column: 2; justify-self: start; margin-top: -2px; } }
+
+/* skeleton shaped like what it stands for */
+.home-skeleton-chips { display: flex; gap: 8px; overflow: hidden; }
+.home-skeleton-chips .skeleton { flex: none; height: 36px; width: 150px; border-radius: 999px; }
+.home-skeleton-chips .skeleton:nth-child(2) { width: 110px; }
+.home-skeleton-chips .skeleton:nth-child(3) { width: 130px; }
+.home-skeleton-rows { gap: 2px; }
+.home-skeleton-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 60px; padding: 8px 10px; }
+.home-skeleton-row > .skeleton { height: 40px; width: 40px; border-radius: 10px; }
+.home-skeleton-lines { display: grid; gap: 8px; }
+.home-skeleton-lines .skeleton { height: 12px; border-radius: 6px; width: 72%; }
+.home-skeleton-lines .skeleton:last-child { height: 10px; width: 38%; }
+
+/* a row that scrolls sideways shows it: a fade on the hidden side and an arrow */
+.scroll-row { position: relative; min-width: 0; }
+.scroll-row[data-end]::after, .scroll-row[data-start]::before { content: ""; position: absolute; top: 0; bottom: 0; width: 56px; pointer-events: none; z-index: 1; }
+.scroll-row[data-end]::after { right: 0; background: linear-gradient(to left, var(--bg) 25%, transparent); }
+.scroll-row[data-start]::before { left: 0; background: linear-gradient(to right, var(--bg) 25%, transparent); }
+.scroll-row-next { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-elevated, var(--surface)); color: var(--text); box-shadow: 0 2px 10px rgb(0 0 0 / .25); }
+.scroll-row-next:hover { background: var(--hover); }
