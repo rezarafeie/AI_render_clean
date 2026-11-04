@@ -13,14 +13,13 @@ async function load() {
   return {mod:mod.exports,React:require('react'),server:require('react-dom/server'),router:require('react-router-dom')};
 }
 
-test('the start page shows a skeleton for suggestions and recent edits until they arrive, and always offers InstaGPT', async () => {
+test('the start page shows a skeleton for suggestions and recent edits until they arrive, and has no card besides them', async () => {
   const {mod,React,server,router} = await load();
   const html = server.renderToStaticMarkup(React.createElement(router.MemoryRouter,null,React.createElement(mod.StudioHomePage,{composer:React.createElement('div',{id:'composer'}),authenticated:true,onPrompt:()=>{}})));
   const doc = new JSDOM(html).window.document;
   assert.ok(doc.querySelector('#composer'));
   assert.equal(doc.querySelectorAll('.home-skeleton').length,2);                       // suggestions and recent edits each wait with a skeleton
-  const insta = doc.querySelector('a.home-insta');
-  assert.equal(insta.getAttribute('href'),'/hermes');
+  assert.equal(doc.querySelector('a.home-insta'),null);                                 // InstaGPT keeps its button in the header only
   assert.ok(doc.querySelector('.home-recent-head h2'));
 });
 

@@ -677,3 +677,12 @@ button.mg-step-row:focus-visible { outline: 2px solid var(--focus, currentColor)
 /* Typing on a phone: the keyboard covers the home indicator, so no safe-area padding, and the tab bar makes room for the composer. */
 html[data-keyboard-open] .studio-tabs { display: none; }
 html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mobile"] .dock { padding-bottom: var(--space-2); }
+
+/* a calm start page: one row of suggestions that scrolls sideways, three recent edits, nothing else */
+.home-chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; margin-inline: calc(var(--space-4) * -1); padding-inline: var(--space-4); }
+.home-chips::-webkit-scrollbar { display: none; }
+.home-chip { flex: none; white-space: nowrap; max-width: 78vw; }
+.home-recent { margin-top: var(--space-3); }
+.home-recent li a { min-height: 52px; }
+.home-thumb { width: 36px; height: 36px; }
+.home-status { font-size: 12px; }

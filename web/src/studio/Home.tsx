@@ -18,8 +18,8 @@ function HomeSkeleton() {
 }
 
 /**
- * The start page under the composer: suggestions made from the person's own edits (and InstaGPT chats), the InstaGPT entry with its connection,
- * and the latest edits each with its real state. Everything arrives in one request and shows a skeleton until it does.
+ * The start page under the composer: up to three suggestions made from the person's own edits (and InstaGPT chats) and the latest three edits each
+ * with its real state (InstaGPT has its own button in the header). Everything arrives in one request and shows a skeleton until it does.
  */
 export function StudioHomePage({ composer, authenticated, onPrompt }: { composer: React.ReactNode; authenticated: boolean; onPrompt: (prompt: string) => void }) {
   const navigate = useNavigate();
@@ -50,26 +50,19 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
       {authenticated ? <>
         <section className="home-suggest" aria-label="پیشنهادها برای شما">
           {loading ? <HomeSkeleton/> : <div className="chip-row home-chips">
-            {(home?.suggestions || []).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip" title={item.reason || undefined}
+            {(home?.suggestions || []).slice(0, 3).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip"
               onClick={() => item.kind === "open" ? navigate(`/studio/${item.conversation_id}`) : onPrompt(item.prompt)}>
-              {item.kind === "open" ? <Icon name="chevron" size={14}/> : null}<span>{item.label}</span>{item.reason ? <small>{item.reason}</small> : null}</button>)}
+              {item.kind === "open" ? <Icon name="chevron" size={14}/> : null}<span>{item.label}</span></button>)}
           </div>}
         </section>
-        <NavLink to="/hermes" className="home-insta" aria-label="InstaGPT">
-          <span className="home-insta-mark"><Icon name="instagram" size={18}/></span>
-          <span className="home-insta-copy"><b>InstaGPT</b>
-            <small>{home ? (home.instagpt.connected ? (home.instagpt.chats[0] ? `وصل است · آخرین گفتگو: «${displayTitle(home.instagpt.chats[0], 36)}»` : "وصل است · ایده، پست و تحلیل اینستاگرام") : "ایده و پست اینستاگرام · اتصال حساب را کامل کنید") : "ایده، پست و تحلیل اینستاگرام"}</small></span>
-          {home ? <span className="home-insta-state" data-on={home.instagpt.connected || undefined}>{home.instagpt.connected ? "وصل" : "وصل نیست"}</span> : null}
-          <Icon name="chevron" size={16}/>
-        </NavLink>
         <section className="home-recent" aria-label="آخرین ادیت‌ها">
           <div className="home-recent-head"><h2>آخرین ادیت‌ها</h2><NavLink to="/projects">همه</NavLink></div>
           {loading ? <HomeSkeleton/> : failed ? <p className="home-note">بارگذاری آخرین ادیت‌ها ممکن نشد.</p> : home?.recent.length ? <ul>
-            {home.recent.map(item => <li key={item.id}><NavLink to={`/studio/${item.id}`} title={item.title}>
+            {home.recent.slice(0, 3).map(item => <li key={item.id}><NavLink to={`/studio/${item.id}`} title={item.title}>
               <span className="home-thumb" aria-hidden="true">{item.thumb ? <AuthenticatedMedia as="img" src={api.motionMediaUrl(item.thumb.split("/")[3], "thumb")} alt="" loading="lazy" draggable={false}/> : <Icon name={KIND_ICON[item.kind] || "thinking"} size={18}/>}</span>
               <span className="home-recent-copy"><span className="bidi wrap-safe" dir="auto">{displayTitle(item.title, 60) || "ادیت جدید"}</span>
                 <small>{item.kind_label} · {relativeTime(parseTime(item.updated_at), now)}</small></span>
-              <span className="home-status" data-tone={statusTone(item.status)}><i aria-hidden="true"/>{item.status_label}</span>
+              <span className="home-status" data-tone={statusTone(item.status)}><i aria-hidden="true"/>{item.status === "ready" ? null : item.status_label}</span>
             </NavLink></li>)}
           </ul> : <p className="home-note">هنوز ادیتی نساخته‌اید. اولین درخواست را بالا بنویسید.</p>}
         </section>
