@@ -189,6 +189,26 @@ async def studio_home_suggestions(request: Request):
     return await studio_home.model_suggestions(_user(request))
 
 
+class TranscriptionPrefs(BaseModel):
+    engine: Literal["auto", "elevenlabs", "whisper"]
+    whisper_model: Literal["", "base", "small", "medium", "large-v3"] = ""
+
+
+@router.get("/transcription-preferences")
+async def get_transcription_preferences(request: Request):
+    """Which speech-to-text the person's videos use, with what each choice costs."""
+    from app import transcribe_prefs
+    return {**transcribe_prefs.get(_user(request)), "elevenlabs_usd_per_hour": transcribe_prefs.ELEVENLABS_USD_PER_HOUR,
+            "long_video_minutes": 15, "models": list(transcribe_prefs.WHISPER_MODELS)}
+
+
+@router.put("/transcription-preferences")
+async def put_transcription_preferences(request: Request, body: TranscriptionPrefs):
+    from app import transcribe_prefs
+    value = transcribe_prefs.put(_user(request), body.engine, body.whisper_model)
+    return {**value, "elevenlabs_usd_per_hour": transcribe_prefs.ELEVENLABS_USD_PER_HOUR, "long_video_minutes": 15, "models": list(transcribe_prefs.WHISPER_MODELS)}
+
+
 @router.get("/instagpt")
 async def studio_instagpt(request: Request):
     """The InstaGPT page's connection and public numbers for the header button (connected is null while unknown)."""

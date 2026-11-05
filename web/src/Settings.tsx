@@ -7,6 +7,7 @@ import { aiAdminRequest } from "./api";
 import { useAuth } from "./auth/AuthContext";
 import { isLocalDevelopment } from "./auth";
 import { AgentSettings } from "./studio/AgentMode";
+import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
 
 type Tool = { label: string; description: string; to: string; icon: IconName };
@@ -82,6 +83,7 @@ export default function Settings() {
 
         {tab === "editing" ? <>
           {authenticated ? <AgentSettings/> : null}
+          {authenticated ? <TranscriptionSettings/> : null}
           <DeviceSettings/>
         </> : null}
 

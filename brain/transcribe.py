@@ -290,7 +290,7 @@ def long_local_enabled() -> bool:
 
 
 def _transcribe_long_local(video: Path, out_dir: Path, fhash: str, language: Optional[str], seconds: float,
-                           on_progress: Optional[Callable[[float, str], None]]) -> dict:
+                           on_progress: Optional[Callable[[float, str], None]], model_name: Optional[str] = None) -> dict:
     """Local Whisper in resumable pieces (engine.long_transcribe), then a model reads the text against its context and corrects wrong words.
     Word times are Whisper's and never move; the corrected text goes into the sentences, and the review's outcome is recorded in the transcript."""
     from engine import long_transcribe as lt
@@ -300,7 +300,7 @@ def _transcribe_long_local(video: Path, out_dir: Path, fhash: str, language: Opt
         if on_progress and kind == "transcription.progress":
             on_progress(float(data.get("percent", 0)) * 0.85, f"در حال گوش دادن به ویدیو ({round(float(data.get('percent', 0)))}٪)")
 
-    raw = lt.transcribe_long(video, work, language=language, on_event=on_event)
+    raw = lt.transcribe_long(video, work, language=language, model_name=model_name, on_event=on_event)
     segments = [s for s in raw["segments"] if s.get("words")]
     if not segments:
         raise RuntimeError("local Whisper heard no speech")
@@ -529,8 +529,12 @@ def transcribe(
     engine: Optional[str] = None,
     keyterms: Optional[list[str]] = None,
     on_progress: Optional[Callable[[float, str], None]] = None,
+    prefs: Optional[dict] = None,
 ) -> dict:
     """Transcribe *video* and write transcript.json to *out_dir*.
+
+    ``prefs`` is the person's choice ({"engine": "auto"|"elevenlabs"|"whisper", "whisper_model": ""|"base"|…}): auto keeps the rules below, elevenlabs never uses
+    local Whisper first, whisper always does (any length), with the model they chose.
 
     Returns the transcript dict: {words, sentences, language, duration}.
     If a cached transcript exists for the same video and ASR settings, returns it.
@@ -549,7 +553,14 @@ def transcribe(
             return effective_transcript(out_dir)
     elevenlabs_error: Optional[Exception] = None
 
-    if selected_engine == "elevenlabs" and long_local_enabled():
+    wanted = (prefs or {}).get("engine", "auto")
+    if wanted == "whisper" and selected_engine == "elevenlabs":
+        # The person asked for local Whisper for everything: no length threshold, no provider first.
+        from engine.probe import has_audio, probe_duration
+        seconds = probe_duration(video) if has_audio(video) else 0.0
+        if seconds > 0:
+            return _transcribe_long_local(video, out_dir, fhash, language, seconds, on_progress, model_name=(prefs or {}).get("whisper_model") or None)
+    if selected_engine == "elevenlabs" and wanted == "auto" and long_local_enabled():
         # A long recording is heard locally (no provider request limit, no per-hour fee), piece by piece, and the text is then checked by a model.
         try:
             from engine.probe import has_audio, probe_duration

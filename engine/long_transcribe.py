@@ -238,6 +238,35 @@ def transcribe_long(video: Path, work: Path, *, language: Optional[str] = None, 
     return raw
 
 
+def from_transcript(transcript: dict, work: Path) -> dict:
+    """Shape a finished transcript (words and sentences, e.g. ElevenLabs') like local pieces, so the rest of the long-video analysis does not care which
+    engine heard the video. Pieces are 5-minute windows by sentence start; returns the merged raw transcript."""
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "chunks").mkdir(exist_ok=True)
+    duration = float(transcript.get("duration") or (transcript["words"][-1]["end"] if transcript.get("words") else 0))
+    signature = settings_signature("elevenlabs", transcript.get("requested_language"), "cloud")
+    words = transcript.get("words") or []
+    groups: dict[int, list[dict]] = {}
+    language = transcript.get("language") or "fa"
+    for sentence in transcript.get("sentences") or []:
+        inside = [w for w in words if w["start"] >= sentence["start"] - 0.001 and w["end"] <= sentence["end"] + 0.001]
+        if not inside:
+            continue
+        index = int(sentence["start"] // TARGET_CHUNK_S)
+        groups.setdefault(index, [])
+        groups[index].append({"id": f"{index:04d}-{len(groups[index]):03d}", "start": inside[0]["start"], "end": inside[-1]["end"], "text": sentence["text"],
+                              "words": [{"w": w["w"], "start": w["start"], "end": w["end"], "prob": w.get("prob", 0.9)} for w in inside],
+                              "confidence": 0.9, "no_speech": 0.0, "language": language, "speaker": None})
+    count = max(groups) + 1 if groups else 1
+    spans = [[round(i * TARGET_CHUNK_S, 3), round(min(duration, (i + 1) * TARGET_CHUNK_S), 3)] for i in range(count)]
+    for index in range(count):
+        item = {"index": index, "span": spans[index], "language": language, "language_probability": 1.0, "segments": groups.get(index, []),
+                "elapsed_s": 0.0, "audio_s": round(spans[index][1] - spans[index][0], 2), "signature": signature}
+        (work / "chunks" / f"{index:04d}.json").write_text(json.dumps(item, ensure_ascii=False))
+    (work / "plan.json").write_text(json.dumps({"signature": signature, "duration": round(duration, 3), "model": "elevenlabs", "chunks": spans, "created_at": time.time()}))
+    return merge_chunks(work, [tuple(s) for s in spans], signature, duration, "elevenlabs")
+
+
 def merge_chunks(work: Path, chunks: list, signature: str, duration: float, model_name: str) -> dict:
     segments, languages = [], {}
     for index in range(len(chunks)):

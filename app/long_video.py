@@ -248,6 +248,21 @@ def _set(directory: Path, **changes: Any) -> dict:
     return save(directory, analysis)
 
 
+def _hear_with_elevenlabs(directory: Path, source: Path, analysis: dict, on_event, enhancer) -> dict:
+    """The person chose ElevenLabs: it hears the whole video (in pieces, minutes, billed by the hour of audio), and the result is shaped like local pieces."""
+    from brain.transcribe import file_hash
+    from brain.transcribe_elevenlabs import transcribe_elevenlabs
+    from engine import long_transcribe as lt
+    on_event("transcription.started", {"duration_s": analysis["duration"], "chunks": 1, "model": "elevenlabs", "resumed": False})
+    transcript, cost = transcribe_elevenlabs(source, directory, language="fa", file_digest=file_hash(source))
+    raw = lt.from_transcript(transcript, directory)
+    for index in range(len(list((directory / "chunks").glob("*.json")))):
+        enhancer.submit(index)
+    on_event("transcription.progress", {"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0, "language": raw["language"]})
+    _set(directory, transcription_cost_usd=cost)
+    return raw
+
+
 def _run(directory: Path) -> None:
     from engine import long_transcribe as lt
     analysis = load(directory)
@@ -272,7 +287,12 @@ def _run(directory: Path) -> None:
             if kind == "transcription.chunk.completed":
                 enhancer.submit(data["index"])
 
-        raw = lt.transcribe_long(source, directory, on_event=on_event, should_stop=stopper)
+        from app import transcribe_prefs
+        prefs = transcribe_prefs.get(analysis.get("user_key"))
+        if prefs["engine"] == "elevenlabs":
+            raw = _hear_with_elevenlabs(directory, source, analysis, on_event, enhancer)
+        else:
+            raw = lt.transcribe_long(source, directory, model_name=prefs["whisper_model"] or None, on_event=on_event, should_stop=stopper)
         version = raw["version"]
         _set(directory, transcription_status="completed", language=raw["language"], transcript_version=version,
              progress={"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0})
