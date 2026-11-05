@@ -13,7 +13,7 @@ test('plan approval locks immediately, rejects double clicks and waits for refre
   const {createRoot} = require('react-dom/client');
   const {flushSync} = require('react-dom');
   let finishRequest, finishRefresh, calls = 0;
-  globalThis.__planTestApi = {approveStudioPlan:()=>{calls++;return new Promise(resolve=>{finishRequest=resolve;});}};
+  globalThis.__planTestApi = {rawUrl:()=>'/raw',studioOutputUrl:()=>'/output',approveStudioPlan:()=>{calls++;return new Promise(resolve=>{finishRequest=resolve;});}};
   const compiled = await build({entryPoints:[new URL('../src/studio/PlanReview.tsx',import.meta.url).pathname],bundle:true,write:false,format:'cjs',platform:'node',external:['react','react-dom'],plugins:[{
     name:'test-boundaries',setup(b){
       b.onResolve({filter:/^\.\.\/(api|AuthenticatedMedia|ui)$/},args=>({path:args.path,namespace:'test'}));

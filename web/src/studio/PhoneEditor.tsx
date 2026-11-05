@@ -1,5 +1,4 @@
 import React from "react";
-import { api } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon, type IconName } from "../components/Icon";
 import type { LookPatch, LookValues } from "./LookStudio";
@@ -13,8 +12,9 @@ const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.fl
 /** The Edit tab of a Talking reel laid out like a phone video editor: a big picture that follows every change, play / undo under it, a row of tools,
  *  and (after tapping one) a bottom sheet with a tick to confirm. Light, frame and zoom use one slider and a row of parameters; the other tools keep
  *  their forms, which the page passes in as children. */
-export function PhoneEditor({ jobId, values, disabled, onChange, tools, open, setOpen, onUndo, canUndo, presets, children }: {
-  jobId: string; values: LookValues; disabled: boolean; onChange: (patch: LookPatch) => void;
+export function PhoneEditor({ src, base, values, disabled, onChange, tools, open, setOpen, onUndo, canUndo, presets, children }: {
+  /** the video shown, and the settings it was made with: when it is a finished render, only the change from them is drawn on it (null: the original footage, drawn from scratch) */
+  src: string; base: LookValues | null; values: LookValues; disabled: boolean; onChange: (patch: LookPatch) => void;
   tools: [EditorTool, string, IconName][]; open: EditorTool | null; setOpen: (tool: EditorTool | null) => void;
   onUndo: () => void; canUndo: boolean; presets?: React.ReactNode; children?: React.ReactNode;
 }) {
@@ -25,12 +25,17 @@ export function PhoneEditor({ jobId, values, disabled, onChange, tools, open, se
   const [lightTab, setLightTab] = React.useState<"adjust" | "presets">("adjust");
   const [param, setParam] = React.useState<Record<string, string>>({ light: "brightness", frame: "shiftx", zoom: "zbase" });
 
-  const moved = values.shiftX !== 0 || values.shiftY !== 0;
-  const base = values.zoomEnabled ? (closeShot ? values.zoomClose : values.zoomBase) / 100 : 1;
-  const scale = Math.max(base, moved ? 1.12 : 1);
-  const tx = -(values.shiftX / 100) * (scale - 1) / 2 * 100;
-  const ty = -(values.shiftY / 100) * (scale - 1) / 2 * 100;
-  const filter = `brightness(${100 + values.brightness * 1.4}%) contrast(${values.contrast}%) saturate(${values.saturation}%)`;
+  const look = (v: LookValues) => {
+    const moved = v.shiftX !== 0 || v.shiftY !== 0;
+    const zoom = v.zoomEnabled ? (closeShot ? v.zoomClose : v.zoomBase) / 100 : 1;
+    const scale = Math.max(zoom, moved ? 1.12 : 1);
+    return { scale, tx: -(v.shiftX / 100) * (scale - 1) / 2 * 100, ty: -(v.shiftY / 100) * (scale - 1) / 2 * 100 };
+  };
+  const now = look(values), was = base ? look(base) : { scale: 1, tx: 0, ty: 0 };
+  const ref = base ?? { brightness: 0, contrast: 100, saturation: 100, temperature: 0 };
+  const filter = `brightness(${(100 + values.brightness * 1.4) / (100 + ref.brightness * 1.4) * 100}%) contrast(${values.contrast / Math.max(ref.contrast, 1) * 100}%) saturate(${ref.saturation ? values.saturation / ref.saturation * 100 : values.saturation}%)`;
+  const scale = now.scale / was.scale, tx = now.tx - was.tx, ty = now.ty - was.ty;
+  const warmth = values.temperature - ref.temperature;
 
   const params: Record<string, Param[]> = {
     light: [
@@ -53,11 +58,11 @@ export function PhoneEditor({ jobId, values, disabled, onChange, tools, open, se
   return <div className="pe" dir="rtl">
     <div className="pe-top">
       <div className="pe-stage" aria-label="پیش‌نمایش زندهٔ تغییرات">
-        <AuthenticatedMedia as="video" ref={video} src={api.rawUrl(jobId)} muted playsInline preload="metadata"
+        <AuthenticatedMedia as="video" ref={video} src={src} muted playsInline preload="metadata"
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e: any) => setTime(t => ({ ...t, total: e.currentTarget.duration || 0 }))}
           onTimeUpdate={(e: any) => setTime({ now: e.currentTarget.currentTime, total: e.currentTarget.duration || 0 })}
           style={{ width: "100%", height: "100%", objectFit: "cover", filter, transform: `translate(${tx}%, ${ty}%) scale(${scale})`, transition: "transform .12s" }}/>
-        {values.temperature !== 0 ? <div aria-hidden className="pe-tint" style={{ background: values.temperature > 0 ? "#ff8a3d" : "#4b8dff", opacity: Math.abs(values.temperature) / 160 }}/> : null}
+        {warmth !== 0 ? <div aria-hidden className="pe-tint" style={{ background: warmth > 0 ? "#ff8a3d" : "#4b8dff", opacity: Math.min(Math.abs(warmth) / 160, 0.5) }}/> : null}
       </div>
       <div className="pe-transport">
         <button type="button" className="pe-icon" aria-label="برگرداندن آخرین تغییر" disabled={!canUndo || disabled} onClick={onUndo}><Icon name="undo" size={22}/></button>
@@ -66,6 +71,7 @@ export function PhoneEditor({ jobId, values, disabled, onChange, tools, open, se
       </div>
       <input className="pe-scrub" type="range" min={0} max={Math.max(time.total, 0.1)} step={0.05} value={Math.min(time.now, time.total || 0)} aria-label="جابه‌جایی در ویدیو"
         onChange={event => { const el = video.current; if (el) el.currentTime = Number(event.target.value); }}/>
+      <small className="pe-source">{base ? "ویدیوی ساخته‌شدهٔ فعلی + تغییرات شما" : "فیلم اصلی (هنوز رندر نشده)"}</small>
     </div>
 
     {open === null ? <nav className="pe-tools" aria-label="ابزارهای ویرایش">{tools.map(([id, label, icon]) =>

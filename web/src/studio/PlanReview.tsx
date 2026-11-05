@@ -76,6 +76,16 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
     shiftX: value("shift_x", plan.look.framing?.shift_x ?? 0), shiftY: value("shift_y", plan.look.framing?.shift_y ?? 0),
     zoomEnabled: value("zoom_enabled", plan.look.zoom_enabled ?? true), zoomBase: value("zoom_base", plan.look.zoom_base ?? 100),
     zoomClose: value("zoom_close", plan.look.zoom_close ?? 125), zoomAmount: value("zoom", plan.look.zoom) };
+  // The picture is the finished render when there is one (its own light, colour and frame included), with only the person's changes drawn on top.
+  const rendered = project.state?.candidate_output || project.state?.last_observed?.output;
+  const approved = versions.find(item => item.id === project.state?.plan?.approved_id);
+  const baseLook = approved?.content.look;
+  const previewSource = rendered && baseLook ? {
+    src: `${api.studioOutputUrl(project.id)}?candidate=${Boolean(project.state?.candidate_output)}&version=${encodeURIComponent(rendered)}`,
+    base: { brightness: baseLook.grade?.brightness ?? 0, contrast: baseLook.grade?.contrast ?? 100, saturation: baseLook.grade?.saturation ?? 100, temperature: baseLook.grade?.temperature ?? 0,
+      gradeAuto: baseLook.grade_auto ?? true, framingAuto: baseLook.framing?.auto ?? true, shiftX: baseLook.framing?.shift_x ?? 0, shiftY: baseLook.framing?.shift_y ?? 0,
+      zoomEnabled: baseLook.zoom_enabled ?? true, zoomBase: baseLook.zoom_base ?? 100, zoomClose: baseLook.zoom_close ?? 125, zoomAmount: baseLook.zoom ?? 100 } as LookValues,
+  } : { src: api.rawUrl(project.external_ref || ""), base: null as LookValues | null };
   const visibleTools = TOOLS.filter(([, , , only]) => t1 || !only);
   const activeTool: Tool = visibleTools.some(([id]) => id === tool) ? tool : "style";
   const SLIDERS: Tool[] = ["light", "frame", "zoom"];
@@ -143,7 +153,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
     {!isLatest ? <div className="notice" data-tone="warning">نسخهٔ قدیمی را می‌بینید؛ فقط نسخهٔ فعلی قابل ویرایش و تأیید است.</div> : null}
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
 
-    {t1 ? <PhoneEditor jobId={project.external_ref!} values={lookValues} disabled={!editable} onChange={patch => set(patch)}
+    {t1 ? <PhoneEditor src={previewSource.src} base={previewSource.base} values={lookValues} disabled={!editable} onChange={patch => set(patch)}
       tools={visibleTools.map(([id, label, icon]) => [id, label, icon] as [Tool, string, IconName])} open={sheet} setOpen={setSheet}
       onUndo={undo} canUndo={historyLength > 0} presets={presetsField}/> : <div className="editor-top">
       <nav className="editor-tools" aria-label="ابزارهای ویرایش">{visibleTools.map(([id, label, icon]) =>
