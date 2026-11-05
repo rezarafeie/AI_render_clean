@@ -75,10 +75,8 @@ def test_chunked_run_streams_real_segments_and_resumes_without_redoing_chunks(vi
 
 def test_stop_request_keeps_finished_chunks(video, tmp_path, monkeypatch):
     monkeypatch.setattr(lt, "plan_chunks", lambda d, s, target=50.0, window=lt.SNAP_WINDOW_S: [(0.0, 65.0), (65.0, 130.0)])
-    count = {"n": 0}
-    def stop():
-        count["n"] += 1
-        return count["n"] > 1
+    def stop():                                           # Stop arrives once the first piece is on disk
+        return (tmp_path / "chunks" / "0000.json").is_file()
     with pytest.raises(lt.Stopped):
         lt.transcribe_long(video, tmp_path, language="fa", model_name="base", should_stop=stop, model=FakeModel())
     assert (tmp_path / "chunks" / "0000.json").is_file() and not (tmp_path / "chunks" / "0001.json").is_file()
