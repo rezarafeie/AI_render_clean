@@ -623,7 +623,10 @@ def transcript_for(job_dir: Path, video: Path) -> dict:
         transcript = json.loads((job_dir / 'transcript.json').read_text())
         if not transcript.get('words'): raise ValueError('متن ذخیره‌شده معتبر نیست.')
         return transcript
-    transcript = transcribe(video, job_dir, language="fa", engine="elevenlabs")
+    def heard(percent: float, message: str) -> None:        # a long recording is transcribed locally for many minutes: say how far it is
+        _stage(job_dir, "transcribing", progress=5 + int(percent * 0.07), message=message)
+
+    transcript = transcribe(video, job_dir, language="fa", engine="elevenlabs", on_progress=heard)
     if not transcript.get("words"):
         if transcript.get("fallback_reason") and "no audio" not in transcript["fallback_reason"]:
             raise RuntimeError("transcription failed (" + str(transcript["fallback_reason"])[:160] + "); try again")       # not the same as a video without speech

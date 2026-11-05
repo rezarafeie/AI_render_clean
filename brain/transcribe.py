@@ -5,11 +5,12 @@ import hashlib
 import json
 import logging
 import os
+import time
 import signal
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -275,6 +276,61 @@ def save_corrections(out_dir: Path, base_key: str, items: list[dict]) -> dict:
     return effective_transcript(out_dir)
 
 
+LONG_LOCAL_SECONDS = float(os.environ.get("LONG_LOCAL_TRANSCRIBE_SECONDS", "900"))      # 15 minutes and longer are transcribed by local Whisper
+
+
+def long_local_enabled() -> bool:
+    if os.environ.get("LONG_LOCAL_TRANSCRIBE", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    try:
+        from brain.lm_direct import config as direct_config
+        return bool(direct_config()["stt"]["enabled"])
+    except Exception:
+        return True
+
+
+def _transcribe_long_local(video: Path, out_dir: Path, fhash: str, language: Optional[str], seconds: float,
+                           on_progress: Optional[Callable[[float, str], None]]) -> dict:
+    """Local Whisper in resumable pieces (engine.long_transcribe), then a model reads the text against its context and corrects wrong words.
+    Word times are Whisper's and never move; the corrected text goes into the sentences, and the review's outcome is recorded in the transcript."""
+    from engine import long_transcribe as lt
+    work = out_dir / "long_asr"
+
+    def on_event(kind: str, data: dict) -> None:
+        if on_progress and kind == "transcription.progress":
+            on_progress(float(data.get("percent", 0)) * 0.85, f"در حال گوش دادن به ویدیو ({round(float(data.get('percent', 0)))}٪)")
+
+    raw = lt.transcribe_long(video, work, language=language, on_event=on_event)
+    segments = [s for s in raw["segments"] if s.get("words")]
+    if not segments:
+        raise RuntimeError("local Whisper heard no speech")
+    review = {"status": "reviewed", "changed": 0, "uncertain": 0, "not_checked": 0}
+    if on_progress:
+        on_progress(87.0, "در حال بررسی و اصلاح متن با مدل هوش مصنوعی")
+    try:
+        from creative import discovery
+        checked = discovery.enhance_segments(segments, deadline=time.monotonic() + max(240.0, 0.6 * seconds))
+        review.update(changed=sum(1 for s in checked if s.get("changed")), uncertain=sum(1 for s in checked if s.get("uncertain")),
+                      not_checked=sum(1 for s in checked if "not_enhanced" in s.get("flags", [])))
+        if review["not_checked"] == len(checked):
+            review["status"] = "unavailable"
+    except Exception as exc:
+        log.warning("AI review of the local transcript failed: %s", str(exc)[:200])
+        checked = [{**s, "enhanced_text": s["text"]} for s in segments]
+        review["status"] = "unavailable"
+    words = [{"w": w["w"], "start": w["start"], "end": w["end"], "prob": w.get("prob", 0.9)} for s in segments for w in s["words"]]
+    sentences = [{"text": s.get("enhanced_text") or s["text"], "start": s["words"][0]["start"], "end": s["words"][-1]["end"]} for s in checked if s.get("words")]
+    transcript = {"file_hash": fhash, "cache_key": "local-long-" + str(raw["version"]), "engine": "whisper", "model_size": raw.get("model"),
+                  "requested_language": language, "language": raw.get("language") or language or "unknown", "duration": raw.get("duration", seconds),
+                  "words": words, "sentences": sentences, "source": "local-whisper-long", "ai_review": review}
+    _archive_current(out_dir)
+    (out_dir / "transcript.json").write_text(json.dumps(transcript, indent=2, ensure_ascii=False))
+    (out_dir / "asr_cost.json").write_text(json.dumps({"engine": "whisper", "audio_seconds": transcript["duration"], "cost_usd": 0.0}, indent=2))
+    if on_progress:
+        on_progress(100.0, "متن آماده شد")
+    return effective_transcript(out_dir)
+
+
 def _failed_attempt(cached: dict) -> bool:
     """An empty transcript written because extraction or the model failed is not an answer: asking again must try again (a silent video has no fallback reason)."""
     return not cached.get("words") and bool(cached.get("fallback_reason"))
@@ -472,6 +528,7 @@ def transcribe(
     hotwords: Optional[list[str]] = None,
     engine: Optional[str] = None,
     keyterms: Optional[list[str]] = None,
+    on_progress: Optional[Callable[[float, str], None]] = None,
 ) -> dict:
     """Transcribe *video* and write transcript.json to *out_dir*.
 
@@ -491,6 +548,21 @@ def transcribe(
                 and cached.get('words') and cached.get('engine') in {'elevenlabs','elevenlabs_jarvis','elevenlabs_sarovi','whisper'}):
             return effective_transcript(out_dir)
     elevenlabs_error: Optional[Exception] = None
+
+    if selected_engine == "elevenlabs" and long_local_enabled():
+        # A long recording is heard locally (no provider request limit, no per-hour fee), piece by piece, and the text is then checked by a model.
+        try:
+            from engine.probe import has_audio, probe_duration
+            seconds = probe_duration(video) if has_audio(video) else 0.0
+        except Exception:
+            seconds = 0.0
+        if seconds >= LONG_LOCAL_SECONDS:
+            try:
+                return _transcribe_long_local(video, out_dir, fhash, language, seconds, on_progress)
+            except Exception as exc:
+                if type(exc).__name__ == "Stopped":
+                    raise
+                log.warning("local long transcription failed for %s (%s: %s); trying the provider chain", video.name, type(exc).__name__, str(exc)[:200])
 
     if selected_engine == "elevenlabs":
         from brain.transcribe_elevenlabs import transcribe_elevenlabs
