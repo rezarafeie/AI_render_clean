@@ -1,0 +1,64 @@
+{
+ "sheets": [
+  {
+   "file": "sheet1.jpg",
+   "ids": [
+    "hyperframes:beat-timeline",
+    "hyperframes:chart-story",
+    "hyperframes:conic-progress-ring",
+    "hyperframes:constellation-hub",
+    "hyperframes:count-up",
+    "hyperframes:cta-lockup",
+    "hyperframes:cta-close",
+    "hyperframes:headline-slam",
+    "hyperframes:kinetic-type-swap",
+    "hyperframes:line-swap",
+    "hyperframes:marker-highlight",
+    "hyperframes:match-cut",
+    "hyperframes:notification-stack",
+    "hyperframes:native-notification-pop",
+    "hyperframes:overwhelm-surround"
+   ]
+  },
+  {
+   "file": "sheet2.jpg",
+   "ids": [
+    "hyperframes:radial-surround",
+    "hyperframes:pan-stations",
+    "hyperframes:per-word-rise",
+    "hyperframes:perspective-marquee",
+    "hyperframes:pull-back-reveal",
+    "hyperframes:push-in",
+    "hyperframes:social-proof-card",
+    "hyperframes:split-tilt-cards",
+    "hyperframes:comparison-split",
+    "hyperframes:before-after-wipe",
+    "hyperframes:focus-rack",
+    "hyperframes:state-chip-rail",
+    "hyperframes:svg-mask-reveal",
+    "hyperframes:text-shimmer",
+    "hyperframes:titlecard-calm"
+   ]
+  },
+  {
+   "file": "sheet3.jpg",
+   "ids": [
+    "hyperframes:titlecard-lockup",
+    "hyperframes:typed-prompt",
+    "hyperframes:vox-annotate",
+    "hyperframes:grid-card-assemble",
+    "hyperframes:toggle-flip",
+    "hyperframes:star-rating-fill",
+    "hyperframes:tracing-beam",
+    "hyperframes:avatar-cloud",
+    "hyperframes:multiplayer-cursors",
+    "hyperframes:drift-hold",
+    "hyperframes:staggered-fade-up",
+    "hyperframes:text-stagger",
+    "hyperframes:marker-checklist-card",
+    "hyperframes:notes-typing",
+    "hyperframes:cursor-text-select"
+   ]
+  }
+ ]
+}

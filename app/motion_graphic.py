@@ -938,6 +938,69 @@ def _image_input_questions(plan, record: dict) -> list[str]:
     return list(dict.fromkeys(questions))
 
 
+def _scout_library(directory: Path, plan, brief: str, used: list[str]):
+    """Let an image-capable model suggest ready-made components for scenes they really fit (see creative.library_scout). Never fatal: the plan is kept as it was on any failure."""
+    from creative import library_scout
+    if not library_scout.enabled():
+        return plan
+    _note(directory, "library", "دارم کتابخانهٔ کامپوننت‌های آماده را با صحنه‌ها مقایسه می‌کنم")
+    try:
+        result, report = library_scout.scout(plan, brief, used=used)
+    except _Cancelled:
+        raise
+    except Exception as exc:
+        log.warning("library scout failed for %s: %s", directory.name, str(exc)[:200])
+        result, report = plan, {"status": "failed", "reason": type(exc).__name__, "picks": [], "offered": 0}
+    with _lock(directory.name):
+        saved = load(directory); saved["library"] = report; save(directory, saved)
+    picked = [p for p in report.get("picks", []) if p.get("used")]
+    if picked:
+        text = "کامپوننت آماده: " + "؛ ".join(f"صحنهٔ {p['scene']} ← {p['resource_id'].split(':')[-1]}" for p in picked)
+    elif report.get("status") == "none-fits":
+        text = "کتابخانه بررسی شد؛ هیچ کامپوننت آماده‌ای از طراحی اختصاصی بهتر نبود"
+    else:
+        text = "کتابخانهٔ کامپوننت‌ها استفاده نشد" + (f" ({report.get('reason')})" if report.get("reason") else "")
+    lines = [f"صحنهٔ {p['scene']} · {p['resource_id']} · {'استفاده شد' if p.get('used') else p.get('why_not', '')} — {p.get('reason', '')}" for p in report.get("picks", [])]
+    _note(directory, "library", text, "done", detail="\n".join([f"{report.get('offered', 0)} کامپوننت آماده به مدل نشان داده شد (با تصویر)", *lines]))
+    return result
+
+
+def _drop_scouted(directory: Path, build, brief: str, notes: list[str]):
+    """A component the scout suggested failed in the browser: its scenes are designed by hand instead, so a suggestion never costs the film. Returns the
+    new page, or None when there is nothing of that kind to drop (a component the planner chose itself keeps the strict behaviour)."""
+    from creative import motion_graphic as mg
+    picks = (load(directory).get("library") or {}).get("picks", [])
+    scouted = {p["scene"] for p in picks if p.get("used")}
+    scenes = build.plan.scenes
+    present = [n for n, s in enumerate(scenes, 1) if s.native_component or s.shotcraft_component]
+    if not present or any(n not in scouted for n in present):
+        return None
+    for n in present:
+        scenes[n - 1].native_component = None
+        (build.scenes_dir / f"s{n}.json").unlink(missing_ok=True)
+        try:
+            draft = mg.author_scene(build.plan, n, brief, context=build.context, style=build.style)
+        except Exception as exc:
+            log.warning("scene %d could not be designed by hand after its component failed: %s", n, str(exc)[:160])
+            draft = mg.fallback_scene(build.plan, n)
+        build.drafts[n] = draft
+        notes.append(f"کامپوننت آمادهٔ صحنهٔ {n} در بررسی مرورگر رد شد؛ این صحنه با طراحی اختصاصی ساخته شد")
+        _note(directory, f"scene{n}", f"صحنهٔ {n}: کامپوننت آماده رد شد؛ با طراحی اختصاصی ساخته شد", "done")
+    saved_plan = directory / "plan.json"
+    try:
+        cached = json.loads(saved_plan.read_text())
+        saved_plan.write_text(json.dumps({"fp": cached.get("fp", ""), "plan": build.plan.model_dump()}, ensure_ascii=False))
+    except (OSError, ValueError):
+        pass
+    with _lock(directory.name):
+        saved = load(directory)
+        for p in (saved.get("library") or {}).get("picks", []):
+            if p.get("used") and p["scene"] in present:
+                p["used"] = False; p["why_not"] = "failed the browser check; designed by hand instead"
+        save(directory, saved)
+    return mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, len(scenes) + 1)], build.audio)
+
+
 def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], scene_notes: list[str]):
     """Plan the clip, then design its scenes in parallel while telling the person what is really being worked on. Returns (page, build) or None
     when it asked questions. Finished work is kept on disk: a retry continues from the plan and the scenes that already exist."""
@@ -992,6 +1055,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
             _ask(directory, record, plan.questions)
             return None
         _learn("plan_s", time.monotonic() - started)
+        plan = _scout_library(directory, plan, brief, used)
         saved_plan.write_text(json.dumps({"fp": plan_fp, "plan": plan.model_dump()}, ensure_ascii=False))
         count = len(plan.scenes)
         _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done", detail=_plan_detail(brief, plan))
@@ -1179,10 +1243,19 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                 raise _Cancelled()
             number = instance.split("-",1)[0].lstrip("s")
             _progress(directory,"writing",30+round(percent*.04),f"اجرای کامپوننت آمادهٔ صحنهٔ {number} · {percent}%",stage="native_component")
-        if getattr(page,"shotcraft_components",None):
-            mg.write_project(work, page, on_component_progress=component_progress)
-        else:
-            mg.write_project(work, page)
+        try:
+            if getattr(page,"shotcraft_components",None):
+                mg.write_project(work, page, on_component_progress=component_progress)
+            else:
+                mg.write_project(work, page)
+        except _Cancelled:
+            raise
+        except Exception:
+            dropped = _drop_scouted(directory, build, brief, notes) if build and getattr(page, "native_components", None) else None
+            if dropped is None:
+                raise
+            page = dropped
+            continue
         _progress(directory, "checking", 36, "دارم صفحه را در مرورگر بررسی می‌کنم: چیدمان، خوانایی و خطاهای اجرا.", stage="checking",
                   eta=_remaining(0, page.duration))
         _note(directory, "check", "دارم صحنه‌ها را در مرورگر بررسی می‌کنم: چیدمان، خوانایی متن و خطاهای اجرا")
@@ -1202,6 +1275,10 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             raise _Cancelled()
         problems = list(result.blocking)
         if problems and (getattr(page, "native_components", None) or getattr(page,"shotcraft_components",None)):
+            dropped = _drop_scouted(directory, build, brief, notes) if build else None
+            if dropped is not None:
+                page = dropped
+                continue
             raise RuntimeError("کامپوننت اجرایی از بررسی رد شد؛ کد اصلی با طراحی ساده جایگزین نشد: " + problems[0])
         if not problems:
             # Layout and contrast findings are not fatal and do not justify rewriting the page with a slow model: they are reported.

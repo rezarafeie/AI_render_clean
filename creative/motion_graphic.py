@@ -861,8 +861,30 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
     if scene.shotcraft_id:
         from .shotcraft import scene_reference
         parts.append(scene_reference(scene.shotcraft_id))
+    parts.extend(_picture_rules(plan, n))
     parts.append("Palette background and ink are already applied to #s%d; use accent colours for emphasis." % n)
     return "\n\n".join(parts)
+
+
+_PICTURE = re.compile(r"\./assets/[\w.-]+\.(?:png|jpe?g|webp)", re.I)
+
+
+def _picture_rules(plan: MotionPlan, n: int) -> list[str]:
+    """Rules for a scene that shows an attached picture: never covering the headline, and a different treatment each time the same picture comes back."""
+    mine = set(_PICTURE.findall(plan.scenes[n - 1].idea))
+    if not mine:
+        return []
+    rules = ["PICTURE FRAME: the picture's frame, at its largest size during any animation, stays at least 48 px clear of the headline and of every other text. "
+             "Size the frame from the space left below the headline, not from the whole canvas; a scale-up must be planned against that space. The headline is never covered."]
+    for source in sorted(mine):
+        users = [i for i, sc in enumerate(plan.scenes, 1) if source in sc.idea]
+        if len(users) > 1:
+            place = users.index(n) + 1
+            rules.append(f"THE SAME PICTURE ({source}) appears in scenes {', '.join(map(str, users))}; this is time {place} of {len(users)}. Each appearance must look different from the others: "
+                         "show a different part of it (crop the frame to another region with clipPath or a different object-position; the facts list the picture's regions), "
+                         "use a different camera move (push-in, slow pan, a highlighted region, a callout) and a different frame size, position and headline placement. "
+                         "Never repeat the previous scene's layout with only a small shift.")
+    return rules
 
 
 SCENE_ROUTE = "motion_graphic_designer"
