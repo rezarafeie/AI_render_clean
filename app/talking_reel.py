@@ -625,6 +625,8 @@ def transcript_for(job_dir: Path, video: Path) -> dict:
         return transcript
     transcript = transcribe(video, job_dir, language="fa", engine="elevenlabs")
     if not transcript.get("words"):
+        if transcript.get("fallback_reason") and "no audio" not in transcript["fallback_reason"]:
+            raise RuntimeError("transcription failed (" + str(transcript["fallback_reason"])[:160] + "); try again")       # not the same as a video without speech
         raise RuntimeError("no speech found in the video")
     return transcript
 

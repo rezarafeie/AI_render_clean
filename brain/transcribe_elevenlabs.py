@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ _READ_TIMEOUT = max(200,int(os.environ.get("ELEVENLABS_SCRIBE_READ_TIMEOUT", "20
 # Markers of errors that will fail identically on an immediate retry: an
 # exhausted quota, or a rejected/forbidden key. These are surfaced right away
 # so the caller can fall back to the local Whisper engine without delay.
+CHUNK_SECONDS = 540          # a single request for an hour of audio outlasts the 200 s read limit and the relay's request limit: long audio goes in pieces
 _PERMANENT_ERROR_MARKERS = ("quota_exceeded", "quota", "status_code: 401", "status_code: 403")
 
 
@@ -147,6 +149,16 @@ def transcribe_elevenlabs(
 
     wav = _extract_audio(video, out_dir)
     try:
+        from engine.probe import probe_duration
+        total = probe_duration(wav)
+    except Exception:
+        total = 0.0
+    if total > CHUNK_SECONDS * 1.5:
+        try:
+            return _transcribe_in_chunks(wav, total, out_dir, key, file_digest, language, keyterms, api_key)
+        finally:
+            wav.unlink(missing_ok=True)
+    try:
         import httpx as _httpx
         from elevenlabs import ElevenLabs
         from brain.elevenlabs_transport import base_url
@@ -201,6 +213,59 @@ def transcribe_elevenlabs(
 
     finally:
         wav.unlink(missing_ok=True)
+
+
+def _transcribe_in_chunks(wav: Path, total: float, out_dir: Path, key: str, file_digest: str, language: Optional[str],
+                          keyterms: Optional[list[str]], api_key: str) -> tuple[dict, float]:
+    """Scribe on consecutive pieces of the audio, their word times moved to the whole recording's clock. Any piece that fails fails the whole attempt
+    (the caller then tries the next provider): a transcript with a hole in it would cut and caption the wrong places."""
+    import httpx as _httpx
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+    from elevenlabs import ElevenLabs
+    from brain.elevenlabs_transport import base_url
+
+    pieces = [(i, start) for i, start in enumerate(range(0, int(total) + 1, CHUNK_SECONDS)) if start < total]
+    folder = out_dir / "asr_chunks"
+    folder.mkdir(exist_ok=True)
+    kwargs: dict = {"model_id": SCRIBE_MODEL, "language_code": language or "fa", "tag_audio_events": False, "diarize": False, "timestamps_granularity": "word"}
+    if keyterms:
+        kwargs["keyterms"] = keyterms[:1000]
+
+    def one(piece: tuple[int, int]):
+        index, start = piece
+        part = folder / f"part{index:03d}.mp3"
+        try:
+            subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(CHUNK_SECONDS), "-i", str(wav), "-c", "copy", str(part)],
+                           capture_output=True, check=True, timeout=300)
+            client = ElevenLabs(api_key=api_key, base_url=base_url(), timeout=_httpx.Timeout(_READ_TIMEOUT, connect=_CONNECT_TIMEOUT))
+            with open(part, "rb") as handle:
+                try:
+                    resp = client.speech_to_text.convert(file=handle, request_options={'max_retries': 0}, **kwargs)
+                except Exception as err:
+                    raise RuntimeError(f"ElevenLabs STT failed on part {index + 1} of {len(pieces)}") from err
+            return start, resp
+        finally:
+            part.unlink(missing_ok=True)
+
+    log.info("elevenlabs: %.0f s of audio in %d pieces", total, len(pieces))
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(one, pieces))
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    words = []
+    language_code = None
+    for start, resp in results:
+        language_code = language_code or getattr(resp, "language_code", None)
+        for w in (resp.words or []):
+            words.append(SimpleNamespace(type=w.type, text=w.text, logprob=getattr(w, "logprob", None), start=w.start + start, end=w.end + start))
+    transcript = _map_response(SimpleNamespace(words=words, language_code=language_code), file_digest, key, language, total)
+    cost = round(total * COST_PER_SECOND * (1.2 if keyterms else 1), 6)
+    archive = out_dir / "transcripts" / f"{key}.json"
+    archive.parent.mkdir(exist_ok=True)
+    archive.write_text(json.dumps(transcript, indent=2, ensure_ascii=False))
+    return transcript, cost
 
 
 def transcribe_gateway(video, out_dir, *, provider, language, file_digest):

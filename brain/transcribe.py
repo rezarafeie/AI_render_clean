@@ -275,6 +275,20 @@ def save_corrections(out_dir: Path, base_key: str, items: list[dict]) -> dict:
     return effective_transcript(out_dir)
 
 
+def _failed_attempt(cached: dict) -> bool:
+    """An empty transcript written because extraction or the model failed is not an answer: asking again must try again (a silent video has no fallback reason)."""
+    return not cached.get("words") and bool(cached.get("fallback_reason"))
+
+
+def _extract_timeout(video: Path) -> int:
+    """Seconds an audio extraction may take: a fixed 30 s cannot cover a long recording (an hour of video needs minutes on a busy server)."""
+    try:
+        from engine.probe import probe_duration
+        return max(60, int(probe_duration(video) * 0.5))
+    except Exception:
+        return 600
+
+
 def _transcribe_whisper(
     video: Path,
     out_dir: Path,
@@ -290,7 +304,7 @@ def _transcribe_whisper(
     transcript_path = out_dir / "transcript.json"
     archive = out_dir / "transcripts" / f"{key}.json"
 
-    if archive.exists():
+    if archive.exists() and not _failed_attempt(json.loads(archive.read_text())):
         cached = json.loads(archive.read_text())
         _archive_current(out_dir)
         transcript_path.write_text(json.dumps(cached, indent=2, ensure_ascii=False))
@@ -298,7 +312,7 @@ def _transcribe_whisper(
         return effective_transcript(out_dir)
     if transcript_path.exists():
         cached = json.loads(transcript_path.read_text())
-        if cached.get("cache_key") == key:
+        if cached.get("cache_key") == key and not _failed_attempt(cached):
             log.info("transcript cache hit for %s", video.name)
             return effective_transcript(out_dir)
 
@@ -341,7 +355,7 @@ def _transcribe_whisper(
             subprocess.run(
                 ["ffmpeg", "-y", "-i", str(video), "-vn", "-acodec", "pcm_s16le",
                  "-ar", "16000", "-ac", "1", str(fallback_wav)],
-                capture_output=True, check=True, timeout=30,
+                capture_output=True, check=True, timeout=_extract_timeout(video),
             )
             log.info("FFmpeg audio extraction completed while Whisper was unavailable for %s", video.name)
         except (OSError, subprocess.SubprocessError) as exc:
@@ -361,7 +375,7 @@ def _transcribe_whisper(
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(video), "-vn", "-acodec", "pcm_s16le",
              "-ar", "16000", "-ac", "1", str(wav_path)],
-            capture_output=True, check=True, timeout=30,
+            capture_output=True, check=True, timeout=_extract_timeout(video),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         wav_path.unlink(missing_ok=True)
