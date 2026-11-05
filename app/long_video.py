@@ -537,8 +537,9 @@ def _completion_message(analysis: dict) -> str:
 
 # ── thumbnails / previews (made on demand from the original file; never re-encoded up front) ─────────────
 
-def _ffmpeg(args: list[str], timeout: int = 600) -> None:
-    subprocess.run(["ffmpeg", "-v", "error", "-y", *args], check=True, capture_output=True, timeout=timeout)
+def _ffmpeg(args: list[str], timeout: int = 600, *, nice: bool = False) -> None:
+    """``nice`` makes the encode yield to everything else on the machine (previews are made in the background); the timeout is long because a busy server is slow, not stuck."""
+    subprocess.run([*(["nice", "-n", "10"] if nice else []), "ffmpeg", "-v", "error", "-y", *args], check=True, capture_output=True, timeout=timeout)
 
 
 def thumbnail(directory: Path, cand: dict, source: Path) -> Path:
@@ -554,11 +555,13 @@ def render_clip(source: Path, ranges: list[list[float]], target: Path, *, small:
     """The clip for the given source ranges (several ranges are joined). ``small`` makes a light 360p preview."""
     target.parent.mkdir(parents=True, exist_ok=True)
     scale = ["-vf", "scale=-2:360"] if small else []
-    quality = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "30" if small else "18", "-c:a", "aac", "-b:a", "64k" if small else "192k", "-movflags", "+faststart"]
+    quality = (["-c:v", "libx264", "-preset", "ultrafast", "-crf", "32", "-r", "24", "-threads", "2", "-c:a", "aac", "-b:a", "48k", "-movflags", "+faststart"] if small
+               else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "3", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"])
+    run_ffmpeg = lambda args: _ffmpeg(args, 1800 if small else 3600, nice=small)
     temporary = target.with_suffix(".part.mp4")
     if len(ranges) == 1:
         a, b = ranges[0]
-        _ffmpeg(["-ss", f"{a:.3f}", "-i", str(source), "-t", f"{b - a:.3f}", *scale, *quality, str(temporary)])
+        run_ffmpeg(["-ss", f"{a:.3f}", "-i", str(source), "-t", f"{b - a:.3f}", *scale, *quality, str(temporary)])
     else:
         inputs, parts = [], []
         for i, (a, b) in enumerate(ranges):
@@ -566,7 +569,7 @@ def render_clip(source: Path, ranges: list[list[float]], target: Path, *, small:
             video = f"[{i}:v]setpts=PTS-STARTPTS" + (",scale=-2:360" if small else "") + f"[v{i}]"
             parts.append(video + f";[{i}:a]asetpts=PTS-STARTPTS[a{i}]")
         joined = "".join(f"[v{i}][a{i}]" for i in range(len(ranges)))
-        _ffmpeg([*inputs, "-filter_complex", ";".join(parts) + f";{joined}concat=n={len(ranges)}:v=1:a=1[v][a]", "-map", "[v]", "-map", "[a]", *quality, str(temporary)])
+        run_ffmpeg([*inputs, "-filter_complex", ";".join(parts) + f";{joined}concat=n={len(ranges)}:v=1:a=1[v][a]", "-map", "[v]", "-map", "[a]", *quality, str(temporary)])
     temporary.replace(target)
     return target
 
@@ -603,7 +606,9 @@ def prepare_media_in_background(directory: Path, cand: dict, source: Path) -> No
                 pass
             for step in (lambda: thumbnail(directory, cand, source), lambda: preview(directory, cand, source)):
                 try:
+                    started = time.monotonic()
                     step()
+                    log.info("card media for %s ready in %.0f s", cand.get("id"), time.monotonic() - started)
                 except Exception:
                     log.warning("card media could not be prepared for %s", cand.get("id"), exc_info=True)
     threading.Thread(target=work, daemon=True, name=f"discovery-media-{cand.get('id')}").start()
@@ -708,9 +713,12 @@ def seed_transcript(analysis: dict, directory: Path, cand: dict) -> dict:
             "words": words, "sentences": sentences, "source": "long-video-discovery", "transcript_version": analysis.get("transcript_version")}
 
 
+_PREPARING: set[str] = set()
+
+
 def start_candidate(directory: Path, candidate_id: str, *, like_candidate: Optional[str] = None) -> dict:
-    """Open (or re-open) the editing chat of a card. The same card never makes a second project."""
-    from app.studio_orchestrator import dispatch_message
+    """Open (or re-open) the editing chat of a card. The same card never makes a second project. The chat opens at once; the clip is cut from the long video in the
+    background (minutes on a busy server) and the edit starts by itself when it is ready."""
     from app.studio_store import repo, run
     analysis = load(directory)
     cand = next((c for c in analysis["candidates"] if c["id"] == candidate_id), None)
@@ -720,16 +728,41 @@ def start_candidate(directory: Path, candidate_id: str, *, like_candidate: Optio
     with _lock(analysis["id"] + ":start"):
         analysis = load(directory)
         cand = next(c for c in analysis["candidates"] if c["id"] == candidate_id)
+        key = f"{analysis['id']}:{candidate_id}"
         if cand.get("child_conversation_id") and not cand.get("child_stale"):
-            try:
-                run(repo.get_conversation(cand["child_conversation_id"], user_key))
-                return {"conversation_id": cand["child_conversation_id"], "created": False}
-            except KeyError:
-                cand["child_conversation_id"] = None
-        source = Path(analysis["source_path"])
-        clip = render_clip(source, cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False)
+            if cand.get("child_preparing") and key not in _PREPARING and time.time() - cand.get("selected_at", 0) > 90:
+                cand["child_conversation_id"], cand["child_preparing"] = None, False             # the worker that was cutting it is gone: cut again
+            else:
+                try:
+                    run(repo.get_conversation(cand["child_conversation_id"], user_key))
+                    return {"conversation_id": cand["child_conversation_id"], "created": False}
+                except KeyError:
+                    cand["child_conversation_id"] = None
         conversation = run(repo.create_conversation(user_key, cand["title"][:80]))
         child_id = conversation["id"]
+        state = {"parent": {"conversation_id": analysis["conversation_id"], "analysis_id": analysis["id"], "candidate_id": cand["id"]},
+                 "forced_intent": "talking", "candidate": public_candidate(cand)}
+        run(repo.set_conversation(child_id, user_key, state=state))
+        cand.update(status="selected", child_conversation_id=child_id, child_stale=False, child_preparing=True, selected_at=time.time())
+        save(directory, analysis)
+        _emit(analysis["conversation_id"], "content.candidate.updated", analysis_id=analysis["id"], candidate=public_candidate(cand))
+        _PREPARING.add(key)
+    from app.studio_orchestrator import _assistant as say
+    say(child_id, user_key, "دارم این بخش را از ویدیوی بلند جدا می‌کنم. روی سرور شلوغ ممکن است چند دقیقه طول بکشد؛ وقتی آماده شد، تدوین خودکار شروع می‌شود و لازم نیست چیزی بفرستید.")
+    threading.Thread(target=_prepare_child, args=(directory, candidate_id, child_id, like_candidate), daemon=True, name=f"discovery-clip-{candidate_id}").start()
+    return {"conversation_id": child_id, "created": True}
+
+
+def _prepare_child(directory: Path, candidate_id: str, child_id: str, like_candidate: Optional[str]) -> None:
+    """Cut the clip, give it to the editing chat as its video and start the edit; on any failure say so in that chat and free the card to be tried again."""
+    from app.studio_orchestrator import _assistant as say, dispatch_message
+    from app.studio_store import repo, run
+    analysis = load(directory)
+    user_key = analysis["user_key"]
+    key = f"{analysis['id']}:{candidate_id}"
+    try:
+        cand = next(c for c in analysis["candidates"] if c["id"] == candidate_id)
+        clip = render_clip(Path(analysis["source_path"]), cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False)
         attachment_path = ROOT / _safe(user_key) / child_id / "attachments"
         attachment_path.mkdir(parents=True, exist_ok=True)
         placed = attachment_path / f"{cand['id']}.mp4"
@@ -743,16 +776,31 @@ def start_candidate(directory: Path, candidate_id: str, *, like_candidate: Optio
             other = next((c for c in analysis["candidates"] if c["id"] == like_candidate), None)
             if other:
                 like = {"title": other["title"], "style": (other.get("child_style") or "")}
-        state = {"parent": {"conversation_id": analysis["conversation_id"], "analysis_id": analysis["id"], "candidate_id": cand["id"]},
-                 "forced_intent": "talking", "seed_transcript_path": str(seed_path), "candidate": public_candidate(cand)}
-        run(repo.set_conversation(child_id, user_key, state=state))
+        child = run(repo.get_conversation(child_id, user_key))
+        run(repo.set_conversation(child_id, user_key, state={**(child.get("state") or {}), "seed_transcript_path": str(seed_path)}))
         text = child_request(analysis, cand, like)
         message = run(repo.add_message(child_id, user_key, "user", text, [attachment["id"]]))
-        cand.update(status="selected", child_conversation_id=child_id, child_stale=False, selected_at=time.time())
-        save(directory, analysis)
-        _emit(analysis["conversation_id"], "content.candidate.updated", analysis_id=analysis["id"], candidate=public_candidate(cand))
-    dispatch_message(child_id, user_key, message["id"], text, [attachment["id"]])
-    return {"conversation_id": child_id, "created": True}
+        with _lock(analysis["id"] + ":start"):
+            fresh = load(directory)
+            for c in fresh["candidates"]:
+                if c["id"] == candidate_id:
+                    c["child_preparing"] = False
+            save(directory, fresh)
+        dispatch_message(child_id, user_key, message["id"], text, [attachment["id"]])
+    except Exception as exc:
+        log.exception("clip for %s could not be prepared", candidate_id)
+        try:
+            say(child_id, user_key, f"جدا کردن این بخش از ویدیوی بلند انجام نشد ({str(exc)[:120] or type(exc).__name__}). به کارت برگردید و «شروع تدوین» را دوباره بزنید.")
+            with _lock(analysis["id"] + ":start"):
+                fresh = load(directory)
+                for c in fresh["candidates"]:
+                    if c["id"] == candidate_id:
+                        c.update(child_conversation_id=None, child_preparing=False, status="discovered")
+                save(directory, fresh)
+        except Exception:
+            log.exception("the failure of %s could not be recorded", candidate_id)
+    finally:
+        _PREPARING.discard(key)
 
 
 def _child_status(user_key: str, cand: dict) -> tuple[str, Optional[dict]]:
