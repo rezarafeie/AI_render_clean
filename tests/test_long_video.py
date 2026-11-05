@@ -161,14 +161,21 @@ def test_child_chat_is_created_once_with_the_clip_and_the_transcript_seed(analys
     from app import studio_orchestrator
     monkeypatch.setattr(studio_orchestrator, "dispatch_message", lambda *a: dispatched.append(a))
     cid = long_video.load(analysis.directory)["candidates"][0]["id"]
-    first = long_video.start_candidate(analysis.directory, cid)
+    first = long_video.start_candidate(analysis.directory, cid)               # answers at once: the clip is cut in the background
     second = long_video.start_candidate(analysis.directory, cid)
+    import time
+    for _ in range(300):
+        if dispatched:
+            break
+        time.sleep(0.1)
     assert first["created"] and not second["created"] and first["conversation_id"] == second["conversation_id"] and len(dispatched) == 1
+    assert long_video.load(analysis.directory)["candidates"][0]["child_preparing"] is False
     child = run(store.get_conversation(first["conversation_id"], "u"))
     assert child["state"]["parent"]["candidate_id"] == cid and child["state"]["forced_intent"] == "talking"
     seed = json.loads(Path(child["state"]["seed_transcript_path"]).read_text())
     assert seed["words"] and seed["words"][0]["start"] < 1.5 and seed["duration"] > 9
-    attachment = run(store.get_attachments(child["messages"][0]["attachments"], first["conversation_id"], "u"))[0]
+    first_with_video = next(m for m in child["messages"] if m.get("attachments"))
+    attachment = run(store.get_attachments(first_with_video["attachments"], first["conversation_id"], "u"))[0]
     from engine.probe import probe_duration
     assert abs(probe_duration(Path(attachment["path"])) - seed["duration"]) < 1.0       # the clip is cut from the shared source, not uploaded again
     assert long_video.load(analysis.directory)["candidates"][0]["status"] == "selected"
