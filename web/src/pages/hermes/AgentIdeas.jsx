@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import hermesApi from '../../services/hermesApi';
 import { api } from '../../api';
 import { Icon } from '../../components/Icon';
+import { ConfirmDelete } from '../../components/ConfirmDelete';
 import { array, message } from './hermesUtils';
 import { useHermes } from './HermesContext';
 
@@ -21,7 +22,7 @@ function producedBrief(item) {
 }
 
 /** A collapsed idea shows an icon for its engine, the title and a tagline; the rest opens on tap. */
-function IdeaShell({ item, tagline, children, className = '' }) {
+function IdeaShell({ item, tagline, children, className = '', onDelete }) {
   const [open, setOpen] = useState(false);
   const talking = item.engine === 'talking';
   return <article className={`idea ${className}`} data-open={open || undefined} dir="rtl">
@@ -31,15 +32,16 @@ function IdeaShell({ item, tagline, children, className = '' }) {
       {TONE[item.status] ? <span className="idea-status" data-tone={TONE[item.status]} title={STATUS[item.status]} role="img" aria-label={STATUS[item.status]}><i aria-hidden="true"/></span> : null}
       <Icon name="chevronDown" size={16} className="idea-chev"/>
     </button>
+    {onDelete ? <button type="button" className="icon-btn trash-btn idea-del" aria-label={`Delete idea: ${item.title}`} data-tip="Delete" onClick={() => onDelete(item)}><Icon name="trash" size={16}/></button> : null}
     {open ? <div className="idea-body">{children}</div> : null}
   </article>;
 }
 
-function TalkingCard({ item, busy, onSend, onReject }) {
+function TalkingCard({ item, busy, onSend, onReject, onDelete }) {
   const file = useRef(null);
   const [video, setVideo] = useState(null);
   const open = item.status === 'proposed';
-  return <IdeaShell item={item} className="idea-talking" tagline={item.hook || item.why}>
+  return <IdeaShell item={item} className="idea-talking" tagline={item.hook || item.why} onDelete={onDelete}>
     {item.why ? <p className="idea-why" dir="auto">{item.why}</p> : null}
     <span className="idea-need">نیاز به ضبط ویدیو توسط شما</span>
     {item.script ? <div className="idea-script"><span className="idea-label">متن گفتاری</span><pre dir="auto">{item.script}</pre></div> : null}
@@ -58,10 +60,10 @@ function TalkingCard({ item, busy, onSend, onReject }) {
   </IdeaShell>;
 }
 
-function ProducedCard({ item, busy, onBuild, onReject }) {
+function ProducedCard({ item, busy, onBuild, onReject, onDelete }) {
   const open = item.status === 'proposed';
   const scenes = array(item.scenes);
-  return <IdeaShell item={item} tagline={item.concept || item.hook || item.why}>
+  return <IdeaShell item={item} tagline={item.concept || item.hook || item.why} onDelete={onDelete}>
     {item.hook ? <p className="idea-why" dir="auto">هوک: «{item.hook}»</p> : null}
     {item.style || item.mood || item.music ? <div className="idea-chips">{[item.style, item.mood, item.music].filter(Boolean).map((t) => <span key={t} className="idea-chip" dir="auto">{t}</span>)}</div> : null}
     {scenes.length ? <ol className="idea-scenes">{scenes.map((s, i) => <li key={i} dir="auto"><b>{s.on_screen_text || `سکانس ${i + 1}`}</b><span>{s.visual}</span></li>)}</ol> : null}
@@ -97,6 +99,12 @@ export default function AgentIdeas({ limit = 0, embedded = false }) {
   }
   const build = (item) => handOver(item, producedBrief(item));
   const sendTalking = (item, video) => handOver(item, `[موتور: صحبتی]\nاین ویدیو را که خودم برای ریلز اینستاگرام ضبط کرده‌ام تدوین کن (زیرنویس، موشن و ریتم). این ایده را ایجنت اینستاگرام ساخته و من تأیید کرده‌ام.\n\nهوک: ${item.hook || ''}\n\nمتن گفتاری:\n${item.script || ''}${caption(item)}`, [video]);
+  const [deleting, setDeleting] = useState(null);
+  const remove = (item) => setDeleting({
+    title: 'Delete this idea?', what: item.title,
+    detail: item.conversation_id ? 'Only the idea card is deleted. The chat and video made from it stay.' : 'The idea is deleted for good.',
+    run: async () => { await hermesApi.deleteProposal(item.id); await reloadAgent(); },
+  });
   async function reject(item) { await hermesApi.setProposalStatus(item.id, 'rejected').catch((e) => setError(message(e))); void reloadAgent(); }
 
   return <div className={embedded ? 'agent-embedded' : 'agent-tab'}>
@@ -105,8 +113,9 @@ export default function AgentIdeas({ limit = 0, embedded = false }) {
       <button className="btn btn-secondary btn-sm" type="button" onClick={() => runAgent()}>بررسی جدید</button></div> : null}
     <div className="ideas">
       {list.map((p) => p.engine === 'talking'
-        ? <TalkingCard key={p.id} item={p} busy={working === p.id} onSend={sendTalking} onReject={reject}/>
-        : <ProducedCard key={p.id} item={p} busy={working === p.id} onBuild={build} onReject={reject}/>)}
+        ? <TalkingCard key={p.id} item={p} busy={working === p.id} onSend={sendTalking} onReject={reject} onDelete={remove}/>
+        : <ProducedCard key={p.id} item={p} busy={working === p.id} onBuild={build} onReject={reject} onDelete={remove}/>)}
     </div>
+    <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
   </div>;
 }

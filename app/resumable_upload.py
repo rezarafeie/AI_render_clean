@@ -106,6 +106,11 @@ async def start(user: str, conversation_id: str, body: Start, free_bytes=None) -
         raise _fail(422, "unsupported_file", "Only supported video, image and audio files can be attached.")
     if body.size > MAX_RESUMABLE[kind]:
         raise _fail(413, "file_too_large", f"This {kind} file is larger than the allowed {MAX_RESUMABLE[kind] // 1024**3 or MAX_RESUMABLE[kind] // 1024**2} {'GB' if MAX_RESUMABLE[kind] >= 1024**3 else 'MB'}.")
+    from app import studio_files
+    try:
+        await studio_files.ensure_room(user, body.size)         # refuse before gigabytes travel, not after
+    except studio_files.QuotaExceeded as exc:
+        raise _fail(413, "quota_exceeded", str(exc)) from None
     folder = attachment_folder(user, conversation_id)
     live = _expire(user, conversation_id)
     # The same file chosen again continues the unfinished upload instead of starting another.

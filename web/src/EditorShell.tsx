@@ -6,6 +6,7 @@ import { chatHomePath } from "./chatHome";
 import { peekCache, writeCache } from "./pages/hermes/hermesCache";
 import { Icon } from "./components/Icon";
 import { InstaSwitch } from "./components/InstaSwitch";
+import { ConfirmDelete, DeleteTarget } from "./components/ConfirmDelete";
 import { ProjectStatusDot } from "./components/ProjectStatusDot";
 import { Resizer, usePanelWidth } from "./components/Resizer";
 import { ShellContext, TopbarAction } from "./components/ShellContext";
@@ -102,6 +103,16 @@ export default function EditorShell() {
     return [...hermesChats].sort((a, b) => parseTime(b.updated_at) - parseTime(a.updated_at)).filter(item => !needle || (item.title || "").toLocaleLowerCase().includes(needle));
   }, [hermesChats, query]);
 
+  const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
+  const askDelete = (chat: { id: string; title: string }) => setDeleting({
+    title: "Delete this chat?", what: displayTitle(chat.title, 80),
+    detail: hermesMode ? "The chat is removed. Ideas and videos made from it stay." : "Its messages, uploads and projects are removed with it, and so are the videos made in it. This cannot be undone.",
+    run: async () => {
+      if (hermesMode) { await hermesApi.deleteChat(chat.id); refreshHermes(); }
+      else { await api.deleteStudioConversation(chat.id); refreshChats(); window.dispatchEvent(new Event("editorgpt:conversations-updated")); }
+      if (location.pathname.endsWith(`/${chat.id}`)) navigate(hermesMode ? "/hermes" : "/studio", { replace: true });
+    },
+  });
   const startSearch = () => { if (collapsed && !isMobile) setCollapsed(false); setSearching(true); };
   const rail = collapsed && !isMobile;
   const tip = (label: string) => rail ? { "data-tip": label, className: "nav-item rail-tip" } : { className: "nav-item" };
@@ -143,7 +154,10 @@ export default function EditorShell() {
             <div className="sb-section-title">Recent</div>
             {searching ? <div className="sb-search"><input ref={searchRef} className="input" type="search" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} placeholder="Search chats" aria-label="Search chats"/></div> : null}
             <div className="sb-list">
-              {(hermesMode ? visibleHermes : visible).map(chat => <NavLink key={chat.id} to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}>{displayTitle(chat.title, 48)}</NavLink>)}
+              {(hermesMode ? visibleHermes : visible).map(chat => <div key={chat.id} className="sb-chat-row">
+                <NavLink to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}>{displayTitle(chat.title, 48)}</NavLink>
+                <button type="button" className="icon-btn trash-btn sb-chat-del" aria-label={`Delete chat: ${displayTitle(chat.title, 48)}`} data-tip="Delete" onClick={() => askDelete(chat)}><Icon name="trash" size={16}/></button>
+              </div>)}
               {!(hermesMode ? visibleHermes : visible).length ? <p className="sb-empty">{query ? "No chats match your search." : "Your chats will appear here."}</p> : null}
             </div>
           </> : <div className="sb-guest">
@@ -166,6 +180,7 @@ export default function EditorShell() {
           onResize={setLiveWidth} onDragState={setResizing} onCommit={value => { setSidebarWidth(value); setLiveWidth(null); }}/> : null}
       </aside>
 
+      <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
       {drawer && isMobile ? <button className="drawer-backdrop" onClick={() => setDrawer(false)} aria-label="Close navigation" tabIndex={-1}/> : null}
 
       <div className="content-col" {...(drawer && isMobile ? { inert: "" as unknown as boolean } : {})}>

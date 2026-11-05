@@ -73,6 +73,11 @@ async def proposal(proposal_id: str, body: StatusBody, user=Depends(current_user
     return await agent.set_status(str(user.id), proposal_id, body.status, **extra)
 
 
+@router.delete("/proposals/{proposal_id}", status_code=204)
+async def delete_proposal(proposal_id: str, user=Depends(current_user)):
+    await agent.remove_proposal(str(user.id), proposal_id)
+
+
 @router.post("/ask")
 async def ask(body: AskBody, user=Depends(current_user)):
     """One of the 13 skills on demand, inside the agent (not a separate tool): the answer is added to the agent's notes."""

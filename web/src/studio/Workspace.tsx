@@ -4,6 +4,7 @@ import { api, StudioConversation, StudioEvent, StudioProject } from "../api";
 import { MotionEditPane, MotionPreviewPane } from "./MotionWorkspace";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
+import { ConfirmDelete, DeleteTarget } from "../components/ConfirmDelete";
 import { useFullscreen } from "../components/useFullscreen";
 import { displayTitle } from "../format";
 import { friendlyError } from "../ui";
@@ -311,11 +312,16 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
   motionId?: string; events?: StudioEvent[];
 }) {
   const meta = statusMeta(project);
+  const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
   const panel = usePanelFullscreen();
   const action = React.useMemo(() => topbarControls ? { active: panel.active, onClick: () => { void panel.toggle(); },
     status: project ? {label: meta.label, tone: meta.tone} : undefined } : null,
     [topbarControls, panel.active, panel.toggle, Boolean(project), meta.label, meta.tone]);
   useTopbarAction(action);
+  const deleteProject = project ? <button type="button" className="icon-btn trash-btn" aria-label="Delete this project" data-tip="Delete project" onClick={() => setDeleting({
+        title: "Delete this project?", what: displayTitle(project.title, 80),
+        detail: "The project, its versions and its video files are removed. The chat stays, and so do files you uploaded.",
+        run: async () => { await api.deleteStudioProject(project.id); await onSaved(); } })}><Icon name="trash" size={19}/></button> : null;
   const view = renderView(project);
   const rendering = tab === "edit" && ["queued", "rendering", "finalizing"].includes(view.phase);
   const setNode = React.useCallback((element: HTMLElement | null) => {
@@ -337,10 +343,13 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
       {projects.length > 1 ? <select className="input ws-select" aria-label="Project" value={project?.id} onChange={event => onSelectProject(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{displayTitle(item.title, 32)}</option>)}</select> : null}
       <button className="icon-btn" onClick={() => void panel.toggle()} aria-pressed={panel.active} aria-label={panel.active ? "Exit full screen" : "Full screen"}
         data-tip={panel.active ? "Exit full screen" : "Full screen"}><Icon name={panel.active ? "fullscreenExit" : "fullscreen"} size={19}/></button>
+      {project && !topbarControls ? deleteProject : null}
       {onCollapse && !panel.active ? <button className="icon-btn" onClick={onCollapse} aria-label="Hide workspace" data-tip="Hide workspace"><Icon name="panelRight" size={19}/></button> : null}
     </header>
     {topbarControls && panel.active ? <button className="icon-btn ws-edit-exit" onClick={() => void panel.toggle()} aria-label="Exit full screen"><Icon name="fullscreenExit" size={18}/></button> : null}
     {topbarControls && projects.length > 1 ? <div className="ws-project-picker"><select className="input" aria-label="Project" value={project?.id} onChange={event => onSelectProject(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{displayTitle(item.title, 32)}</option>)}</select></div> : null}
+    {topbarControls && deleteProject ? <div className="ws-project-actions">{deleteProject}</div> : null}
+    <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}
     <div className="ws-body">

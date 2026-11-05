@@ -41,6 +41,9 @@ async def finalize(user_key: str, conversation_id: str, temporary: Path, origina
     """Probe the written file, create the attachment row and move the file to its final path."""
     suffix = Path(original).suffix.lower()
     folder = temporary.parent
+    if not (metadata or {}).get("from_library"):           # a file attached again from the person's own files takes no new space
+        from app import studio_files
+        await studio_files.ensure_room(user_key, size)
     # Decode/probe uploads now, before any engine sees them.
     if kind == "image":
         from PIL import Image

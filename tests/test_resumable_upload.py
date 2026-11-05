@@ -67,7 +67,9 @@ def test_the_same_file_chosen_again_continues_the_same_upload():
     assert again["id"] == first["id"] and again["received"] == 5
 
 
-def test_limits_unsupported_types_disk_space_and_active_uploads():
+def test_limits_unsupported_types_disk_space_and_active_uploads(monkeypatch):
+    from app import studio_files
+    monkeypatch.setattr(studio_files, "QUOTA_BYTES", 10**14)          # this test is about the upload limits, not the person's space limit
     with pytest.raises(HTTPException) as e1:
         asyncio.run(up.start("u", "c1", up.Start(filename="a.pdf", size=5), free_bytes=10**12))
     assert e1.value.detail["code"] == "unsupported_file"

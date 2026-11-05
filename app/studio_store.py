@@ -342,6 +342,92 @@ class Repository:
         order = {value: index for index, value in enumerate(ids)}
         return sorted(values, key=lambda item: order[item["id"]])
 
+    async def list_user_attachments(self, user_key: str) -> list[dict]:
+        """Every attachment the person owns, in any conversation, newest first."""
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                rows = (await db.execute(select(StudioAttachment).where(StudioAttachment.user_key == user_key)
+                                         .order_by(StudioAttachment.created_at.desc()))).scalars()
+                return [{"id": r.id, "conversation_id": r.conversation_id, "kind": r.kind, "filename": r.filename, "path": r.path, "mime_type": r.mime_type,
+                         "size_bytes": r.size_bytes, "metadata": r.metadata_json or {}, "created_at": iso(r.created_at)} for r in rows]
+        with _lock:
+            rows = [copy.deepcopy(v) for v in _read()["attachments"].values() if v["user_key"] == user_key]
+        return sorted(rows, key=lambda item: item["created_at"], reverse=True)
+
+    async def delete_attachment_row(self, attachment_id: str, user_key: str) -> dict:
+        """Remove the row and return it (the caller removes the file). KeyError when it is not this person's."""
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                row = await db.get(StudioAttachment, attachment_id)
+                if row is None or row.user_key != user_key: raise KeyError(attachment_id)
+                value = {"id": row.id, "conversation_id": row.conversation_id, "path": row.path, "filename": row.filename, "size_bytes": row.size_bytes}
+                await db.delete(row); await db.commit()
+                return value
+        with _lock:
+            data = _read(); row = data["attachments"].get(attachment_id)
+            if row is None or row["user_key"] != user_key: raise KeyError(attachment_id)
+            del data["attachments"][attachment_id]; _write(data)
+            return row
+
+    async def delete_project_row(self, project_id: str, user_key: str) -> dict:
+        """Remove a project, its versions and actions; returns the project (the caller removes its engine files)."""
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            from sqlalchemy import delete as sql_delete
+            async with AsyncSessionLocal() as db:
+                row = await db.get(StudioProject, project_id)
+                if row is None or row.user_key != user_key: raise KeyError(project_id)
+                value = _project(row)
+                await db.execute(sql_delete(StudioProjectVersion).where(StudioProjectVersion.project_id == project_id))
+                await db.execute(sql_delete(StudioAction).where(StudioAction.project_id == project_id))
+                await db.delete(row)
+                conversation = await db.get(StudioConversation, row.conversation_id)
+                if conversation is not None and (conversation.state or {}).get("current_project_id") == project_id:
+                    conversation.state = {**conversation.state, "current_project_id": None}
+                await db.commit()
+                return value
+        with _lock:
+            data = _read(); row = data["projects"].get(project_id)
+            if row is None or row.get("user_key", user_key) != user_key: raise KeyError(project_id)
+            data["projects"].pop(project_id); data["versions"].pop(project_id, None)
+            data["actions"] = {k: v for k, v in data["actions"].items() if v.get("project_id") != project_id}
+            conversation = data["conversations"].get(row["conversation_id"])
+            if conversation and (conversation.get("state") or {}).get("current_project_id") == project_id:
+                conversation["state"] = {**conversation["state"], "current_project_id": None}
+            _write(data)
+            return copy.deepcopy(row)
+
+    async def delete_conversation_rows(self, conversation_id: str, user_key: str) -> list[dict]:
+        """Remove a conversation with everything stored under it; returns its projects (the caller removes their files)."""
+        await self.get_conversation(conversation_id, user_key)
+        if DB_AVAILABLE:
+            assert AsyncSessionLocal is not None
+            from sqlalchemy import delete as sql_delete
+            from app.models import StudioAgentRun
+            async with AsyncSessionLocal() as db:
+                projects = [_project(r) for r in (await db.execute(select(StudioProject).where(StudioProject.conversation_id == conversation_id))).scalars()]
+                ids = [p["id"] for p in projects]
+                if ids:
+                    await db.execute(sql_delete(StudioProjectVersion).where(StudioProjectVersion.project_id.in_(ids)))
+                for model in (StudioEvent, StudioAction, StudioMessage, StudioAttachment, StudioProject, StudioAgentRun):
+                    await db.execute(sql_delete(model).where(model.conversation_id == conversation_id))
+                await db.execute(sql_delete(StudioConversation).where(StudioConversation.id == conversation_id, StudioConversation.user_key == user_key))
+                await db.commit()
+                return projects
+        with _lock:
+            data = _read()
+            projects = [copy.deepcopy(v) for v in data["projects"].values() if v["conversation_id"] == conversation_id]
+            for p in projects:
+                data["projects"].pop(p["id"], None); data["versions"].pop(p["id"], None)
+            for key in ("messages", "attachments", "actions", "events", "agent_runs"):
+                rows = data.get(key)
+                if isinstance(rows, dict):
+                    data[key] = {k: v for k, v in rows.items() if not (isinstance(v, dict) and v.get("conversation_id") == conversation_id)}
+            data["conversations"].pop(conversation_id, None); _write(data)
+            return projects
+
     async def create_project(self, conversation_id: str, user_key: str, engine: str, title: str,
                              state: dict | None = None, external_ref: str | None = None) -> dict:
         conversation = await self.get_conversation(conversation_id, user_key)

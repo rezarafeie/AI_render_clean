@@ -210,3 +210,12 @@ textarea.input { resize: vertical; line-height: 1.5; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes meter-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(263%); } }
 @keyframes ellipsis { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
+
+/* Deleting: the same sheet, icon and button for chats, projects, files and ideas */
+.confirm-delete { display: grid; gap: var(--space-3); justify-items: start; padding-block-end: var(--space-2); }
+.confirm-delete h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.confirm-delete-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--error-soft); color: var(--error); }
+.confirm-delete-what { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.confirm-delete-actions { display: flex; gap: var(--space-2); justify-content: flex-end; width: 100%; margin-block-start: var(--space-2); }
+.trash-btn { color: var(--text-3); }
+.trash-btn:hover:not(:disabled), .trash-btn:focus-visible { color: var(--error); background: var(--error-soft); }

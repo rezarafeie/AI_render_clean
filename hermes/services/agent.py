@@ -244,6 +244,16 @@ async def set_status(user_id: str, proposal_id: str, status: str, **extra) -> di
     raise HTTPException(404, detail={"code": "PROPOSAL_NOT_FOUND"})
 
 
+async def remove_proposal(user_id: str, proposal_id: str) -> None:
+    """Delete an idea for good. One that is being produced keeps its chat; only the idea card goes."""
+    state = await load(user_id)
+    kept = [item for item in state["proposals"] if item["id"] != proposal_id]
+    if len(kept) == len(state["proposals"]):
+        raise HTTPException(404, detail={"code": "PROPOSAL_NOT_FOUND"})
+    state["proposals"] = kept
+    await save(user_id, state)
+
+
 async def set_prefs(user_id: str, talking_share: int) -> dict:
     state = await load(user_id)
     state["prefs"] = {**(state.get("prefs") or {}), "talking_share": max(0, min(100, int(talking_share)))}

@@ -208,3 +208,8 @@
 .ov-block p, .ov-block h3, .ov-chip, .idea-heading { overflow-wrap: anywhere; }
 .ov-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .ov-profile { min-width: 0; }
+
+.idea { position: relative; }
+.idea-del { position: absolute; inset-inline-start: 6px; top: 8px; width: 32px; height: 32px; opacity: 0; }
+.idea:hover .idea-del, .idea-del:focus-visible { opacity: 1; }
+@media (hover: none) { .idea-del { opacity: .7; } }

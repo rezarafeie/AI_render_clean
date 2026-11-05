@@ -251,6 +251,11 @@ async def begin_import(user: str, conversation_id: str, provider: str, file_id: 
         raise CloudError("unsupported_file", "Only supported video, image and audio files can be imported.")
     if info["size"] is not None and info["size"] > MAX_BYTES[kind]:
         raise CloudError("file_too_large", f"This {kind} file is larger than the allowed size.", 413)
+    from app import studio_files
+    try:
+        await studio_files.ensure_room(user, info["size"] or 0)
+    except studio_files.QuotaExceeded as exc:
+        raise CloudError("quota_exceeded", str(exc), 413) from None
     # Reuse a finished import of the same file version instead of transferring it again.
     for old in list_transfers(user, conversation_id):
         if (old.get("provider") == provider and old.get("file_id") == file_id and old.get("state") == "completed"

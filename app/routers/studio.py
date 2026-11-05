@@ -35,7 +35,7 @@ async def media_session(request: Request):
                             secure=_cookie_secure(request), samesite='lax', path='/')
     return response
 
-from app.studio_ingest import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, MAX_BYTES, VIDEO_EXTENSIONS, attachment_folder, finalize, kind_of
+from app.studio_ingest import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, MAX_BYTES, IngestError, VIDEO_EXTENSIONS, attachment_folder, finalize, kind_of
 
 
 def _user(request: Request) -> str:
@@ -302,9 +302,59 @@ async def upload_attachment(request: Request, conversation_id: str, file: Upload
         return {key: attachment[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
     except HTTPException:
         temporary.unlink(missing_ok=True); raise
+    except IngestError as exc:
+        temporary.unlink(missing_ok=True)
+        if exc.__class__.__name__ == "QuotaExceeded": raise HTTPException(413, str(exc)) from exc
+        raise HTTPException(422, "The attachment could not be validated") from exc
     except Exception as exc:
         temporary.unlink(missing_ok=True)
         raise HTTPException(422, "The attachment could not be validated") from exc
+
+
+class LibraryAttach(BaseModel):
+    file_id: str = Field(min_length=3, max_length=200)
+
+
+@router.post("/conversations/{conversation_id}/attachments/library", status_code=201)
+async def attach_from_library(request: Request, conversation_id: str, body: LibraryAttach):
+    """Use a file the person already has (an earlier upload, a Drive import or a render) in this chat, without uploading it again."""
+    from app import studio_files
+    try:
+        attachment = await studio_files.attach(_user(request), conversation_id, body.file_id)
+    except KeyError: raise HTTPException(404, "file not found")
+    except IngestError as exc: raise HTTPException(413 if exc.__class__.__name__ == "QuotaExceeded" else 422, str(exc))
+    return {key: attachment[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
+
+
+@router.get("/files")
+async def list_files(request: Request):
+    """Everything the person has stored: uploads, Drive imports and rendered videos, with the space used and the limit."""
+    from app import studio_files
+    return await studio_files.library(_user(request))
+
+
+@router.delete("/files/{file_id}")
+async def delete_file(request: Request, file_id: str):
+    from app import studio_files
+    try: return await studio_files.delete_file(_user(request), file_id)
+    except (KeyError, ValueError): raise HTTPException(404, "file not found")
+    except studio_files.Busy as exc: raise HTTPException(409, str(exc))
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(request: Request, project_id: str):
+    from app import studio_files
+    try: return await studio_files.delete_project(_user(request), project_id)
+    except KeyError: raise HTTPException(404, "project not found")
+    except studio_files.Busy as exc: raise HTTPException(409, str(exc))
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(request: Request, conversation_id: str):
+    from app import studio_files
+    try: return await studio_files.delete_conversation(_user(request), conversation_id)
+    except KeyError: raise HTTPException(404, "conversation not found")
+    except studio_files.Busy as exc: raise HTTPException(409, str(exc))
 
 
 @router.get("/conversations/{conversation_id}/attachments/{attachment_id}")

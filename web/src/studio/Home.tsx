@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api, HomeStatus, StudioHome } from "../api";
 import { Icon, IconName } from "../components/Icon";
+import { ConfirmDelete, DeleteTarget } from "../components/ConfirmDelete";
 import { ScrollRow } from "../components/ScrollRow";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { displayTitle, relativeTime } from "../format";
@@ -45,6 +46,7 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
     const tick = window.setInterval(() => setNow(Date.now()), 30000);
     return () => { controller.abort(); window.clearInterval(tick); };
   }, [authenticated]);
+  const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
   const loading = authenticated && !home && !failed;
   const running = home?.recent.some(item => item.status === "running");
   // While something is being made, its card should not go stale: ask again every ten seconds.
@@ -74,10 +76,15 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
               <span className="home-recent-copy"><span className="home-title" dir="auto">{displayTitle(item.title, 60) || "New edit"}</span>
                 <span className="home-meta"><span>{KIND_LABEL[item.kind] || "Chat"}</span><span>{relativeTime(parseTime(item.updated_at), now)}</span></span></span>
               {STATUS_LABEL[item.status] ? <span className="home-status" data-tone={statusTone(item.status)}><i aria-hidden="true"/>{STATUS_LABEL[item.status]}</span> : null}
-            </NavLink></li>)}
+            </NavLink>
+              <button type="button" className="icon-btn trash-btn home-recent-del" aria-label={`Delete chat: ${displayTitle(item.title, 40) || "New edit"}`} data-tip="Delete" onClick={() => setDeleting({
+                title: "Delete this chat?", what: displayTitle(item.title, 80) || "New edit",
+                detail: "Its messages, uploads and projects are removed with it, and so are the videos made in it. This cannot be undone.",
+                run: async () => { await api.deleteStudioConversation(item.id); setHome(value => value ? { ...value, recent: value.recent.filter(row => row.id !== item.id) } : value); window.dispatchEvent(new Event("editorgpt:conversations-updated")); } })}><Icon name="trash" size={16}/></button></li>)}
           </ul> : <p className="home-note">No edits yet. Describe your first video above.</p>}
         </section>
       </> : <p className="home-note">Log in to save projects and start creating.</p>}
+      <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
     </div>
   </div>;
 }

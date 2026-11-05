@@ -5,7 +5,7 @@ import { verifyLocalBackend } from "./local/backend";
 const ProjectRender = React.lazy(() => import("./local/ProjectRender").then(m => ({default:m.ProjectRender})));
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioEvent, StudioMessage } from "./api";
+import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioFile, StudioEvent, StudioMessage } from "./api";
 import { AgentRunControls } from "./studio/AgentMode";
 import { useAuth } from "./auth/AuthContext";
 import { Icon } from "./components/Icon";
@@ -18,6 +18,7 @@ import { useMotionActive } from "./studio/MotionGraphic";
 import { useDiscoveryActive } from "./studio/Discovery";
 import { Composer, PendingFile } from "./studio/Composer";
 import { CloudPicker } from "./studio/CloudPicker";
+import { FilesPicker } from "./studio/FilesPicker";
 import { ManualQuestion } from "./studio/ManualQuestion";
 import { Thread, LocalFileInfo } from "./studio/Thread";
 import { Workspace, WorkspaceTab, advancedEditorUrl } from "./studio/Workspace";
@@ -68,6 +69,7 @@ export default function Studio() {
   const windowRef = React.useRef<string | null>(null);
   const [text, setText] = React.useState(() => searchParams.get("prompt") || templatePrompts[searchParams.get("template") || ""] || "");
   const [files, setFiles] = React.useState<PendingFile[]>([]);
+  const [libraryOpen, setLibraryOpen] = React.useState(false);
   const [cloudOpen, setCloudOpen] = React.useState(false);
 
   const [sending, setSending] = React.useState(false);
@@ -472,6 +474,16 @@ export default function Studio() {
     });
     setFiles(value => [...value, ...entries]);
   }
+  async function attachFromLibrary(picked: StudioFile[]) {
+    if (!authenticated) { requireLogin(); return; }
+    const id = await ensureConversation("New media edit", false);
+    const entries: PendingFile[] = [];
+    for (const item of picked) {
+      const attached = await api.attachStudioFile(id, item.id);
+      entries.push({ key: `library-${attached.id}`, file: new File([], attached.filename, { type: attached.mime_type }), url: "", progress: 100, attachmentId: attached.id, localNote: "From your files" });
+    }
+    setFiles(value => [...value, ...entries]);
+  }
   const cloudWaiting = files.filter(item => item.cloud && !item.attachmentId).map(item => item.key).join(",");
   React.useEffect(() => {
     if (!cloudWaiting) return;
@@ -595,8 +607,10 @@ export default function Studio() {
     manual={manual} onManualChange={modeSaving ? undefined : () => void toggleManual()}
     processing={processing} onStop={canStop ? stop : undefined} onSend={() => void send()} error={error} onDismissError={() => setError("")}
     hasSpeech={hasSpeech} listening={listening} onListen={startVoiceInput} textareaRef={textareaRef} autoFocus={variant === "home" && layout !== "mobile"}
-    onCloud={authenticated && processingPreferences().mode === "online" ? () => setCloudOpen(true) : undefined}/>
-    {cloudOpen ? <CloudPicker onClose={() => setCloudOpen(false)} onImport={importCloud}/> : null}</>;
+    onCloud={authenticated && processingPreferences().mode === "online" ? () => setCloudOpen(true) : undefined}
+    onLibrary={authenticated && processingPreferences().mode === "online" ? () => setLibraryOpen(true) : undefined}/>
+    {cloudOpen ? <CloudPicker onClose={() => setCloudOpen(false)} onImport={importCloud}/> : null}
+    {libraryOpen ? <FilesPicker onClose={() => setLibraryOpen(false)} onAttach={attachFromLibrary}/> : null}</>;
 
   if (!showConversation) return <StudioHomePage composer={composer("home")} authenticated={authenticated} onPrompt={prompt => { setText(prompt); textareaRef.current?.focus(); }}/>;
 

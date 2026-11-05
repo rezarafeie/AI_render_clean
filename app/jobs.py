@@ -593,6 +593,29 @@ def source_media_path(job: Job) -> Path | None:
     return None
 
 
+def delete_job(job_id: str) -> None:
+    """Forget a job and remove its folder (uploads, renders). Nothing else may be using it: the caller refuses a running job first."""
+    if Path(job_id).name != job_id or not job_id or job_id.startswith("."):
+        raise ValueError("invalid job id")
+    with _lock:
+        _jobs.pop(job_id, None)
+        if not DB_AVAILABLE:
+            _save_local_registry_locked()
+    if DB_AVAILABLE:
+        async def drop() -> None:
+            assert AsyncSessionLocal is not None
+            async with AsyncSessionLocal() as db:
+                from sqlalchemy import delete as sql_delete
+                for model in (RenderResult, QCResult, PlanRecord):
+                    await db.execute(sql_delete(model).where(model.job_id == job_id))
+                record = await db.get(JobRecord, job_id)
+                if record is not None:
+                    await db.delete(record)
+                await db.commit()
+        _await_db(drop())
+    shutil.rmtree(JOBS_ROOT / job_id, ignore_errors=True)
+
+
 def cleanup_orphaned_jobs() -> int:
     """Mark persisted uploads failed when their recorded source file is gone."""
     if not DB_AVAILABLE:

@@ -28,6 +28,8 @@ interface ComposerProps {
   agentMode?: AgentMode; onAgentModeChange?: (mode: AgentMode) => void;
   /** Opens the cloud storage picker (Google Drive). */
   onCloud?: () => void;
+  /** Opens "Your files": earlier uploads, Drive imports and renders from any chat. */
+  onLibrary?: () => void;
 }
 
 // iOS Files greys out whatever its cloud providers do not type as video/audio/image (Drive reports .mov that way), so no filter there.
@@ -86,6 +88,7 @@ export function Composer(props: ComposerProps) {
               {templates.map(item => <button type="button" key={item.id} role="menuitem" className="menu-item" onClick={() => { setText(item.prompt); close(); ref.current?.focus(); }}><Icon name={item.icon} size={18}/><span>{item.title}</span></button>)}
             </> : <>
               <button ref={menuFirst} type="button" role="menuitem" className="menu-item" onClick={() => { close(); fileInput.current?.click(); }}><Icon name="paperclip" size={18}/><span>Attach media</span></button>
+              {props.onLibrary ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onLibrary?.(); }}><Icon name="library" size={18}/><span>Your files</span></button> : null}
               {props.onCloud ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onCloud?.(); }}><Icon name="link" size={18}/><span>Import from Google Drive</span></button> : null}
               <button type="button" role="menuitem" className="menu-item" onClick={() => setTemplateMenu(true)}><Icon name="grid" size={18}/><span>Templates</span><Icon name="chevron" size={14}/></button>
             </>}

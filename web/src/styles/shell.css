@@ -50,6 +50,11 @@ html[data-keyboard-open] .app { position: fixed; inset-inline: 0; top: var(--app
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   unicode-bidi: plaintext; text-align: start;
 }
+.sb-chat-row { position: relative; display: block; }
+.sb-chat-row .sb-chat { padding-inline-end: 38px; }
+.sb-chat-del { position: absolute; inset-inline-end: 2px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; opacity: 0; }
+.sb-chat-row:hover .sb-chat-del, .sb-chat-del:focus-visible { opacity: 1; }
+@media (hover: none) { .sb-chat-del { opacity: .7; } }
 .sb-chat:hover { background: var(--hover); color: var(--text); }
 .sb-chat[aria-current="page"] { background: var(--active); color: var(--text); }
 .sb-empty { padding: 8px 10px; font-size: 13px; color: var(--text-3); }
