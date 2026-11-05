@@ -1,7 +1,8 @@
 import React from "react";
 import { createPortal, flushSync } from "react-dom";
 import { EditCard, EditSwitch } from "./EditCard";
-import { FrameControls, LightControls, LookStage, ZoomControls, type LookValues } from "./LookStudio";
+import type { LookValues } from "./LookStudio";
+import { PhoneEditor, type EditorTool } from "./PhoneEditor";
 import { api, PlanContent, PlanEdits, PlanVersion, StudioProject } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon, type IconName } from "../components/Icon";
@@ -23,7 +24,7 @@ function Mockup({ project, frame, label }: { project: StudioProject; frame?: str
   </div>;
 }
 
-function Section({ tool, current, title, children, hint, summary }: { tool: Tool; current: Tool; title: string; children: React.ReactNode; hint?: string; summary?: React.ReactNode }) {
+function Section({ tool, current, title, children, hint, summary }: { tool: Tool; current: Tool | null; title: string; children: React.ReactNode; hint?: string; summary?: React.ReactNode }) {
   if (tool !== current) return null;
   return <section className="tool-panel" dir="rtl" aria-label={title}>
     {hint ? <p className="ec-hint">{hint}</p> : null}
@@ -31,7 +32,7 @@ function Section({ tool, current, title, children, hint, summary }: { tool: Tool
   </section>;
 }
 
-export type Tool = "style" | "hook" | "light" | "frame" | "zoom" | "text" | "brand" | "details";
+export type Tool = EditorTool;
 const TOOLS: [Tool, string, IconName, boolean][] = [   // [id, label, icon, only for Talking 1]
   ["light", "نور و رنگ", "sun", true], ["frame", "کادر", "image", true], ["zoom", "زوم", "search", false], ["text", "متن", "captions", false],
   ["style", "سبک", "wand", false], ["hook", "هوک", "spark", false], ["brand", "برند", "user", false], ["details", "جزئیات", "list", false]];
@@ -46,7 +47,9 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
   const actionInFlight = React.useRef(false);
   const [error, setError] = React.useState("");
   const [tool, setTool] = React.useState<Tool>("light");
-  const [previewClose, setPreviewClose] = React.useState(false);
+  const [sheet, setSheet] = React.useState<Tool | null>(null);
+  const history = React.useRef<PlanEdits[]>([]);
+  const [historyLength, setHistoryLength] = React.useState(0);
   React.useEffect(() => { setDraft({}); setViewing(null); setError(""); }, [latest?.id]);
   if (!latest) return <div className="plan" dir="rtl"><div className="notice" role="status">برنامهٔ تدوین در حال ساخته‌شدن است؛ ویدیو تحلیل می‌شود و چند ایده سنجیده می‌شود. وقتی آماده شد همین‌جا نمایش داده می‌شود.</div></div>;
 
@@ -56,7 +59,13 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
   const editable = isLatest && !locked;
   const plan: PlanContent = shown.content;
   const value = <K extends keyof PlanEdits>(key: K, fallback: PlanEdits[K]) => (key in draft ? draft[key] : fallback) as NonNullable<PlanEdits[K]>;
-  const set = (patch: PlanEdits) => setDraft(current => ({ ...current, ...patch }));
+  const set = (patch: PlanEdits) => setDraft(current => {
+    const last = history.current[history.current.length - 1];
+    if (!last || last !== current) { history.current.push(current); if (history.current.length > 60) history.current.shift(); }
+    setHistoryLength(history.current.length);
+    return { ...current, ...patch };
+  });
+  const undo = () => { const previous = history.current.pop(); setHistoryLength(history.current.length); if (previous) setDraft(previous); };
   const dirty = Object.keys(draft).length > 0;
   const hook = value("hook", plan.hook.text);
   const highlight = value("hook_highlight", plan.hook.highlight);
@@ -67,9 +76,10 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
     shiftX: value("shift_x", plan.look.framing?.shift_x ?? 0), shiftY: value("shift_y", plan.look.framing?.shift_y ?? 0),
     zoomEnabled: value("zoom_enabled", plan.look.zoom_enabled ?? true), zoomBase: value("zoom_base", plan.look.zoom_base ?? 100),
     zoomClose: value("zoom_close", plan.look.zoom_close ?? 125), zoomAmount: value("zoom", plan.look.zoom) };
-  const lookControls = { values: lookValues, disabled: !editable, onChange: (patch: PlanEdits) => set(patch) };
   const visibleTools = TOOLS.filter(([, , , only]) => t1 || !only);
   const activeTool: Tool = visibleTools.some(([id]) => id === tool) ? tool : "style";
+  const SLIDERS: Tool[] = ["light", "frame", "zoom"];
+  const current: Tool | null = t1 ? (sheet && !SLIDERS.includes(sheet) ? sheet : null) : activeTool;
 
   async function act(label: string, task: () => Promise<unknown>) {
     if (actionInFlight.current) return;
@@ -104,6 +114,14 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </> : null}
     </footer> : null;
 
+  const presetsField = (
+    <div className="field"><span className="field-label">رنگ و نور</span>
+        <div className="segmented" role="group" aria-label="رنگ و نور">{LOOKS.map(([key, label]) => <button key={key} type="button" disabled={!editable}
+          aria-pressed={value("look", plan.look.preset) === key} onClick={() => set({ look: key })}>{label}</button>)}</div>
+        {plan.look.preset === "custom" && !("look" in draft) ? <small className="field-hint">رنگ‌بندی فعلی دستی تنظیم شده است.</small> : null}
+      </div>
+  );
+
   return <div className="plan" dir="rtl" aria-busy={Boolean(busy)}>
     {busy ? <div className="notice" role="status" aria-live="polite"><span className="act-dot" aria-hidden="true"/> {busy === "approve the plan" ? "در حال ارسال تأیید و شروع رندر…" : "در حال ذخیره و به‌روزرسانی برنامه…"}</div> : null}
     <header className="plan-head">
@@ -125,13 +143,14 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
     {!isLatest ? <div className="notice" data-tone="warning">نسخهٔ قدیمی را می‌بینید؛ فقط نسخهٔ فعلی قابل ویرایش و تأیید است.</div> : null}
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
 
-    <div className="editor-top">
-      {t1 ? <LookStage jobId={project.external_ref!} values={lookValues} close={previewClose}/> : null}
+    {t1 ? <PhoneEditor jobId={project.external_ref!} values={lookValues} disabled={!editable} onChange={patch => set(patch)}
+      tools={visibleTools.map(([id, label, icon]) => [id, label, icon] as [Tool, string, IconName])} open={sheet} setOpen={setSheet}
+      onUndo={undo} canUndo={historyLength > 0} presets={presetsField}/> : <div className="editor-top">
       <nav className="editor-tools" aria-label="ابزارهای ویرایش">{visibleTools.map(([id, label, icon]) =>
         <button key={id} type="button" className="editor-tool" aria-pressed={activeTool === id} onClick={() => setTool(id)}><Icon name={icon} size={20}/><span>{label}</span></button>)}</nav>
-    </div>
+    </div>}
 
-    {plan.concepts.length ? <Section tool="style" current={activeTool} title="ایده‌های خلاقانه" summary={plan.concepts.find(c => c.selected)?.name} hint="ایده‌ها از محتوای واقعی ویدیوی شما ساخته شده‌اند. پیش‌نمایش‌ها یک فریم از ویدیوی شما با متن، کادر و رنگ واقعی هر سبک‌اند؛ تصویر بالای سبک‌های ۲ و ۳ فقط نمونه است و در ویدیو برای هر بخش تصویر مخصوص ساخته می‌شود.">
+    {plan.concepts.length ? <Section tool="style" current={current} title="ایده‌های خلاقانه" summary={plan.concepts.find(c => c.selected)?.name} hint="ایده‌ها از محتوای واقعی ویدیوی شما ساخته شده‌اند. پیش‌نمایش‌ها یک فریم از ویدیوی شما با متن، کادر و رنگ واقعی هر سبک‌اند؛ تصویر بالای سبک‌های ۲ و ۳ فقط نمونه است و در ویدیو برای هر بخش تصویر مخصوص ساخته می‌شود.">
       <div className="plan-cards">{plan.concepts.map(concept => <article key={concept.id} className="plan-card" data-selected={concept.selected || undefined}>
         <Mockup project={project} frame={plan.frames?.[`concept-${concept.id}`]} label={concept.name}/>
         <div className="plan-card-body">
@@ -144,7 +163,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </article>)}</div>
     </Section> : null}
 
-    <Section tool="style" current={activeTool} title="سبک تدوین" summary={plan.style.label} hint={plan.style.summary}>
+    <Section tool="style" current={current} title="سبک تدوین" summary={plan.style.label} hint={plan.style.summary}>
       <div className="plan-cards plan-cards-styles">{plan.style_options.map(option => <article key={option.id} className="plan-card" data-selected={option.id === plan.style.id || undefined}>
         <Mockup project={project} frame={plan.frames?.[`style-${option.id}`]} label={option.label}/>
         <div className="plan-card-body">
@@ -156,7 +175,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </article>)}</div>
     </Section>
 
-    <Section tool="details" current={activeTool} title="هدف و پیام" summary={plan.goal || plan.message}>
+    <Section tool="details" current={current} title="هدف و پیام" summary={plan.goal || plan.message}>
       <dl className="plan-facts">
         {plan.goal ? <><dt>هدف</dt><dd>{plan.goal}</dd></> : null}
         {plan.audience ? <><dt>مخاطب</dt><dd>{plan.audience}</dd></> : null}
@@ -166,14 +185,14 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </dl>
     </Section>
 
-    <Section tool="hook" current={activeTool} title="هوک ابتدایی" summary={hook} hint="جملهٔ ثانیه‌های اول. روی هر کلمه بزنید تا رنگی شود (حداکثر دو کلمه).">
+    <Section tool="hook" current={current} title="هوک ابتدایی" summary={hook} hint="جملهٔ ثانیه‌های اول. روی هر کلمه بزنید تا رنگی شود (حداکثر دو کلمه).">
       <textarea className="input bidi" dir="auto" rows={2} value={hook} disabled={!editable} maxLength={120}
         onChange={event => set({ hook: event.target.value, hook_highlight: highlight.filter(word => event.target.value.includes(word)) })}/>
       <div className="chip-row plan-words">{words.map((word, index) => <button key={`${word}-${index}`} type="button" className="chip" disabled={!editable}
         aria-pressed={highlight.includes(word)} onClick={() => set({ hook_highlight: toggleHighlight(highlight, word) })}>{word}</button>)}</div>
     </Section>
 
-    {plan.structure.length ? <Section tool="details" current={activeTool} title="ساختار روایت" summary={`${plan.structure.length} بخش`}>
+    {plan.structure.length ? <Section tool="details" current={current} title="ساختار روایت" summary={`${plan.structure.length} بخش`}>
       <ol className="plan-beats">{plan.structure.map((beat, index) => <li key={index}>
         <span className="plan-beat-at">{beat.at || "—"}</span>
         <div><b>{roleLabel(beat.role, index)}</b>{beat.text ? <p className="bidi" dir="auto">«{beat.text}»</p> : null}
@@ -181,19 +200,11 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </li>)}</ol>
     </Section> : null}
 
-    <Section tool="light" current={activeTool} title="نور و رنگ" summary={LOOKS.find(([key]) => key === value("look", plan.look.preset))?.[1] || "رنگ سفارشی"}>
-      <div className="field"><span className="field-label">رنگ و نور</span>
-        <div className="segmented" role="group" aria-label="رنگ و نور">{LOOKS.map(([key, label]) => <button key={key} type="button" disabled={!editable}
-          aria-pressed={value("look", plan.look.preset) === key} onClick={() => set({ look: key })}>{label}</button>)}</div>
-        {plan.look.preset === "custom" && !("look" in draft) ? <small className="field-hint">رنگ‌بندی فعلی دستی تنظیم شده است.</small> : null}
-      </div>
-      {t1 ? <LightControls {...lookControls}/> : null}
-    </Section>
-    {t1 ? <Section tool="frame" current={activeTool} title="کادر" summary={`${value("shift_x", plan.look.framing?.shift_x ?? 0)} · ${value("shift_y", plan.look.framing?.shift_y ?? 0)}`}>
-      <FrameControls {...lookControls}/>
-    </Section> : null}
-    <Section tool="zoom" current={activeTool} title="زوم" summary={`زوم ${value("zoom", plan.look.zoom)}٪`}>
-      {t1 ? <ZoomControls {...lookControls} close={previewClose} setClose={setPreviewClose}/> : <>
+    {t1 ? null : <Section tool="light" current={current} title="نور و رنگ" summary={LOOKS.find(([key]) => key === value("look", plan.look.preset))?.[1] || "رنگ سفارشی"}>
+      {presetsField}
+    </Section>}
+    {t1 ? null : <Section tool="zoom" current={current} title="زوم" summary={`زوم ${value("zoom", plan.look.zoom)}٪`}>
+      <>
       {plan.style.id === 'talking_1' ? null : <>
       <div className="field"><label htmlFor="plan-zoom">زوم روی گوینده: {value("zoom", plan.look.zoom)}٪</label>
         <input id="plan-zoom" type="range" min={0} max={200} step={10} disabled={!editable} value={value("zoom", plan.look.zoom)} onChange={event => set({ zoom: Number(event.target.value) })}/></div>
@@ -207,9 +218,9 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
           <input id="plan-zclose" type="range" min={100} max={220} step={5} disabled={!editable} value={value("zoom_close", plan.look.zoom_close ?? 125)} onChange={event => set({ zoom_close: Number(event.target.value) })}/></div>
       </div> : null}
       </>}
-      </>}
-    </Section>
-    <Section tool="text" current={activeTool} title="متن و تأکید" summary={value("accent_color", plan.look.accent_color)}>
+      </>
+    </Section>}
+    <Section tool="text" current={current} title="متن و تأکید" summary={value("accent_color", plan.look.accent_color)}>
       <div className="field"><span className="field-label">رنگ تأکیدی (هوک و کلیدواژه‌ها)</span>
         <div className="plan-swatches">{ACCENTS.map(colour => <button key={colour} type="button" className="plan-swatch" style={{ background: colour }} disabled={!editable}
           aria-pressed={value("accent_color", plan.look.accent_color).toUpperCase() === colour} aria-label={colour} onClick={() => set({ accent_color: colour })}/>)}
@@ -232,7 +243,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
           <option value="">پیشنهاد هوش مصنوعی</option>{(plan.look.moments ?? []).map((m, i) => <option key={`${m.sentence}-${i}`} value={m.sentence}>{i + 1}. {m.title}</option>)}</select></div> : null}
     </Section>
 
-    <Section tool="brand" current={activeTool} title="هویت و برند" summary={[value("name", plan.brand.name), value("cta", plan.brand.cta)].filter(Boolean).join(" · ")} hint="این موارد در پروفایل شما ذخیره می‌شوند تا در پروژه‌های بعدی دوباره پرسیده نشوند.">
+    <Section tool="brand" current={current} title="هویت و برند" summary={[value("name", plan.brand.name), value("cta", plan.brand.cta)].filter(Boolean).join(" · ")} hint="این موارد در پروفایل شما ذخیره می‌شوند تا در پروژه‌های بعدی دوباره پرسیده نشوند.">
       <div className="plan-grid">
         <div className="field"><label htmlFor="plan-name">نام گوینده</label><input id="plan-name" className="input bidi" dir="auto" disabled={!editable} value={value("name", plan.brand.name)} onChange={event => set({ name: event.target.value })} placeholder="بدون نام"/></div>
         <div className="field"><label htmlFor="plan-tagline">سمت یا تگ‌لاین</label><input id="plan-tagline" className="input bidi" dir="auto" disabled={!editable} value={value("tagline", plan.brand.tagline)} onChange={event => set({ tagline: event.target.value })} placeholder="بدون تگ‌لاین"/></div>
@@ -244,7 +255,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       {value("logo_enabled", plan.brand.logo.enabled) && !plan.brand.logo.has_logo ? <small className="field-hint">لوگویی ثبت نشده؛ لوگوی پیش‌فرض استفاده می‌شود. می‌توانید فایل لوگو را در چت بفرستید.</small> : null}
     </Section>
 
-    <Section tool="details" current={activeTool} title="جزئیات تولید" summary={estimateText(plan)}>
+    <Section tool="details" current={current} title="جزئیات تولید" summary={estimateText(plan)}>
       <dl className="plan-facts">
         <dt>حرکت و موشن</dt><dd>{plan.motion}</dd>
         <dt>تصاویر مکمل</dt><dd>{plan.broll}{plan.pictures.length ? <ul>{plan.pictures.map((item, index) => <li key={index}>{item.title || `جملهٔ ${(item.sentence ?? 0) + 1}`}{" · "}{PICTURE_SOURCE[item.source] || item.source}</li>)}</ul> : null}
