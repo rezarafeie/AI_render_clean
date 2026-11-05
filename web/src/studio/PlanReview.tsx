@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal, flushSync } from "react-dom";
 import { EditCard, EditSwitch } from "./EditCard";
+import { LookStudio } from "./LookStudio";
 import { api, PlanContent, PlanEdits, PlanVersion, StudioProject } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
@@ -159,20 +160,14 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
           aria-pressed={value("look", plan.look.preset) === key} onClick={() => set({ look: key })}>{label}</button>)}</div>
         {plan.look.preset === "custom" && !("look" in draft) ? <small className="field-hint">رنگ‌بندی فعلی دستی تنظیم شده است.</small> : null}
       </div>
-      {plan.style.id === 'talking_1' ? <>
-        <EditSwitch label="تصحیح خودکار نور و رنگ" hint="نور کم یا رنگ زرد و آبی ویدیو را از روی خود فیلم اندازه می‌گیرد و ملایم درست می‌کند." disabled={!editable}
-          checked={value("grade_auto", plan.look.grade_auto ?? true)} onChange={checked => set({ grade_auto: checked })}/>
-        <div className="plan-grid">{([["brightness", "روشنایی", -30, 30, 0], ["contrast", "کنتراست", 50, 160, 100], ["saturation", "اشباع رنگ", 0, 180, 100], ["temperature", "گرمی رنگ", -50, 50, 0]] as const).map(([key, label, low, high, fallback]) =>
-          <div className="field" key={key}><label htmlFor={`plan-${key}`}>{label}: {value(key, plan.look.grade?.[key] ?? fallback)}</label>
-            <input id={`plan-${key}`} type="range" min={low} max={high} step={1} disabled={!editable} value={value(key, plan.look.grade?.[key] ?? fallback)} onChange={event => set({ [key]: Number(event.target.value) })}/></div>)}</div>
-        <EditSwitch label="کادربندی خودکار روی چهره" hint="گوینده‌ای که به یک سمت قاب رفته به وسط برمی‌گردد و بالای سرش جا می‌ماند." disabled={!editable}
-          checked={value("framing_auto", plan.look.framing?.auto ?? true)} onChange={checked => set({ framing_auto: checked })}/>
-        <div className="plan-grid">
-          <div className="field"><label htmlFor="plan-shiftx">جابه‌جایی قاب (چپ ↔ راست): {value("shift_x", plan.look.framing?.shift_x ?? 0)}</label>
-            <input id="plan-shiftx" type="range" min={-100} max={100} step={5} disabled={!editable} value={value("shift_x", plan.look.framing?.shift_x ?? 0)} onChange={event => set({ shift_x: Number(event.target.value) })}/></div>
-          <div className="field"><label htmlFor="plan-shifty">جابه‌جایی قاب (بالا ↔ پایین): {value("shift_y", plan.look.framing?.shift_y ?? 0)}</label>
-            <input id="plan-shifty" type="range" min={-100} max={100} step={5} disabled={!editable} value={value("shift_y", plan.look.framing?.shift_y ?? 0)} onChange={event => set({ shift_y: Number(event.target.value) })}/></div>
-        </div></> : null}
+      {plan.style.id === 'talking_1' && project.external_ref ? <LookStudio jobId={project.external_ref} disabled={!editable}
+        values={{ brightness: value("brightness", plan.look.grade?.brightness ?? 0), contrast: value("contrast", plan.look.grade?.contrast ?? 100),
+          saturation: value("saturation", plan.look.grade?.saturation ?? 100), temperature: value("temperature", plan.look.grade?.temperature ?? 0),
+          gradeAuto: value("grade_auto", plan.look.grade_auto ?? true), framingAuto: value("framing_auto", plan.look.framing?.auto ?? true),
+          shiftX: value("shift_x", plan.look.framing?.shift_x ?? 0), shiftY: value("shift_y", plan.look.framing?.shift_y ?? 0),
+          zoomEnabled: value("zoom_enabled", plan.look.zoom_enabled ?? true), zoomBase: value("zoom_base", plan.look.zoom_base ?? 100),
+          zoomClose: value("zoom_close", plan.look.zoom_close ?? 125), zoomAmount: value("zoom", plan.look.zoom) }}
+        onChange={patch => set(patch)}/> : null}
       <div className="field"><span className="field-label">رنگ تأکیدی (هوک و کلیدواژه‌ها)</span>
         <div className="plan-swatches">{ACCENTS.map(colour => <button key={colour} type="button" className="plan-swatch" style={{ background: colour }} disabled={!editable}
           aria-pressed={value("accent_color", plan.look.accent_color).toUpperCase() === colour} aria-label={colour} onClick={() => set({ accent_color: colour })}/>)}
@@ -183,8 +178,10 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
           aria-pressed={value("caption_font", plan.look.caption_font) === key} onClick={() => set({ caption_font: key })}>{label}</button>)}</div>
         <small className="field-hint">{plan.captions}</small>
       </div>
+      {plan.style.id === 'talking_1' ? null : <>
       <div className="field"><label htmlFor="plan-zoom">زوم روی گوینده: {value("zoom", plan.look.zoom)}٪</label>
         <input id="plan-zoom" type="range" min={0} max={200} step={10} disabled={!editable} value={value("zoom", plan.look.zoom)} onChange={event => set({ zoom: Number(event.target.value) })}/></div>
+      </>}
       {plan.style.id === 'talking_1' ? <div className="field"><label htmlFor="plan-bottom-shade">شدت فید مشکی پایین: {value('bottom_shade', plan.look.bottom_shade ?? 0)}٪</label>
         <input id="plan-bottom-shade" type="range" min={0} max={60} step={1} disabled={!editable} value={value('bottom_shade',plan.look.bottom_shade ?? 0)} onChange={event=>set({bottom_shade:Number(event.target.value)})}/></div> : null}
       <EditSwitch label="تأکید بصری روی لحظه‌های کلیدی" disabled={!editable} checked={value("key_moments", plan.look.key_moments)} onChange={checked => set({ key_moments: checked })}/>
@@ -195,6 +192,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       {(plan.look.moments?.length ?? 0) > 0 && value("cold_open", plan.look.cold_open ?? true) ? <div className="field"><label htmlFor="plan-cold">انتخاب لحظهٔ اول</label>
         <select id="plan-cold" className="input" disabled={!editable} value={String(value("cold_open_sentence", plan.look.cold_open_sentence ?? null) ?? "")} onChange={event => set({ cold_open_sentence: event.target.value === "" ? null : Number(event.target.value) })}>
           <option value="">پیشنهاد هوش مصنوعی</option>{(plan.look.moments ?? []).map((m, i) => <option key={`${m.sentence}-${i}`} value={m.sentence}>{i + 1}. {m.title}</option>)}</select></div> : null}
+      {plan.style.id === 'talking_1' ? null : <>
       <EditSwitch label="زوم‌های دوربین روی گوینده" disabled={!editable} checked={value("zoom_enabled", plan.look.zoom_enabled ?? true)} onChange={checked => set({ zoom_enabled: checked })}/>
       {value("zoom_enabled", plan.look.zoom_enabled ?? true) ? <div className="plan-grid">
         <div className="field"><label htmlFor="plan-zbase">زوم قاب اصلی: {value("zoom_base", plan.look.zoom_base ?? 100)}٪</label>
@@ -202,6 +200,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
         <div className="field"><label htmlFor="plan-zclose">زوم قاب نزدیک: {value("zoom_close", plan.look.zoom_close ?? 125)}٪</label>
           <input id="plan-zclose" type="range" min={100} max={220} step={5} disabled={!editable} value={value("zoom_close", plan.look.zoom_close ?? 125)} onChange={event => set({ zoom_close: Number(event.target.value) })}/></div>
       </div> : null}
+      </>}
     </Section>
 
     <Section title="هویت و برند" summary={[value("name", plan.brand.name), value("cta", plan.brand.cta)].filter(Boolean).join(" · ")} hint="این موارد در پروفایل شما ذخیره می‌شوند تا در پروژه‌های بعدی دوباره پرسیده نشوند.">

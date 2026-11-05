@@ -728,3 +728,10 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .dv-card .dv-actions { position: relative; }
 .dv-card .popover { z-index: 30; min-width: 190px; }
 .dv-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; text-align: center; padding: 8px; }
+
+/* Light, colour, frame and zoom with a live picture (Edit tab) */
+.look-studio { display: grid; gap: 10px; }
+.look-stage { position: relative; overflow: hidden; border-radius: 14px; background: #000; aspect-ratio: 9 / 16; max-height: 46vh; width: auto; margin-inline: auto; justify-self: center; }
+.look-stage video { display: block; }
+.look-tint { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; }
+.look-panel { display: grid; gap: 10px; }
