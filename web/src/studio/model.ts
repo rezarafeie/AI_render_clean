@@ -452,6 +452,7 @@ export function serverBusy(events: StudioEvent[], fallback?: boolean): boolean |
     // A ready plan is a human approval boundary, not unfinished analysis.
     // A later work.state (e.g. a new revision request) still takes precedence.
     if (events[i].type === "plan.ready") return false;
+    if (events[i].type === "content.discovery.completed") return false;     // a long-video analysis that ended no longer keeps the chat busy
     if (events[i].type === "message.stopped" || events[i].type === "job.failed" || events[i].type === "motion.completed" || events[i].type === "motion.questions") return false;
     if (events[i].type === "motion.progress" && ["failed", "completed"].includes(String(events[i].data.status))) return false;   // the job ended after the last "busy"
   }

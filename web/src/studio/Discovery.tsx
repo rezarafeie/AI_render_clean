@@ -36,7 +36,7 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
 
   const refresh = React.useCallback(() => api.discoveryView(analysisId).then(setAnalysis).catch(e => setError(friendlyError(e, "load the analysis"))), [analysisId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
-  const active = analysis ? (analysis.running || analysis.interrupted || analysis.candidates.some(c => isActive(c.status))) : true;
+  const active = analysis ? (analysis.running || analysis.interrupted || analysis.candidates.some(c => isActive(c.status) || (!c.hidden && c.preview_ready === false))) : true;
   React.useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => void refresh(), 3000);
@@ -129,9 +129,10 @@ function CandidateCard({ analysis, candidate, number, selected, onSelect, onChan
   return <article className="dv-card" data-status={candidate.status} data-selected={selected || undefined}>
     <div className="dv-media">
       {playing ? <AuthenticatedMedia as="video" key={`p-${version}`} src={api.discoveryPreviewUrl(analysis.id, candidate.id, version)} controls autoPlay playsInline/>
-        : <button type="button" className="dv-thumb" onClick={() => setPlaying(true)} aria-label={`پیش‌نمایش ${candidate.title}`}>
+        : <button type="button" className="dv-thumb" onClick={() => { if (candidate.preview_ready !== false) setPlaying(true); }} aria-label={`پیش‌نمایش ${candidate.title}`} aria-disabled={candidate.preview_ready === false || undefined}>
             <AuthenticatedMedia as="img" key={`t-${version}`} src={api.discoveryThumbUrl(analysis.id, candidate.id)} alt="" loading="lazy"/>
-            <span className="dv-play"><Icon name="play" size={20}/></span><span className="dv-dur" dir="ltr">{clock(candidate.estimated_duration)}</span>
+            {candidate.preview_ready === false ? <span className="dv-wait" role="status"><span className="spinner"/>در حال آماده‌سازی پیش‌نمایش…</span> : <span className="dv-play"><Icon name="play" size={20}/></span>}
+            <span className="dv-dur" dir="ltr">{clock(candidate.estimated_duration)}</span>
           </button>}
       <label className="dv-pick"><input type="checkbox" checked={selected} disabled={Boolean(child) && !candidate.child_stale} onChange={event => onSelect(event.target.checked)} aria-label="انتخاب"/></label>
     </div>
@@ -163,7 +164,7 @@ function CandidateCard({ analysis, candidate, number, selected, onSelect, onChan
           : <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.startCandidate(analysis.id, candidate.id).then(result => { navigate(`/studio/${result.conversation_id}`); }), "start editing")}>{busy ? "در حال ساختن…" : "شروع تدوین"}</button>}
         <Menu label="گزینه‌های بیشتر" align="end" trigger={props => <button type="button" className="icon-btn" {...props} aria-label="گزینه‌های بیشتر"><Icon name="thinking" size={18}/></button>}>
           {close => <>
-            <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); setPlaying(value => !value); }}><Icon name="play" size={16}/><span>{playing ? "بستن پیش‌نمایش" : "پیش‌نمایش"}</span></button>
+            <button type="button" role="menuitem" className="menu-item" disabled={candidate.preview_ready === false} onClick={() => { close(); setPlaying(value => !value); }}><Icon name="play" size={16}/><span>{playing ? "بستن پیش‌نمایش" : "پیش‌نمایش"}</span></button>
             <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); setEditing(value => !value); }}><Icon name="edit" size={16}/><span>ویرایش</span></button>
             <button type="button" role="menuitem" className="menu-item" disabled={busy} onClick={() => { close(); void act(() => api.editCandidate(analysis.id, candidate.id, { hidden: !candidate.hidden }), "hide"); }}><Icon name="trash" size={16}/><span>{candidate.hidden ? "نمایش" : "حذف از فهرست"}</span></button>
           </>}

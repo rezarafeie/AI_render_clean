@@ -145,6 +145,7 @@ def start(directory: Path) -> None:
 
 
 MAX_AUTO_RESUMES = 2
+FINDER_VERSION = "v2"            # raise it when the finder's prompt changes: its saved answers per window are then searched again
 
 
 def recover(user_key: str, analysis_id: str) -> bool:
@@ -424,8 +425,9 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
     _emit(conversation_id, "content.outline.completed", analysis_id=key, topics=[{"title": t.title, "start": t.start, "end": t.end} for t in outline.topics][:60])
 
     (directory / "windows").mkdir(exist_ok=True)
-    tag = "more-" + re.sub(r"\W+", "", focus)[:12] if focus else "w"
+    tag = FINDER_VERSION + ("-more-" + re.sub(r"\W+", "", focus)[:12] if focus else "-w")          # answers of an older prompt are not reused
     accepted = list(analysis["candidates"])
+    before = len(accepted)
     wins = discovery.windows(segments)
     for number, window in enumerate(wins):
         if stopper():
@@ -459,7 +461,12 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
     analysis.update(discovery_status="completed", stage="done", message=f"{len(accepted)} محتوای مستقل پیدا شد", candidates=accepted)
     save(directory, analysis)
     _emit(conversation_id, "content.discovery.completed", analysis_id=key, count=len(accepted))
-    _assistant(conversation_id, analysis["user_key"], _completion_message(analysis))
+    new = len(accepted) - before
+    if focus and before:
+        _assistant(conversation_id, analysis["user_key"], (f"{new} محتوای تازه پیدا شد و به کارت‌ها اضافه شد؛ در مجموع {len(accepted)} کارت دارید." if new
+                                                           else "محتوای تازه‌ای که قبلاً پیشنهاد نشده باشد پیدا نشد."))
+    else:
+        _assistant(conversation_id, analysis["user_key"], _completion_message(analysis))
 
 
 def _prepare(raws, segments: list[dict], index: dict[str, int], analysis_id: str) -> list[dict]:
@@ -803,9 +810,26 @@ def view(directory: Path, tail: int = 12) -> dict:
         except (OSError, ValueError):
             pass
     out = {k: v for k, v in analysis.items() if k not in {"candidates", "source_path", "user_key"}}
+    ensure_media(directory, analysis)
     out.update(running=is_alive(analysis), interrupted=is_stale(analysis), transcript_tail=segments, enhanced_chunks=len(enhanced), chunks=len(chunks),
-               candidates=[public_candidate(c) for c in analysis["candidates"]])
+               candidates=[{**public_candidate(c), "preview_ready": _preview_target(directory, c).is_file()} for c in analysis["candidates"]])
     return out
+
+
+_QUEUED: set[str] = set()
+
+
+def ensure_media(directory: Path, analysis: dict) -> None:
+    """Cards found before previews were prepared in the background (or whose range was edited) get theirs made now, once, one at a time."""
+    source = Path(analysis.get("source_path", ""))
+    if not source.is_file():
+        return
+    for cand in analysis.get("candidates", []):
+        target = _preview_target(directory, cand)
+        if cand.get("hidden") or target.is_file() or str(target) in _QUEUED:
+            continue
+        _QUEUED.add(str(target))
+        prepare_media_in_background(directory, cand, source)
 
 
 def is_stale(analysis: dict) -> bool:

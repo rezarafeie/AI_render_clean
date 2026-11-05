@@ -721,3 +721,10 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .dv-card .dv-actions .btn { flex: 1 1 auto; }
 .dv-card .dv-actions .icon-btn { flex: none; }
 .dv-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+
+/* a card must not clip the "more" menu: the rounding moves to the picture */
+.dv-card { overflow: visible; }
+.dv-card .dv-media { border-start-start-radius: inherit; border-start-end-radius: inherit; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.dv-card .dv-actions { position: relative; }
+.dv-card .popover { z-index: 30; min-width: 190px; }
+.dv-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; text-align: center; padding: 8px; }

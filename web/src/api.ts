@@ -227,6 +227,7 @@ export interface MotionGraphic {
 /** Long-video content discovery (app/long_video.py). */
 export type CandidateStatus = "discovered" | "selected" | "editing" | "rendering" | "completed" | "failed";
 export interface DiscoveryCandidate {
+  preview_ready?: boolean;
   id: string; title: string; summary: string; hook: string; hook_source: string; category: string; rationale: string; score: number;
   ranges: [number, number][]; estimated_duration: number; status: CandidateStatus; hidden: boolean;
   child_conversation_id: string | null; child_project_id: string | null; child_stale?: boolean; revisions: { revision: number }[]; problems?: string[];
