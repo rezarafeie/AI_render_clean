@@ -139,7 +139,7 @@ def _normalize(text: str) -> str:
 
 
 def transcribe_chunk(wav_path: Path, index: int, span: tuple[float, float], *, model_name: str, language: Optional[str], device: str, compute: str,
-                     beam_size: int, model=None, on_segment: Optional[Callable[[dict], None]] = None) -> dict:
+                     beam_size: int, model=None, on_segment: Optional[Callable[[dict], None]] = None, should_stop: Optional[Callable[[], bool]] = None) -> dict:
     """Transcribe one chunk; times are absolute (offset by the chunk start). ``model`` is injectable for tests."""
     model = model or _model(model_name, device, compute)
     audio = _read_wave(wav_path, *span)
@@ -148,6 +148,8 @@ def transcribe_chunk(wav_path: Path, index: int, span: tuple[float, float], *, m
                                       word_timestamps=True, beam_size=beam_size, condition_on_previous_text=False)
     out = []
     for position, seg in enumerate(segments):
+        if should_stop and should_stop():                  # Stop is honoured between segments, not only between 5-minute pieces (one piece can take most of an hour on a busy server)
+            raise Stopped("transcription stopped")
         words = [{"w": _normalize(w.word.strip()), "start": round(span[0] + w.start, 3), "end": round(span[0] + w.end, 3), "prob": round(float(w.probability), 3)}
                  for w in (seg.words or []) if w.word.strip()]
         if not words:
@@ -217,7 +219,7 @@ def transcribe_long(video: Path, work: Path, *, language: Optional[str] = None, 
                 flush()
 
             result = transcribe_chunk(work / "audio.wav", index, span, model_name=name, language=language_hint, device=device, compute=compute,
-                                      beam_size=beam_size, model=model, on_segment=collect)
+                                      beam_size=beam_size, model=model, on_segment=collect, should_stop=should_stop)
             flush(True)
             result["signature"] = signature
             temporary = path.with_suffix(".part")

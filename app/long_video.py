@@ -156,7 +156,7 @@ def recover(user_key: str, analysis_id: str) -> bool:
     except (KeyError, OSError, ValueError):
         return False
     busy = analysis.get("transcription_status") in {"running", "queued"} or analysis.get("discovery_status") in {"running", "queued"}
-    if not busy or is_alive(analysis) or analysis.get("auto_resumes", 0) >= MAX_AUTO_RESUMES:
+    if not busy or is_alive(analysis) or _flag(directory).exists() or analysis.get("auto_resumes", 0) >= MAX_AUTO_RESUMES:       # a Stop the person pressed is never undone
         return False
     _set(directory, auto_resumes=analysis.get("auto_resumes", 0) + 1, message="پردازش بعد از قطعی دوباره شروع شد؛ از همین‌جا ادامه می‌یابد.")
     start(directory)
@@ -164,12 +164,30 @@ def recover(user_key: str, analysis_id: str) -> bool:
 
 
 def stop(analysis_id: str) -> None:
+    """Ask the worker to stop and say so at once. A worker that is alive notices within a few seconds (between two segments of speech); when nobody is
+    working any more (a restart left the analysis marked as running) it is simply marked stopped."""
     _STOP.add(analysis_id)
     for directory in ROOT.glob(f"*/*/discovery/{analysis_id}"):
         try:
             _flag(directory).write_text(str(time.time()))
         except OSError:
             pass
+        try:
+            analysis = load(directory)
+        except (OSError, ValueError):
+            continue
+        busy = analysis.get("transcription_status") in {"running", "queued"} or analysis.get("discovery_status") in {"running", "queued"}
+        if not busy:
+            continue
+        if is_alive(analysis):
+            _set(directory, stage="stopping", message="در حال توقف… چند ثانیه صبر کنید.")
+        else:
+            changes = {"stage": "stopped", "message": "پردازش متوقف شد؛ از همین‌جا ادامه می‌یابد."}
+            for field in ("transcription_status", "discovery_status"):
+                if analysis.get(field) in {"running", "queued"}:
+                    changes[field] = "stopped"
+            _set(directory, **changes)
+            _emit(analysis["conversation_id"], "job.failed", analysis_id=analysis_id, message=changes["message"], resumable=True, stopped=True)
 
 
 def is_running(analysis_id: str) -> bool:
