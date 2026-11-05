@@ -456,7 +456,7 @@ def render_composite(video: Path, plan: ReelPlan, panel: Optional[Path], text: O
     else:
         parts.append(f"[ca]{loud}")
     cmd = ["ffmpeg", "-hide_banner", "-y", *inputs, "-filter_complex", ";".join(parts), "-map", "[vout]", "-map", "[aout]",
-           "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+           "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
            "-t", f"{plan.duration:.3f}", "-movflags", "+faststart", str(out)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -610,7 +610,7 @@ def apply_effects(video: Path, plan: ReelPlan, panel, text, hook, fx: list[dict]
             parts.append(f"[{last}][l{n}]overlay=0:0:format=auto:eof_action=pass[o{n}]")
             last, n = f"o{n}", n + 1
     parts.append(f"[{last}]format=yuv420p[vout]")
-    cmd += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", "0:a", "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-c:a", "copy",
+    cmd += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", "0:a", "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-level:v", "4.2", "-c:a", "copy",
             "-movflags", "+faststart", str(out)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:

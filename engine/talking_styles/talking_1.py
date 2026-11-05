@@ -1065,7 +1065,7 @@ def render(video: Path, plan: ReelPlan, out: Path, *, hook: str, highlight: list
                   "aresample=48000[aout]")
     cmd = [ffmpeg, "-hide_banner", "-y", "-filter_complex_threads", "2", "-filter_threads", "2", *inputs, "-filter_complex", ";".join(vf),
            "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-threads", "2", "-crf", "17", "-preset", "ultrafast",
-           "-profile:v", "high", "-pix_fmt", "yuv420p",
+           "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p",
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
            "-c:a", "aac", "-b:a", "192k", "-t", f"{total:.3f}", "-movflags", "+faststart",
            "-progress", "pipe:1", "-nostats", str(out)]
