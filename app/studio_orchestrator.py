@@ -158,6 +158,10 @@ def _resolved_intent(text, attachments, current, on_title=None, motion=None, his
         title = re.sub(r'https?://\S+|[\r\n]+', ' ', decision.title).strip(' "«»')[:100]
         if title:
             on_title(title)
+    if decision.intent == "question_input" and attachments:
+        # "Not enough to go on" while the person attached something (a video from Your files, for instance) is the model failing to see it:
+        # the plain rules read the same message and the attachments, and always have an answer for that.
+        return _intent(text, attachments, current, motion)
     return decision.intent
 
 

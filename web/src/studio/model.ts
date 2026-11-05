@@ -439,7 +439,9 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     if (at >= 0) { filtered.splice(at, 1); filtered.push(run); }
   }
 
-  if (pending) filtered.push({ kind: "message", id: pending.id, role: "user", content: pending.content, attachments: pending.attachments, createdAt: pending.createdAt, pending: !pending.failed, failed: pending.failed });
+  // The message the server already holds is the real one: the optimistic copy is dropped as soon as it shows up (a slow refresh used to leave both on screen).
+  const delivered = pending && messages.some(m => m.role === "user" && m.content === pending.content && parseTime(m.created_at) >= pending.createdAt - 120000);
+  if (pending && !delivered) filtered.push({ kind: "message", id: pending.id, role: "user", content: pending.content, attachments: pending.attachments, createdAt: pending.createdAt, pending: !pending.failed, failed: pending.failed });
   void lastUserIndex;
   return filtered;
 }
