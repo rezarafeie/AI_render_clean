@@ -102,6 +102,33 @@ def _intent(text: str, attachments: list[dict], current: dict | None, motion: di
     return "motion" if len(text.strip()) > 10 else "question_input"
 
 
+def _preferred_style(user_key: str) -> str | None:
+    """The Talking style this person starts with: the one they last chose by hand, else the one most of their finished reels used (at least
+    three reels and a clear majority). None when there is no habit yet: then the director decides from the content."""
+    try:
+        profile = brand_profile.load(user_key)
+        if profile.get("preferred_style") in brand_profile.STYLE_IDS:
+            return profile["preferred_style"]
+        from collections import Counter
+        from app import jobs as jobstore, talking_reel
+        conversations = run(repo.list_conversations(user_key))
+        projects = run(repo.projects_for([c["id"] for c in conversations]))
+        styles = []
+        for rows in projects.values():
+            for item in rows:
+                job = jobstore.get(item.get("external_ref") or "") if item.get("engine") == "talking" else None
+                state = talking_reel.load(job.dir) if job else {}
+                if state.get("output") and state.get("style") in brand_profile.STYLE_IDS:
+                    styles.append(state["style"])
+        if len(styles) >= 3:
+            style, count = Counter(styles).most_common(1)[0]
+            if count / len(styles) >= 0.6:
+                return style
+    except Exception:
+        log.warning("preferred style could not be read", exc_info=True)
+    return None
+
+
 def _asks_for_new_clip(text: str) -> bool:
     lower = text.lower()
     return any(word in lower for word in ("تیزر", "تبلیغ", "موشن", "محصول", "اینفوگرافیک", "مرجع", "شبیه این", "مثل این", "motion", "advert", "promo", "reference", "like this"))
@@ -790,6 +817,7 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             # No style question: the creative director chooses from the content (an explicit style in the
             # message still wins). Asking is reserved for real ambiguity, not for decisions the system can make.
             _emit(conversation_id, "tool.started", tool="analyze_talking_reel", message="تحلیل ویدیوی صحبتی و طراحی ایدهٔ ادیت شروع شد.")
+            selected_style = selected_style or _preferred_style(user_key)       # what this person always picks; the director only suggests alternatives
             payload = {"source_path": source["path"], "filename": source["filename"], "user_key": user_key,
                        "style": selected_style, "request": text[:2000]}
             seed = (conversation.get('state') or {}).get('seed_transcript_path')

@@ -406,10 +406,13 @@ def talking_edits(content: dict, edits: dict, status: dict) -> dict:
         if not concept.get("selected"):
             reanalyze = {"style": edits.get("style") if edits.get("style") in STYLES else concept["style"],
                          "concept_id": concept["id"]}
+            if edits.get("style") in STYLES:
+                profile["preferred_style"] = edits["style"]
             applied.append(f"ایدهٔ «{concept['name']}» با سبک {STYLES[reanalyze['style']]['label']}")
     elif "style" in edits:
         if edits["style"] not in STYLES:
             raise PlanError("این سبک وجود ندارد.")
+        profile["preferred_style"] = edits["style"]          # the person's own choice is what the next video starts with
         if edits["style"] != style:
             reanalyze = {"style": edits["style"], "concept_id": None}
             applied.append(f"سبک تدوین: {STYLES[edits['style']]['label']}")

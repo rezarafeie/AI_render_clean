@@ -16,7 +16,8 @@ from pathlib import Path
 
 from app import jobs as jobstore
 
-FIELDS = ("name", "tagline", "cta", "accent_color", "caption_font", "logo_motion")
+FIELDS = ("name", "tagline", "cta", "accent_color", "caption_font", "logo_motion", "preferred_style")
+STYLE_IDS = {"talking_1", "talking_2", "talking_3", "talking_4", "talking_5"}
 FONTS = {"default", "Vazirmatn"}
 LOGO_MOTIONS = {"pop", "fade", "slide", "none"}
 _lock = threading.Lock()
@@ -37,6 +38,8 @@ def _clean(field: str, value) -> str | None:
         return text if text in FONTS else None
     if field == "logo_motion":
         return text if text in LOGO_MOTIONS else None
+    if field == "preferred_style":
+        return text if text in STYLE_IDS else None
     return text[:200]
 
 
