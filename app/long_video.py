@@ -256,8 +256,7 @@ def _hear_with_elevenlabs(directory: Path, source: Path, analysis: dict, on_even
     on_event("transcription.started", {"duration_s": analysis["duration"], "chunks": 1, "model": "elevenlabs", "resumed": False})
     transcript, cost = transcribe_elevenlabs(source, directory, language="fa", file_digest=file_hash(source))
     raw = lt.from_transcript(transcript, directory)
-    for index in range(len(list((directory / "chunks").glob("*.json")))):
-        enhancer.submit(index)
+    enhancer.skip = True
     on_event("transcription.progress", {"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0, "language": raw["language"]})
     _set(directory, transcription_cost_usd=cost)
     return raw
@@ -298,6 +297,7 @@ def _run(directory: Path) -> None:
              progress={"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0})
     else:
         raw = json.loads(raw_path.read_text())
+        enhancer.skip = raw.get("model") == "elevenlabs"
         for index in range(len(list((directory / "chunks").glob("*.json")))):
             enhancer.submit(index)
 
@@ -328,12 +328,13 @@ class _Enhancer:
         self.thread = threading.Thread(target=self._work, daemon=True, name="discovery-enhance")
         self.thread.start()
         self.seen: set[int] = set()
+        self.skip = False                  # ElevenLabs' text is already accurate: a model rereading all of it only costs minutes
 
     def deadline(self) -> float:
         return self.started + self.budget
 
     def submit(self, index: int) -> None:
-        if index not in self.seen:
+        if not self.skip and index not in self.seen:
             self.seen.add(index)
             self.queue.put(index)
 
@@ -351,6 +352,8 @@ class _Enhancer:
                     enhanced = discovery.enhance_segments(chunk["segments"], context, deadline=self.deadline())
                     path.write_text(json.dumps(enhanced, ensure_ascii=False))
                 self.done.add(index)
+                total = len(list((self.directory / "chunks").glob("*.json")))
+                _set(self.directory, message=f"در حال اصلاح و بهبود متن ({len(self.done)} از {total})")
             except Exception as exc:
                 log.warning("enhancement of chunk %s failed: %s", index, exc)
                 self.errors.append(index)
@@ -383,6 +386,8 @@ class _Enhancer:
                         items[i] = fixed
                     enhanced_path.write_text(json.dumps(items, ensure_ascii=False))
                 merged.extend(items)
+            elif self.skip:
+                merged.extend({**seg, "enhanced_text": seg["text"], "flags": [], "uncertain": [], "changed": False} for seg in json.loads(chunk_path.read_text())["segments"])
             else:
                 merged.extend(discovery.enhance_segments(json.loads(chunk_path.read_text())["segments"]))
         merged.sort(key=lambda s: s["start"])
