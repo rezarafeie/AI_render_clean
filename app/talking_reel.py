@@ -29,8 +29,9 @@ DEFAULTS = {
     "music": DEFAULT_MUSIC, "cta": "", "style": "talking_1", "suggested_style": None,
     "suggested_style_reason": "", "analysis_ready": False, "output": None, "decisions": None,
     "render_settings": {
-        "grade": {"brightness": 0, "contrast": 100, "saturation": 100, "temperature": 0, "vignette": 50},
-        "zoom": {"enabled": True, "amount": 100, "base_scale": 100, "close_scale": 140},
+        "grade": {"brightness": 0, "contrast": 100, "saturation": 100, "temperature": 0, "vignette": 50, "auto": True},
+        "zoom": {"enabled": True, "amount": 100, "base_scale": 100, "close_scale": 125},
+        "framing": {"auto": True, "shift_x": 0, "shift_y": 0},
         "key_moments_enabled": True,
         "first_key_moment_enabled": True,
         "first_key_moment_sentence": None,
@@ -198,6 +199,14 @@ def _clean_render_settings(value: object) -> dict:
             current["grade"][key] = max(low, min(high, int(grade.get(key, current["grade"][key]))))
         except (TypeError, ValueError):
             pass
+    current["grade"]["auto"] = bool(grade.get("auto", True))
+    framing = value.get("framing") if isinstance(value.get("framing"), dict) else {}
+    current["framing"]["auto"] = bool(framing.get("auto", True))
+    for key in ("shift_x", "shift_y"):
+        try:
+            current["framing"][key] = max(-100, min(100, int(framing.get(key, 0))))
+        except (TypeError, ValueError):
+            pass
     zoom = value.get("zoom") if isinstance(value.get("zoom"), dict) else {}
     current["zoom"]["enabled"] = bool(zoom.get("enabled", current["zoom"]["enabled"]))
     try:
@@ -205,12 +214,14 @@ def _clean_render_settings(value: object) -> dict:
     except (TypeError, ValueError):
         pass
     for key, default, low, high in (
-        ("base_scale", 100, 100, 180), ("close_scale", 140, 100, 220),
+        ("base_scale", 100, 100, 180), ("close_scale", 125, 100, 220),
     ):
         try:
             current["zoom"][key] = max(low, min(high, int(zoom.get(key, default))))
         except (TypeError, ValueError):
             pass
+    if current["zoom"]["close_scale"] == 140:        # the former default (too strong a jump on every cut); 125 is the new one
+        current["zoom"]["close_scale"] = 125
     current["zoom"]["close_scale"] = max(
         current["zoom"]["base_scale"], current["zoom"]["close_scale"]
     )
@@ -656,9 +667,12 @@ def _run(job_dir: Path, video: Path, *, regenerate: bool) -> None:
 def _faces(job_dir: Path, video: Path, media) -> list:
     faces_path = job_dir / "talking_reel_faces.json"
     if faces_path.is_file():
-        return [tuple(f) for f in json.loads(faces_path.read_text())]
+        cached = [tuple(f) for f in json.loads(faces_path.read_text())]
+        if cached:                         # an empty list is what a server without a face tracker used to store: look again
+            return cached
     faces = media.track_faces(video)
-    faces_path.write_text(json.dumps(faces))
+    if faces:
+        faces_path.write_text(json.dumps(faces))
     return faces
 
 

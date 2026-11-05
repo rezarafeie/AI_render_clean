@@ -238,7 +238,7 @@ function TimelineReview({ jobId, state, disabled, onChange }: {
   const [logoError, setLogoError] = React.useState("");
   const [previewClose, setPreviewClose] = React.useState(false);
   const moments = state.timeline || [];
-  const setGrade = (key: keyof TalkingRenderSettings["grade"], value: number) =>
+  const setGrade = (key: Exclude<keyof TalkingRenderSettings["grade"], "auto">, value: number) =>
     onChange({ ...settings, grade: { ...settings.grade, [key]: value } });
   const toggleMoment = (id: string) => {
     const off = new Set(settings.disabled_moments);
@@ -248,7 +248,7 @@ function TimelineReview({ jobId, state, disabled, onChange }: {
   const filter = `brightness(${100 + settings.grade.brightness}%) contrast(${settings.grade.contrast}%) saturate(${settings.grade.saturation}%)`;
   const previewScale = settings.zoom.enabled
     ? (previewClose ? settings.zoom.close_scale : settings.zoom.base_scale) / 100 : 1;
-  const ranges: { key: keyof TalkingRenderSettings["grade"]; label: string; min: number; max: number; suffix: string }[] = [
+  const ranges: { key: Exclude<keyof TalkingRenderSettings["grade"], "auto">; label: string; min: number; max: number; suffix: string }[] = [
     { key: "brightness", label: "نور", min: -30, max: 30, suffix: "" },
     { key: "contrast", label: "کنتراست", min: 50, max: 160, suffix: "%" },
     { key: "saturation", label: "رنگ", min: 0, max: 180, suffix: "%" },

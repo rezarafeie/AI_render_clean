@@ -44,9 +44,9 @@ W, H = 1080, 1920
 RENDER_FPS = "30"          # delivery cadence; phone sources are commonly 60fps
 GAP_CUT = 0.35            # pauses longer than this are cut out
 CUT_PAD = 0.08            # speech kept around each cut
-MIN_SHOT = 4.0            # framing changes at most this often (seconds of output)
-MAX_SHOT = 7.5            # a longer stretch gets a punch-in at a word boundary
-CLOSE_ZOOM = 1.4          # close framing, relative to the full-height wide crop
+MIN_SHOT = 6.0            # framing changes at most this often (seconds of output)
+MAX_SHOT = 10.0           # a longer stretch gets a punch-in at a word boundary
+CLOSE_ZOOM = 1.25         # close framing, relative to the full-height wide crop
 YELLOW = "#F5B800"
 FLASH_COLOUR = "#FFD9A0"
 MUSIC_DB = -19.0           # music bed under the voice (ducked further while speaking)
@@ -109,7 +109,7 @@ def track_faces(video: Path, fps: float = 2.0) -> list[tuple[float, float, float
     """(time, cx, cy) of the largest face, sampled at ``fps``; empty if unavailable."""
     binary = face_track_binary()
     if binary is None:
-        return []
+        return _track_faces_yunet(video, fps)
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"fps={fps},scale=640:-2",
                         f"{tmp}/f_%05d.png"], check=True, capture_output=True)
@@ -125,6 +125,38 @@ def track_faces(video: Path, fps: float = 2.0) -> list[tuple[float, float, float
             k = int(Path(item["file"]).stem.split("_")[1]) - 1
             cx, cy = item["face"][:2]
             faces.append(((k + 0.5) / fps, float(cx), float(cy)))
+    return faces
+
+
+YUNET = PROJECT_ROOT / "assets" / "effects" / "models" / "yunet.onnx"
+
+
+def _track_faces_yunet(video: Path, fps: float) -> list[tuple[float, float, float]]:
+    """The same samples as the macOS tracker, from OpenCV's YuNet detector (any platform; the server runs Linux). Largest face per frame."""
+    try:
+        import cv2
+        if not YUNET.is_file():
+            raise FileNotFoundError(YUNET)
+    except Exception as exc:
+        log.warning("face tracking is not available: %s", exc)
+        return []
+    faces: list[tuple[float, float, float]] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"fps={fps},scale=640:-2", "-q:v", "3", f"{tmp}/f_%05d.jpg"],
+                       check=True, capture_output=True, timeout=1800)
+        detector = None
+        for k, frame in enumerate(sorted(Path(tmp).glob("f_*.jpg"))):
+            image = cv2.imread(str(frame))
+            if image is None:
+                continue
+            h, w = image.shape[:2]
+            if detector is None:
+                detector = cv2.FaceDetectorYN.create(str(YUNET), "", (w, h), 0.6, 0.3, 20)
+            _, found = detector.detect(image)
+            if found is None or not len(found):
+                continue
+            x, y, fw, fh = max(found, key=lambda f: f[2] * f[3])[:4]
+            faces.append(((k + 0.5) / fps, float(min(max((x + fw / 2) / w, 0.0), 1.0)), float(min(max((y + fh / 2) / h, 0.0), 1.0))))
     return faces
 
 
@@ -555,19 +587,48 @@ BW = "hue=s=0,eq=contrast=1.12:brightness=-0.01"
 
 def crop_for(
     shot: Shot, sw: int, sh: int, *, base_zoom: float = 1.0,
-    close_zoom: float = CLOSE_ZOOM,
+    close_zoom: float = CLOSE_ZOOM, framing: Optional[dict] = None,
 ) -> tuple[int, int, int, int]:
-    """(w, h, x, y) of the 9:16 source crop for a shot's framing."""
+    """(w, h, x, y) of the 9:16 source crop for a shot's framing.
+
+    Auto framing (on unless switched off): a wide shot is zoomed in just enough (never past 1.25x) to bring a speaker who stands off to one
+    side back to the middle, and keeps headroom above the face; ``shift_x`` / ``shift_y`` (-100..100, percent of the free room) move the
+    window by hand.
+    """
+    framing = framing or {}
+    auto = framing.get("auto", True)
+    shift_x = max(-100.0, min(100.0, float(framing.get("shift_x", 0) or 0))) / 100
+    shift_y = max(-100.0, min(100.0, float(framing.get("shift_y", 0) or 0))) / 100
+    fx, fy = shot.face[0] * sw, shot.face[1] * sh
     framing_zoom = close_zoom if shot.close else base_zoom
+    if auto and not shot.close:
+        off = min(abs(shot.face[0] - 0.5), 0.35)
+        framing_zoom = max(framing_zoom, min(1.25, 1 / (1 - 2 * off)))
+    if shift_x or shift_y:
+        framing_zoom = max(framing_zoom, 1.12)      # there is no room to move a window that is already the whole picture
     ch = sh / max(1.0, framing_zoom)
     cw = ch * 9 / 16
     if cw > sw:   # a portrait or square source: use the full width instead
         cw, ch = sw, sw * 16 / 9
+        if ch > sh:
+            ch = sh
+        if framing_zoom > 1:
+            cw = sw / framing_zoom
+            ch = cw * 16 / 9
+            if ch > sh:
+                ch, cw = sh, sh * 9 / 16
     cw, ch = int(cw) & ~1, int(ch) & ~1
-    fx, fy = shot.face[0] * sw, shot.face[1] * sh
     x = min(max(0, fx - cw / 2), sw - cw)
-    # Close framing keeps the face in the upper third; wide keeps the full height.
-    y = min(max(0, fy - 0.36 * ch), sh - ch) if shot.close else max(0, (sh - ch) / 2)
+    # Close framing keeps the face in the upper third; a zoomed wide framing keeps a little more headroom than the centre would.
+    if shot.close:
+        y = min(max(0, fy - 0.36 * ch), sh - ch)
+    elif ch < sh:
+        y = min(max(0, fy - 0.40 * ch), sh - ch) if auto else (sh - ch) / 2
+    else:
+        y = 0
+    x += shift_x * (sw - cw) / 2
+    y += shift_y * (sh - ch) / 2
+    x, y = min(max(0, x), sw - cw), min(max(0, y), sh - ch)
     return cw, ch, int(x) & ~1, int(y) & ~1
 
 
@@ -600,6 +661,52 @@ def source_colour_filter(video: Path) -> str:
         "zscale=transfer=bt709:matrix=bt709:range=tv:dither=error_diffusion,"
         "format=yuv420p10le"
     )
+
+
+def measure_look(video: Path, source_colour: str = "null", samples: int = 12) -> dict:
+    """Average colour and tonal spread of the footage, from a few small frames spread over it: {"r","g","b" (0..255 means), "low","high" (luma
+    10th/90th percentile), "mean"}. Empty when the frames cannot be read."""
+    try:
+        duration = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(video)],
+                                        check=True, capture_output=True, text=True, timeout=60).stdout.strip() or 0)
+        chain = f"fps={samples / max(duration, 1.0):.5f},{source_colour},scale=16:16:flags=area,format=rgb24"
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(video), "-vf", chain, "-frames:v", str(samples), "-f", "rawvideo", "-"],
+                             check=True, capture_output=True, timeout=300).stdout
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+    pixels = [raw[i:i + 3] for i in range(0, len(raw) - 2, 3)]
+    if len(pixels) < 64:
+        return {}
+    lumas = sorted(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] for p in pixels)
+    n = len(pixels)
+    return {"r": sum(p[0] for p in pixels) / n, "g": sum(p[1] for p in pixels) / n, "b": sum(p[2] for p in pixels) / n,
+            "low": lumas[n // 10], "high": lumas[n * 9 // 10], "mean": sum(lumas) / n}
+
+
+def auto_look(stats: dict) -> dict:
+    """Corrections that bring the footage to a normal exposure and a neutral-ish white balance, kept mild: a room can be warm on purpose.
+
+    {"exposure": multiplier on luma (0.88..1.25), "contrast": 0.95..1.15, "red"/"blue": channel gains (0.92..1.08)}. All 1.0 when unknown."""
+    if not stats:
+        return {"exposure": 1.0, "contrast": 1.0, "red": 1.0, "blue": 1.0}
+    clamp = lambda v, a, b: max(a, min(b, v))
+    exposure = clamp(118.0 / max(stats["mean"], 1.0), 0.88, 1.25)
+    spread = max(stats["high"] - stats["low"], 1.0)
+    contrast = clamp(105.0 / spread, 0.95, 1.15)
+    gain = lambda channel: clamp(1 + 0.6 * (stats["g"] / max(stats[channel], 1.0) - 1), 0.92, 1.08)
+    return {"exposure": round(exposure, 3), "contrast": round(contrast, 3), "red": round(gain("r"), 3), "blue": round(gain("b"), 3)}
+
+
+def auto_grade_filter(look: dict) -> str:
+    """The ffmpeg filters of an ``auto_look`` ("null" when there is nothing to correct)."""
+    parts = []
+    if abs(look["red"] - 1) > 0.004 or abs(look["blue"] - 1) > 0.004:
+        parts.append(f"colorchannelmixer=rr={look['red']}:bb={look['blue']}")
+    if abs(look["exposure"] - 1) > 0.01:
+        parts.append(f"lutyuv=y='clip(val*{look['exposure']},16,235)'")
+    if abs(look["contrast"] - 1) > 0.01:
+        parts.append(f"eq=contrast={look['contrast']}")
+    return ",".join(parts) or "null"
 
 
 def ffmpeg_error(stderr: str, limit: int = 1200) -> str:
@@ -764,6 +871,21 @@ CTA_FONT = "Ray ExtraBlack"
 CTA_HIGHLIGHT = re.compile(r"عدد\s*\S+\s*(?:رو|را)?\s*(?:برام\s*)?کامنت\s*کن")
 
 
+CTA_LINE_CHARS = 24
+
+
+def _wrap_words(line: str, limit: int) -> list[str]:
+    """``line`` split at spaces into pieces of at most ``limit`` characters (a longer single word stays whole)."""
+    pieces, current = [], ""
+    for word in line.split(" "):
+        if current and len(current) + 1 + len(word) > limit:
+            pieces.append(current)
+            current = word
+        else:
+            current = f"{current} {word}" if current else word
+    return pieces + [current] if current else pieces
+
+
 def cta_events(cta: str, t0: float, t1: float, fonts_dir: Optional[Path]) -> list[str]:
     """Two-line CTA set straight on the end-card background; "عدد N رو کامنت کن" in gold."""
     from ..localize import END_CARD_HIGHLIGHT
@@ -779,15 +901,18 @@ def cta_events(cta: str, t0: float, t1: float, fonts_dir: Optional[Path]) -> lis
     elif len(words) > 3:
         cut = min(range(1, len(words)), key=lambda k: abs(len(" ".join(words[:k])) - len(text) / 2))
         lines = [" ".join(words[:cut]), " ".join(words[cut:])]
+    lines = [piece for line in lines for piece in _wrap_words(line, CTA_LINE_CHARS)]
     spans, pos = [], 0
     for line in lines:
         pos = text.index(line, pos)
         spans.append((pos, pos + len(line)))
         pos += len(line)
     inks = measure_text_boxes([(_spaced(_esc(l)), size) for l in lines], W, H, CTA_FONT, fonts_dir)
-    widest = max(w for w, _, _ in inks)
-    if widest > W * 0.86:
-        size = int(size * W * 0.86 / widest)
+    # The measured width is trusted only when it is not smaller than a plain estimate: with a missing font it comes out far too small
+    # and the card ran edge to edge (no margin at all on the left and right).
+    widest = max(max(w for w, _, _ in inks), max(len(l) for l in lines) * size * 0.5)
+    if widest > W * 0.78:
+        size = int(size * W * 0.78 / widest)
     pitch = 1.12 * size
     anchors = [H * 0.47 + (k - (len(lines) - 1) / 2) * pitch for k in range(len(lines))]
     pop = "\\fad(250,0)\\fscx85\\fscy85\\t(0,300,\\fscx100\\fscy100)"
@@ -978,36 +1103,41 @@ def render(video: Path, plan: ReelPlan, out: Path, *, hook: str, highlight: list
                     f"saturation={float(grade_settings.get('saturation', 100)) / 100:.3f},"
                     f"colorbalance=rs={float(grade_settings.get('temperature', 0)) / 500:.3f}:"
                     f"bs={-float(grade_settings.get('temperature', 0)) / 500:.3f}")
+    if grade_settings.get("auto", True):
+        look_path = work_dir / "auto_look.json"
+        try:
+            auto_stats = json.loads(look_path.read_text())
+        except (OSError, ValueError):
+            auto_stats = measure_look(video, source_colour)
+            if auto_stats:
+                look_path.write_text(json.dumps(auto_stats))
+        auto_filter = auto_grade_filter(auto_look(auto_stats))
+        if auto_filter != "null":
+            custom_grade = auto_filter + "," + custom_grade
     zoom_settings = settings.get("zoom") or {}
     zoom_amount = float(zoom_settings.get("amount", 100)) / 100 if zoom_settings.get("enabled", True) else 0.0
     base_zoom = float(zoom_settings.get("base_scale", 100)) / 100 if zoom_settings.get("enabled", True) else 1.0
-    close_zoom = float(zoom_settings.get("close_scale", 140)) / 100 if zoom_settings.get("enabled", True) else 1.0
+    close_zoom = float(zoom_settings.get("close_scale", 125)) / 100 if zoom_settings.get("enabled", True) else 1.0
     for k, shot in enumerate(plan.shots):
         inputs = ['-threads','1','-ss',f'{shot.src_in:.3f}','-t',f'{shot.length:.3f}','-i',str(video)]
         vf = []
         cw, ch, x, y = crop_for(
-            shot, sw, sh, base_zoom=max(1.0, base_zoom), close_zoom=max(1.0, close_zoom)
+            shot, sw, sh, base_zoom=max(1.0, base_zoom), close_zoom=max(1.0, close_zoom), framing=settings.get("framing")
         )
         look = custom_grade + (f",{BW}" if shot.bw else "")
         if shot.push and zoom_amount > 0:
-            # Slow eased push-in anchored on the face (Ken Burns).  The crop is
-            # already larger than the 1080x1920 delivery frame, so feeding it
-            # straight to zoompan preserves the available source detail.  The
-            # old path first upscaled every frame to 1620x2880 and immediately
-            # scaled it back down inside zoompan; that added millions of
-            # Lanczos samples per frame without adding any real detail.
+            # Slow eased push-in anchored on the face (Ken Burns), as a perspective warp with cubic interpolation: the window moves by
+            # fractions of a pixel, so the picture glides.  (zoompan cuts its window at whole pixels: the picture stalled and jumped
+            # every few frames, which read as shaking on every zoom; measured, frame-to-frame change was 5x more uneven.)
             frames = max(1, round(shot.length * fps_value))
             ax = min(max((shot.face[0] * sw - x) / cw, 0.2), 0.8)
             ay = min(max((shot.face[1] * sh - y) / ch, 0.2), 0.8)
-            zoom = (f"zoompan=z='1+{PUSH_ZOOM * zoom_amount:.4f}*(1-cos(PI*min(on/{frames},1)))/2':"
-                    f"x='iw*{ax:.3f}-iw/zoom*{ax:.3f}':y='ih*{ay:.3f}-ih/zoom*{ay:.3f}':"
-                    f"d=1:s={2 * W}x{2 * H}:fps={fps},scale={W}:{H}:flags=area")
-            # Decimate the phone source to the delivery cadence *before*
-            # zoompan.  zoompan emits ``d`` frames for every input frame; if a
-            # 60fps input reaches d=1 at a 30fps output clock, picture duration
-            # doubles while audio keeps real time.
-            # zoompan moves its window in whole pixels, which shakes the picture; on a 2x canvas the steps are half as big and the
-            # downscale averages them away.
+            z = f"(1+{PUSH_ZOOM * zoom_amount:.4f}*(1-cos(PI*min(in/{frames},1)))/2)"
+            left, top = f"({ax:.4f}*W*(1-1/{z}))", f"({ay:.4f}*H*(1-1/{z}))"
+            zoom = (f"scale={W}:{H}:flags=lanczos,"
+                    f"perspective=x0='{left}':y0='{top}':x1='{left}+W/{z}':y1='{top}':x2='{left}':y2='{top}+H/{z}':x3='{left}+W/{z}':y3='{top}+H/{z}'"
+                    f":sense=source:eval=frame:interpolation=cubic")
+            # Decimate the phone source to the delivery cadence before the warp: it counts input frames, and a 60fps input would run it twice as fast.
             frame = f"fps={fps},{zoom}"
         else:
             frame = f"scale={W}:{H}:flags=lanczos,fps={fps}"

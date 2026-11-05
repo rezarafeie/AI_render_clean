@@ -252,6 +252,7 @@ export interface PlanContent {
   style: { id: string; label: string; summary: string; complexity: string };
   look: { preset: string; grade: Record<string, number>; accent_color: string; caption_font: string; zoom: number; key_moments: boolean;
   key_moment_effect: string; cold_open: boolean; cold_open_sentence: number | null; zoom_enabled: boolean; zoom_base: number; zoom_close: number; bottom_shade?: number;
+  grade_auto?: boolean; framing?: { auto: boolean; shift_x: number; shift_y: number };
   moments: { sentence: number; title: string }[] };
   captions: string; motion: string; broll: string; pictures: { sentence: number; title: string; source: string; new: boolean }[];
   audio: { music: string; voice: string; sfx: string };
@@ -273,6 +274,7 @@ export type PlanEdits = Partial<{
   concept_id: string; style: string; timeline_edits: PlanContent["timeline_edits"]; broll_edits: PlanContent["broll_edits"];
   music: string; music_mix: Partial<MusicMix>;
   cold_open: boolean; cold_open_sentence: number | null; key_moment_effect: string; zoom_enabled: boolean; zoom_base: number; zoom_close: number;
+  grade_auto: boolean; brightness: number; contrast: number; saturation: number; temperature: number; framing_auto: boolean; shift_x: number; shift_y: number;
 }>;
 /** The music bed's mix: level under the voice (dB), fades (seconds) and automatic lowering while someone speaks. */
 export interface MusicMix { volume_db: number; fade_in: number; fade_out: number; duck: boolean }
@@ -444,7 +446,8 @@ export interface TalkingEffects { catalog: EffectSpec[]; available: boolean; pla
 export interface TalkingRenderSettings {
   bottom_shade?: number;
   effects?: TalkingEffect[];
-  grade: { brightness: number; contrast: number; saturation: number; temperature: number; vignette: number };
+  grade: { brightness: number; contrast: number; saturation: number; temperature: number; vignette: number; auto?: boolean };
+  framing?: { auto: boolean; shift_x: number; shift_y: number };
   zoom: { enabled: boolean; amount: number; base_scale: number; close_scale: number };
   key_moments_enabled: boolean;
   first_key_moment_enabled: boolean;

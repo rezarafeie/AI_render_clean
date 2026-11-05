@@ -159,6 +159,20 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
           aria-pressed={value("look", plan.look.preset) === key} onClick={() => set({ look: key })}>{label}</button>)}</div>
         {plan.look.preset === "custom" && !("look" in draft) ? <small className="field-hint">رنگ‌بندی فعلی دستی تنظیم شده است.</small> : null}
       </div>
+      {plan.style.id === 'talking_1' ? <>
+        <EditSwitch label="تصحیح خودکار نور و رنگ" hint="نور کم یا رنگ زرد و آبی ویدیو را از روی خود فیلم اندازه می‌گیرد و ملایم درست می‌کند." disabled={!editable}
+          checked={value("grade_auto", plan.look.grade_auto ?? true)} onChange={checked => set({ grade_auto: checked })}/>
+        <div className="plan-grid">{([["brightness", "روشنایی", -30, 30, 0], ["contrast", "کنتراست", 50, 160, 100], ["saturation", "اشباع رنگ", 0, 180, 100], ["temperature", "گرمی رنگ", -50, 50, 0]] as const).map(([key, label, low, high, fallback]) =>
+          <div className="field" key={key}><label htmlFor={`plan-${key}`}>{label}: {value(key, plan.look.grade?.[key] ?? fallback)}</label>
+            <input id={`plan-${key}`} type="range" min={low} max={high} step={1} disabled={!editable} value={value(key, plan.look.grade?.[key] ?? fallback)} onChange={event => set({ [key]: Number(event.target.value) })}/></div>)}</div>
+        <EditSwitch label="کادربندی خودکار روی چهره" hint="گوینده‌ای که به یک سمت قاب رفته به وسط برمی‌گردد و بالای سرش جا می‌ماند." disabled={!editable}
+          checked={value("framing_auto", plan.look.framing?.auto ?? true)} onChange={checked => set({ framing_auto: checked })}/>
+        <div className="plan-grid">
+          <div className="field"><label htmlFor="plan-shiftx">جابه‌جایی قاب (چپ ↔ راست): {value("shift_x", plan.look.framing?.shift_x ?? 0)}</label>
+            <input id="plan-shiftx" type="range" min={-100} max={100} step={5} disabled={!editable} value={value("shift_x", plan.look.framing?.shift_x ?? 0)} onChange={event => set({ shift_x: Number(event.target.value) })}/></div>
+          <div className="field"><label htmlFor="plan-shifty">جابه‌جایی قاب (بالا ↔ پایین): {value("shift_y", plan.look.framing?.shift_y ?? 0)}</label>
+            <input id="plan-shifty" type="range" min={-100} max={100} step={5} disabled={!editable} value={value("shift_y", plan.look.framing?.shift_y ?? 0)} onChange={event => set({ shift_y: Number(event.target.value) })}/></div>
+        </div></> : null}
       <div className="field"><span className="field-label">رنگ تأکیدی (هوک و کلیدواژه‌ها)</span>
         <div className="plan-swatches">{ACCENTS.map(colour => <button key={colour} type="button" className="plan-swatch" style={{ background: colour }} disabled={!editable}
           aria-pressed={value("accent_color", plan.look.accent_color).toUpperCase() === colour} aria-label={colour} onClick={() => set({ accent_color: colour })}/>)}
@@ -185,8 +199,8 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       {value("zoom_enabled", plan.look.zoom_enabled ?? true) ? <div className="plan-grid">
         <div className="field"><label htmlFor="plan-zbase">زوم قاب اصلی: {value("zoom_base", plan.look.zoom_base ?? 100)}٪</label>
           <input id="plan-zbase" type="range" min={100} max={180} step={5} disabled={!editable} value={value("zoom_base", plan.look.zoom_base ?? 100)} onChange={event => set({ zoom_base: Number(event.target.value) })}/></div>
-        <div className="field"><label htmlFor="plan-zclose">زوم قاب نزدیک: {value("zoom_close", plan.look.zoom_close ?? 140)}٪</label>
-          <input id="plan-zclose" type="range" min={100} max={220} step={5} disabled={!editable} value={value("zoom_close", plan.look.zoom_close ?? 140)} onChange={event => set({ zoom_close: Number(event.target.value) })}/></div>
+        <div className="field"><label htmlFor="plan-zclose">زوم قاب نزدیک: {value("zoom_close", plan.look.zoom_close ?? 125)}٪</label>
+          <input id="plan-zclose" type="range" min={100} max={220} step={5} disabled={!editable} value={value("zoom_close", plan.look.zoom_close ?? 125)} onChange={event => set({ zoom_close: Number(event.target.value) })}/></div>
       </div> : null}
     </Section>
 

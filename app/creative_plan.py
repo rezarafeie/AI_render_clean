@@ -143,7 +143,9 @@ def build_talking(status: dict, *, sentences: list[dict], video_seconds: float, 
                  "cold_open_sentence": settings.get("first_key_moment_sentence"),
                  "zoom_enabled": bool((settings.get("zoom") or {}).get("enabled", True)),
                  "zoom_base": (settings.get("zoom") or {}).get("base_scale", 100),
-                 "zoom_close": (settings.get("zoom") or {}).get("close_scale", 140),
+                 "zoom_close": (settings.get("zoom") or {}).get("close_scale", 125),
+                 "grade_auto": bool(grade.get("auto", True)),
+                 "framing": {"auto": bool((settings.get("framing") or {}).get("auto", True)), "shift_x": (settings.get("framing") or {}).get("shift_x", 0), "shift_y": (settings.get("framing") or {}).get("shift_y", 0)},
                  "moments": [{"sentence": m["sentence"], "title": m["title"]} for m in status.get("timeline") or []][:40]},
         "captions": info["captions"], "motion": info["motion"], "broll": info["broll"], "pictures": pictures,
         "audio": {"music": (status.get("music") or "").rsplit("/", 1)[-1], "music_path": status.get("music") or "",
@@ -220,7 +222,8 @@ def approve(state: dict, version_id: str) -> dict:
 
 EDITABLE = {"hook", "hook_highlight", "look", "accent_color", "caption_font", "zoom", "key_moments",
             "logo_enabled", "logo_motion", "name", "tagline", "cta", "concept_id", "style", "timeline_edits", "broll_edits",
-            "music", "music_mix", "cold_open", "cold_open_sentence", "key_moment_effect", "zoom_enabled", "zoom_base", "zoom_close", "bottom_shade"}
+            "music", "music_mix", "cold_open", "cold_open_sentence", "key_moment_effect", "zoom_enabled", "zoom_base", "zoom_close", "bottom_shade",
+            "grade_auto", "brightness", "contrast", "saturation", "temperature", "framing_auto", "shift_x", "shift_y"}
 
 
 def _music_mix(style: str, settings: dict) -> dict:
@@ -264,8 +267,30 @@ def talking_edits(content: dict, edits: dict, status: dict) -> dict:
     if "look" in edits:
         if edits["look"] not in LOOKS:
             raise PlanError("حالت رنگ معتبر نیست.")
-        settings["grade"] = dict(LOOKS[edits["look"]]["grade"]); touched = True
+        settings["grade"] = {**LOOKS[edits["look"]]["grade"], "auto": bool((settings.get("grade") or {}).get("auto", True))}; touched = True
         applied.append(f"رنگ و نور: {LOOKS[edits['look']]['label']}")
+    if "grade_auto" in edits:
+        settings.setdefault("grade", {})["auto"] = bool(edits["grade_auto"]); touched = True
+        applied.append("تصحیح خودکار نور و رنگ " + ("روشن" if edits["grade_auto"] else "خاموش"))
+    for field, low, high, label in (("brightness", -30, 30, "روشنایی"), ("contrast", 50, 160, "کنتراست"), ("saturation", 0, 180, "اشباع رنگ"), ("temperature", -50, 50, "گرمی رنگ")):
+        if field in edits:
+            try:
+                value = max(low, min(high, int(edits[field])))
+            except (TypeError, ValueError):
+                raise PlanError(f"{label} باید عدد باشد.")
+            settings.setdefault("grade", {})[field] = value; touched = True
+            applied.append(f"{label}: {value}")
+    if "framing_auto" in edits:
+        settings.setdefault("framing", {})["auto"] = bool(edits["framing_auto"]); touched = True
+        applied.append("کادربندی خودکار روی چهره " + ("روشن" if edits["framing_auto"] else "خاموش"))
+    for field, label in (("shift_x", "جابه‌جایی قاب به چپ و راست"), ("shift_y", "جابه‌جایی قاب به بالا و پایین")):
+        if field in edits:
+            try:
+                value = max(-100, min(100, int(edits[field])))
+            except (TypeError, ValueError):
+                raise PlanError(f"{label} باید عدد باشد.")
+            settings.setdefault("framing", {})[field] = value; touched = True
+            applied.append(f"{label}: {value}")
     if "accent_color" in edits:
         colour = str(edits["accent_color"] or "").upper()
         if not re.fullmatch(r"#[0-9A-F]{6}", colour):

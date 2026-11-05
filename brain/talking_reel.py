@@ -30,10 +30,16 @@ sentences (speech-to-text output, colloquial Tehrani Persian). Return ONLY a JSO
   "drop": [<indices of sentences to cut: filler, false starts, an off-topic "yes"/"ok" at the end>],
   "bw": [<3-6 indices of the most emotional, dramatic or insightful sentences, spread over the WHOLE talk (roughly one every 20-30 seconds of speech), shown in black and white>],
   "notes": [{"i": <index of one of the "bw" sentences>, "text": "<2-4 word punchy key takeaway of it>"}],
-  "cold_open": {"i": <sentence index>, "text": "<the single most provocative 2-4 second line of the
-                talk, copied word for word from that sentence's transcript (a contiguous part of it),
-                played first as a teaser before the video starts from the beginning>"}
+  "cold_open": {"i": <sentence index>, "text": "<the line of the talk that makes a stranger stop scrolling, copied word for word from that
+                sentence's transcript (a contiguous part of it, 6-14 words, about 3-5 seconds), played first as a teaser
+                before the video starts from the beginning>"}
 }
+
+The cold open is the most important choice of the reel. It must be a COMPLETE, SELF-CONTAINED claim that works with no context:
+a surprising fact or number, a bold or contrarian statement, the payoff or the promise of the talk, or a sharp emotional line.
+Never pick a lead-in, a greeting, a fragment, a transition ("خب"، "یعنی"، "پس"، "حالا"), a scene-setting action ("میریم دم یخچال")
+or a sentence that starts with a pronoun or a reference to something said before. It must come from the body or the end of the
+talk, never from its first sentences (the video starts there anyway). Check it against the hook: together they must make the viewer ask "why?".
 
 Caption rules:
 - One caption entry for EVERY sentence index that is not dropped, in order.
