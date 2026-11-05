@@ -1,4 +1,4 @@
-"""Independent Medium workflow; shared engines/tools, never Lite message dispatch."""
+"""The agent workflow of EditorGPT Medium, and of the Lite agent (a Lite run marked ``data.agent``): shared engines/tools, never Lite message dispatch."""
 import hashlib
 import logging
 import time
@@ -15,6 +15,11 @@ from brain.lm_gateway import conversation_scope
 from langsmith import tracing_context
 
 log = logging.getLogger(__name__)
+
+
+def is_agent_run(record):
+    """Medium runs, and Lite runs that its message flow handed to the agent (an agent plan, not one fixed flow)."""
+    return record.get("agent_mode", "medium") == "medium" or (record.get("agent_mode", "medium") == "lite" and bool((record.get("data") or {}).get("agent")))
 
 
 def config(record):
@@ -103,7 +108,7 @@ def _execute(cid, user, record):
                 run(store.update(rid, user, status=status, patch={"waiting": waiting, "resume": None}))
                 if status == "waiting_approval":
                     nodes.event(record, "question.required", kind="medium_approval", question=waiting["summary"])
-                    run(repo.add_message(cid, user, "assistant", waiting["summary"], agent_mode="medium"))
+                    run(repo.add_message(cid, user, "assistant", waiting["summary"], agent_mode=record.get("agent_mode", "medium")))
                 else:
                     nodes.event(record, "tool.progress", tool="medium_job", project_id=waiting["project_id"],
                                 message="کار به موتور پروژه تحویل شد؛ ادامهٔ برنامه پس از پایان این مرحله انجام می‌شود.")
@@ -122,10 +127,12 @@ def _execute(cid, user, record):
             message = "اتصال مدل برای این مسیر در Gateway لوکال آماده نیست؛ فهرست مدل‌ها را همگام‌سازی و قابلیت متن مدل انتخاب‌شده را آزمایش کنید. اجرا متوقف شد و موتور Medium تغییر نکرد."
         elif isinstance(exc, httpx.TransportError) or (isinstance(exc, GatewayError) and (exc.status == 504 or "RemoteProtocolError" in str(exc))):
             message = "سرویس مدل در Gateway پاسخ را کامل نداد یا اتصال را قطع کرد. مراحل ذخیره شده‌اند؛ از همین اجرا دوباره تلاش کنید. موتور Medium و مدل انتخاب‌شده خودکار تغییر نکردند."
+        if record.get("agent_mode", "medium") == "lite":
+            message = message.replace("EditorGPT Medium", "EditorGPT Lite").replace("اجرای Medium", "اجرای Lite").replace("Medium", "Lite")
         detail = f"{type(exc).__name__}: {str(exc)[:600]}"            # kept on the run (not shown to the person) so the cause survives a container restart
         run(store.update(rid, user, status="cancelled" if stopped else "failed", patch={"error": message, "error_detail": detail}))
         nodes.event(record, "message.stopped" if stopped else "tool.failed", message=message)
-        run(repo.add_message(cid, user, "assistant", message, agent_mode="medium"))
+        run(repo.add_message(cid, user, "assistant", message, agent_mode=record.get("agent_mode", "medium")))
     finally:
         _generation.reset(token)
         nodes.event(record, "work.state", busy=studio_flags.busy(user, cid))
@@ -139,7 +146,7 @@ async def resume_ready(cid, user):
     """Called after existing job synchronization. No polling thread, LLM, or occupied worker while waiting."""
     from app.agents.dispatcher import dispatch
     for record in await store.runs(cid, user):
-        if record["agent_mode"] != "medium" or record["status"] != "waiting_job": continue
+        if not is_agent_run(record) or record["status"] != "waiting_job": continue
         waiting = record["data"].get("waiting") or {}
         value = await repo.get_project(waiting["project_id"], user)
         if value["status"] == "running" and value["state"].get("workflow") != "awaiting_approval": continue
@@ -152,9 +159,18 @@ async def recover_interrupted(cid, user):
     from datetime import datetime, timezone
     if studio_flags.busy(user, cid): return
     for record in await store.runs(cid, user):
-        if record["agent_mode"] != "medium" or record["status"] != "running": continue
+        if not is_agent_run(record) or record["status"] != "running": continue
         updated = datetime.fromisoformat(record["updated_at"])
         if not updated.tzinfo: updated = updated.replace(tzinfo=timezone.utc)
         if (datetime.now(timezone.utc) - updated).total_seconds() < 30: continue
+        if record.get("agent_mode", "medium") == "lite":
+            # A Lite agent run continues by itself (its ledger forbids repeating a write whose result is unknown); after two recoveries it stops with the cause.
+            count = int(record["data"].get("recoveries", 0))
+            if count >= 2:
+                await store.update(record["id"], user, status="failed", claim={"running"}, patch={"error": "اجرا چند بار قطع شد؛ مراحل انجام‌شده ذخیره‌اند. پیام را دوباره بفرستید."})
+            elif await store.update(record["id"], user, status="queued", claim={"running"}, patch={"recoveries": count + 1}):
+                from app.agents.dispatcher import dispatch
+                await dispatch(record["id"], user)
+            continue
         await store.update(record["id"], user, status="failed", claim={"running"}, patch={"error":
             "ارتباط با اجرای Medium قطع شده است. مراحل ذخیره‌اند؛ ادامه فقط با تأیید شما انجام می‌شود و عملیات با نتیجهٔ نامشخص تکرار نمی‌شود."})

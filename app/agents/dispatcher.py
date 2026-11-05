@@ -14,15 +14,16 @@ def execute_run(run_id, user):
     record = run(store.get_run(run_id, user))
     mode = store.validate_mode(record["agent_mode"])
     request = record["data"]["request"]
-    if mode == "medium":
+    if mode == "medium" or record["data"].get("agent"):          # Medium, or a Lite run handed to the agent
         try:
             from app.agents.medium.graph import execute
         except ImportError:
-            message = "EditorGPT Medium روی Worker فعال نیست؛ وابستگی‌های Worker باید به‌روز شوند. هیچ درخواست Lite اجرا نشد."
+            message = "عامل (LangGraph) روی Worker فعال نیست؛ وابستگی‌های Worker باید به‌روز شوند."
             run(store.update(run_id, user, status="failed", patch={"error": message}))
             run(repo.emit(record["conversation_id"], "tool.failed", {"message": message, "agent_mode": mode, "run_id": run_id}))
             return
         try:
+            if mode != "medium": raise ImportError         # a Lite chat has its title already
             from app.studio_title import title_in_background
             title_in_background(record["conversation_id"], user, request.get("text", ""))
         except Exception:                                   # a title is never worth a failed run
@@ -41,7 +42,7 @@ def execute_run(run_id, user):
 
 async def dispatch(run_id, user, *, lite_dispatch=None):
     record = await store.get_run(run_id, user)
-    if record["agent_mode"] == "lite":
+    if record["agent_mode"] == "lite" and not record["data"].get("agent"):
         # Preserve Lite's existing Celery task / threading path, not only its prompts.
         from app.studio_orchestrator import dispatch_message
         request = record["data"]["request"]

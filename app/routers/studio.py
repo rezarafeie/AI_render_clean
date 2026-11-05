@@ -154,7 +154,7 @@ async def resume_agent(request: Request, run_id: str, body: AgentResume):
     user = _user(request)
     try:
         record = await store.get_run(run_id, user)
-        if record["agent_mode"] != "medium": raise HTTPException(409, "This run is not Medium")
+        if record["agent_mode"] != "medium" and not record["data"].get("agent"): raise HTTPException(409, "This run is not an agent run")
         if body.decision == "cancel":
             claimed = await store.update(run_id, user, status="cancelled", claim={"waiting_approval", "waiting_job", "failed"})
         else:
@@ -169,7 +169,7 @@ async def resume_agent(request: Request, run_id: str, body: AgentResume):
             if claimed: await dispatch(run_id, user)
         if not claimed: raise HTTPException(409, "This run has already advanced; refresh the conversation")
         await repo.emit(record["conversation_id"], "agent.run.updated", {"run_id": run_id,
-                        "agent_mode": "medium", "status": claimed["status"]})
+                        "agent_mode": record["agent_mode"], "status": claimed["status"]})
         return {"id": run_id, "status": claimed["status"]}
     except KeyError: raise HTTPException(404, "execution not found")
     except ValueError as exc: raise HTTPException(409, str(exc))

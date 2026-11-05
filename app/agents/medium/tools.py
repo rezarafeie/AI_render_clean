@@ -44,6 +44,10 @@ class MotionGraphic(Args):
     attachment_ids: list[str] = Field(default_factory=list,max_length=9,description='Existing owned image attachment IDs to include, in user-specified order. Never invent IDs or paths.')
 
 
+class DiscoverClips(Asset):
+    focus: str = Field(default="", max_length=600, description="What kind of pieces to look for, in the person's words (empty: every standalone piece worth publishing).")
+
+
 class AudioCheck(Asset):
     expected_text: str = Field(default="", max_length=4000, description="The script the audio should say, when known (reported only; speech recognition is not run here).")
     preset: Literal["instagram_reels", "tiktok", "youtube", "podcast", "social_video"] | None = Field(default=None, description="Delivery loudness target to judge the file against.")
@@ -73,6 +77,7 @@ SCHEMAS = {"inspect_media": Asset, "inspect_url": URL, "analyze_talking_reel": T
            "localize_video": Localize, "create_storyboard": Storyboard, "modify_project": Modify,
            "render_approved_plan": Render, "check_render_status": Project}
 SCHEMAS["inspect_project"] = Project
+SCHEMAS["discover_clips"] = DiscoverClips
 SCHEMAS["create_motion_graphic"] = MotionGraphic
 SCHEMAS["revise_motion_graphic"] = MotionRevision
 SCHEMAS["search_creative_resources"] = studio_tools.ResourceSearchInput
@@ -85,6 +90,7 @@ READ_ONLY = {"inspect_media", "inspect_url", "check_render_status", "inspect_pro
 READ_ONLY.add("instagram_content_check")
 READ_ONLY.update({"audio_check", "plan_audio_direction"})
 EXTRA_DESCRIPTIONS = {
+    "discover_clips": "For a LONG attached video (a podcast, class, interview, meeting): transcribe all speech locally, understand the whole video and find every standalone piece worth publishing as a reel or post; each result opens as a card in this chat. Use it when the person wants many clips from one long video, never for editing one reel. It runs in the background for minutes.",
     "audio_check": "Measure an attached audio or video file's sound, deterministically with ffmpeg: duration, peak and clipping, silence share, integrated loudness (LUFS), true peak and loudness range, judged against a delivery preset. It does not judge naturalness or pronunciation and costs nothing.",
     "plan_audio_direction": "Draft the audio direction for a video from its brief: language, intent, voice emotion and pace, music mood and energy, rhythm mode, sound-design level and loudness preset. A suggestion made by rules; nothing is generated and nothing is spent.",
 }
@@ -157,6 +163,11 @@ def execute(record, step):
     if name == "read_connected_app":
         from hermes.services.composio_read import execute as read
         return run(read(user, args.application, args.tool, args.arguments))
+    if name == "discover_clips":
+        asset = run(repo.get_attachments([args.attachment_id], cid, user))[0]
+        if asset["kind"] != "video": raise ValueError("A video attachment is required")
+        shared._start_discovery(cid, user, run(repo.get_conversation(cid, user)), [asset], args.focus.strip() or record["data"]["request"]["text"])
+        return {"waiting": False, "next": "The long video is being transcribed and studied in the background; the pieces found appear as cards in this chat."}
     if isinstance(args, Asset):
         asset = run(repo.get_attachments([args.attachment_id], cid, user))[0]
         if name == "inspect_media": return studio_tools.execute(name, {"path": asset["path"]})
