@@ -240,6 +240,13 @@ def _guard(directory: Path) -> None:
         _emit(analysis["conversation_id"], "job.failed", analysis_id=analysis["id"], message=message, resumable=True, stopped=stopped)
     finally:
         finished.set()
+        try:                                           # the page shows Stop from the last work.state; say that this worker is no longer working
+            from app.studio_orchestrator import conversation_busy
+            from app.studio_store import repo, run
+            analysis = load(directory)
+            _emit(analysis["conversation_id"], "work.state", busy=conversation_busy(run(repo.get_conversation(analysis["conversation_id"], analysis["user_key"])), analysis["user_key"]))
+        except Exception:
+            log.debug("work.state after the analysis could not be published", exc_info=True)
 
 
 def _set(directory: Path, **changes: Any) -> dict:
@@ -447,6 +454,7 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
             analysis["candidates"] = accepted
             save(directory, analysis)
             _emit(conversation_id, "content.candidate.found", analysis_id=key, candidate=public_candidate(cand))
+            prepare_media_in_background(directory, cand, Path(analysis["source_path"]))
     analysis = load(directory)
     analysis.update(discovery_status="completed", stage="done", message=f"{len(accepted)} محتوای مستقل پیدا شد", candidates=accepted)
     save(directory, analysis)
@@ -513,11 +521,11 @@ def _completion_message(analysis: dict) -> str:
         return ("کل ویدیو را شنیدم و بررسی کردم، اما بخشی که به‌تنهایی ارزش انتشار داشته باشد پیدا نکردم. "
                 "برای پیدا کردن چیز دیگری می‌توانید بگویید دنبال چه نوع محتوایی بگردم.")
     total = sum(c["estimated_duration"] for c in cands)
-    top = max(cands, key=lambda c: c["score"])
-    return (f"**{len(cands)} محتوای مستقل** در این ویدیو پیدا کردم (جمعاً حدود {round(total / 60, 1):g} دقیقه گفتار).\n\n"
-            f"قوی‌ترین پیشنهاد: «{top['title']}» با امتیاز {top['score']:g}.\n"
-            "کارت‌ها بالا هستند؛ هر کدام را پیش‌نمایش کنید و با «شروع تدوین» در یک چت جدا بسازید. "
-            "می‌توانید بگویید «کلیپ سوم را تدوین کن» یا برای نوع دیگری از محتوا بخواهید دوباره بگردم.")
+    best = sorted(cands, key=lambda c: -c["score"])[:3]
+    lines = "\n".join(f"- «{c['title']}» ({c['score']:g}/10)" for c in best)
+    return (f"**{len(cands)} محتوای مستقل** از این ویدیوی {round(analysis['duration'] / 60):g} دقیقه‌ای پیدا شد (روی هم حدود {round(total / 60, 1):g} دقیقه).\n\n"
+            f"بهترین‌ها:\n{lines}\n\n"
+            "هر کارت را پیش‌نمایش کنید و با «شروع تدوین» در یک چت جدا بسازید. اگر نوع دیگری از محتوا می‌خواهید، پایین کارت‌ها بنویسید دنبال چه بگردم.")
 
 
 # ── thumbnails / previews (made on demand from the original file; never re-encoded up front) ─────────────
@@ -556,14 +564,45 @@ def render_clip(source: Path, ranges: list[list[float]], target: Path, *, small:
     return target
 
 
+_MAKING: dict[str, threading.Lock] = {}
+
+
+def _preview_target(directory: Path, cand: dict) -> Path:
+    import hashlib
+    digest = hashlib.sha1(json.dumps(cand["ranges"]).encode()).hexdigest()[:8]            # stable: Python's hash() changes with every restart, which made every preview start over
+    return directory / "previews" / f"{cand['id']}-{digest}.mp4"
+
+
 def preview(directory: Path, cand: dict, source: Path) -> Path:
-    target = directory / "previews" / f"{cand['id']}-{abs(hash(json.dumps(cand['ranges']))) % 10**8}.mp4"
-    if not target.is_file():
-        for old in (directory / "previews").glob(f"{cand['id']}-*.mp4") if (directory / "previews").is_dir() else []:
-            old.unlink(missing_ok=True)
-        render_clean = render_clip(source, cand["ranges"], target, small=True)
-        return render_clean
+    target = _preview_target(directory, cand)
+    if target.is_file():
+        return target
+    with _MAKING.setdefault(str(target), threading.Lock()):         # a preview being prepared in the background is waited for, not started a second time
+        if not target.is_file():
+            for old in (directory / "previews").glob(f"{cand['id']}-*.mp4") if (directory / "previews").is_dir() else []:
+                old.unlink(missing_ok=True)
+            render_clip(source, cand["ranges"], target, small=True)
     return target
+
+
+def prepare_media_in_background(directory: Path, cand: dict, source: Path) -> None:
+    """Make the thumbnail and the light preview of a card as soon as it is found, one card at a time and at low priority, so that pressing play finds them ready
+    (on a busy server the first request used to wait minutes for an encode)."""
+    def work() -> None:
+        with _PREPARE:
+            try:
+                os.nice(10)
+            except (AttributeError, OSError):
+                pass
+            for step in (lambda: thumbnail(directory, cand, source), lambda: preview(directory, cand, source)):
+                try:
+                    step()
+                except Exception:
+                    log.warning("card media could not be prepared for %s", cand.get("id"), exc_info=True)
+    threading.Thread(target=work, daemon=True, name=f"discovery-media-{cand.get('id')}").start()
+
+
+_PREPARE = threading.Semaphore(1)
 
 
 # ── editing a card, child chats, status ─────────────────────────────────────────────────────────────

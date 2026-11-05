@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, DiscoveryAnalysis, DiscoveryCandidate, StudioEvent } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
+import { Menu } from "../components/Menu";
 import { friendlyError } from "../ui";
 import { STAGE_LABEL, STATUS_LABEL, STATUS_TONE, SortKey, categoriesOf, clock, etaText, isActive, liveLines, parseRange, rangeText, visibleCandidates } from "./discoveryModel";
 
@@ -135,16 +136,17 @@ function CandidateCard({ analysis, candidate, number, selected, onSelect, onChan
       <label className="dv-pick"><input type="checkbox" checked={selected} disabled={Boolean(child) && !candidate.child_stale} onChange={event => onSelect(event.target.checked)} aria-label="انتخاب"/></label>
     </div>
     <div className="dv-body">
-      <div className="dv-top"><b className="bidi" dir="auto">{number}. {candidate.title}</b>
-        <span className="badge" data-tone={STATUS_TONE[candidate.status]}><i/>{STATUS_LABEL[candidate.status]}</span></div>
-      <p className="bidi" dir="auto">{candidate.summary}</p>
+      <b className="dv-title bidi" dir="auto">{number}. {candidate.title}</b>
+      <p className="dv-line">
+        <span dir="ltr">{rangeText(candidate)}</span><span>{candidate.category}</span><span>{candidate.score}/10</span>
+        {candidate.ranges.length > 1 ? <span>چندبخشی</span> : null}
+        {candidate.status !== "discovered" ? <span className="badge" data-tone={STATUS_TONE[candidate.status]}><i/>{STATUS_LABEL[candidate.status]}</span> : null}
+      </p>
       {candidate.hook ? <p className="dv-hook bidi" dir="auto">«{candidate.hook}»</p> : null}
-      <dl className="dv-facts">
-        <dt>بازه</dt><dd dir="ltr">{rangeText(candidate)}</dd>
-        <dt>دسته</dt><dd>{candidate.category}</dd>
-        <dt>امتیاز</dt><dd>{candidate.score}/10 {candidate.ranges.length > 1 ? "· چندبخشی" : ""}</dd>
-      </dl>
-      <details className="dv-why"><summary>چرا این بخش؟</summary><p className="bidi" dir="auto">{candidate.rationale}</p>{candidate.problems?.length ? <small>{candidate.problems.join("؛ ")}</small> : null}</details>
+      <details className="dv-why"><summary>جزئیات</summary>
+        <p className="bidi" dir="auto">{candidate.summary}</p>
+        {candidate.rationale ? <p className="bidi" dir="auto">{candidate.rationale}</p> : null}
+        {candidate.problems?.length ? <small>{candidate.problems.join("؛ ")}</small> : null}</details>
       {editing ? <div className="dv-edit">
         <div className="field"><label>عنوان</label><input className="input bidi" dir="auto" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}/></div>
         <div className="field"><label>هوک</label><textarea className="input bidi" dir="auto" rows={2} value={form.hook} onChange={e => setForm({ ...form, hook: e.target.value })}/></div>
@@ -158,10 +160,14 @@ function CandidateCard({ analysis, candidate, number, selected, onSelect, onChan
       <div className="dv-actions">
         {child && !candidate.child_stale
           ? <Link className="btn btn-sm" to={`/studio/${child}`}>{candidate.status === "completed" ? "دیدن خروجی و چت" : candidate.status === "failed" ? "بازکردن چت و تلاش دوباره" : "ادامهٔ تدوین"}</Link>
-          : <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.startCandidate(analysis.id, candidate.id).then(result => { navigate(`/studio/${result.conversation_id}`); }), "start editing")}>{busy ? "در حال ساخت چت…" : "شروع تدوین"}</button>}
-        <button className="btn btn-sm btn-secondary" onClick={() => setPlaying(value => !value)}>{playing ? "بستن پیش‌نمایش" : "پیش‌نمایش"}</button>
-        <button className="btn btn-sm btn-ghost" onClick={() => setEditing(value => !value)}>ویرایش</button>
-        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => void act(() => api.editCandidate(analysis.id, candidate.id, { hidden: !candidate.hidden }), "hide")}>{candidate.hidden ? "نمایش" : "حذف از فهرست"}</button>
+          : <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.startCandidate(analysis.id, candidate.id).then(result => { navigate(`/studio/${result.conversation_id}`); }), "start editing")}>{busy ? "در حال ساختن…" : "شروع تدوین"}</button>}
+        <Menu label="گزینه‌های بیشتر" align="end" trigger={props => <button type="button" className="icon-btn" {...props} aria-label="گزینه‌های بیشتر"><Icon name="thinking" size={18}/></button>}>
+          {close => <>
+            <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); setPlaying(value => !value); }}><Icon name="play" size={16}/><span>{playing ? "بستن پیش‌نمایش" : "پیش‌نمایش"}</span></button>
+            <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); setEditing(value => !value); }}><Icon name="edit" size={16}/><span>ویرایش</span></button>
+            <button type="button" role="menuitem" className="menu-item" disabled={busy} onClick={() => { close(); void act(() => api.editCandidate(analysis.id, candidate.id, { hidden: !candidate.hidden }), "hide"); }}><Icon name="trash" size={16}/><span>{candidate.hidden ? "نمایش" : "حذف از فهرست"}</span></button>
+          </>}
+        </Menu>
       </div>
     </div>
   </article>;

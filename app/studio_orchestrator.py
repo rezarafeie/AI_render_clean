@@ -835,11 +835,13 @@ def _start_discovery(conversation_id: str, user_key: str, conversation: dict, at
     run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "discovery": {"analysis_id": analysis["id"], "attachment_id": source["id"]}}))
     est = analysis.get("estimate") or {}
     minutes = max(1, round((est.get("total_s") or 0) / 60))
-    from app import studio_narrator
-    studio_narrator.narrate(conversation_id, user_key, "discovery_started", {
-        "video_minutes": round(analysis["duration"] / 60, 1), "estimated_minutes_on_this_server": minutes, "request": _short(text, 160),
-        "next": "the studio transcribes all speech live, understands the whole video, and finds every standalone piece worth publishing; results appear as cards in this chat"},
-        fallback=f"ویدیو را گرفتم ({round(analysis['duration'] / 60, 1):g} دقیقه). همهٔ گفتار را زنده به متن تبدیل می‌کنم، کل ویدیو را می‌فهمم و هر محتوای مستقلی که ارزش انتشار دارد پیدا می‌کنم. زمان تقریبی روی این سرور حدود {minutes} دقیقه است.")
+    from app import transcribe_prefs
+    engine = transcribe_prefs.get(user_key)["engine"]
+    minutes = round(analysis["duration"] / 60)
+    how = (f"با ElevenLabs رونویسی می‌کنم (حدود {max(5, round(analysis['duration'] / 60 / 4))} دقیقه)" if engine == "elevenlabs"
+           else f"با Whisper روی سرور رونویسی می‌کنم (حدود {max(1, round((est.get('total_s') or 0) / 60))} دقیقه یا بیشتر، بسته به شلوغی سرور)")
+    _assistant(conversation_id, user_key, f"ویدیو را گرفتم ({minutes} دقیقه). {how}، بعد کل ویدیو را می‌فهمم و هر بخشی که به‌تنهایی قابل انتشار باشد پیدا می‌کنم. "
+                                          "نتیجه‌ها همین‌جا به‌شکل کارت می‌آیند و می‌توانید هر زمان «توقف» را بزنید.")
     _emit(conversation_id, "discovery.created", analysis_id=analysis["id"], duration=analysis["duration"], estimate=est)
     long_video.start(directory)
 

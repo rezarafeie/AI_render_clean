@@ -306,8 +306,13 @@ whole video's outline for context. Find every piece that could stand alone as a 
 A candidate must: make sense without the rest of the video; open on something that earns attention (a claim, a tension, a number,
 a question, a story beat); carry real value (teaches, moves, surprises, advises, entertains); end naturally; be {MIN_CLIP_S:g}-{MAX_CLIP_S:g}
 seconds of speech (usually 25-90). It may be built from SEVERAL ranges (for example the best hook line from later + the explanation).
-Quality over quantity: if the window holds nothing worth publishing, return an empty list. Never pad. Never return two candidates about the
-same idea. If a line only makes sense after earlier context, do not offer it (or mark needs_context true).
+HOW MANY: the person wants as many publishable pieces as the video really holds. A spoken talk like this usually holds one usable piece every
+2-3 minutes, so a window of about 7 minutes should normally give 2-5 candidates. Do not stop at the first good one: go through the whole window
+and list every distinct idea, story, example, analogy, piece of advice, strong claim, list or question-and-answer that stands alone, from the
+strongest down to a pieces you would honestly score 6 or more. Short quotable pieces (10-30 seconds) count. Return an empty list only when
+the window is truly empty of value (greetings, logistics, housekeeping). Never pad with weak pieces, and never return two candidates about the
+same idea (different angles of one idea are ONE candidate). If a line only makes sense after earlier context, add the context line to the range
+(or mark needs_context true).
 
 Lines look like "S12 [mm:ss] text". Return ONLY JSON {{"candidates": [{{
  "title": "<specific Persian title, not generic>", "summary": "<what the viewer gets, 1-2 sentences>",

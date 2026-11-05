@@ -709,3 +709,15 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .home-recent li:has(.home-recent-del) a { padding-inline-end: 44px; }
 
 .ws-project-actions { display: flex; justify-content: flex-end; padding: 0 var(--space-3); }
+
+/* Candidate cards of a long video: title, one line of facts, the hook, details folded away, one main action */
+.dv-card .dv-body { gap: 6px; padding: 10px 12px 12px; }
+.dv-title { font-size: 14.5px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.dv-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.dv-line > span + span::before { content: "·"; margin-inline-end: 10px; color: var(--border); }
+.dv-line .badge::before { content: none; }
+.dv-card .dv-hook { font-size: 13.5px; line-height: 1.7; }
+.dv-card .dv-actions { margin-top: 4px; justify-content: space-between; }
+.dv-card .dv-actions .btn { flex: 1 1 auto; }
+.dv-card .dv-actions .icon-btn { flex: none; }
+.dv-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
