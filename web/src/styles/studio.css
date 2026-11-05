@@ -736,14 +736,22 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .look-tint { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; }
 .look-panel { display: grid; gap: 10px; }
 
-/* The Edit tab as a phone editor: the picture stays on top, a row of tools sits under it, and one tool's controls open below */
-.editor-top { position: sticky; top: 0; z-index: 4; display: grid; gap: 6px; padding: 8px 0 0; background: var(--bg); }
+/* The Edit tab as a phone editor: the picture stays on top, one row of tools under it, one tool's controls below */
+.editor-top { position: sticky; top: 0; z-index: 4; display: grid; gap: 4px; padding: 6px 0 0; background: var(--bg); }
 .look-stage-wrap { display: grid; justify-items: center; }
-.editor-tools { display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px; scrollbar-width: none; border-bottom: 1px solid var(--border-subtle); }
+.look-stage { position: relative; overflow: hidden; border-radius: 12px; background: #000; aspect-ratio: 9 / 16; max-height: 32vh; }
+.look-stage video { display: block; }
+.look-tint { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; }
+.editor-tools { display: flex; gap: 2px; overflow-x: auto; padding: 4px 0 6px; scrollbar-width: none; border-bottom: 1px solid var(--border-subtle); }
 .editor-tools::-webkit-scrollbar { display: none; }
-.editor-tool { flex: 0 0 auto; display: grid; justify-items: center; gap: 4px; min-width: 66px; padding: 8px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: var(--muted, #9a9a9a); background: transparent; }
-.editor-tool[aria-pressed="true"] { color: var(--text, #fff); background: var(--active, rgba(255,255,255,.1)); }
-.tool-panel { display: grid; gap: 12px; padding: 12px 2px 20px; }
-.tool-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.tool-head small { color: var(--muted, #9a9a9a); }
-.look-stage { max-height: 34vh; }
+.editor-tool { flex: 1 0 auto; display: grid; justify-items: center; gap: 3px; min-width: 58px; padding: 6px 4px; border-radius: 10px; font-size: 11px; font-weight: 500; color: var(--text-2); background: transparent; }
+.editor-tool[aria-pressed="true"] { color: var(--text); background: var(--active); }
+.tool-panel { display: grid; gap: 14px; padding: 14px 2px 84px; }
+.look-panel { display: grid; gap: 14px; }
+.look-slider { display: grid; gap: 6px; }
+.tool-panel .look-slider label { display: flex; width: 100%; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; color: var(--text-2); }
+.look-slider label b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tool-panel .segmented { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+.tool-panel .segmented button { flex: 0 0 auto; white-space: nowrap; }
+.tool-panel .ec-hint { font-size: 13px; color: var(--text-2); }
+.tool-panel .field-hint, .tool-panel .ec-switch small { font-size: 12px; color: var(--text-2); }

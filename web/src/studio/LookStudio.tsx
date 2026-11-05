@@ -17,7 +17,7 @@ type Controls = { values: LookValues; disabled: boolean; onChange: (patch: LookP
 const DEFAULTS = { brightness: 0, contrast: 100, saturation: 100, temperature: 0 };
 
 function slider(disabled: boolean, id: string, label: string, min: number, max: number, step: number, current: number, send: (v: number) => void, suffix = "") {
-  return <div className="field" key={id}><label htmlFor={`look-${id}`}>{label}: <b>{current}{suffix}</b></label>
+  return <div className="field look-slider" key={id}><label htmlFor={`look-${id}`}><span>{label}</span><b>{current}{suffix}</b></label>
     <input id={`look-${id}`} type="range" min={min} max={max} step={step} value={current} disabled={disabled} onChange={event => send(Number(event.target.value))}/></div>;
 }
 
@@ -41,7 +41,7 @@ export function LookStage({ jobId, values, close }: { jobId: string; values: Loo
 
 export function LightControls({ values, disabled, onChange }: Controls) {
   return <div className="look-panel">
-    <EditSwitch label="تصحیح خودکار نور و رنگ" hint="نور کم یا رنگ زرد و آبی فیلم را از روی خودش اندازه می‌گیرد و ملایم درست می‌کند؛ هنگام رندر اعمال می‌شود و در پیش‌نمایش بالا نیست." disabled={disabled} checked={values.gradeAuto} onChange={checked => onChange({ grade_auto: checked })}/>
+    <EditSwitch label="تصحیح خودکار نور و رنگ" hint="هنگام رندر اعمال می‌شود (در پیش‌نمایش نیست)" disabled={disabled} checked={values.gradeAuto} onChange={checked => onChange({ grade_auto: checked })}/>
     {slider(disabled, "brightness", "روشنایی", -30, 30, 1, values.brightness, v => onChange({ brightness: v }))}
     {slider(disabled, "contrast", "کنتراست", 50, 160, 1, values.contrast, v => onChange({ contrast: v }), "٪")}
     {slider(disabled, "saturation", "اشباع رنگ", 0, 180, 1, values.saturation, v => onChange({ saturation: v }), "٪")}
@@ -52,7 +52,7 @@ export function LightControls({ values, disabled, onChange }: Controls) {
 
 export function FrameControls({ values, disabled, onChange }: Controls) {
   return <div className="look-panel">
-    <EditSwitch label="کادربندی خودکار روی چهره" hint="گوینده‌ای که به یک سمت قاب رفته به وسط برمی‌گردد و بالای سرش جا می‌ماند؛ هنگام رندر اعمال می‌شود." disabled={disabled} checked={values.framingAuto} onChange={checked => onChange({ framing_auto: checked })}/>
+    <EditSwitch label="کادربندی خودکار روی چهره" hint="هنگام رندر اعمال می‌شود (در پیش‌نمایش نیست)" disabled={disabled} checked={values.framingAuto} onChange={checked => onChange({ framing_auto: checked })}/>
     {slider(disabled, "shiftx", "جابه‌جایی چپ ↔ راست", -100, 100, 5, values.shiftX, v => onChange({ shift_x: v }))}
     {slider(disabled, "shifty", "جابه‌جایی بالا ↔ پایین", -100, 100, 5, values.shiftY, v => onChange({ shift_y: v }))}
     <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => onChange({ shift_x: 0, shift_y: 0 })}>وسط‌چین</button>

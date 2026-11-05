@@ -26,7 +26,6 @@ function Mockup({ project, frame, label }: { project: StudioProject; frame?: str
 function Section({ tool, current, title, children, hint, summary }: { tool: Tool; current: Tool; title: string; children: React.ReactNode; hint?: string; summary?: React.ReactNode }) {
   if (tool !== current) return null;
   return <section className="tool-panel" dir="rtl" aria-label={title}>
-    <header className="tool-head"><b>{title}</b>{summary ? <small className="bidi" dir="auto">{summary}</small> : null}</header>
     {hint ? <p className="ec-hint">{hint}</p> : null}
     {children}
   </section>;
@@ -127,8 +126,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
 
     <div className="editor-top">
-      {t1 ? <><LookStage jobId={project.external_ref!} values={lookValues} close={previewClose}/>
-        <small className="field-hint">پیش‌نمایش تنظیمات خود شماست؛ تصحیح و کادربندی خودکار هنگام رندر اعمال می‌شوند.</small></> : null}
+      {t1 ? <LookStage jobId={project.external_ref!} values={lookValues} close={previewClose}/> : null}
       <nav className="editor-tools" aria-label="ابزارهای ویرایش">{visibleTools.map(([id, label, icon]) =>
         <button key={id} type="button" className="editor-tool" aria-pressed={activeTool === id} onClick={() => setTool(id)}><Icon name={icon} size={20}/><span>{label}</span></button>)}</nav>
     </div>
