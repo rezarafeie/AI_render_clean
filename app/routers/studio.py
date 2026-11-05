@@ -182,6 +182,13 @@ async def studio_home(request: Request):
     return await studio_home.build(_user(request))
 
 
+@router.get("/home/suggestions")
+async def studio_home_suggestions(request: Request):
+    """The model's suggestions for the start page; slow (a model answers), so the page asks for them after it has already shown itself."""
+    from app import studio_home
+    return await studio_home.model_suggestions(_user(request))
+
+
 @router.get("/instagpt")
 async def studio_instagpt(request: Request):
     """The InstaGPT page's connection and public numbers for the header button (connected is null while unknown)."""

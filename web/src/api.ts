@@ -213,7 +213,7 @@ export interface HomeRecent { id: string; title: string; updated_at: string; kin
 export type HomeSuggestion = { kind: "prompt"; label: string; prompt: string; reason?: string } | { kind: "open"; label: string; conversation_id: string; reason?: string };
 /** The InstaGPT page as the header button shows it; `connected` is null while the server could not tell yet (never read as "not connected"). */
 export interface InstagramSummary { connected: boolean | null; username: string | null; followers: number | null; follows: number | null; media_count: number | null; picture: string | null }
-export interface StudioHome { recent: HomeRecent[]; suggestions: HomeSuggestion[]; instagpt: InstagramSummary & { chats: string[] } }
+export interface StudioHome { recent: HomeRecent[]; suggestions: HomeSuggestion[]; suggestions_ready?: boolean; instagpt: InstagramSummary & { chats: string[] } }
 export interface StudioEvent { id: number; seq: number; type: string; data: Record<string, any>; created_at: string }
 
 /** Motion graphics made in chat (app/motion_graphic.py). */
@@ -1221,6 +1221,9 @@ export const api = {
   },
   async studioInstagram(signal?: AbortSignal): Promise<InstagramSummary> {
     return j(await authFetch(`${BASE}/studio/instagpt`, { signal }));
+  },
+  async studioHomeSuggestions(signal?: AbortSignal): Promise<{ suggestions: HomeSuggestion[] }> {
+    return j(await authFetch(`${BASE}/studio/home/suggestions`, { signal }));
   },
   async studioHome(signal?: AbortSignal): Promise<StudioHome> {
     return j(await authFetch(`${BASE}/studio/home`, { signal }));

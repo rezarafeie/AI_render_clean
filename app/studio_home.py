@@ -80,23 +80,72 @@ async def _projects_by_conversation(ids: list[str]) -> dict[str, list[dict]]:
     return await repo.projects_for(ids)
 
 
-async def hermes_state(user_key: str) -> dict:
+_ACCOUNT: dict[str, tuple[float, dict]] = {}          # the last Composio answer per person: {"connected", "username", ...}
+_REFRESHING: set[str] = set()
+ACCOUNT_TTL = 300.0
+
+
+async def _read_account(user_key: str) -> dict | None:
+    """Ask Composio (slow: seconds) and remember the answer. None when it did not answer in time."""
+    import asyncio
+    from hermes.services import composio_account
+    try:
+        row = await asyncio.wait_for(composio_account.account(user_key), 6)
+    except asyncio.TimeoutError:
+        return None
+    value: dict = {"connected": bool(row), "username": None, "followers": None, "follows": None, "media_count": None, "picture": None}
+    if row:
+        value.update({k: row.get(k) for k in ("username", "followers", "follows", "media_count", "picture")})
+        if str(value.get("username") or "") == "instagram":
+            value["username"] = None
+    _ACCOUNT[user_key] = (time.monotonic(), value)
+    if len(_ACCOUNT) > 500:
+        _ACCOUNT.pop(next(iter(_ACCOUNT)))
+    return value
+
+
+async def _refresh_account(user_key: str) -> None:
+    try:
+        await _read_account(user_key)
+    except Exception as exc:
+        log.info("account refresh failed: %s", type(exc).__name__)
+    finally:
+        _REFRESHING.discard(user_key)
+
+
+_TASKS: set = set()
+
+
+def _refresh_in_background(user_key: str) -> None:
+    import asyncio
+    if user_key in _REFRESHING:
+        return
+    _REFRESHING.add(user_key)
+    task = asyncio.get_running_loop().create_task(_refresh_account(user_key))
+    _TASKS.add(task)
+    task.add_done_callback(_TASKS.discard)
+
+
+async def hermes_state(user_key: str, *, fast: bool = False) -> dict:
     """The InstaGPT connection (Instagram through Composio, as InstaGPT itself reads it) with the page's public numbers and the latest chat titles.
-    `connected` is None when the answer is not known yet (slow or unreachable), never a guess; the function never raises (Hermes may be off)."""
+    `connected` is None when the answer is not known yet (slow or unreachable), never a guess; the function never raises (Hermes may be off).
+    With `fast` it never waits for Composio: it answers from the last answer it has (however old) and refreshes it in the background."""
     import asyncio
     state: dict = {"connected": None, "username": None, "followers": None, "follows": None, "media_count": None, "picture": None, "chats": []}
     try:
-        from hermes.services import chats, composio_account
-        try:
-            row = await asyncio.wait_for(composio_account.account(user_key), 6)
-            state["connected"] = bool(row)
-            if row:
-                state.update({k: row.get(k) for k in ("username", "followers", "follows", "media_count", "picture")})
-                if str(row.get("username") or "") == "instagram":
-                    state["username"] = None
-        except asyncio.TimeoutError:
-            pass
-        state["chats"] = [c["title"] for c in (await chats.list_chats(user_key))[:5] if c.get("title") and c["title"] != "گفتگوی جدید"]
+        from hermes.services import chats
+        cached = _ACCOUNT.get(user_key)
+        fresh = cached is not None and time.monotonic() - cached[0] < ACCOUNT_TTL
+        if cached is not None:
+            state.update(cached[1])
+        if not fresh:
+            if fast:
+                _refresh_in_background(user_key)
+            else:
+                value = await _read_account(user_key)
+                if value is not None:
+                    state.update(value)
+        state["chats"] = [c["title"] for c in (await asyncio.wait_for(chats.list_chats(user_key), 3))[:5] if c.get("title") and c["title"] != "گفتگوی جدید"]
     except Exception as exc:
         log.info("hermes state unavailable: %s", type(exc).__name__)
     return state
@@ -170,13 +219,30 @@ async def suggestions(user_key: str, recent: list[dict], hermes: dict) -> list[d
     return result
 
 
-async def build(user_key: str) -> dict:
+async def _recent(user_key: str) -> list[dict]:
     from app.studio_store import repo
+    import asyncio
     conversations = (await repo.list_conversations(user_key))[:8]
     by_id = await _projects_by_conversation([c["id"] for c in conversations])
-    import asyncio
     motions = await asyncio.gather(*(asyncio.to_thread(_motion_view, user_key, c) for c in conversations))
     recent = [summarize(c, by_id.get(c["id"], []), m) for c, m in zip(conversations, motions)]
-    recent = [r for r in recent if not (r["kind"] == "chat" and r["status"] == "draft")][:6] or recent[:3]          # a chat nothing was made in is not "work"
-    hermes = await hermes_state(user_key)
-    return {"recent": recent, "suggestions": await suggestions(user_key, recent, hermes), "instagpt": {**instagram_summary(hermes), "chats": hermes["chats"][:3]}}
+    return [r for r in recent if not (r["kind"] == "chat" and r["status"] == "draft")][:6] or recent[:3]          # a chat nothing was made in is not "work"
+
+
+async def build(user_key: str) -> dict:
+    """The start page, at once: nothing here waits for Composio or for a model. Suggestions are the model's when it already answered for this
+    exact state, else the plain ones with ``suggestions_ready`` false (the page then asks for the model's through ``model_suggestions``)."""
+    recent = await _recent(user_key)
+    hermes = await hermes_state(user_key, fast=True)
+    cached = _CACHE.get(user_key)
+    ready = bool(cached and cached[0] == _signature(recent, hermes) and cached[1] > time.monotonic())
+    found = cached[2] if ready else fallback_suggestions(recent, hermes)
+    return {"recent": recent, "suggestions": found, "suggestions_ready": ready or not (recent or hermes.get("chats")),
+            "instagpt": {**instagram_summary(hermes), "chats": hermes["chats"][:3]}}
+
+
+async def model_suggestions(user_key: str) -> dict:
+    """The suggestions written by the model from the person's own work (cached for an hour; the plain ones if the model does not answer)."""
+    recent = await _recent(user_key)
+    hermes = await hermes_state(user_key, fast=True)
+    return {"suggestions": await suggestions(user_key, recent, hermes)}

@@ -144,6 +144,25 @@ def start(directory: Path) -> None:
         thread.start()
 
 
+MAX_AUTO_RESUMES = 2
+
+
+def recover(user_key: str, analysis_id: str) -> bool:
+    """An analysis that says it is working but has been silent for a minute (its worker was restarted) continues by itself from the pieces already
+    heard, at most twice; after that the person's «ادامه» button is the way."""
+    try:
+        directory = locate(analysis_id, user_key)
+        analysis = load(directory)
+    except (KeyError, OSError, ValueError):
+        return False
+    busy = analysis.get("transcription_status") in {"running", "queued"} or analysis.get("discovery_status") in {"running", "queued"}
+    if not busy or is_alive(analysis) or analysis.get("auto_resumes", 0) >= MAX_AUTO_RESUMES:
+        return False
+    _set(directory, auto_resumes=analysis.get("auto_resumes", 0) + 1, message="پردازش بعد از قطعی دوباره شروع شد؛ از همین‌جا ادامه می‌یابد.")
+    start(directory)
+    return True
+
+
 def stop(analysis_id: str) -> None:
     _STOP.add(analysis_id)
     for directory in ROOT.glob(f"*/*/discovery/{analysis_id}"):
@@ -161,11 +180,31 @@ def is_alive(analysis: dict) -> bool:
     """Working now, in this process or another: the worker runs in the Celery process on the server, whose threads this process cannot see, but whose
     progress it saves into the analysis file every few seconds."""
     busy = analysis.get("transcription_status") in {"running", "queued"} or analysis.get("discovery_status") in {"running", "queued"}
-    return is_running(analysis["id"]) or (busy and time.time() - analysis.get("updated_at", 0) <= 45)
+    last = analysis.get("updated_at", 0)
+    try:
+        last = max(last, (folder(analysis["user_key"], analysis["conversation_id"], analysis["id"]) / ".alive").stat().st_mtime)
+    except (OSError, KeyError):
+        pass
+    return is_running(analysis["id"]) or (busy and time.time() - last <= 45)
+
+
+def _heartbeat(directory: Path, key: str, done: threading.Event) -> None:
+    """While the worker thread lives, say so every 10 s. Progress is only written when a 5-minute piece finishes, and loading the model or hearing the
+    first piece of a long video takes longer than the 45 s after which the page decides that nobody is working."""
+    beat = directory / ".alive"                      # its own file: the heartbeat never rewrites the analysis record, so it cannot overwrite what the worker saves
+    while True:
+        try:
+            beat.write_text(str(time.time()))
+        except OSError:
+            log.debug("discovery heartbeat skipped", exc_info=True)
+        if done.wait(10):
+            return
 
 
 def _guard(directory: Path) -> None:
     analysis = load(directory)
+    finished = threading.Event()
+    threading.Thread(target=_heartbeat, args=(directory, analysis["id"], finished), daemon=True, name=f"discovery-beat-{analysis['id']}").start()
     try:
         _run(directory)
     except Exception as exc:
@@ -181,6 +220,8 @@ def _guard(directory: Path) -> None:
             analysis["discovery_status"] = "stopped" if stopped else "failed"
         save(directory, analysis)
         _emit(analysis["conversation_id"], "job.failed", analysis_id=analysis["id"], message=message, resumable=True, stopped=stopped)
+    finally:
+        finished.set()
 
 
 def _set(directory: Path, **changes: Any) -> dict:

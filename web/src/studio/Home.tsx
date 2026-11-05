@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { api, HomeStatus, StudioHome } from "../api";
+import { api, HomeStatus, HomeSuggestion, StudioHome } from "../api";
 import { Icon, IconName } from "../components/Icon";
 import { ConfirmDelete, DeleteTarget } from "../components/ConfirmDelete";
 import { ScrollRow } from "../components/ScrollRow";
@@ -15,6 +15,8 @@ const STATUS_LABEL: Record<HomeStatus, string> = { running: "Working", needs_inp
 const KIND_ICON: Record<string, IconName> = { motion: "motion", talking: "video", localize: "captions", chat: "thinking" };
 
 /** The word and tone of a piece of work's state, so an unfinished or failed edit is never mistaken for a finished one. */
+let remembered: HomeSuggestion[] | null = null;       // the model's last suggestions: shown at once on the next visit
+
 export function statusTone(status: HomeStatus): "working" | "warning" | "error" | "success" | "idle" {
   return status === "running" ? "working" : status === "needs_input" ? "warning" : status === "failed" ? "error" : status === "ready" ? "success" : "idle";
 }
@@ -36,13 +38,20 @@ function RowsSkeleton() {
 export function StudioHomePage({ composer, authenticated, onPrompt }: { composer: React.ReactNode; authenticated: boolean; onPrompt: (prompt: string) => void }) {
   const navigate = useNavigate();
   const [home, setHome] = React.useState<StudioHome | null>(null);
+  const [better, setBetter] = React.useState<HomeSuggestion[] | null>(remembered);
   const [failed, setFailed] = React.useState(false);
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated) { remembered = null; setBetter(null); return; }
     const controller = new AbortController();
     setFailed(false);
-    api.studioHome(controller.signal).then(value => { if (!controller.signal.aborted) setHome(value); }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    api.studioHome(controller.signal).then(value => {
+      if (controller.signal.aborted) return;
+      setHome(value);
+      if (value.suggestions_ready === false) {         // the page is already shown with the plain suggestions; the model's replace them when they arrive
+        api.studioHomeSuggestions(controller.signal).then(better => { if (!controller.signal.aborted && better.suggestions?.length) { remembered = better.suggestions; setBetter(better.suggestions); } }).catch(() => undefined);
+      }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     const tick = window.setInterval(() => setNow(Date.now()), 30000);
     return () => { controller.abort(); window.clearInterval(tick); };
   }, [authenticated]);
@@ -63,7 +72,7 @@ export function StudioHomePage({ composer, authenticated, onPrompt }: { composer
       {authenticated ? <>
         <section className="home-suggest" aria-label="Suggestions">
           {loading ? <ChipsSkeleton/> : <ScrollRow>
-            {(home?.suggestions || []).slice(0, 3).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip"
+            {(better || home?.suggestions || []).slice(0, 3).map(item => <button key={`${item.kind}-${item.label}`} className="chip home-chip"
               onClick={() => item.kind === "open" ? navigate(`/studio/${item.conversation_id}`) : onPrompt(item.prompt)}>
               <span dir="auto">{item.label}</span></button>)}
           </ScrollRow>}

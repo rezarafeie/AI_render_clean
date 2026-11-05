@@ -2094,6 +2094,10 @@ async def sync_conversation(conversation_id: str, user_key: str) -> None:
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: return
         await _sync_conversation_once(conversation_id, user_key)
+        pointer = ((await repo.get_conversation(conversation_id, user_key)).get("state") or {}).get("discovery")
+        if pointer:
+            from app import long_video
+            await asyncio.to_thread(long_video.recover, user_key, pointer["analysis_id"])          # a restarted worker no longer leaves a long video's analysis dead
         from app.agents import store as agent_store
         medium_runs = [r for r in await agent_store.runs(conversation_id, user_key)
                        if (r["agent_mode"] == "medium" or r["data"].get("agent")) and r["status"] in {"waiting_job", "running"}]
