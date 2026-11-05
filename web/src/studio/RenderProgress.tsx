@@ -18,7 +18,7 @@ export function RenderProgress({ project, hideLabel }: { project: StudioProject;
   return <div className="rc-progress" role="status" dir="rtl">
     <div className="meter" data-indeterminate={typeof percent === "number" && !stale ? undefined : ""} style={{ ["--value" as string]: `${percent ?? 0}%` }}
       role="progressbar" aria-label="Render progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={typeof percent === "number" ? percent : undefined}/>
-    <div className="rc-meta"><span>{view.stageLabel === hideLabel ? "" : view.stageLabel}</span>{typeof percent === "number" ? <span dir="auto">{stale ? "آخرین گزارش: " : ""}{stagePercent !== undefined ? "این مرحله: " : ""}<bdi dir="ltr">{percent}%</bdi></span> : null}</div>
+    <div className="rc-meta"><span>{view.stageLabel === hideLabel ? "" : view.stageLabel}</span>{typeof percent === "number" ? <span dir="auto">{stale ? "در حال انجام، گزارش تازه‌ای نرسیده · " : ""}{stagePercent !== undefined ? "این مرحله: " : ""}<bdi dir="ltr">{percent}%</bdi></span> : null}</div>
     <ProgressNotice project={project}/>
   </div>;
 }

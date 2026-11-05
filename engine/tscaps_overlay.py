@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -146,7 +147,7 @@ def build_spec(cues: list[Cue], width: int, height: int, kinds: dict[str, dict] 
 
 
 def render_overlay(cues: list[Cue], out: Path, *, width: int, height: int, fps: int, duration: float,
-                   work_dir: Path, timeout: int = 900, kinds: dict[str, dict] | None = None) -> Path:
+                   work_dir: Path, timeout: int = 900, kinds: dict[str, dict] | None = None, on_progress=None) -> Path:
     """Render `cues` to a transparent VP9 WebM of exactly `duration` seconds; raises OverlayUnavailable on any failure."""
     cues = [c for c in cues if c.words]
     if not cues:
@@ -161,11 +162,33 @@ def render_overlay(cues: list[Cue], out: Path, *, width: int, height: int, fps: 
         _blank(blank, width, height, fps, duration)
         spec_path.write_text(json.dumps(build_spec(cues, width, height, kinds), ensure_ascii=False))
         out.unlink(missing_ok=True)
-        proc = subprocess.run(["node", "run.mjs", str(spec_path), str(blank), str(out)], cwd=TOOL, capture_output=True, text=True, timeout=timeout)
+        # The engine says "progress N" (percent of its rendering) as it works: read that as it arrives, so the page shows a real percentage for this stage.
+        proc = subprocess.Popen(["node", "run.mjs", str(spec_path), str(blank), str(out)], cwd=TOOL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        lines: list[str] = []
+
+        def pump() -> None:
+            for line in proc.stderr:
+                lines.append(line)
+                found = re.search(r"progress\s+(\d+(?:\.\d+)?)", line)
+                if found and on_progress:
+                    try:
+                        on_progress(min(100.0, float(found.group(1))))
+                    except Exception:
+                        pass
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        try:
+            stdout, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise
+        reader.join(timeout=5)
+        stderr = "".join(lines)
     except (OSError, subprocess.SubprocessError) as exc:
         raise OverlayUnavailable(f"overlay render did not run: {str(exc)[:200]}") from exc
     if proc.returncode != 0 or not out.is_file() or out.stat().st_size < 1000:
-        raise OverlayUnavailable((proc.stderr or proc.stdout or "overlay render failed")[-400:])
+        raise OverlayUnavailable((stderr or stdout or "overlay render failed")[-400:])
     return out
 
 
@@ -271,7 +294,7 @@ def note_cues(notes: list[dict]) -> list[Cue]:
 
 
 def render_with_overlay(render, video, plan, out, *, work_dir: Path, cues: list[Cue], strip, fps: int, duration: float,
-                        width: int = 1080, height: int = 1920, **kwargs):
+                        width: int = 1080, height: int = 1920, overlay_progress=None, **kwargs):
     """Render with the Tscaps layer when it can be made; otherwise (or if compositing fails) with the style's own text.
 
     `render` is the style's plain renderer (it accepts `overlay=`), `strip(plan)` returns the plan without what the layer draws."""
@@ -284,7 +307,7 @@ def render_with_overlay(render, video, plan, out, *, work_dir: Path, cues: list[
     if cues and enabled():
         try:
             overlay = render_overlay(cues, work_dir / "tscaps_overlay.webm", width=width, height=height, fps=fps,
-                                     duration=duration + 0.1, work_dir=work_dir)
+                                     duration=duration + 0.1, work_dir=work_dir, on_progress=overlay_progress)
         except OverlayUnavailable as exc:
             log.warning("tscaps overlay unavailable, using built-in text: %s", str(exc)[:240])
         except Exception as exc:  # the layer may improve a reel; it must never fail one

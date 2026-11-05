@@ -1101,5 +1101,8 @@ def render(video: Path, plan: ReelPlan, out: Path, **kwargs) -> Path:  # noqa: F
     if kwargs.get('on_stage'):
         kwargs['on_stage']('rendering captions', 'در حال رندر لایهٔ تایپوگرافی و تأکیدهای متنی')
     work_dir = kwargs.pop("work_dir")
+    report = kwargs.get("on_progress")
+    # The text layer is made first: its own percentage fills the first 8% of the render (the picture's work then continues from there), so this stage moves instead of sitting at 0.
+    layer = (lambda pct: report(round(pct * 0.08))) if report else None
     return tso.render_with_overlay(lambda v, p, o, **k: render_plain(v, p, o, **kwargs, **k), video, plan, out, work_dir=work_dir,
-                                   cues=tso.note_cues(plan.notes), strip=lambda p: p, fps=int(RENDER_FPS), duration=plan.duration)
+                                   cues=tso.note_cues(plan.notes), strip=lambda p: p, fps=int(RENDER_FPS), duration=plan.duration, overlay_progress=layer)
