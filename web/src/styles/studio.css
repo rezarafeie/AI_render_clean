@@ -735,3 +735,15 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .look-stage video { display: block; }
 .look-tint { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; }
 .look-panel { display: grid; gap: 10px; }
+
+/* The Edit tab as a phone editor: the picture stays on top, a row of tools sits under it, and one tool's controls open below */
+.editor-top { position: sticky; top: 0; z-index: 4; display: grid; gap: 6px; padding: 8px 0 0; background: var(--bg); }
+.look-stage-wrap { display: grid; justify-items: center; }
+.editor-tools { display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px; scrollbar-width: none; border-bottom: 1px solid var(--border-subtle); }
+.editor-tools::-webkit-scrollbar { display: none; }
+.editor-tool { flex: 0 0 auto; display: grid; justify-items: center; gap: 4px; min-width: 66px; padding: 8px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: var(--muted, #9a9a9a); background: transparent; }
+.editor-tool[aria-pressed="true"] { color: var(--text, #fff); background: var(--active, rgba(255,255,255,.1)); }
+.tool-panel { display: grid; gap: 12px; padding: 12px 2px 20px; }
+.tool-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tool-head small { color: var(--muted, #9a9a9a); }
+.look-stage { max-height: 34vh; }
