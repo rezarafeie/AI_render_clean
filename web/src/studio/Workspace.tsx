@@ -195,16 +195,19 @@ function EditPane({ project, onSaved, superseding = false, rowSlot = null }: { p
   const extras: EditorExtra[] = phone && project.external_ref ? [
     { id: "fx", label: "افکت‌ها", icon: "wand", node: <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> },
     { id: "moments", label: "لحظه‌ها", icon: "film", node: <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> }] : [];
+  const [localSlot, setLocalSlot] = React.useState<HTMLElement | null>(null);
+  const slot = rowSlot || localSlot;
   const views = <div className="segmented ws-edit-views" role="group" aria-label="نمای ویرایش" dir="rtl">
     <button type="button" aria-pressed={shown === "main"} onClick={() => setView("main")}>{hasPlan(project) ? "برنامه" : "ویرایش"}</button>
     <button type="button" aria-pressed={shown === "timeline"} onClick={() => setView("timeline")}>تایم‌لاین</button>
   </div>;
   return <div className="ws-edit">
-    {timeline ? (phone && rowSlot ? createPortal(views, rowSlot) : views) : null}
+    {phone && !rowSlot ? <div className="ws-edit-row" dir="rtl">{timeline ? views : null}<span className="ws-row-slot" dir="rtl" ref={setLocalSlot}/></div>
+      : timeline ? (phone && rowSlot ? createPortal(views, rowSlot) : views) : null}
     {shown === "timeline" ? <TimelineView project={project} onChanged={onSaved} currentOutput={projectOutputUrl(project)}/> : null}
     {shown === "timeline" ? null : project.engine === "localize" && project.external_ref ? <LocalizeEdit key={project.external_ref} id={project.external_ref} onChanged={onSaved}/>
       : hasPlan(project) ? <PlanReview project={project} onChanged={onSaved} superseding={superseding} footerSlot={footerSlot} extras={extras}
-        rowSlot={rowSlot} trailing={phone && advanced ? <NavLink className="pe-tool" to={advanced}><Icon name="advanced" size={24}/><span>پیشرفته</span></NavLink> : null}/>
+        rowSlot={phone ? slot : null} trailing={phone && advanced ? <NavLink className="pe-tool" to={advanced}><Icon name="advanced" size={24}/><span>پیشرفته</span></NavLink> : null}/>
       : project.engine === "motion" && project.external_ref ? null
       : <header className="ws-edit-intro" dir="rtl"><h2>ویرایش این ویدیو</h2><p>تغییر زیرنویس، ریتم، رنگ یا صدا را در چت بگویید. هر چه این نوع ویدیو پشتیبانی کند، همین‌جا کنترلش را می‌بینید.</p></header>}
     {shown === "timeline" ? null : <>

@@ -806,3 +806,8 @@ a.pe-tool { text-decoration: none; }
 .plan[data-phone] .plan-history label { display: none; }
 .plan[data-phone] .plan-history select { flex: 1; min-height: 38px; padding-block: 4px; font-size: 14px; }
 .ws-edit-views { justify-self: start; }
+
+.ws-edit-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plan-actions[data-compact] { flex-wrap: nowrap; justify-content: space-between; gap: 10px; padding-block: 8px calc(8px + var(--safe-bottom, 0px)); }
+.plan-actions[data-compact] .btn { min-height: 38px; padding: 6px 16px; font-size: 14px; white-space: nowrap; flex: none; }
+.plan-actions[data-compact] small { flex: 1 1 0; min-width: 0; font-size: 11px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

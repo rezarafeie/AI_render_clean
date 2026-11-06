@@ -116,7 +116,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
   };
   const words = hook.split(/\s+/).filter(Boolean);
 
-  const actions = isLatest && phase !== "rendering" && !superseding ? <footer className="plan-actions">
+  const actions = isLatest && phase !== "rendering" && !superseding ? <footer className="plan-actions" data-compact={t1 || undefined}>
       {dirty ? <>
         <button className="btn" disabled={locked} onClick={() => void save()}>{busy === "save the plan" ? "در حال ذخیره…" : "ذخیرهٔ تغییرات"}</button>
         <button className="btn btn-secondary" disabled={locked} onClick={() => setDraft({})}>لغو</button>
