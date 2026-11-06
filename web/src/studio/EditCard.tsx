@@ -17,9 +17,14 @@ function sectionIcon(title: string): IconName {
  * behind it. Every engine's settings (talking plan, Localize, explainer scenes, Motion clips) use this, so the tab looks
  * and behaves the same whatever the video is.
  */
+/** Inside the phone editor's sheet a card is just its body: the sheet already has the title and the tool that opened it. */
+export const FlatCards = React.createContext(false);
+
 export function EditCard({ title, summary, hint, children, tone, icon, onToggle }: {
   title: string; summary?: React.ReactNode; hint?: React.ReactNode; /** kept for callers; every card starts closed */ open?: boolean; children: React.ReactNode; tone?: "warning"; icon?: IconName; onToggle?: (open: boolean) => void;
 }) {
+  const flat = React.useContext(FlatCards);
+  if (flat) return <div className="ec-flat" dir="rtl">{hint ? <p className="ec-hint">{hint}</p> : null}{children}</div>;
   return <details className="ec" dir="rtl" data-tone={tone} onToggle={event => onToggle?.(event.currentTarget.open)}>
     <summary>
       <Icon name={icon || sectionIcon(title)} size={20} className="ec-icon"/>

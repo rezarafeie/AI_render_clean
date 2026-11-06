@@ -16,7 +16,7 @@ import { CreativeResources } from './CreativeResources';
 import { LocalizeEdit } from "./LocalizeEdit";
 import { EditCard, EditSwitch } from "./EditCard";
 import { EffectsEditor } from "./EffectsEditor";
-import { PlanReview } from "./PlanReview";
+import { PlanReview, type EditorExtra } from "./PlanReview";
 import { currentVersion, planPhase } from "./plan";
 import { TimelineView } from "./TimelineView";
 import { useTopbarAction } from '../components/ShellContext';
@@ -190,6 +190,10 @@ function EditPane({ project, onSaved, superseding = false }: { project?: StudioP
   const advanced = advancedEditorUrl(project);
   const timeline = hasTimeline(project);
   const shown = timeline ? view : "main";
+  const phone = project.engine === "talking" && hasPlan(project) && (project.state?.plan?.versions || []).slice(-1)[0]?.content.style.id === "talking_1" && Boolean(project.external_ref);
+  const extras: EditorExtra[] = phone && project.external_ref ? [
+    { id: "fx", label: "افکت‌ها", icon: "wand", node: <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> },
+    { id: "moments", label: "لحظه‌ها", icon: "film", node: <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> }] : [];
   return <div className="ws-edit">
     {timeline ? <div className="segmented ws-edit-views" role="group" aria-label="نمای ویرایش" dir="rtl">
       <button type="button" aria-pressed={shown === "main"} onClick={() => setView("main")}>{hasPlan(project) ? "برنامه" : "ویرایش"}</button>
@@ -197,18 +201,19 @@ function EditPane({ project, onSaved, superseding = false }: { project?: StudioP
     </div> : null}
     {shown === "timeline" ? <TimelineView project={project} onChanged={onSaved} currentOutput={projectOutputUrl(project)}/> : null}
     {shown === "timeline" ? null : project.engine === "localize" && project.external_ref ? <LocalizeEdit key={project.external_ref} id={project.external_ref} onChanged={onSaved}/>
-      : hasPlan(project) ? <PlanReview project={project} onChanged={onSaved} superseding={superseding} footerSlot={footerSlot}/>
+      : hasPlan(project) ? <PlanReview project={project} onChanged={onSaved} superseding={superseding} footerSlot={footerSlot} extras={extras}
+        trailing={phone && advanced ? <NavLink className="pe-tool" to={advanced}><Icon name="advanced" size={24}/><span>پیشرفته</span></NavLink> : null}/>
       : project.engine === "motion" && project.external_ref ? null
       : <header className="ws-edit-intro" dir="rtl"><h2>ویرایش این ویدیو</h2><p>تغییر زیرنویس، ریتم، رنگ یا صدا را در چت بگویید. هر چه این نوع ویدیو پشتیبانی کند، همین‌جا کنترلش را می‌بینید.</p></header>}
     {shown === "timeline" ? null : <>
-    {project.engine === 'talking' && project.external_ref ? <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> : null}
-    {project.engine === 'talking' && project.external_ref ? <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> : null}
+    {!phone && project.engine === 'talking' && project.external_ref ? <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> : null}
+    {!phone && project.engine === 'talking' && project.external_ref ? <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> : null}
     {project.engine === 'talking' && project.external_ref && !hasPlan(project) ? <TalkingShade key={project.external_ref} jobId={project.external_ref} onSaved={onSaved}/> : null}
     {project.state?.storyboard?.scenes?.length ? <StoryboardEditor project={project} onSaved={onSaved}/> : null}
     {project.external_ref && project.engine!=='localize' ? <MotionScenes jobId={project.external_ref} revision={project.updated_at} onSaved={onSaved}/> : null}
     </>}
     <div hidden={shown === "timeline"}><CreativeResources key={project.id} project={project} onSaved={onSaved} disabled={superseding}/></div>
-    {shown === "timeline" ? null : advanced
+    {shown === "timeline" || phone ? null : advanced
       ? <NavLink className="adv-link" to={advanced}><Icon name="advanced" size={20}/><span><b>ویرایشگر پیشرفته</b><small>تایم‌لاین، صدا و تنظیمات دقیق‌تر</small></span><Icon name="chevron" size={18}/></NavLink>
       : <p className="ws-hint" dir="rtl">تغییر را در چت بگویید؛ نسخهٔ تازه‌ای ساخته می‌شود و نسخهٔ فعلی دست‌نخورده می‌ماند.</p>}
     <div className="ws-edit-footer" dir="rtl" ref={setFooterSlot}/>

@@ -772,7 +772,7 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .pe-tools::-webkit-scrollbar { display: none; }
 .pe-tool { flex: 1 0 64px; display: grid; justify-items: center; gap: 6px; padding: 8px 2px; font-size: 12px; font-weight: 500; color: var(--text-2); background: transparent; }
 .pe-tool:active { color: var(--text); }
-.pe-sheet { display: grid; gap: 16px; padding: 12px 4px 84px; border-top: 1px solid var(--border-subtle); }
+.pe-sheet { display: grid; gap: 16px; padding: 12px 4px 0; border-top: 1px solid var(--border-subtle); }
 .pe-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .pe-sheet-head > b { font-size: 15px; font-weight: 600; }
 .pe-done { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--text); }
@@ -786,6 +786,10 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .pe-param[aria-pressed="true"] svg { color: var(--text); filter: drop-shadow(0 0 6px rgba(255,255,255,.35)); }
 .pe-note { text-align: center; font-size: 12px; color: var(--text-2); }
 .pe-presets, .pe-form { display: grid; gap: 14px; }
+.pe-sheet:has(.pe-slider), .pe-sheet:has(.pe-presets), .pe-sheet:has(.ec-flat) { padding-bottom: 84px; }
+.pe-form:empty { display: none; }
+.ec-flat { display: grid; gap: 14px; min-width: 0; }
+a.pe-tool { text-decoration: none; }
 .pe-stage .streaming-preview { position: absolute; inset: 0; width: 100%; height: 100%; }
 .pe-stage .streaming-preview video { width: 100%; height: 100%; object-fit: cover; }
 .pe-source { text-align: center; font-size: 11px; color: var(--text-2); }

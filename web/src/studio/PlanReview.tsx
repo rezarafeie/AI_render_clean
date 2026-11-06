@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal, flushSync } from "react-dom";
-import { EditCard, EditSwitch } from "./EditCard";
+import { EditCard, EditSwitch, FlatCards } from "./EditCard";
 import type { LookValues } from "./LookStudio";
 import { PhoneEditor, type EditorTool } from "./PhoneEditor";
 import { api, PlanContent, PlanEdits, PlanVersion, StudioProject } from "../api";
@@ -37,7 +37,9 @@ const TOOLS: [Tool, string, IconName, boolean][] = [   // [id, label, icon, only
   ["light", "نور و رنگ", "sun", true], ["frame", "کادر", "image", true], ["zoom", "زوم", "search", false], ["text", "متن", "captions", false],
   ["style", "سبک", "wand", false], ["hook", "هوک", "spark", false], ["brand", "برند", "user", false], ["details", "جزئیات", "list", false]];
 
-export function PlanReview({ project, onChanged, superseding = false, footerSlot = null }: { project: StudioProject; onChanged: () => void | Promise<unknown>; superseding?: boolean; footerSlot?: HTMLElement | null }) {
+export type EditorExtra = { id: "fx" | "moments"; label: string; icon: IconName; node: React.ReactNode };
+
+export function PlanReview({ project, onChanged, superseding = false, footerSlot = null, extras = [], trailing = null }: { project: StudioProject; onChanged: () => void | Promise<unknown>; superseding?: boolean; footerSlot?: HTMLElement | null; extras?: EditorExtra[]; trailing?: React.ReactNode }) {
   const versions: PlanVersion[] = project.state?.plan?.versions || [];
   const latest = versions[versions.length - 1];
   const phase = planPhase(project);
@@ -86,7 +88,8 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       gradeAuto: baseLook.grade_auto ?? true, framingAuto: baseLook.framing?.auto ?? true, shiftX: baseLook.framing?.shift_x ?? 0, shiftY: baseLook.framing?.shift_y ?? 0,
       zoomEnabled: baseLook.zoom_enabled ?? true, zoomBase: baseLook.zoom_base ?? 100, zoomClose: baseLook.zoom_close ?? 125, zoomAmount: baseLook.zoom ?? 100 } as LookValues,
   } : { src: api.rawUrl(project.external_ref || ""), base: null as LookValues | null };
-  const visibleTools = TOOLS.filter(([, , , only]) => t1 || !only);
+  const visibleTools: [Tool, string, IconName, boolean][] = [...TOOLS.filter(([, , , only]) => t1 || !only), ...(t1 ? extras.map(item => [item.id, item.label, item.icon, true] as [Tool, string, IconName, boolean]) : [])];
+  const extra = extras.find(item => item.id === sheet);
   const activeTool: Tool = visibleTools.some(([id]) => id === tool) ? tool : "style";
   const SLIDERS: Tool[] = ["light", "frame", "zoom"];
   const current: Tool | null = t1 ? (sheet && !SLIDERS.includes(sheet) ? sheet : null) : activeTool;
@@ -155,7 +158,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
 
     {t1 ? <PhoneEditor src={previewSource.src} base={previewSource.base} values={lookValues} disabled={!editable} onChange={patch => set(patch)}
       tools={visibleTools.map(([id, label, icon]) => [id, label, icon] as [Tool, string, IconName])} open={sheet} setOpen={setSheet}
-      onUndo={undo} canUndo={historyLength > 0} presets={presetsField}/> : <div className="editor-top">
+      onUndo={undo} canUndo={historyLength > 0} presets={presetsField} trailing={trailing}>{extra ? <FlatCards.Provider value>{extra.node}</FlatCards.Provider> : null}</PhoneEditor> : <div className="editor-top">
       <nav className="editor-tools" aria-label="ابزارهای ویرایش">{visibleTools.map(([id, label, icon]) =>
         <button key={id} type="button" className="editor-tool" aria-pressed={activeTool === id} onClick={() => setTool(id)}><Icon name={icon} size={20}/><span>{label}</span></button>)}</nav>
     </div>}

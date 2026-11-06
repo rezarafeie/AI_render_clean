@@ -3,7 +3,7 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon, type IconName } from "../components/Icon";
 import type { LookPatch, LookValues } from "./LookStudio";
 
-export type EditorTool = "light" | "frame" | "zoom" | "text" | "style" | "hook" | "brand" | "details";
+export type EditorTool = "light" | "frame" | "zoom" | "text" | "style" | "hook" | "brand" | "details" | "fx" | "moments";
 const SLIDER_TOOLS: EditorTool[] = ["light", "frame", "zoom"];
 type Param = { id: string; label: string; icon: IconName; min: number; max: number; step: number; value: number; suffix?: string; send: (v: number) => void; neutral: number };
 
@@ -12,11 +12,11 @@ const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.fl
 /** The Edit tab of a Talking reel laid out like a phone video editor: a big picture that follows every change, play / undo under it, a row of tools,
  *  and (after tapping one) a bottom sheet with a tick to confirm. Light, frame and zoom use one slider and a row of parameters; the other tools keep
  *  their forms, which the page passes in as children. */
-export function PhoneEditor({ src, base, values, disabled, onChange, tools, open, setOpen, onUndo, canUndo, presets, children }: {
+export function PhoneEditor({ src, base, values, disabled, onChange, tools, open, setOpen, onUndo, canUndo, presets, trailing, children }: {
   /** the video shown, and the settings it was made with: when it is a finished render, only the change from them is drawn on it (null: the original footage, drawn from scratch) */
   src: string; base: LookValues | null; values: LookValues; disabled: boolean; onChange: (patch: LookPatch) => void;
   tools: [EditorTool, string, IconName][]; open: EditorTool | null; setOpen: (tool: EditorTool | null) => void;
-  onUndo: () => void; canUndo: boolean; presets?: React.ReactNode; children?: React.ReactNode;
+  onUndo: () => void; canUndo: boolean; presets?: React.ReactNode; /** more tools that open somewhere else (a link), shown at the end of the row */ trailing?: React.ReactNode; children?: React.ReactNode;
 }) {
   const video = React.useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = React.useState(false);
@@ -75,7 +75,7 @@ export function PhoneEditor({ src, base, values, disabled, onChange, tools, open
     </div>
 
     {open === null ? <nav className="pe-tools" aria-label="ابزارهای ویرایش">{tools.map(([id, label, icon]) =>
-      <button key={id} type="button" className="pe-tool" onClick={() => setOpen(id)}><Icon name={icon} size={24}/><span>{label}</span></button>)}</nav>
+      <button key={id} type="button" className="pe-tool" onClick={() => setOpen(id)}><Icon name={icon} size={24}/><span>{label}</span></button>)}{trailing}</nav>
     : <div className="pe-sheet">
       <div className="pe-sheet-head">
         {open === "light" ? <div className="segmented" role="tablist" aria-label="نور و رنگ">
