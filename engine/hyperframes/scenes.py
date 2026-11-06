@@ -125,6 +125,18 @@ def validate_scene(beat_id: str, html: str, css: str, js: str, speaker: str) -> 
     for pattern in _FORBIDDEN_JS:
         if re.search(pattern, js):
             problems.append(f"js uses a forbidden construct ({pattern})")
+    # GSAP replaces the whole CSS transform of an element it moves (x, y, scale, rotation): HyperFrames rejects that, so catch it here where the model can repair it.
+    animated = re.compile(r"\b(x|y|z|xPercent|yPercent|scale|scaleX|scaleY|rotation|rotationX|rotationY|rotationZ|skewX|skewY)\s*:")
+    if animated.search(js):
+        for selector_list, body in _css_rules(css):
+            if not re.search(r"(^|[;\s])transform\s*:", body):
+                continue
+            for selector in (x.strip() for x in selector_list.split(",")):
+                last = re.split(r"[\s>+~]+", selector)[-1] if selector else ""
+                tokens = re.findall(r"[#.][A-Za-z_][\w-]*", last)
+                if any(token in js for token in tokens):
+                    problems.append(f"css `transform` on '{selector[:60]}' is also animated by GSAP in js, which overwrites it: remove `transform` from the css and place the element with tl.set('{tokens[-1] if tokens else selector}', {{x, y, z, rotationY, scale}}, T) instead")
+                    break
     if re.search(r"\btl\.from\(", js):
         problems.append("use tl.fromTo instead of tl.from (immediateRender breaks seeking)")
     if re.search(r"letter-spacing\s*:\s*-", css + html):

@@ -123,7 +123,8 @@ THE CONTRACT (violations are rejected and sent back to you)
 - CSS: every selector must start with #{ID} (for example `#{ID} .hero{...}`). No @keyframes, animation, transition, @import, url(), position:fixed.
 - JS: you are given `tl` (the seekable GSAP timeline), `root`, `$(sel)` (scoped querySelectorAll returning an array), `T` (this scene's start in
   seconds) and `D` (its duration). Write ONLY tl.fromTo(...) / tl.to(...) / tl.set(...) calls whose position argument is `T + offset`. Never use
-  tl.from, gsap.*, Math.random, Date, timers, window, fetch. Never tween the same property of one element from two overlapping tweens. Never use
+  tl.from, gsap.*, Math.random, Date, timers, window, fetch. Never tween the same property of one element from two overlapping tweens. An element that a tween moves or scales (x, y, z, scale, rotation) must have NO `transform` in its CSS (GSAP would overwrite it): give it its resting
+  position with `tl.set(sel, {x, y, z, rotationY, scale}, T)` as the first call for it, or with left/top/margin. Never use
   `repeat`, `repeatDelay` or `yoyo` in any tween (they are rejected): an ambient or looping motion (grain, rays, a pulse, a float) is written as several
   separate fromTo steps, one per swing, each at its own `T + offset`, until T + D - 0.4. Every
   animated element needs both start and end states in fromTo. Finish building by T + D - 0.4; the renderer fades the root out at the end.
@@ -310,8 +311,14 @@ def compose(beats: list, plan, sentences: list[dict], *, max_workers: int = 4, u
     fresh = []
     for spec, beat in zip(specs, beats):
         hit = stored["scenes"].get(spec.id)
+        kept = None
         if hit and hit.get("fp") == _fingerprint(beat,plan):
-            results[spec.id] = AuthoredScene(**{k: v for k, v in hit.items() if k != "fp"})
+            from engine.hyperframes.scenes import validate_scene
+            kept = AuthoredScene(**{k: v for k, v in hit.items() if k != "fp"})
+            if validate_scene(spec.id, kept.html, kept.css, kept.js, kept.speaker):   # a scene stored before a rule existed is written again, not reused
+                kept = None
+        if kept:
+            results[spec.id] = kept
         else:
             fresh.append(spec)
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
