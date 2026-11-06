@@ -9,6 +9,7 @@ import re
 import signal
 import subprocess
 import time
+import shutil
 from pathlib import Path
 from typing import Callable, Optional
 from .cli import cli_command
@@ -90,6 +91,20 @@ def check_batches(project_dir: Path) -> list[list[str]]:
         return [[]]
 
 
+def ensure_browser() -> None:
+    """HyperFrames looks for its own headless Chrome; a server that ships Chromium (REMOTION_BROWSER_EXECUTABLE / chromium) is pointed at it."""
+    if os.environ.get("HYPERFRAMES_BROWSER_PATH"):
+        return
+    # chrome-headless-shell in HyperFrames' own cache is the fast capture path (BeginFrame): plain Chromium falls back to screenshots, ~10x slower on a CPU-only server.
+    cache = Path.home() / ".cache" / "hyperframes" / "chrome" / "chrome-headless-shell"
+    if cache.is_dir() and any(cache.glob("*/chrome-headless-shell-*/chrome-headless-shell")):
+        return
+    for candidate in (os.environ.get("REMOTION_BROWSER_EXECUTABLE"), shutil.which("chromium"), shutil.which("google-chrome"), shutil.which("chromium-browser")):
+        if candidate and Path(candidate).is_file():
+            os.environ["HYPERFRAMES_BROWSER_PATH"] = candidate
+            return
+
+
 def render_project(
     project_dir: Path,
     output: Path,
@@ -98,6 +113,7 @@ def render_project(
     on_progress: Optional[Callable[[int], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Path:
+    ensure_browser()
     output.parent.mkdir(parents=True, exist_ok=True)
     meta_path = project_dir / 'meta.json'
     if meta_path.is_file():
@@ -245,6 +261,7 @@ def _frame_progress(captured: int, total: int, encoding_for: float) -> int:
 
 
 def _render_cli(project_dir: Path, output: Path, *, timeout=1800, on_progress=None, should_cancel=None, frames: int = 0) -> Path:
+    ensure_browser()
     env = {**os.environ, 'NO_COLOR':'1'}
     command = (
         [*cli_command(), "render", ".",
