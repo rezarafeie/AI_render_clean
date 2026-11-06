@@ -28,7 +28,7 @@ function Elapsed({ since }: { since: number }) {
   return ms >= 1000 ? <span className="act-elapsed" aria-hidden="true">{formatDuration(ms)}</span> : null;
 }
 
-function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }) {
+function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryHref?: string; onOpenEditor?: () => void }) {
   const details = stepDetails(step);
   const [open, setOpen] = React.useState(false);
   const failed = step.status === "failed";
@@ -44,7 +44,7 @@ function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }
     {details
       ? <button type="button" className="act-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{label}</button>
       : <div className="act-row">{label}</div>}
-    {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p>{retryHref ? <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={14}/>Open editor to retry</Link> : null}</div> : null}
+    {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p>{retryHref ? (onOpenEditor ? <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenEditor}><Icon name="refresh" size={14}/>Open editor to retry</button> : <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={14}/>Open editor to retry</Link>) : null}</div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
     {active ? <div className="act-timing">
       {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{step.progress}%</span> : null}
@@ -67,7 +67,7 @@ function StepRow({ step, retryHref }: { step: ActivityStep; retryHref?: string }
  * Compact, secondary activity for one stretch of work. Finished history collapses
  * to a single summary line; the current step stays prominent while work is live.
  */
-export function ActivityBlock({ steps, live, retryHref }: { steps: ActivityStep[]; live: boolean; retryHref?: string }) {
+export function ActivityBlock({ steps, live, retryHref, onOpenEditor }: { steps: ActivityStep[]; live: boolean; retryHref?: string; onOpenEditor?: () => void }) {
   const [expanded, setExpanded] = React.useState(false);
   const failed = steps.some(step => step.status === "failed");
   const current = steps.filter(step => step.status === "active" || step.status === "failed");
@@ -82,7 +82,7 @@ export function ActivityBlock({ steps, live, retryHref }: { steps: ActivityStep[
     {canCollapse ? <button type="button" className="act-summary" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>
       <Icon name="check" size={14}/><span>{summary}</span><Icon name="chevronDown" size={14} className={`act-chevron${expanded ? " is-open" : ""}`}/>
     </button> : null}
-    <ul className="act-list">{visible.map(step => <StepRow key={step.key} step={step} retryHref={retryHref}/>)}</ul>
+    <ul className="act-list">{visible.map(step => <StepRow key={step.key} step={step} retryHref={retryHref} onOpenEditor={onOpenEditor}/>)}</ul>
   </section>;
 }
 

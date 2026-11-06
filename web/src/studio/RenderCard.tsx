@@ -22,11 +22,11 @@ function useElapsed(startedAt: number, running: boolean) {
  * One inline card per project. It updates in place while rendering
  * (stage, percentage, elapsed time) and becomes the finished player: no new row per percent.
  */
-export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPreview, onEditAgain, retryHref }: {
+export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPreview, onEditAgain, retryHref, onOpenEditor }: {
   project: StudioProject; sourceUrl?: string; startedAt: number;
   /** Desktop: the video lives in the Preview tab, so the chat shows only the status card. */
   compact?: boolean;
-  onOpenPreview: () => void; onEditAgain: () => void; retryHref?: string;
+  onOpenPreview: () => void; onEditAgain: () => void; retryHref?: string; onOpenEditor?: () => void;
 }) {
   const view = renderView(project);
   const output = view.output ? `${api.studioOutputUrl(project.id)}?candidate=${Boolean(view.review)}&version=${encodeURIComponent(view.output)}` : undefined;
@@ -63,6 +63,6 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
       <button className="btn btn-sm btn-secondary" onClick={onOpenPreview}><Icon name="eye" size={15}/>Open in Preview</button>
       <button className="btn btn-sm btn-ghost" onClick={onEditAgain}><Icon name="edit" size={15}/>Edit again</button>
     </div> : null}
-    {view.phase === "failed" && retryHref ? <div className="rc-actions"><Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={15}/>Open editor to retry</Link></div> : null}
+    {view.phase === "failed" && retryHref ? <div className="rc-actions">{onOpenEditor ? <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenEditor}><Icon name="refresh" size={15}/>Open editor to retry</button> : <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={15}/>Open editor to retry</Link>}</div> : null}
   </article>;
 }

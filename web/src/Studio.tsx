@@ -630,6 +630,7 @@ export default function Studio() {
           {ready || pending ? <Thread items={shown} events={events} conversation={conversation} projects={projects} localFiles={localFiles} thinking={thinking} sourceUrl={sourceUrl} linkTitles={linkTitles} compactRender={layout === "desktop" && desktopOpen}
             onOpenPreview={id => openWorkspace("preview", id)} onEditAgain={editAgain}
             retryHref={current?.status === "error" && !qualityBlocked ? advancedEditorUrl(current) || undefined : undefined}
+            onOpenEditor={id => openWorkspace("edit", id)}
             onChoice={choice => void send(choice)} onRetryMessage={retryMessage}/> : null}
           <AgentRunControls runs={conversation?.agent_runs || []} onChanged={() => void refresh()}/>
           {qualityBlocked && current ? <div className="rc-actions" aria-label="بازبینی خروجی">
