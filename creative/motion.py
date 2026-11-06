@@ -123,7 +123,9 @@ THE CONTRACT (violations are rejected and sent back to you)
 - CSS: every selector must start with #{ID} (for example `#{ID} .hero{...}`). No @keyframes, animation, transition, @import, url(), position:fixed.
 - JS: you are given `tl` (the seekable GSAP timeline), `root`, `$(sel)` (scoped querySelectorAll returning an array), `T` (this scene's start in
   seconds) and `D` (its duration). Write ONLY tl.fromTo(...) / tl.to(...) / tl.set(...) calls whose position argument is `T + offset`. Never use
-  tl.from, gsap.*, Math.random, Date, timers, window, fetch. Never tween the same property of one element from two overlapping tweens. Every
+  tl.from, gsap.*, Math.random, Date, timers, window, fetch. Never tween the same property of one element from two overlapping tweens. Never use
+  `repeat`, `repeatDelay` or `yoyo` in any tween (they are rejected): an ambient or looping motion (grain, rays, a pulse, a float) is written as several
+  separate fromTo steps, one per swing, each at its own `T + offset`, until T + D - 0.4. Every
   animated element needs both start and end states in fromTo. Finish building by T + D - 0.4; the renderer fades the root out at the end.
 - Persian text: use font-family Ray (weights 300-900), optionally Kharazmi for ONE accent word/line. letter-spacing must be 0 for Persian (negative
   tracking breaks the joins). Never split a Persian word into letters; for word-by-word motion wrap whole words in inline-block spans. Numbers: use
@@ -215,6 +217,10 @@ def author_scene(spec: SceneSpec, design: DesignSystem, *, used: list[str] | Non
         scene = llm.ask(AuthoredScene, "You output a single JSON object and nothing else.", user, route=MOTION_ROUTE, tokens=9000, attempts=2, used=used)
         scene.css = scope_owned_selectors(spec.id, scene.html, scene.css)
         last = validate_scene(spec.id, scene.html, scene.css, scene.js, scene.speaker)
+        if any("repeat" in p or "yoyo" in p for p in last):
+            last.append("do not loop with repeat/yoyo: write every swing of the ambient motion as its own tl.fromTo at T + offset (for example four back-and-forth steps across the scene)")
+        if any("transition" in p for p in last):
+            last.append("CSS must not contain `transition:`; every change of state is a tl.fromTo in the JS")
         if not last:
             return scene
         log.warning("scene %s rejected (attempt %d): %s", spec.id, attempt + 1, last[:3])
