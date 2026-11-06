@@ -39,7 +39,7 @@ const TOOLS: [Tool, string, IconName, boolean][] = [   // [id, label, icon, only
 
 export type EditorExtra = { id: "fx" | "moments"; label: string; icon: IconName; node: React.ReactNode };
 
-export function PlanReview({ project, onChanged, superseding = false, footerSlot = null, extras = [], trailing = null }: { project: StudioProject; onChanged: () => void | Promise<unknown>; superseding?: boolean; footerSlot?: HTMLElement | null; extras?: EditorExtra[]; trailing?: React.ReactNode }) {
+export function PlanReview({ project, onChanged, superseding = false, footerSlot = null, extras = [], trailing = null, rowSlot = null }: { project: StudioProject; onChanged: () => void | Promise<unknown>; superseding?: boolean; footerSlot?: HTMLElement | null; extras?: EditorExtra[]; trailing?: React.ReactNode; rowSlot?: HTMLElement | null }) {
   const versions: PlanVersion[] = project.state?.plan?.versions || [];
   const latest = versions[versions.length - 1];
   const phase = planPhase(project);
@@ -135,6 +135,14 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </div>
   );
 
+  const versionRow = <div className="plan-history">
+        <label htmlFor="plan-version">نسخه‌ها</label>
+        <select id="plan-version" className="input" value={shown.id} onChange={event => setViewing(event.target.value === latest.id ? null : event.target.value)}>
+          {[...versions].reverse().map(item => <option key={item.id} value={item.id}>{t1 ? `نسخهٔ ${item.n}${item.id === latest.id ? " (فعلی)" : ""}` : `نسخهٔ ${item.n} · ${SOURCE_LABEL[item.source] || item.source}${item.id === latest.id ? " (فعلی)" : ""}`}</option>)}
+        </select>
+        {!isLatest ? <button className="btn btn-sm btn-secondary" disabled={locked} onClick={restore}>بازگرداندن این نسخه</button> : null}
+      </div>;
+
   return <div className="plan" data-phone={t1 || undefined} dir="rtl" aria-busy={Boolean(busy)}>
     {busy ? <div className="notice" role="status" aria-live="polite"><span className="act-dot" aria-hidden="true"/> {busy === "approve the plan" ? "در حال ارسال تأیید و شروع رندر…" : "در حال ذخیره و به‌روزرسانی برنامه…"}</div> : null}
     {t1 ? null : <header className="plan-head">
@@ -144,13 +152,7 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </div>
       {PHASE_LABEL[phase] ? <span className="badge" data-tone={phase === "awaiting" ? "warning" : phase === "failed" ? "error" : phase === "done" || phase === "approved" ? "success" : "working"}><i/>{PHASE_LABEL[phase]}</span> : null}
     </header>}
-    {versions.length > 1 ? <div className="plan-history">
-      <label htmlFor="plan-version">نسخه‌ها</label>
-      <select id="plan-version" className="input" value={shown.id} onChange={event => setViewing(event.target.value === latest.id ? null : event.target.value)}>
-        {[...versions].reverse().map(item => <option key={item.id} value={item.id}>نسخهٔ {item.n} · {SOURCE_LABEL[item.source] || item.source}{item.id === latest.id ? " (فعلی)" : ""}</option>)}
-      </select>
-      {!isLatest ? <button className="btn btn-sm btn-secondary" disabled={locked} onClick={restore}>بازگرداندن این نسخه</button> : null}
-    </div> : null}
+    {versions.length > 1 ? (t1 && rowSlot ? createPortal(versionRow, rowSlot) : versionRow) : null}
     {phase === "analyzing" ? <div className="notice" role="status">برنامه در حال ساخته‌شدن است؛ وقتی آماده شد همین‌جا نمایش داده می‌شود.</div> : null}
     {phase === "rendering" ? <div className="notice" role="status">این برنامه تأیید شده و در حال رندر است. برای تغییر بعدی، بعد از پایان رندر همین‌جا یا در چت اقدام کنید.</div> : null}
     {!isLatest ? <div className="notice" data-tone="warning">نسخهٔ قدیمی را می‌بینید؛ فقط نسخهٔ فعلی قابل ویرایش و تأیید است.</div> : null}

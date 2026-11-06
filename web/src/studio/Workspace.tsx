@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
 import { api, StudioConversation, StudioEvent, StudioProject } from "../api";
 import { MotionEditPane, MotionPreviewPane } from "./MotionWorkspace";
@@ -183,7 +184,7 @@ export function hasTimeline(project?: StudioProject): boolean {
   return project.engine === "talking" ? hasPlan(project) && Boolean(currentVersion(project)) : Boolean(project.external_ref);
 }
 
-function EditPane({ project, onSaved, superseding = false }: { project?: StudioProject; onSaved: () => void | Promise<unknown>; superseding?: boolean }) {
+function EditPane({ project, onSaved, superseding = false, rowSlot = null }: { project?: StudioProject; onSaved: () => void | Promise<unknown>; superseding?: boolean; rowSlot?: HTMLElement | null }) {
   const [view, setView] = React.useState<"main" | "timeline">("main");
   const [footerSlot, setFooterSlot] = React.useState<HTMLElement | null>(null);
   if (!project) return <Empty icon="advanced" title="Nothing to edit yet" text="Once EditorGPT creates a project, the controls that apply to it appear here."/>;
@@ -194,15 +195,16 @@ function EditPane({ project, onSaved, superseding = false }: { project?: StudioP
   const extras: EditorExtra[] = phone && project.external_ref ? [
     { id: "fx", label: "افکت‌ها", icon: "wand", node: <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> },
     { id: "moments", label: "لحظه‌ها", icon: "film", node: <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> }] : [];
+  const views = <div className="segmented ws-edit-views" role="group" aria-label="نمای ویرایش" dir="rtl">
+    <button type="button" aria-pressed={shown === "main"} onClick={() => setView("main")}>{hasPlan(project) ? "برنامه" : "ویرایش"}</button>
+    <button type="button" aria-pressed={shown === "timeline"} onClick={() => setView("timeline")}>تایم‌لاین</button>
+  </div>;
   return <div className="ws-edit">
-    {timeline ? <div className="segmented ws-edit-views" role="group" aria-label="نمای ویرایش" dir="rtl">
-      <button type="button" aria-pressed={shown === "main"} onClick={() => setView("main")}>{hasPlan(project) ? "برنامه" : "ویرایش"}</button>
-      <button type="button" aria-pressed={shown === "timeline"} onClick={() => setView("timeline")}>تایم‌لاین</button>
-    </div> : null}
+    {timeline ? (phone && rowSlot ? createPortal(views, rowSlot) : views) : null}
     {shown === "timeline" ? <TimelineView project={project} onChanged={onSaved} currentOutput={projectOutputUrl(project)}/> : null}
     {shown === "timeline" ? null : project.engine === "localize" && project.external_ref ? <LocalizeEdit key={project.external_ref} id={project.external_ref} onChanged={onSaved}/>
       : hasPlan(project) ? <PlanReview project={project} onChanged={onSaved} superseding={superseding} footerSlot={footerSlot} extras={extras}
-        trailing={phone && advanced ? <NavLink className="pe-tool" to={advanced}><Icon name="advanced" size={24}/><span>پیشرفته</span></NavLink> : null}/>
+        rowSlot={rowSlot} trailing={phone && advanced ? <NavLink className="pe-tool" to={advanced}><Icon name="advanced" size={24}/><span>پیشرفته</span></NavLink> : null}/>
       : project.engine === "motion" && project.external_ref ? null
       : <header className="ws-edit-intro" dir="rtl"><h2>ویرایش این ویدیو</h2><p>تغییر زیرنویس، ریتم، رنگ یا صدا را در چت بگویید. هر چه این نوع ویدیو پشتیبانی کند، همین‌جا کنترلش را می‌بینید.</p></header>}
     {shown === "timeline" ? null : <>
@@ -318,6 +320,7 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
 }) {
   const meta = statusMeta(project);
   const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
+  const [rowSlot, setRowSlot] = React.useState<HTMLElement | null>(null);
   const panel = usePanelFullscreen();
   const action = React.useMemo(() => topbarControls ? { active: panel.active, onClick: () => { void panel.toggle(); },
     status: project ? {label: meta.label, tone: meta.tone} : undefined } : null,
@@ -353,13 +356,13 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
     </header>
     {topbarControls && panel.active ? <button className="icon-btn ws-edit-exit" onClick={() => void panel.toggle()} aria-label="Exit full screen"><Icon name="fullscreenExit" size={18}/></button> : null}
     {topbarControls && projects.length > 1 ? <div className="ws-project-picker"><select className="input" aria-label="Project" value={project?.id} onChange={event => onSelectProject(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{displayTitle(item.title, 32)}</option>)}</select></div> : null}
-    {topbarControls && deleteProject ? <div className="ws-project-actions">{deleteProject}</div> : null}
+    {topbarControls && deleteProject ? <div className="ws-project-actions"><span className="ws-row-slot" ref={setRowSlot}/>{deleteProject}</div> : null}
     <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}
     <div className="ws-body">
       <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPreviewPane motionId={motionId} events={events} onCancel={onCancel}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
-      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionEditPane motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)}/>}</div>
+      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionEditPane motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)} rowSlot={tab === "edit" && topbarControls ? rowSlot : null}/>}</div>
     </div>
   </section>;
 }

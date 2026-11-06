@@ -7,6 +7,42 @@ export type EditorTool = "light" | "frame" | "zoom" | "text" | "style" | "hook" 
 const SLIDER_TOOLS: EditorTool[] = ["light", "frame", "zoom"];
 type Param = { id: string; label: string; icon: IconName; min: number; max: number; step: number; value: number; suffix?: string; send: (v: number) => void; neutral: number };
 
+/** Frames of the video taken in the page (a hidden copy is seeked to a handful of times), so the scrubber shows the picture instead of a bar. They are kept per video. */
+const strips = new Map<string, string[]>();
+function useFilmstrip(url: string, count = 10) {
+  const [frames, setFrames] = React.useState<string[]>(() => strips.get(url) || []);
+  React.useEffect(() => {
+    if (!url) return;
+    const kept = strips.get(url);
+    if (kept) { setFrames(kept); return; }
+    let live = true;
+    const video = document.createElement("video");
+    video.muted = true; video.playsInline = true; video.preload = "auto"; video.crossOrigin = "anonymous";
+    const canvas = document.createElement("canvas");
+    const out: string[] = [];
+    const finish = () => { video.removeAttribute("src"); video.load(); };
+    const grab = (n: number) => {
+      if (!live) return finish();
+      if (n >= count) { strips.set(url, out); setFrames(out); return finish(); }
+      video.onseeked = () => {
+        try {
+          const h = 72, w = Math.max(1, Math.round(h * video.videoWidth / Math.max(video.videoHeight, 1)));
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d")!.drawImage(video, 0, 0, w, h);
+          out.push(canvas.toDataURL("image/jpeg", 0.6));
+          grab(n + 1);
+        } catch { finish(); }
+      };
+      video.currentTime = Math.min(video.duration - 0.05, (video.duration * (n + 0.5)) / count);
+    };
+    video.onloadedmetadata = () => { if (Number.isFinite(video.duration) && video.duration > 0) grab(0); else finish(); };
+    video.onerror = finish;
+    video.src = url;
+    return () => { live = false; finish(); };
+  }, [url]);
+  return frames;
+}
+
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
 /** The Edit tab of a Talking reel laid out like a phone video editor: a big picture that follows every change, play / undo under it, a row of tools,
@@ -21,6 +57,8 @@ export function PhoneEditor({ src, base, values, disabled, onChange, tools, open
   const video = React.useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = React.useState(false);
   const [time, setTime] = React.useState({ now: 0, total: 0 });
+  const [playUrl, setPlayUrl] = React.useState("");
+  const frames = useFilmstrip(playUrl);
   const [closeShot, setCloseShot] = React.useState(false);
   const [lightTab, setLightTab] = React.useState<"adjust" | "presets">("adjust");
   const [param, setParam] = React.useState<Record<string, string>>({ light: "brightness", frame: "shiftx", zoom: "zbase" });
@@ -59,7 +97,7 @@ export function PhoneEditor({ src, base, values, disabled, onChange, tools, open
     <div className="pe-top">
       <div className="pe-stage" aria-label="پیش‌نمایش زندهٔ تغییرات">
         <AuthenticatedMedia as="video" ref={video} src={src} muted playsInline preload="metadata"
-          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e: any) => setTime(t => ({ ...t, total: e.currentTarget.duration || 0 }))}
+          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e: any) => { setTime(t => ({ ...t, total: e.currentTarget.duration || 0 })); setPlayUrl((e.currentTarget.currentSrc || "").split("#")[0]); }}
           onTimeUpdate={(e: any) => setTime({ now: e.currentTarget.currentTime, total: e.currentTarget.duration || 0 })}
           style={{ width: "100%", height: "100%", objectFit: "cover", filter, transform: `translate(${tx}%, ${ty}%) scale(${scale})`, transition: "transform .12s" }}/>
         {warmth !== 0 ? <div aria-hidden className="pe-tint" style={{ background: warmth > 0 ? "#ff8a3d" : "#4b8dff", opacity: Math.min(Math.abs(warmth) / 160, 0.5) }}/> : null}
@@ -69,8 +107,12 @@ export function PhoneEditor({ src, base, values, disabled, onChange, tools, open
         <button type="button" className="pe-play" aria-label={playing ? "توقف" : "پخش"} onClick={() => { const el = video.current; if (!el) return; if (el.paused) void el.play().catch(() => {}); else el.pause(); }}><Icon name={playing ? "pause" : "play"} size={26}/></button>
         <span className="pe-time" dir="ltr">{clock(time.now)} / {clock(time.total)}</span>
       </div>
-      <input className="pe-scrub" type="range" min={0} max={Math.max(time.total, 0.1)} step={0.05} value={Math.min(time.now, time.total || 0)} aria-label="جابه‌جایی در ویدیو"
-        onChange={event => { const el = video.current; if (el) el.currentTime = Number(event.target.value); }}/>
+      <div className="pe-strip" style={frames.length ? { backgroundImage: frames.map(f => `url(${f})`).join(","), backgroundSize: `${100 / frames.length}% 100%`,
+        backgroundPosition: frames.map((_, i) => `${frames.length > 1 ? (i / (frames.length - 1)) * 100 : 0}% 0`).join(","), backgroundRepeat: "no-repeat" } : undefined}>
+        <span className="pe-head" style={{ insetInlineStart: `${time.total ? Math.min(time.now / time.total, 1) * 100 : 0}%` }} aria-hidden/>
+        <input className="pe-scrub" type="range" min={0} max={Math.max(time.total, 0.1)} step={0.05} value={Math.min(time.now, time.total || 0)} aria-label="جابه‌جایی در ویدیو"
+          onChange={event => { const el = video.current; if (el) el.currentTime = Number(event.target.value); }}/>
+      </div>
       <small className="pe-source">{base ? "ویدیوی ساخته‌شدهٔ فعلی + تغییرات شما" : "فیلم اصلی (هنوز رندر نشده)"}</small>
     </div>
 
