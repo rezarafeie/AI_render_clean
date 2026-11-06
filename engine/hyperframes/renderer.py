@@ -50,7 +50,9 @@ def check_failure_summary(project: Path, detail: str, *, since: float = 0) -> st
             for section in ('lint','runtime','layout','motion','contrast'):
                 for finding in (report.get(section) or {}).get('findings',[]):
                     if finding.get('severity')=='error':
-                        errors.append(str(finding.get('code','check failed'))+': '+str(finding.get('message','')))
+                        where=(' @'+str(finding['selector'])) if finding.get('selector') else ''
+                        hint=(' — '+str(finding['fixHint'])[:220]) if finding.get('fixHint') else ''
+                        errors.append(str(finding.get('code','check failed'))+': '+str(finding.get('message',''))+where+hint)
             if errors:return ' | '.join(errors)[:1200]
         except (OSError,ValueError,TypeError):
             pass

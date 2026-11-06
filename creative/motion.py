@@ -8,6 +8,7 @@ template, so authoring can raise the ceiling but never lower the floor.
 from __future__ import annotations
 
 import json
+import re
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -128,6 +129,8 @@ THE CONTRACT (violations are rejected and sent back to you)
   `repeat`, `repeatDelay` or `yoyo` in any tween (they are rejected): an ambient or looping motion (grain, rays, a pulse, a float) is written as several
   separate fromTo steps, one per swing, each at its own `T + offset`, until T + D - 0.4. Every
   animated element needs both start and end states in fromTo. Finish building by T + D - 0.4; the renderer fades the root out at the end.
+- Text must fit its box: the renderer checks every text against the box it sits in and rejects the scene when it overflows. Make the box at least as
+  large as the text (a 96px Persian line is about 55px per character wide), lower the font-size, or let it wrap with `max-width` and `white-space: normal`.
 - Persian text: use font-family Ray (weights 300-900), optionally Kharazmi for ONE accent word/line. letter-spacing must be 0 for Persian (negative
   tracking breaks the joins). Never split a Persian word into letters; for word-by-word motion wrap whole words in inline-block spans. Numbers: use
   Persian digits when the speech does. Use `direction: ltr` for Latin/numeric chunks that must read left to right.
@@ -208,11 +211,11 @@ def design_system(brief_text: str, concept_text: str, used: list[str] | None = N
                                "shape": "radius 28px, 3px strokes, hairline rules"})
 
 
-def author_scene(spec: SceneSpec, design: DesignSystem, *, used: list[str] | None = None, repairs: int = 2) -> AuthoredScene:
+def author_scene(spec: SceneSpec, design: DesignSystem, *, used: list[str] | None = None, repairs: int = 2, feedback: list[str] | None = None) -> AuthoredScene:
     """One validated scene. Repairs feed the validator's messages back to the model."""
     from engine.hyperframes.scenes import validate_scene, scope_owned_selectors
     prompt = build_prompt(spec, design)
-    last: list[str] = []
+    last: list[str] = list(feedback or [])   # what the render check said about an earlier version of this scene
     for attempt in range(repairs + 1):
         user = prompt if not last else prompt + "\n\nYour previous answer was rejected for these reasons. Fix every one and return the full JSON again:\n- " + "\n- ".join(last[:8])
         scene = llm.ask(AuthoredScene, "You output a single JSON object and nothing else.", user, route=MOTION_ROUTE, tokens=9000, attempts=2, used=used)
@@ -226,6 +229,20 @@ def author_scene(spec: SceneSpec, design: DesignSystem, *, used: list[str] | Non
             return scene
         log.warning("scene %s rejected (attempt %d): %s", spec.id, attempt + 1, last[:3])
     raise CreativeUnavailable(f"scene {spec.id} did not pass validation: {last[:3]}")
+
+
+def layout_feedback(message: str, beats: list) -> dict[str, list[str]]:
+    """What a failed HyperFrames check says about each authored scene: {beat id: [what to fix]} (empty when it names no scene of ours)."""
+    found: dict[str, list[str]] = {}
+    for part in str(message).split(" | "):
+        match = re.search(r"@#([\w-]+)", part)
+        if not match:
+            continue
+        target = next((b.id for b in beats if b.custom and (match.group(1) == b.id or match.group(1).startswith(b.id + "-"))), None)
+        if target:
+            found.setdefault(target, []).append("the rendered scene failed HyperFrames' own check: " + part.strip()[:420]
+                                                + ". Rewrite the scene so every element sits inside its container at every moment (size the boxes to the text, use a smaller font-size, or allow wrapping with max-width).")
+    return found
 
 
 def plan_from_public(data: dict | None):
@@ -256,7 +273,7 @@ def _fingerprint(beat, plan=None) -> str:
 
 
 def compose(beats: list, plan, sentences: list[dict], *, max_workers: int = 4, used: list[str] | None = None,
-            cache: Path | None = None, cached_only: bool = False) -> list:
+            cache: Path | None = None, cached_only: bool = False, feedback: dict[str, list[str]] | None = None) -> list:
     """Attach authored scenes to `beats` (VisualBeat objects). Beats that fail keep their template. Returns the same list.
 
     `cache` is a JSON file next to the job: scenes already authored for the same beat id and timing are reused, so a
@@ -299,11 +316,12 @@ def compose(beats: list, plan, sentences: list[dict], *, max_workers: int = 4, u
                                title=beat.title, items=beat.items, role=beat.narrative_role,
                                visual_idea=(idea.visual if idea else beat.why), motion_idea=(idea.motion if idea else ""),
                                archetype=ARCHETYPES[(index * 3 + len(beat.title)) % len(ARCHETYPES)], layout=beat.layout))
+    feedback = feedback or {}
     results: dict[str, AuthoredScene] = {}
 
     def work(spec: SceneSpec):
         try:
-            return spec.id, author_scene(spec, design, used=used)
+            return spec.id, author_scene(spec, design, used=used, feedback=feedback.get(spec.id))
         except Exception as exc:  # any failure keeps the template for this beat
             log.warning("motion author failed for %s: %s", spec.id, str(exc)[:200])
             return spec.id, None
@@ -312,7 +330,7 @@ def compose(beats: list, plan, sentences: list[dict], *, max_workers: int = 4, u
     for spec, beat in zip(specs, beats):
         hit = stored["scenes"].get(spec.id)
         kept = None
-        if hit and hit.get("fp") == _fingerprint(beat,plan):
+        if hit and hit.get("fp") == _fingerprint(beat,plan) and spec.id not in feedback:
             from engine.hyperframes.scenes import validate_scene
             kept = AuthoredScene(**{k: v for k, v in hit.items() if k != "fp"})
             if validate_scene(spec.id, kept.html, kept.css, kept.js, kept.speaker):   # a scene stored before a rule existed is written again, not reused

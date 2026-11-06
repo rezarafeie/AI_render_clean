@@ -1240,10 +1240,25 @@ def _run_split(job_dir: Path, video: Path, style: str, *, regenerate: bool) -> N
         build_project(project, rough, beats, duration=render_duration)
         _stage(job_dir, "rendering motion graphics", progress=82)
         try:
-            render_project(
-                project, out,
-                on_progress=lambda pct: _stage(job_dir, "rendering motion graphics", progress=pct),
-            )
+            for repair in range(3):
+                try:
+                    render_project(
+                        project, out,
+                        on_progress=lambda pct: _stage(job_dir, "rendering motion graphics", progress=pct),
+                    )
+                    break
+                except Exception as check_error:
+                    # A scene the Motion Designer wrote can still fail HyperFrames' own check (text outside its box, ...): the finding names the scene
+                    # and says how to fix it, so only that scene is written again with it (at most twice) before the render is given up.
+                    from creative import motion as creative_motion
+                    problems = creative_motion.layout_feedback(str(check_error), beats) if creative_motion.enabled() and repair < 2 else {}
+                    if not problems:
+                        raise
+                    _stage(job_dir, "repairing motion scenes", progress=80)
+                    creative_motion.compose(beats, creative_motion.plan_from_public(load(job_dir).get("creative_plan")), transcript["sentences"],
+                                            cache=job_dir / "talking_reel_work" / "authored_scenes.json", feedback=problems)
+                    build_project(project, rough, beats, duration=render_duration)
+                    _stage(job_dir, "rendering motion graphics", progress=82)
         except Exception as exc:
             from creative.review import required
             if any(b.layout == 'top_panel' for b in beats) or required(load(job_dir).get('creative_plan')):
