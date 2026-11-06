@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
+from app import lowpriority
 from app.studio_store import ROOT
 
 log = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ def start(directory: Path) -> None:
             return
         _STOP.discard(key)
         _flag(directory).unlink(missing_ok=True)
-        thread = threading.Thread(target=_guard, args=(directory,), daemon=True, name=f"discovery-{key}")
+        thread = threading.Thread(target=lowpriority.wrap(_guard), args=(directory,), daemon=True, name=f"discovery-{key}")
         _RUNNING[key] = thread
         thread.start()
 

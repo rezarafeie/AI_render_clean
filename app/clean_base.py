@@ -10,6 +10,7 @@ left out and the base is rebuilt once they exist). Nothing here is ever delivere
 """
 from __future__ import annotations
 
+from app import lowpriority
 import dataclasses
 import hashlib
 import json
@@ -110,7 +111,7 @@ def ensure(job_dir: Path, raw_video: Path) -> dict:
             with _lock:
                 _building.discard(key)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=lowpriority.wrap(run), daemon=True).start()
     return {"state": "building", "key": key}
 
 

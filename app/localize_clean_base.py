@@ -12,6 +12,7 @@ stale. It is never delivered as an export.
 """
 from __future__ import annotations
 
+from app import lowpriority
 import hashlib
 import json
 import logging
@@ -104,7 +105,7 @@ def ensure(project_id: str) -> dict:
             with _lock:
                 _building.discard(key)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=lowpriority.wrap(run), daemon=True).start()
     return {"state": "building", "key": key}
 
 

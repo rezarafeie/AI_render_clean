@@ -7,6 +7,7 @@ music) are kept across renders; "regenerate" asks the LLM again.
 """
 from __future__ import annotations
 
+from app import lowpriority
 import hashlib
 import json
 import logging
@@ -398,7 +399,7 @@ def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, requ
                 _running.discard(key)
                 _cancel_events.pop(key, None); _pause_events.pop(key, None)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=lowpriority.wrap(run), daemon=True).start()
     return state
 
 
@@ -533,7 +534,7 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
                 _running.discard(key)
                 _cancel_events.pop(key, None); _pause_events.pop(key, None)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=lowpriority.wrap(run), daemon=True).start()
     return state
 
 

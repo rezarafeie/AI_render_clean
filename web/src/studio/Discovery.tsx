@@ -7,17 +7,31 @@ import { Menu } from "../components/Menu";
 import { friendlyError } from "../ui";
 import { STAGE_LABEL, STATUS_LABEL, STATUS_TONE, SortKey, categoriesOf, clock, etaText, isActive, liveLines, parseRange, rangeText, visibleCandidates } from "./discoveryModel";
 
+/** Refresh while something is running: not while the tab is hidden, and less and less often the longer nothing new comes (a preview that never becomes ready must not keep the server busy). */
+function usePoll(active: boolean, refresh: () => unknown, base: number, reset: unknown) {
+  React.useEffect(() => {
+    if (!active) return;
+    let delay = base, timer = 0, stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      if (!document.hidden) void refresh();
+      delay = Math.min(delay * 1.4, 20000);
+      timer = window.setTimeout(tick, delay);
+    };
+    const visible = () => { if (!document.hidden) { delay = base; window.clearTimeout(timer); tick(); } };
+    timer = window.setTimeout(tick, delay);
+    document.addEventListener("visibilitychange", visible);
+    return () => { stopped = true; window.clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+  }, [active, refresh, base, reset]);
+}
+
 /** Whether this chat's long-video analysis is running right now (drives the composer's Stop button). */
 export function useDiscoveryActive(analysisId: string | undefined, events: StudioEvent[]): boolean {
   const [active, setActive] = React.useState(false);
   const last = React.useMemo(() => { const mine = events.filter(e => analysisId && e.data?.analysis_id === analysisId); return mine.length ? mine[mine.length - 1].seq : 0; }, [events, analysisId]);
   const refresh = React.useCallback(() => { if (analysisId) api.discoveryView(analysisId).then(a => setActive(Boolean(a.running) && !a.interrupted)).catch(() => setActive(false)); else setActive(false); }, [analysisId]);
   React.useEffect(() => { refresh(); }, [refresh, last]);
-  React.useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(refresh, 4000);
-    return () => window.clearInterval(timer);
-  }, [active, refresh]);
+  usePoll(active, refresh, 4000, last);
   return active;
 }
 
@@ -37,11 +51,7 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
   const refresh = React.useCallback(() => api.discoveryView(analysisId).then(setAnalysis).catch(e => setError(friendlyError(e, "load the analysis"))), [analysisId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
   const active = analysis ? (analysis.running || analysis.interrupted || analysis.candidates.some(c => isActive(c.status) || (!c.hidden && c.preview_ready === false))) : true;
-  React.useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(() => void refresh(), 3000);
-    return () => window.clearInterval(timer);
-  }, [active, refresh]);
+  usePoll(active, refresh, 3000, lastEvent);
 
   if (!analysis) return <section className="dv" dir="rtl">{error ? <div className="notice" data-tone="error" role="alert">{error}</div> : <div className="tl-loading" role="status"><span className="spinner"/>در حال بارگذاری…</div>}</section>;
 

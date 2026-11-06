@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
+from app import lowpriority
 from app.celery_app import CELERY_AVAILABLE
 from app.config import settings
 from app.database import AsyncSessionLocal, DB_AVAILABLE
@@ -710,7 +711,7 @@ def start_music_mix(job: Job, volume: float, fade_in: float, fade_out: float) ->
         from app.tasks import task_mix_music
         task_mix_music.apply_async(args=(job.id,), headers=celery_request_headers())
     else:
-        threading.Thread(target=_run_mix, args=(job,), daemon=True).start()
+        threading.Thread(target=lowpriority.wrap(_run_mix), args=(job,), daemon=True).start()
 
 
 def _run_mix(job: Job, *, raise_errors: bool = False) -> None:
@@ -779,7 +780,7 @@ def start_render(job: Job, preview: bool = False, loudnorm: bool = True, *, expe
         from app.tasks import task_run_render
         task_run_render.apply_async(args=(job.id, preview, loudnorm), headers=celery_request_headers())
     else:
-        threading.Thread(target=_run_job, args=(job, preview, loudnorm), daemon=True).start()
+        threading.Thread(target=lowpriority.wrap(_run_job), args=(job, preview, loudnorm), daemon=True).start()
 
 
 def start_generate(
