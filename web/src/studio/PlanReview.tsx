@@ -135,15 +135,15 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       </div>
   );
 
-  return <div className="plan" dir="rtl" aria-busy={Boolean(busy)}>
+  return <div className="plan" data-phone={t1 || undefined} dir="rtl" aria-busy={Boolean(busy)}>
     {busy ? <div className="notice" role="status" aria-live="polite"><span className="act-dot" aria-hidden="true"/> {busy === "approve the plan" ? "در حال ارسال تأیید و شروع رندر…" : "در حال ذخیره و به‌روزرسانی برنامه…"}</div> : null}
-    <header className="plan-head">
+    {t1 ? null : <header className="plan-head">
       <div>
         <h2>برنامهٔ تدوین</h2>
         <p>نسخهٔ {shown.n}{shown.note ? ` · ${shown.note}` : ""} · {SOURCE_LABEL[shown.source] || shown.source}</p>
       </div>
       {PHASE_LABEL[phase] ? <span className="badge" data-tone={phase === "awaiting" ? "warning" : phase === "failed" ? "error" : phase === "done" || phase === "approved" ? "success" : "working"}><i/>{PHASE_LABEL[phase]}</span> : null}
-    </header>
+    </header>}
     {versions.length > 1 ? <div className="plan-history">
       <label htmlFor="plan-version">نسخه‌ها</label>
       <select id="plan-version" className="input" value={shown.id} onChange={event => setViewing(event.target.value === latest.id ? null : event.target.value)}>
