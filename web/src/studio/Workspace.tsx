@@ -356,7 +356,7 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
     </header>
     {topbarControls && panel.active ? <button className="icon-btn ws-edit-exit" onClick={() => void panel.toggle()} aria-label="Exit full screen"><Icon name="fullscreenExit" size={18}/></button> : null}
     {topbarControls && projects.length > 1 ? <div className="ws-project-picker"><select className="input" aria-label="Project" value={project?.id} onChange={event => onSelectProject(event.target.value)}>{projects.map(item => <option key={item.id} value={item.id}>{displayTitle(item.title, 32)}</option>)}</select></div> : null}
-    {topbarControls && deleteProject ? <div className="ws-project-actions"><span className="ws-row-slot" ref={setRowSlot}/>{deleteProject}</div> : null}
+    {topbarControls && deleteProject ? <div className="ws-project-actions"><span className="ws-row-slot" dir="rtl" ref={setRowSlot}/>{deleteProject}</div> : null}
     <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}

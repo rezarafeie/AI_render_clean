@@ -713,6 +713,7 @@ html[data-keyboard-open] .dock, html[data-keyboard-open] .studio[data-layout="mo
 .ws-row-slot .plan-history { flex: 1; min-width: 0; flex-wrap: nowrap; }
 .ws-row-slot .plan-history select { min-width: 0; max-width: 150px; flex: 0 1 150px; }
 .ws-row-slot .ws-edit-views { flex: none; }
+.ws-row-slot .plan-history label { display: none; }
 
 /* Candidate cards of a long video: title, one line of facts, the hook, details folded away, one main action */
 .dv-card .dv-body { gap: 6px; padding: 10px 12px 12px; }
