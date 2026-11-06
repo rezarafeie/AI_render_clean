@@ -187,6 +187,7 @@ export function hasTimeline(project?: StudioProject): boolean {
 function EditPane({ project, onSaved, superseding = false, rowSlot = null }: { project?: StudioProject; onSaved: () => void | Promise<unknown>; superseding?: boolean; rowSlot?: HTMLElement | null }) {
   const [view, setView] = React.useState<"main" | "timeline">("main");
   const [footerSlot, setFooterSlot] = React.useState<HTMLElement | null>(null);
+  const [localSlot, setLocalSlot] = React.useState<HTMLElement | null>(null);
   if (!project) return <Empty icon="advanced" title="Nothing to edit yet" text="Once EditorGPT creates a project, the controls that apply to it appear here."/>;
   const advanced = advancedEditorUrl(project);
   const timeline = hasTimeline(project);
@@ -195,7 +196,6 @@ function EditPane({ project, onSaved, superseding = false, rowSlot = null }: { p
   const extras: EditorExtra[] = phone && project.external_ref ? [
     { id: "fx", label: "افکت‌ها", icon: "wand", node: <EffectsEditor key={`fx-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> },
     { id: "moments", label: "لحظه‌ها", icon: "film", node: <KeyMoments key={`km-${project.external_ref}`} jobId={project.external_ref} onSaved={onSaved}/> }] : [];
-  const [localSlot, setLocalSlot] = React.useState<HTMLElement | null>(null);
   const slot = rowSlot || localSlot;
   const views = <div className="segmented ws-edit-views" role="group" aria-label="نمای ویرایش" dir="rtl">
     <button type="button" aria-pressed={shown === "main"} onClick={() => setView("main")}>{hasPlan(project) ? "برنامه" : "ویرایش"}</button>
