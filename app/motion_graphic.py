@@ -301,6 +301,16 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
     key = directory.name
     _DIRS[key] = directory
     _local.run = run_id if run_id is not None else int(load(directory).get("run") or 0)
+    from app.render_cloud.hooks import identity
+    owned = load(directory)
+    def cloud_stage(stage):
+        message = {'provisioning': 'در حال آماده‌سازی منابع رندر', 'preparing': 'در حال آماده‌سازی موتور رندر',
+                   'downloading': 'در حال دریافت فایل‌های صحنه', 'rendering': 'در حال رندر فریم‌ها',
+                   'uploading': 'در حال انتقال خروجی رندر', 'completed': 'خروجی رندر دریافت شد'}.get(stage)
+        if message:
+            _note(directory, 'render', message)
+    cloud_token = identity.set((owned.get('user_key'), owned.get('id'), (directory,),
+                                lambda: _cancelled(key), cloud_stage))
     try:
         _run(directory, change)
     except _Cancelled:
@@ -325,6 +335,7 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
         _emit(record["conversation_id"], "job.failed", motion_id=key, message=message, resumable=True)
         _assistant(record["conversation_id"], record["user_key"], f"ساخت موشن‌گرافیک کامل نشد: {message} می‌توانید دوباره امتحان کنید یا درخواست را ساده‌تر بنویسید.")
     finally:
+        identity.reset(cloud_token)
         if _RUNNING.get(key) is threading.current_thread():
             _RUNNING.pop(key, None)
             try:

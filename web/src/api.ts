@@ -321,6 +321,10 @@ export async function aiAdminRequest<T>(path: string, init?: RequestInit): Promi
   return j<T>(await authFetch(`${BASE}/admin/ai${path}`, init));
 }
 
+export async function renderCloudAdminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return j<T>(await authFetch(`${BASE}/admin/render-cloud${path}`, init));
+}
+
 export async function aiAdminCsv(query: string): Promise<void> {
   const response = await authFetch(`${BASE}/admin/ai/logs.csv?${query}`);
   if (!response.ok) { await j(response); return; }

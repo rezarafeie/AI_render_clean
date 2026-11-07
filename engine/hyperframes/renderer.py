@@ -113,6 +113,10 @@ def render_project(
     on_progress: Optional[Callable[[int], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Path:
+    from app.render_cloud.hooks import hyperframes
+    if hyperframes(project_dir, output, engine='hyperframes_project', timeout=timeout,
+                   on_progress=on_progress, should_cancel=should_cancel):
+        return output
     ensure_browser()
     output.parent.mkdir(parents=True, exist_ok=True)
     meta_path = project_dir / 'meta.json'

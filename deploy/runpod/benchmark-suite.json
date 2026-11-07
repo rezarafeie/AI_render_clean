@@ -1,0 +1,10 @@
+{
+  "talking_30s": {"manifest": null, "workspace": null, "reference": null},
+  "subtitles_60s": {"manifest": null, "workspace": null, "reference": null},
+  "hyperframes_60s": {"manifest": null, "workspace": null, "reference": null},
+  "remotion_60s": {"manifest": null, "workspace": null, "reference": null},
+  "multilayer": {"manifest": null, "workspace": null, "reference": null},
+  "gpu_required": {"manifest": null, "workspace": null, "reference": null},
+  "4k": {"manifest": null, "workspace": null, "reference": null},
+  "concurrent": {"manifest": null, "workspace": null, "reference": null}
+}

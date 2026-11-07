@@ -148,6 +148,11 @@ def render(
     When ``apply_loudnorm`` is set, a second pass runs ``ffmpeg -af loudnorm``
     targeting the LUFS value from the style preset (defaults to -14).
     """
+    from app.render_cloud.hooks import mlt as cloud_mlt
+    if cloud_mlt(Path(mlt), Path(out), preview=preview, style_name=style_name,
+                 style_override=style_override, crf_override=crf_override,
+                 apply_loudnorm=apply_loudnorm, on_progress=on_progress):
+        return Path(out)
     melt = melt_bin()
 
     style = style_override or load_style(style_name)

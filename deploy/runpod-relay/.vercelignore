@@ -1,0 +1,4 @@
+.env*
+.vercel
+*.test.mjs
+README.md

@@ -1,7 +1,11 @@
 FROM python:3.12-slim AS builder
 WORKDIR /build
-COPY requirements.lock .
-RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock
+ARG EDITORGPT_RUNPOD_CONTROL_PLANE=0
+COPY requirements.lock requirements-runpod.txt ./
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock \
+    && if [ "$EDITORGPT_RUNPOD_CONTROL_PLANE" = 1 ]; then \
+         /opt/venv/bin/pip install --no-cache-dir -c requirements.lock -r requirements-runpod.txt; \
+       fi
 
 FROM node:22-bookworm-slim AS motion
 WORKDIR /motion

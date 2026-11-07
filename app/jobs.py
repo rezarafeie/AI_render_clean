@@ -28,6 +28,7 @@ from engine.premiere import AttachedMusic, build_premiere
 from engine.render import render as run_render, export_poster, embed_poster
 from engine.schema import validate_plan
 from app import plan_versions
+from app.render_cloud.hooks import job_context as cloud_job_context
 
 
 JOBS_ROOT = Path(settings.JOBS_DIR).expanduser()
@@ -1195,6 +1196,7 @@ def _run_auto_correct(job: Job, transcript: dict, style: str) -> None:
 
 
 @job_scope
+@cloud_job_context
 def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: bool = False) -> None:
     try:
         job.render.status = "running"
@@ -1258,9 +1260,14 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                     product_reel.render(prepare_reel_config(motion_config, job.dir), out_path, job_dir=job.dir, on_progress=report)
                     rendered = True
                 except Exception as exc:
+                    from app.render_cloud.service import CloudRenderError
+                    if isinstance(exc, CloudRenderError):
+                        raise
                     logger.warning("HyperFrames reel failed (%s); falling back to Remotion", str(exc)[:300])
             if not rendered:
-                render_motion(motion_config, out_path, job_dir=job.dir, on_progress=report)
+                from app.render_cloud.hooks import remotion as cloud_remotion
+                if not cloud_remotion(motion_config, out_path, job_dir=job.dir, on_progress=report):
+                    render_motion(motion_config, out_path, job_dir=job.dir, on_progress=report)
         else:
             run_render(
                 mlt, out_path, preview=preview, style_name=plan.style,

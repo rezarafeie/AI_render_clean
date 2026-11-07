@@ -1,0 +1,56 @@
+name: Build private RunPod worker candidate
+
+on:
+  push:
+    tags:
+      - 'runpod-build-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: private-runpod-worker-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'rezarafeie/editorgpt-runpod-worker-build' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      REGISTRY_IMAGE: ghcr.io/rezarafeie/editorgpt-runpod-worker-build
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build application runtime and worker overlay
+        shell: bash
+        run: |
+          docker build --target runtime --tag editorgpt-runtime:ci .
+          docker build --file deploy/runpod/Dockerfile \
+            --build-arg EDITORGPT_RUNTIME=editorgpt-runtime:ci \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${REGISTRY_IMAGE}:sha-${GITHUB_SHA}" .
+      - name: Verify the candidate without credentials or network
+        shell: bash
+        run: |
+          image="${REGISTRY_IMAGE}:sha-${GITHUB_SHA}"
+          docker run --rm --network none --read-only --memory 384m --pids-limit 64 \
+            --entrypoint python "$image" -c 'import os, shutil; import app.render_cloud.runner; assert os.getuid() == 10001; assert all(shutil.which(t) for t in ("ffmpeg", "ffprobe", "melt", "chromium", "unshare")); print("Worker runtime import passed.")'
+          docker run --rm --network none --read-only --memory 256m --pids-limit 64 \
+            --entrypoint python "$image" -m app.render_cloud.containment_probe --require-socketless
+      - name: Publish immutable candidate to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          image="${REGISTRY_IMAGE}:sha-${GITHUB_SHA}"
+          docker push "$image"
+          digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')"
+          case "$digest" in "${REGISTRY_IMAGE}"@sha256:*) ;; *) exit 1 ;; esac
+          printf 'Candidate: `%s`\n\nNot approved for production. Verify private visibility and run containment on the target host.\n' "$digest" >> "$GITHUB_STEP_SUMMARY"

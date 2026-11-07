@@ -1,0 +1,19 @@
+[Unit]
+Description=EditorGPT dedicated RunPod resource reconciliation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Set these paths/user for the actual deployment; do not run from a disposable checkout.
+User=editorgpt
+WorkingDirectory=/opt/editorgpt
+EnvironmentFile=/etc/editorgpt/render-reaper.env
+ExecStart=/opt/editorgpt/.venv/bin/python -m app.render_cloud.reaper
+TimeoutStartSec=120
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/editorgpt/cloud-render /var/lib/editorgpt/jobs
+UMask=0077

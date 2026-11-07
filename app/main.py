@@ -182,6 +182,8 @@ app.include_router(talking_reel.router)
 app.include_router(talking_reel.list_router)
 app.include_router(plans.router)
 app.include_router(render.router)
+from app.render_cloud.admin import router as render_cloud_admin_router
+app.include_router(render_cloud_admin_router)
 app.include_router(music.router)
 app.include_router(music.legacy_router)
 app.include_router(effects.router)

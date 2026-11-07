@@ -518,11 +518,24 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
         _cancel_events[key], _pause_events[key] = threading.Event(), threading.Event()
 
     def run() -> None:
+        from app.render_cloud.hooks import identity, enabled as cloud_enabled
+        owned_job = None
+        if cloud_enabled():
+            from app import jobs as cloud_jobs
+            owned_job = cloud_jobs.get(job_dir.name)
+        owner_id = getattr(owned_job, 'user_id', None)
+        def cloud_cancelled():
+            event = _cancel_events.get(key)
+            return bool(event and event.is_set())
+        def cloud_stage(stage):
+            _stage(job_dir, 'cloud ' + stage)
+        cloud_token = identity.set((str(owner_id) if owner_id else None, job_dir.name, (job_dir,),
+                                    cloud_cancelled, cloud_stage))
         try:
             started = time.time()
             _run(job_dir, raw_video, regenerate=regenerate)
             _record_render_time(job_dir, raw_video, time.time() - started)
-        except TaskCanceled:
+        except (TaskCanceled, InterruptedError):
             current = load(job_dir); current.update(status="canceled", stage="", message="Canceled by user"); save(job_dir, current)
         except Exception as exc:
             log.exception("talking reel failed for %s", job_dir.name)
@@ -530,6 +543,7 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
             current.update(status="error", stage="", message=str(exc)[:500])
             save(job_dir, current)
         finally:
+            identity.reset(cloud_token)
             with _lock:
                 _running.discard(key)
                 _cancel_events.pop(key, None); _pause_events.pop(key, None)
@@ -760,7 +774,11 @@ def _run_talking_1(job_dir: Path, video: Path, *, regenerate: bool) -> None:
 
     progress, render_stage = _render_reporter(job_dir)
 
-    media.render(video, plan, out, hook=state["hook"], highlight=state.get("hook_highlight") or [],
+    from app.render_cloud.hooks import talking as cloud_talking1
+    def render_talking1(*args,**kwargs):
+        if not cloud_talking1(*args,**kwargs):
+            media.render(*args,**kwargs)
+    render_talking1(video, plan, out, hook=state["hook"], highlight=state.get("hook_highlight") or [],
                  name=state.get("name") or "", title=state.get("title") or "",
                  work_dir=job_dir / "talking_reel_work", music=resolve_music(state.get("music")),
                  cta=state.get("cta") or "",
@@ -1197,14 +1215,19 @@ def _run_split(job_dir: Path, video: Path, style: str, *, regenerate: bool) -> N
     rough = job_dir / "talking_reel_work" / "hyperframes_base.mp4" if hyperframes else out
     render_options=dict(work_dir=job_dir / "talking_reel_work",music=resolve_music(music),
         cta=state.get("cta") or "",render_settings=render_settings,logo_path=custom_logo(job_dir),on_progress=progress,on_stage=render_stage)
+    from app.render_cloud.hooks import talking as cloud_talking
+    def render_media(*args,**kwargs):
+        if not cloud_talking(*args,style=style,**kwargs):
+            return media.render(*args,**kwargs)
+        return args[2]
     if hyperframes:
         from engine.native_checkpoint import render_cached
-        reused=render_cached(media.render,video,plan,rough,options=render_options,
+        reused=render_cached(render_media,video,plan,rough,options=render_options,
             implementations=[Path(media.__file__),Path(media.base.__file__)])
         if reused:
             _stage(job_dir,'reusing prepared cut',progress=75)
     else:
-        media.render(video,plan,rough,**render_options)
+        render_media(video,plan,rough,**render_options)
     if hyperframes:
         from engine.hyperframes import build_project, build_visual_beats, render_project
 
@@ -1260,6 +1283,9 @@ def _run_split(job_dir: Path, video: Path, style: str, *, regenerate: bool) -> N
                     build_project(project, rough, beats, duration=render_duration)
                     _stage(job_dir, "rendering motion graphics", progress=82)
         except Exception as exc:
+            from app.render_cloud.service import CloudRenderError
+            if isinstance(exc, CloudRenderError):
+                raise  # Infrastructure failure is not a reason to rewrite a scene or bill another render.
             from creative.review import required
             if any(b.layout == 'top_panel' for b in beats) or required(load(job_dir).get('creative_plan')):
                 raise  # Do not silently downgrade a creative render to generic cards.

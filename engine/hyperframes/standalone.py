@@ -103,6 +103,10 @@ def check(project: Path, *, timeout: int = 240, should_cancel: Optional[Callable
 
 def render(project: Path, output: Path, *, timeout: int = 900, on_progress: Optional[Callable[[int], None]] = None,
            should_cancel: Optional[Callable[[], bool]] = None, frames: int = 0) -> Path:
+    from app.render_cloud.hooks import hyperframes
+    if hyperframes(project, output, engine='hyperframes_page', timeout=timeout,
+                   on_progress=on_progress, should_cancel=should_cancel):
+        return output
     ensure_browser()
     output.parent.mkdir(parents=True, exist_ok=True)
     return _render_cli(project, output, timeout=timeout, on_progress=on_progress, should_cancel=should_cancel, frames=frames)

@@ -9,6 +9,7 @@ import { isLocalDevelopment } from "./auth";
 import { AgentSettings } from "./studio/AgentMode";
 import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
+const CloudRenderSettings = React.lazy(() => import("./settings/CloudRender").then(module => ({ default: module.CloudRenderSettings })));
 
 type Tool = { label: string; description: string; to: string; icon: IconName };
 const groups: { title: string; hint: string; tools: Tool[] }[] = [
@@ -90,6 +91,7 @@ export default function Settings() {
         {tab === "connections" && authenticated ? <IntegrationsSettings/> : null}
 
         {tab === "tools" ? <>
+          {admin ? <React.Suspense fallback={<p className="set-hint">Loading render administration…</p>}><CloudRenderSettings/></React.Suspense> : null}
           {admin ? <section className="set-section" aria-labelledby="set-admin"><h2 id="set-admin">Administration</h2>
             <NavLink className="set-link" to="/settings/ai"><Icon name="settings" size={20}/><span><b>AI models &amp; logs</b><small>Routing, priorities and request history.</small></span><Icon name="chevron" size={16}/></NavLink></section> : null}
           {groups.map((group, index) => <section className="set-section" key={group.title} aria-labelledby={`set-g${index}`}>

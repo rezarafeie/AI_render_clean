@@ -1,0 +1,2 @@
+# Optional VPS control-plane adapter only. Worker transfer uses existing httpx.
+boto3>=1.36,<2

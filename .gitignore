@@ -76,3 +76,6 @@ vendor/
 /.local-hermes-test/
 /web/node_modules
 /remotion/node_modules
+
+# Keep the cloud-render safety regressions despite the legacy test ignore rule.
+!/tests/test_render_cloud.py

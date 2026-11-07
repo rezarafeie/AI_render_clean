@@ -241,6 +241,10 @@ window.__timelines["{COMPOSITION_ID}"] = tl;
 
 def _run_cli(project: Path, output: Path, *, timeout: int, on_progress=None, should_cancel=None, fmt: str = "mp4") -> None:
     """hyperframes render with live progress: the CLI prints "@hf-progress {...done,total...}" while it captures frames."""
+    from app.render_cloud.hooks import hyperframes
+    if hyperframes(project,output,engine='hyperframes_product',timeout=timeout,
+                   on_progress=on_progress,should_cancel=should_cancel,fmt=fmt):
+        return
     import os
     import re
     import signal

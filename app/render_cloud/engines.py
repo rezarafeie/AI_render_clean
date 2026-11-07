@@ -1,0 +1,121 @@
+"""One render boundary, reusing current engine entrypoints unchanged."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+
+from .contracts import RenderSpec
+
+
+def prepared_json(path):
+    # Prepared scripts/configs are small metadata, never unbounded video payloads.
+    if path.stat().st_size > 16 * 1024**2:
+        raise ValueError('Prepared metadata exceeds allowance')
+    return json.loads(path.read_text())
+
+
+def verify_inputs(spec: RenderSpec, workspace: Path):
+    root = workspace.resolve()
+    for asset in spec.assets:
+        path = root / asset.path
+        if path.is_symlink() or not path.resolve().is_relative_to(root) or not path.is_file():
+            raise ValueError('Asset path is not a regular owned workspace file')
+        if path.stat().st_size != asset.size:
+            raise ValueError('Asset size mismatch')
+        digest = hashlib.sha256()
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        if digest.hexdigest() != asset.sha256:
+            raise ValueError('Asset hash mismatch')
+
+
+def execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_cancel=None) -> Path:
+    old = {key: os.environ.get(key) for key in spec.runtime_env}
+    os.environ.update(spec.runtime_env)
+    try:
+        return _execute(spec, workspace, on_progress=on_progress, should_cancel=should_cancel)
+    finally:
+        for key, value in old.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_cancel=None) -> Path:
+    """Called only in a restricted worker with already authorized, prepared inputs.
+
+    External URLs/absolute paths in project contents require a portability audit
+    before cloud admission. This function is not a public submission endpoint.
+    """
+    verify_inputs(spec, workspace)
+    output = workspace / spec.output
+    if output.exists() or output.is_symlink():
+        raise ValueError('Output already exists')
+    if should_cancel and should_cancel():
+        raise InterruptedError('Render cancelled')
+    entry = workspace / spec.entrypoint
+    if spec.engine == 'hyperframes_page':
+        from engine.hyperframes.standalone import render
+        render(entry.parent, output, timeout=spec.timeout_seconds,
+               on_progress=on_progress, should_cancel=should_cancel,
+               frames=round(spec.duration_seconds * spec.fps))
+    elif spec.engine == 'hyperframes_project':
+        from engine.hyperframes.renderer import render_project
+        render_project(entry.parent, output, timeout=spec.timeout_seconds,
+                       on_progress=on_progress, should_cancel=should_cancel)
+    elif spec.engine == 'hyperframes_product':
+        from engine.hyperframes.product_reel import _run_cli
+        _run_cli(entry.parent, output, timeout=spec.timeout_seconds,
+                 on_progress=on_progress, should_cancel=should_cancel,fmt=spec.export_format)
+    elif spec.engine.startswith('talking_'):
+        from pydantic import TypeAdapter
+        from engine.talking_styles import talking_1,talking_2
+        from engine.talking_reel import get_style
+        data = prepared_json(entry)
+        if data.get('style')!=spec.engine:
+            raise ValueError('Talking style differs from approved manifest')
+        module=get_style(spec.engine)
+        plan = TypeAdapter(talking_1.ReelPlan if spec.engine=='talking_1' else talking_2.ReelPlan).validate_python(data['plan'])
+        for shot in plan.shots:
+            if getattr(shot,'picture',None):
+                from .contracts import relative_path
+                path=workspace/relative_path(shot.picture)
+                if not path.resolve().is_relative_to(workspace.resolve()) or not path.is_file():
+                    raise ValueError('Talking picture outside workspace')
+                shot.picture=str(path)
+        if spec.engine=='talking_3':
+            plan.titles=data.get('titles',[])
+            for key in ('full_pictures','card_pictures'):
+                indices=data.get(key,[])
+                if any(type(i) is not int or not 0<=i<len(plan.shots) for i in indices):
+                    raise ValueError('Invalid cinematic shot references')
+                setattr(plan,key,{id(plan.shots[i]) for i in indices})
+        options = data['options']
+        for key in ('music','logo_path'):
+            if options.get(key):
+                from .contracts import relative_path
+                path = workspace/relative_path(options[key])
+                if not path.resolve().is_relative_to(workspace.resolve()) or not path.is_file():
+                    raise ValueError('Talking asset outside workspace')
+                options[key] = path
+        from .contracts import relative_path
+        video = workspace/relative_path(data['video'])
+        module.render(video,plan,output,work_dir=workspace/'render-work',on_progress=on_progress,**options)
+    elif spec.engine == 'mlt':
+        from engine.render import render
+        render(entry, output, on_progress=on_progress, **spec.mlt_options.model_dump())
+    else:
+        from engine.remotion_renderer import render
+        # Remotion has a hard subprocess deadline; supervisor handles cancellation
+        # of its entire process group (including Chromium and FFmpeg).
+        render(prepared_json(entry), output, job_dir=workspace,
+               timeout=spec.timeout_seconds, on_progress=on_progress)
+    if should_cancel and should_cancel():
+        raise InterruptedError('Render cancelled')
+    if not output.is_file() or not output.stat().st_size:
+        raise RuntimeError('Renderer produced no output')
+    return output
