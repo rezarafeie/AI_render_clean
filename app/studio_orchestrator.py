@@ -2140,6 +2140,16 @@ async def _sync_motion_messages(conversation_id,project,job,user_key):
         await repo.update_project(project['id'],user_key,state=project['state'])
 
 
+def _project_status(raw_status: str, output) -> str:
+    """The project's status from what its engine reports. A job the person stopped is "canceled": anything not listed would read as still running,
+    and the chat would show "working" for ever."""
+    if output:
+        return "done"
+    if raw_status in {"cancelled", "canceled"}:
+        return "canceled"
+    return raw_status if raw_status in {"paused", "error", "awaiting_input", "awaiting_confirmation"} else "running"
+
+
 async def sync_conversation(conversation_id: str, user_key: str) -> None:
     """Single flight across API processes: repeated polling must not repeat plan work."""
     import fcntl
@@ -2303,9 +2313,7 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 if engine == 'talking' and status.get('candidate_output'):
                     state['candidate_output'] = status['candidate_output']
                     state['creative_review'] = status.get('creative_review')
-                new_status = ("done" if output else "paused" if raw_status == "paused" else "error" if raw_status == "error" else
-                              "awaiting_input" if raw_status == "awaiting_input" else
-                              "awaiting_confirmation" if raw_status == "awaiting_confirmation" else "running")
+                new_status = _project_status(raw_status, output)
                 await repo.update_project(project["id"], user_key, status=new_status, state=state)
                 if not (observed != project["state"].get("last_observed") or candidate_changed or activity_changed):
                     continue  # only the workflow position moved; nothing new to announce
