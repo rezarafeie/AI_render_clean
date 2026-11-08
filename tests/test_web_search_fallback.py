@@ -1,5 +1,4 @@
 """When a linked page cannot be read the studio searches the web through the AI router and reads the best results instead."""
-import httpx
 import pytest
 
 from app import studio_orchestrator as orchestrator
@@ -20,28 +19,47 @@ def test_a_bare_address_borrows_the_start_of_the_request():
     assert "قهوه‌ساز" in query and "https://" not in query
 
 
-def _fake_gateway(monkeypatch, handler):
+def _responses(text, urls=(), calls_only=False):
+    if calls_only:
+        return {"output": [{"type": "function_call", "name": "web_search", "arguments": "{}"}]}
+    notes = [{"type": "url_citation", "url": url, "title": "t" + str(i), "start_index": 0, "end_index": len(text)} for i, url in enumerate(urls)]
+    return {"output": [{"type": "web_search_call"}, {"type": "message", "content": [{"type": "output_text", "text": text, "annotations": notes}]}]}
+
+
+def _route(monkeypatch, models, outcomes):
     monkeypatch.setattr(lm_gateway, "configured", lambda: True)
-    monkeypatch.setattr(lm_gateway, "headers", lambda: {})
-    monkeypatch.setattr(lm_gateway, "_url", lambda path: "https://router.test/v1/" + path)
-    monkeypatch.setattr(lm_gateway, "_client", lambda timeout: httpx.Client(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(lm_gateway, "defaults", lambda: {"web_search": {"enabled": True, "models": models, "max_tokens": 1500}})
+    asked = []
+    def complete(route, messages, **kwargs):
+        asked.append((route, kwargs["model_override"], kwargs["endpoint"], kwargs["extra"]))
+        outcome = outcomes[len(asked) - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome, {}
+    monkeypatch.setattr(lm_gateway, "complete", complete)
+    return asked
 
 
-def test_router_search_returns_clean_results(monkeypatch):
-    seen = {}
-    def handler(request):
-        seen["url"], seen["body"] = str(request.url), request.read().decode()
-        return httpx.Response(200, json={"query": "q", "provider": "x", "results": [
-            {"title": "A", "url": "https://a.test/x", "content": "alpha"}, {"title": "no url"}, {"title": "B", "url": "ftp://b", "content": "b"}]})
-    _fake_gateway(monkeypatch, handler)
-    rows = lm_gateway.search("soundcore r50i", count=4)
-    assert rows == [{"title": "A", "url": "https://a.test/x", "content": "alpha"}]
-    assert seen["url"].endswith("/v1/search") and '"max_results":4' in seen["body"].replace(" ", "")
+def test_search_returns_the_cited_sources_with_their_passages(monkeypatch):
+    asked = _route(monkeypatch, ["m1"], [_responses("The R50i has 10 mm drivers.", ["https://a.test/x?utm_source=z", "https://b.test/y", "https://a.test/x"])])
+    rows = lm_gateway.search("soundcore r50i", count=5)
+    assert [r["url"] for r in rows] == ["https://a.test/x?utm_source=z", "https://b.test/y"]        # the same page cited twice is one source
+    assert "10 mm" in rows[0]["content"]
+    assert asked == [("web_search", "m1", "responses", {"tools": [{"type": "web_search"}]})]
 
 
-def test_router_search_without_an_engine_raises(monkeypatch):
-    _fake_gateway(monkeypatch, lambda request: httpx.Response(503, json={"error": {"message": "No search key configured", "code": "no_search_keys"}}))
-    with pytest.raises(lm_gateway.GatewayError, match="503"):
+def test_a_model_that_only_hands_back_a_tool_call_is_skipped(monkeypatch):
+    asked = _route(monkeypatch, ["m1", "m2"], [_responses("", calls_only=True), _responses("facts", ["https://good.test/p"])])
+    assert [r["url"] for r in lm_gateway.search("anything")] == ["https://good.test/p"]
+    assert [a[1] for a in asked] == ["m1", "m2"]
+
+
+def test_search_fails_clearly_when_no_model_produces_sources_or_the_route_is_missing(monkeypatch):
+    _route(monkeypatch, ["m1"], [lm_gateway.GatewayError("boom", 502)])
+    with pytest.raises(lm_gateway.GatewayError, match="boom"):
+        lm_gateway.search("anything")
+    monkeypatch.setattr(lm_gateway, "defaults", lambda: {})
+    with pytest.raises(lm_gateway.GatewayError, match="not set up"):
         lm_gateway.search("anything")
 
 

@@ -575,23 +575,53 @@ def probe_model(mid, capability="chat"):
 
 
 @observe_request
+def _sources_from_response(response):
+    """(answer text, [{title, url, content}]) from a Responses-API result: the cited sources of its message, each with the passage that cites it."""
+    text = ""; found = {}
+    for item in (response or {}).get("output") or []:
+        if item.get("type") != "message":
+            continue
+        for block in item.get("content") or []:
+            chunk = str(block.get("text") or "")
+            offset = len(text); text += chunk
+            for note in block.get("annotations") or []:
+                url = str(note.get("url") or "").split("#")[0]
+                if note.get("type") != "url_citation" or not url.startswith(("http://", "https://")):
+                    continue
+                start = max(0, int(note.get("start_index") or 0) - offset - 240); end = int(note.get("end_index") or 0) - offset + 20
+                excerpt = chunk[start:max(end, start + 1)].strip() or chunk[:300]
+                key = re.sub(r"[?&]utm_[^&#]*", "", url)
+                found.setdefault(key, {"title": str(note.get("title") or "")[:200], "url": url, "content": excerpt[:1500]})
+    return text.strip(), list(found.values())
+
+
 def search(query, *, count=5, topic=None):
-    """Web search through the router's /v1/search (the search engines enabled on the gateway). Raises GatewayError when none is enabled or it fails."""
-    if direct_mode():
-        raise GatewayError('Web search needs the gateway; direct mode is on', 503)
+    """Web search through the router's "web_search" route: a Responses-API call carrying the web_search tool, on the models the route lists (an OpenAI
+    model searches natively on the provider's side; a model that only hands back a tool call is skipped). Returns the cited sources as
+    [{title, url, content}]; raises GatewayError when the route is not set up or no model produced a cited answer."""
+    query = str(query).strip()[:400]
+    if not query:
+        raise GatewayError('Empty search query', 422)
     if not configured():
         raise GatewayError('The AI router is not configured', 503)
-    body={'query':str(query).strip()[:400],'max_results':max(1,min(int(count),10))}
-    if not body['query']:
-        raise GatewayError('Empty search query',422)
-    if topic in {'general','news'}:body['topic']=topic
-    with _client(60) as client:
-        response=client.post(_url('search'),headers=headers(),json=body)
-    if not response.is_success:
-        raise GatewayError(f'Router search HTTP {response.status_code}: {safe(response.text,200)}',response.status_code)
-    rows=(response.json() or {}).get('results') or []
-    return [{'title':str(r.get('title') or '')[:200],'url':str(r.get('url') or ''),'content':str(r.get('content') or r.get('snippet') or '')[:1500]}
-            for r in rows if isinstance(r,dict) and str(r.get('url') or '').startswith(('http://','https://'))]
+    cfg = defaults().get('web_search')
+    if not cfg or not cfg.get('enabled') or not cfg.get('models'):
+        raise GatewayError('The web_search route is not set up in the router', 503)
+    prompt = [{"role": "user", "content": "Search the web for the following and answer in a few lines with the key facts; every claim must cite its source. "
+                                           "Prefer product pages, official pages and shops (other than any site that is named as unreachable).\nQuery: " + query}]
+    last = None
+    for mid in cfg['models'][:3]:
+        try:
+            response, _ = complete('web_search', prompt, endpoint='responses', required={'responses'}, tokens=min(1500, cfg['max_tokens']),
+                                   extra={'tools': [{'type': 'web_search'}]}, model_override=mid)
+        except GatewayError as exc:
+            last = exc
+            continue
+        answer, sources = _sources_from_response(response)
+        if sources:
+            return sources[:max(1, min(int(count), 10))]
+        last = GatewayError('The search model returned no cited sources', 502)
+    raise last or GatewayError('Web search returned nothing', 502)
 
 
 def transcription(audio, language=None, *, provider=None):

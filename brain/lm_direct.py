@@ -400,7 +400,7 @@ def usable(providers: list[dict] | None = None, *, google_first: bool = False) -
     return found
 
 
-MEDIA_PATHS = {"image": "images/generations", "speech": "audio/speech", "embeddings": "embeddings"}
+MEDIA_PATHS = {"image": "images/generations", "speech": "audio/speech", "embeddings": "embeddings", "responses": "responses"}
 
 
 def media_model_for(provider: dict, candidates: list[str]) -> str:

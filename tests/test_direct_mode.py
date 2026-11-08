@@ -103,7 +103,7 @@ def test_streaming_comes_from_the_providers(monkeypatch):
 
 def test_gateway_only_features_say_so(monkeypatch):
     turn_on()
-    for call in (lambda: gateway.sync_models(), lambda: gateway.search("anything"), lambda: gateway.transcription("x.wav", "fa")):
+    for call in (lambda: gateway.sync_models(), lambda: gateway.transcription("x.wav", "fa")):
         with pytest.raises(gateway.GatewayError, match="[Dd]irect mode"):
             call()
 
@@ -124,3 +124,21 @@ def test_the_setting_cannot_be_turned_on_without_a_direct_provider_key():
     result = lm_admin.put_settings(lm_admin.SettingsUpdate(**base, direct_mode=True))
     assert result["direct_mode"] is True and result["direct_ready"] is True
     assert lm_admin.put_settings(lm_admin.SettingsUpdate(**base, direct_mode=False))["direct_mode"] is False
+
+
+def test_web_search_goes_to_the_providers_responses_api_in_direct_mode(monkeypatch):
+    turn_on()
+    store.save("routes", {"web_search": {"id": "web_search", "title": "Web Search", "capability": "chat", "enabled": True, "models": ["custom:SEARCH_MODEL#jarvis-all-models"],
+                                         "endpoint": "responses", "timeout": 60, "max_retries": 0, "temperature": None, "max_tokens": 1500,
+                                         "streaming": False, "automatic_fallback": False, "specialized_fallback": False}})
+    seen = {}
+    def post(url, headers, body, timeout):
+        seen.update(url=url, body=body)
+        text = "Soundcore R50i has 10 mm drivers."
+        return httpx.Response(200, json={"output": [{"type": "web_search_call"}, {"type": "message", "content": [{"type": "output_text", "text": text, "annotations": [
+            {"type": "url_citation", "url": "https://shop.test/r50i?utm_source=x", "title": "Shop", "start_index": 0, "end_index": len(text)}]}]}]},
+            request=httpx.Request("POST", url))
+    monkeypatch.setattr(direct, "_post", post)
+    rows = gateway.search("soundcore r50i a3949")
+    assert rows[0]["url"].startswith("https://shop.test/r50i") and "10 mm" in rows[0]["content"]
+    assert seen["url"] == "https://api.jarvis.you/v1/responses" and seen["body"]["model"] == "SEARCH_MODEL" and seen["body"]["tools"] == [{"type": "web_search"}]
