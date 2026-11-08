@@ -75,6 +75,11 @@ render and 65.40 s end-to-end. The Mac reference took 56.63 s. The difference
 between the two cloud end-to-end times illustrates provisioning variability.
 The actual provider charge was not recorded in the benchmark report.
 
+A separate live cancellation canary observed the MLT job enter `rendering`,
+issued cancellation through the existing coordinator, and verified a terminal
+`cancelled` state. The provider inventory independently confirmed the dedicated
+Pod was absent. The canary deleted its synthetic staged objects.
+
 The [host diagnostic candidate](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42438500616)
 confirmed that a Secure Cloud `cpu3c` host denies both user and network
 namespace creation. Its inherited socketless filter still passed. The host
