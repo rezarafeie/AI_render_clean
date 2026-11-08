@@ -1,0 +1,60 @@
+name: Build private RunPod browser worker image
+
+# Builds the application runtime and the worker overlay at THIS revision, adds the native headless browser, checks the network containment, and publishes
+# the image to the private registry. Run it by pushing a tag `browser-build-*`; the digest is printed in the job summary.
+on:
+  push:
+    tags:
+      - 'browser-build-*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: private-runpod-browser-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'rezarafeie/editorgpt-runpod-worker-build' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      REGISTRY_IMAGE: ghcr.io/rezarafeie/editorgpt-runpod-worker-build
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build the runtime, the worker overlay and the native browser layer
+        shell: bash
+        run: |
+          docker build --target runtime --tag editorgpt-runtime:ci .
+          docker build --file deploy/runpod/Dockerfile --build-arg EDITORGPT_RUNTIME=editorgpt-runtime:ci --tag editorgpt-worker:ci .
+          docker build --file deploy/runpod/native-browser.Dockerfile --build-arg EDITORGPT_RUNPOD_BASE=editorgpt-worker:ci \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${REGISTRY_IMAGE}:browser-sha-${GITHUB_SHA}" .
+      - name: Check the network containment of the browser worker
+        shell: bash
+        run: |
+          image="${REGISTRY_IMAGE}:browser-sha-${GITHUB_SHA}"
+          docker run --rm --network none --read-only --memory 384m --pids-limit 64 \
+            --entrypoint python "$image" -c 'import os, shutil; import app.render_cloud.runner; assert os.getuid() == 10001; assert all(shutil.which(t) for t in ("ffmpeg", "ffprobe", "melt", "chromium", "unshare")); print("Worker runtime import passed.")'
+          docker run --rm --network none --memory 384m \
+            --mount "type=bind,src=$PWD/deploy/runpod,dst=/experiment,readonly" \
+            --entrypoint python "$image" -m app.render_cloud.native_loopback \
+            /opt/venv/bin/python /experiment/native-loopback-smoke.py
+      - name: Publish the immutable image to the private registry
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          image="${REGISTRY_IMAGE}:browser-sha-${GITHUB_SHA}"
+          docker push "$image"
+          digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')"
+          case "$digest" in "${REGISTRY_IMAGE}"@sha256:*) ;; *) exit 1 ;; esac
+          printf 'Browser worker: `%s`\n\nNot approved for production until the live canaries pass.\n' "$digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "DIGEST=$digest"
