@@ -44,7 +44,15 @@ def secret():
     return path.read_text().strip() if path.is_file() else ""
 
 
+def direct_mode():
+    """The router setting "direct mode": the gateway (lmapi.rafiei.co) is off and the app talks to the providers' own APIs (brain/lm_direct.py)."""
+    return bool(store.records("settings").get("global", {}).get("direct_mode"))
+
+
 def configured():
+    if direct_mode():
+        from . import lm_direct
+        return bool(lm_direct.usable())
     return bool(secret())
 
 
@@ -61,7 +69,7 @@ def safe(value, limit=6000):
 
 def gateway_settings():
     value = store.records("settings").get("global", {})
-    return {"enabled": True, "capture_messages": True, "log_char_limit": 6000, **value}
+    return {"enabled": True, "capture_messages": True, "log_char_limit": 6000, "direct_mode": False, **value}
 
 
 def _client(timeout):
@@ -112,6 +120,8 @@ def defaults():
 
 
 def sync_models():
+    if direct_mode():
+        raise GatewayError("Direct mode is on: the gateway is off, so there is no catalog to sync", 409)
     with _client(30) as client:
         response = client.get(_url("models"), headers=headers()); response.raise_for_status()
         catalog = response.json()
@@ -286,6 +296,39 @@ def _direct_fallback(route, endpoint, messages, cfg, candidates, tokens, extra, 
     return response, record
 
 
+def _complete_direct(route, endpoint, messages, cfg, candidates, tokens, extra, validate, started):
+    """Direct mode: the gateway is not called. Chat goes through the providers' own APIs in priority order (the route's models decide which model each
+    provider gets); images and embeddings through the first provider that has a key and the model."""
+    from . import lm_direct
+    attempts = []
+    limit = min(tokens or cfg["max_tokens"], cfg["max_tokens"])
+    try:
+        if endpoint == "chat":
+            found = lm_direct.try_fallback(messages, candidates=list(candidates), tokens=limit, temperature=cfg["temperature"],
+                                           timeout=cfg["timeout"], extra=extra, attempts=attempts, validate=validate)
+            if not found:
+                last = next((a for a in reversed(attempts) if a.get("error")), {})
+                raise GatewayError("Direct mode: no provider answered" + (f" ({last.get('model')}: {str(last.get('error'))[:160]})" if last else " (none has a key)"), 502)
+            response, provider_id, model = found
+        elif endpoint in lm_direct.MEDIA_PATHS:
+            body = adapters.payload(endpoint, "", messages, temperature=cfg["temperature"], extra=extra)
+            wire, provider_id, model = lm_direct.media_request(endpoint, list(candidates[:1]), body, timeout=max(30, cfg["timeout"]))
+            response = wire.json()
+            attempts.append({"model": f"direct:{provider_id}:{model}", "http_status": wire.status_code})
+        else:
+            raise GatewayError(f"{endpoint} is not available in direct mode", 422)
+    except lm_direct.DirectError as exc:
+        _audit(_record(route, endpoint, candidates[0] if candidates else "", started, attempts, error=exc, request=messages))
+        raise GatewayError(f"Direct mode: {exc}", exc.status or 502) from exc
+    except GatewayError as exc:
+        _audit(_record(route, endpoint, candidates[0] if candidates else "", started, attempts, error=exc, request=messages))
+        raise
+    record = _record(route, endpoint, candidates[0] if candidates else "", started, attempts, response, {}, request=messages)
+    record.update(provider=provider_id, routed_via=f"direct:{provider_id}", actual_model=model)
+    _audit(record)
+    return response, record
+
+
 from app.studio_activity import observe_request
 
 
@@ -304,6 +347,8 @@ def complete(route, messages, *, required=None, tokens=None, extra=None, endpoin
     is_media=endpoint in {'image','speech','video'}
     if is_media or not cfg["automatic_fallback"] or endpoint == "embeddings": candidates = candidates[:1]
     started = time.monotonic(); attempts = []; error = None; response = hdr = None
+    if direct_mode():
+        return _complete_direct(route, endpoint, messages, cfg, candidates, tokens, extra, validate_response, started)
     # One bounded retry owner. The upstream gateway's own fallback is observed, never recursively replayed.
     if not _slots.acquire(timeout=2): raise GatewayError("AI request queue is busy", 429)
     try:
@@ -384,7 +429,7 @@ def stream_chat(route, messages, model_override=None, probe=False, *, tokens=Non
     if not cfg["enabled"] or not gateway_settings()["enabled"]: raise GatewayError("Route disabled", 503)
     candidates = [model_override] if model_override else cfg["models"]
     emitted = False; error = None
-    if cfg["streaming"] or probe:
+    if (cfg["streaming"] or probe) and not direct_mode():
         try:
             for piece in _lm_stream(route, messages, model_override, probe, tokens=tokens, timeout_seconds=timeout_seconds):
                 emitted = True
@@ -394,7 +439,7 @@ def stream_chat(route, messages, model_override=None, probe=False, *, tokens=Non
             if emitted or probe: raise
             error = exc
     else:
-        error = GatewayError("Streaming disabled on route", 422)
+        error = GatewayError("Direct mode: streaming comes from the providers" if direct_mode() else "Streaming disabled on route", 422)
     from . import lm_direct
     started = time.monotonic(); text = []
     try:
@@ -532,6 +577,8 @@ def probe_model(mid, capability="chat"):
 @observe_request
 def search(query, *, count=5, topic=None):
     """Web search through the router's /v1/search (the search engines enabled on the gateway). Raises GatewayError when none is enabled or it fails."""
+    if direct_mode():
+        raise GatewayError('Web search needs the gateway; direct mode is on', 503)
     if not configured():
         raise GatewayError('The AI router is not configured', 503)
     body={'query':str(query).strip()[:400],'max_results':max(1,min(int(count),10))}
@@ -549,6 +596,8 @@ def search(query, *, count=5, topic=None):
 
 def transcription(audio, language=None, *, provider=None):
     """One verified multipart STT submission; never retries paid transcription."""
+    if direct_mode():
+        raise GatewayError('Gateway transcription is off in direct mode; local Whisper is the fallback',503)
     cfg=defaults().get('transcription',{})
     if not cfg.get('enabled') or not gateway_settings()['enabled']:
         raise GatewayError('Transcription routing is disabled',503)
@@ -600,6 +649,20 @@ def speech(route, text, voice, *, language="", context=""):
         _audit(_record(route,'speech',next(iter(cfg.get('models', [])), ''),started,attempts,
                        error=exc,request={'input':text,'language':language,'casting':'rejected-before-submission'}))
         raise
+    if direct_mode():
+        from . import lm_direct
+        try:
+            wire, provider_id, model = lm_direct.media_request('speech', [mid], dict(body), timeout=max(60, cfg['timeout']))
+            if not wire.headers.get('content-type','').startswith('audio/') or not 100 < len(wire.content) < 30*1024*1024:
+                raise GatewayError('Provider returned invalid audio content')
+        except (lm_direct.DirectError, GatewayError) as exc:
+            _audit(_record(route,'speech',mid,started,attempts,error=exc,request={'model':mid,'input':text}))
+            raise GatewayError(f'Direct mode: {exc}', getattr(exc,'status',502) or 502) from exc
+        attempts.append({'model':f'direct:{provider_id}:{model}','http_status':wire.status_code})
+        record=_record(route,'speech',mid,started,attempts,{'content_type':wire.headers.get('content-type'),'size_bytes':len(wire.content)},{},request=body)
+        record.update(provider=provider_id,routed_via=f'direct:{provider_id}',actual_model=model)
+        _audit(record)
+        return wire.content
     candidates=[mid]
     for mid in candidates:
         item=catalog.get(mid,{})

@@ -69,6 +69,7 @@ class SettingsUpdate(Strict):
     enabled: bool
     capture_messages: bool
     log_char_limit: int = Field(ge=256, le=12000)
+    direct_mode: bool = False
 
 
 class SpeechVoice(Strict):
@@ -212,12 +213,17 @@ def update_route(route_id: str, body: RouteUpdate):
 
 @router.get("/settings")
 def get_settings():
+    from brain import lm_direct
     return {**gateway.gateway_settings(), "configured":gateway.configured(), "base_url":settings.LMAPI_BASE_URL,
+            "direct_ready":bool(lm_direct.usable()),
             "discovery":store.records("settings").get("discovery"), "concurrency_per_worker":4}
 
 
 @router.put("/settings")
 def put_settings(body: SettingsUpdate):
+    from brain import lm_direct
+    if body.direct_mode and not lm_direct.usable():
+        raise HTTPException(409, "Direct mode needs at least one direct provider with an API key (Direct fallbacks tab); with none the router would have nothing to call")
     store.save("settings", {"global":body.model_dump()}); return get_settings()
 
 

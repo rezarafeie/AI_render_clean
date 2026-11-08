@@ -400,6 +400,55 @@ def usable(providers: list[dict] | None = None, *, google_first: bool = False) -
     return found
 
 
+MEDIA_PATHS = {"image": "images/generations", "speech": "audio/speech", "embeddings": "embeddings"}
+
+
+def media_model_for(provider: dict, candidates: list[str]) -> str:
+    """The model a media route names for this provider: a scoped id of the provider's own group, else a plain id (served by whichever provider is asked)."""
+    base = PROVIDERS[provider["id"]]
+    for candidate in candidates:
+        if base["group"] and candidate.startswith("custom:") and candidate.endswith("#" + base["group"]):
+            return candidate[len("custom:"):-len("#" + base["group"])]
+    for candidate in candidates:
+        if not candidate.startswith(("custom:", "google:", "auto")) and candidate != "fusion":
+            return candidate
+    return ""
+
+
+def media_request(endpoint: str, candidates: list[str], body: dict, *, timeout: float) -> tuple[httpx.Response, str, str]:
+    """Image, speech and embedding requests straight to a provider's own OpenAI-compatible API (the gateway is off): enabled providers with a key, in
+    priority order, one submission each; a provider that has no model for the route is skipped. Returns (response, provider id, model)."""
+    path = MEDIA_PATHS.get(endpoint)
+    if path is None:
+        raise DirectError(f"{endpoint} is not available without the gateway", 422)
+    last: DirectError | None = None
+    for provider in usable():
+        if provider["format"] != "openai":
+            continue
+        model = media_model_for(provider, candidates)
+        if not model:
+            continue
+        key = key_for(provider["id"])
+        headers = {"Content-Type": "application/json", "Authorization": f"{PROVIDERS[provider['id']].get('auth', 'Bearer')} {key}"}
+        name = provider.get("extra_header_name")
+        if name and header_value_for(provider["id"]):
+            headers[name] = header_value_for(provider["id"])
+        try:
+            response = _post(f"{validate_base_url(provider['base_url'])}/{path}", headers, {**body, "model": model}, timeout)
+        except httpx.TimeoutException as exc:
+            last = DirectError(f"{provider['id']} {type(exc).__name__}", 504)
+            continue
+        except httpx.HTTPError as exc:
+            last = DirectError(f"{provider['id']} {type(exc).__name__}", 502)
+            continue
+        if not response.is_success:
+            last = DirectError(f"{provider['id']} HTTP {response.status_code}: {_scrub(response.text, key)}", response.status_code)
+            _note_failure(provider, last)
+            continue
+        return response, provider["id"], model
+    raise last or DirectError("No provider with a key and a model for this request", 503)
+
+
 def try_fallback(messages: list[dict], *, candidates: list[str], tokens: int, temperature, timeout: float, extra,
                  attempts: list[dict], validate=None) -> tuple[dict, str, str] | None:
     """Walk enabled providers with keys, in order. Returns (response, provider_id, model) or None. Appends to `attempts`."""
