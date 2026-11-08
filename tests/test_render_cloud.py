@@ -11,6 +11,25 @@ from app.render_cloud.policy import Benchmark, Flags, choose
 from app.render_cloud.provider import ProviderError, RunPod, reconcile
 
 
+def test_offline_guest_exposes_only_job_directory(tmp_path, monkeypatch):
+    from app.render_cloud import offline_guest
+
+    root = tmp_path / 'work'
+    job = root / 'job'
+    job.mkdir(parents=True)
+    monkeypatch.setattr(offline_guest, 'WORK_ROOT', root)
+    monkeypatch.setattr(offline_guest, 'available', lambda: True)
+    command = offline_guest.qemu_command(job)
+    assert command[command.index('-nic') + 1] == 'none'
+    assert 'readonly=on' in command[command.index('-drive') + 1]
+    assert command[command.index('-virtfs') + 1].startswith(f'local,path={job},')
+    link = root / 'escape'
+    link.symlink_to(tmp_path, target_is_directory=True)
+    for invalid in (root, tmp_path, link):
+        with pytest.raises(RuntimeError):
+            offline_guest.qemu_command(invalid)
+
+
 def spec():
     return RenderSpec(job_id='render-1', project_id='project', user_id='user',
                       engine='hyperframes_page', entrypoint='index.html',
@@ -738,6 +757,8 @@ def test_browser_and_talking_styles_require_verified_namespace(tmp_path):
                    'talking_1', 'talking_2', 'talking_3', 'talking_4'):
         assert not config.isolates(engine)
         assert config.model_copy(update={'network_namespace_verified': True}).isolates(engine)
+        assert config.model_copy(update={'browser_guest_verified': True}).isolates(engine)
+        assert not config.model_copy(update={'sandbox_verified': False, 'browser_guest_verified': True}).isolates(engine)
 
 
 def test_benchmark_keeps_webm_format(tmp_path, monkeypatch):

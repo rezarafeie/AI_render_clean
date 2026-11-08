@@ -155,7 +155,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
     if not config.isolates(engine):
         if config.enable_local_fallback and config.override == 'auto':
             return False
-        raise CloudRenderError('This engine requires a verified worker network namespace')
+        raise CloudRenderError('This engine requires verified browser isolation on the worker')
     if not project.is_dir() or not config.benchmarks.is_file():
         if config.enable_local_fallback and config.override == 'auto':
             return False

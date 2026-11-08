@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+trap '/bin/busybox poweroff -f' EXIT
+/usr/bin/setpriv --reuid=10001 --regid=10001 --clear-groups --no-new-privs \
+  /usr/bin/env -i PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/tmp/render-home TMPDIR=/job \
+    EDITOR_RENDER_CHILD=1 REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium \
+    TSCAPS_CHROME=/usr/bin/chromium HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium \
+    /opt/venv/bin/python -m app.render_cloud.worker \
+    --manifest /job/.worker-manifest.json --workspace /job
+printf '%s\n' EDITORGPT_OFFLINE_RENDER_OK

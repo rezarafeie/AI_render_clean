@@ -14,9 +14,10 @@ class CloudSettings(BaseSettings):
     enable_runpod_serverless: bool = False
     enable_local_fallback: bool = True
     # Set only after the worker image's socketless render and resource-limit
-    # canaries pass. Browser engines also require a verified network namespace.
+    # canaries pass. Browser engines also require verified loopback isolation.
     sandbox_verified: bool = False
     network_namespace_verified: bool = False
+    browser_guest_verified: bool = False
     admin_user_ids: str = ''
     image: str = ''
     deployment: str = 'editor'
@@ -74,7 +75,9 @@ class CloudSettings(BaseSettings):
 
     def isolates(self, engine):
         from .socketless import ENGINES
-        return self.sandbox_verified and (engine in ENGINES or self.network_namespace_verified)
+        return self.sandbox_verified and (
+            engine in ENGINES or self.network_namespace_verified or self.browser_guest_verified
+        )
 
 
 def object_store(config):

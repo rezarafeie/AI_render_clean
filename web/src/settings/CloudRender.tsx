@@ -4,7 +4,7 @@ import { friendlyError } from "../ui";
 
 type Limits = { daily_budget: number; monthly_budget: number; max_cost: number; max_workers: number; max_gpu: number };
 type Execution = { id: string; state: string; backend: string; reservation: number; provider_charge_usd: number | null; cleanup_pending: number; cancel_requested: number };
-type Status = { enabled: boolean; cpu: boolean; gpu: boolean; sandbox_verified: boolean; network_namespace_verified: boolean; override: string; limits: Limits; ceilings: Limits; executions: Execution[]; cost_note: string };
+type Status = { enabled: boolean; cpu: boolean; gpu: boolean; sandbox_verified: boolean; network_namespace_verified: boolean; browser_isolation_verified?: boolean; override: string; limits: Limits; ceilings: Limits; executions: Execution[]; cost_note: string };
 const FIELDS: { key: keyof Limits; label: string; min: number; step: number }[] = [
   { key: "daily_budget", label: "Daily budget (USD)", min: .01, step: .01 },
   { key: "monthly_budget", label: "Monthly budget (USD)", min: .01, step: .01 },
@@ -43,8 +43,8 @@ export function CloudRenderSettings() {
   return <section className="set-section" aria-labelledby="cloud-render-heading">
     <h2 id="cloud-render-heading">Cloud rendering · administration</h2>
     <p className="set-hint">{data ? `${data.enabled ? "Administrator canary enabled" : "Cloud rendering disabled"} · ${data.sandbox_verified ? "MLT isolation verified" : "MLT isolation check required"}` : "Loading infrastructure status…"}</p>
-    {data && <p className="set-hint">{data.network_namespace_verified
-      ? "Browser isolation verified for HyperFrames, Remotion, and Talking."
+    {data && <p className="set-hint">{(data.browser_isolation_verified ?? data.network_namespace_verified)
+      ? "Browser isolation verified. Each engine still requires a matching render profile."
       : "HyperFrames, Remotion, and Talking require a separate browser isolation check."}</p>}
     <p className="set-hint">Server credentials and worker images are configured securely on the server. These controls cannot exceed its safety ceilings.</p>
     {draft && data ? <form onSubmit={event => { event.preventDefault(); void controls(draft); }}>

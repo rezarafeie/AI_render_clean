@@ -99,6 +99,14 @@ passed in a non-root Docker container with the host socketless filter. The
 Linux guest could use loopback and had no network device or default route.
 This boot check does not certify a Chromium render or the target RunPod host.
 
+The [offline browser diagnostic](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42440557503)
+then rendered a one-second, 320×180 HyperFrames fixture inside the guest.
+FFprobe verified 30 frames at 30 fps. Docker networking was disabled and the
+guest had loopback only. The CI test took approximately 122 seconds, including
+guest boot and verification, on a two-CPU container. The sample had no audio.
+This establishes basic browser rendering in the guest on the CI host. It
+does not establish real RunPod timing, visual parity or a routing profile.
+
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch
 base `fafcf6e` is a descendant, 283 commits ahead. The tests ran in an isolated

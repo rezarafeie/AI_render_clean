@@ -18,6 +18,7 @@ def status():
             'gpu':config.enable_runpod_gpu, 'serverless':False,
             'local_fallback':config.enable_local_fallback, 'sandbox_verified':config.sandbox_verified,
             'network_namespace_verified':config.network_namespace_verified,
+            'browser_isolation_verified':config.isolates('hyperframes_page'),
             'limits':{'daily_budget':config.daily_budget,'monthly_budget':config.monthly_budget,
                       'max_cost':config.max_cost,'max_workers':config.max_workers,'max_gpu':config.max_gpu},
             'override':config.override,

@@ -62,7 +62,8 @@ Environment variables (all except the stated aliases use `RENDER_CLOUD_`):
 | `RENDER_CLOUD_ENABLE_RUNPOD_SERVERLESS` | false; reserved, no Serverless adapter |
 | `RENDER_CLOUD_ENABLE_LOCAL_FALLBACK` | true |
 | `RENDER_CLOUD_SANDBOX_VERIFIED` | false; set only after the file-based worker passes target-host isolation and resource checks |
-| `RENDER_CLOUD_NETWORK_NAMESPACE_VERIFIED` | false; additionally required for HyperFrames, Remotion, and Talking/Tscaps |
+| `RENDER_CLOUD_NETWORK_NAMESPACE_VERIFIED` | false; set only after a loopback-only namespace check on the selected worker |
+| `RENDER_CLOUD_BROWSER_GUEST_VERIFIED` | false; set only after the selected guest image passes live browser isolation and rendering checks |
 | `RENDER_CLOUD_ADMIN_USER_IDS` | comma-separated authenticated user IDs |
 | `RENDER_CLOUD_IMAGE` | immutable `registry/image@sha256:...` |
 | `RENDER_CLOUD_CPU_IDS`, `RENDER_CLOUD_GPU_IDS` | verified RunPod resource IDs |
@@ -126,10 +127,12 @@ Never mount Docker sockets or production data roots. UID 10001 needs writable
 its own process handles. The file-based MLT worker runs under an
 inherited seccomp filter that denies network sockets, external Unix sockets and
 alternative socket syscalls. Chromium-based engines, including Talking styles
-that may use Tscaps overlays, require a separate Linux
-network namespace with loopback only (`unshare --user --map-root-user --net`).
-An unavailable required isolation mechanism prevents cloud execution for that
-engine. Each engine still requires an approved profile for the exact image.
+that may use Tscaps overlays, need local sockets and a loopback-only network.
+Use either a verified namespace (`unshare --user --map-root-user --net`) or
+the optional Linux guest. The guest runs QEMU under the socketless host
+filter with no NIC, a read-only system disk and only the per-job workspace
+shared via 9P. Both paths preserve existing render-engine entrypoints. Each
+engine still requires an approved profile for the exact image.
 For a credential-free network smoke test of the image on a Linux build host:
 
 ```sh
@@ -140,8 +143,27 @@ docker run --rm --network none --entrypoint python REGISTRY/RENDER:canary \
 Run the same probe inside the target worker environment. The socketless result
 checks network syscall denial and filter inheritance. The separate namespace
 result checks namespace identity, loopback connectivity and denial of a
-non-loopback IPv4 route. For browser certification require the namespace result
-to pass on the actual host. Neither probe changes admission flags.
+non-loopback IPv4 route. For namespace-based browser certification require
+that result on the actual host. Neither probe changes admission flags.
+
+If the provider denies namespace creation, build the offline guest from the
+immutable worker image, then exercise the smoke target with Docker networking
+disabled. Only the smoke target bundles the synthetic fixture.
+
+```sh
+docker build -f deploy/runpod/offline-guest.Dockerfile --target smoke \
+  --build-arg EDITORGPT_RUNPOD_BASE=REGISTRY/RENDER@sha256:DIGEST \
+  -t editorgpt-offline-smoke .
+docker run --rm --network none --cpus 2 --memory 4608m --pids-limit 96 \
+  --entrypoint python editorgpt-offline-smoke \
+  /opt/editorgpt-offline/smoke.py /opt/editorgpt-offline/gsap.min.js
+```
+
+Publish the `runtime` target to the private registry only after the local
+smoke succeeds. Verify the pinned digest on the target RunPod hardware and
+measure a representative workload before admitting browser renders. CPU
+emulation has startup and render overhead. Measure the whole job, including
+image pull and guest startup, before approving any profile.
 
 Verify target CPU, RAM, disk and PID limits, cancellation, deadlines and network
 denial on real RunPod before setting SANDBOX_VERIFIED. Include Chromium
