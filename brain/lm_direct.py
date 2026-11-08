@@ -118,7 +118,7 @@ def config() -> dict:
 
 def _env_key(provider: str) -> str:
     """Keys already configured for the legacy single-provider paths are reused, so nothing has to be entered twice."""
-    legacy = {"arvan": settings.ARVAN_AI_API_KEY, "openai": settings.OPENAI_API_KEY, "gemini": settings.GEMINI_API_KEY}.get(provider, "")
+    legacy = {"openai": settings.OPENAI_API_KEY, "gemini": settings.GEMINI_API_KEY}.get(provider, "")
     return (os.environ.get(f"DIRECT_{provider.upper()}_API_KEY") or legacy or "").strip()
 
 

@@ -210,125 +210,6 @@ class LocalFixtureProvider(ProviderAdapter):
         )
 
 
-class ArvanImageProvider(ProviderAdapter):
-    """Generate stills with the configured OpenAI-compatible image endpoint.
-
-    Reels and Stories use those generated stills as short, gently animated
-    clips. This keeps the feature usable when no dedicated video model is
-    configured and records the provider's image cost as unknown when its API
-    response does not include billing data.
-    """
-
-    name = "arvan_image"
-
-    @property
-    def capabilities(self) -> list[str]:
-        return ["image", "motion_video_from_image"]
-
-    @property
-    def has_key(self) -> bool:
-        from app.config import settings
-        return bool(settings.ARVAN_AI_API_KEY and settings.ARVAN_IMAGE_MODEL)
-
-    @staticmethod
-    def _client_config() -> tuple[str, Optional[str], str]:
-        from app.config import settings
-        api_key = settings.ARVAN_AI_API_KEY
-        base_url = settings.ARVAN_AI_API_BASE.rstrip("/")
-        model = settings.ARVAN_IMAGE_MODEL
-        if not api_key or not model:
-            raise RuntimeError("Arvan image generation requires ARVAN_IMAGE_MODEL and credentials; upload real images instead")
-        return api_key, base_url, model
-
-    @observe_specialized("image", "arvan-specialist")
-    def generate_image(self, prompt: str, aspect: str, output_dir: Path) -> MediaResult:
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError("image prompt must not be empty")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        api_key, base_url, model = self._client_config()
-
-        aspect_note = {
-            "9:16": (
-                "Create one continuous photograph composed for a central vertical 9:16 crop "
-                "from this square image. Keep every essential face, hand, and action within "
-                "the middle 55% of the image width. No side panels, borders, or seams."
-            ),
-            "4:5": "Compose for a portrait 4:5 crop, keeping the main subject near the center.",
-            "1:1": "Compose for a square 1:1 frame.",
-            "16:9": "Compose for a wide 16:9 crop, keeping the main subject near the center.",
-        }.get(aspect, "Keep the main subject centered with safe space around it.")
-        request_prompt = (
-            f"{prompt.strip()}\n\n{aspect_note} Do not add captions, lettering, "
-            "logos, or legible text on paper, clothing, signs, or screens."
-        )
-        from .llm import _arvan_request
-        # Image models sometimes answer with text only (a refusal or a clarification) or an
-        # empty body. A single such reply used to kill the whole job at scene 0, so retry a
-        # bounded number of times and surface what the model actually said.
-        data_url = ""
-        reply_text = ""
-        for attempt in range(IMAGE_ATTEMPTS):
-            nudge = "" if attempt == 0 else "\n\nGenerate the image now. Reply with the image only, no text."
-            response = _arvan_request({
-                "model": model,
-                "messages": [{"role": "user", "content": request_prompt + nudge}],
-                "modalities": ["image", "text"],
-                "max_tokens": 1000,
-            }, timeout_seconds=180)
-            choices = response.get("choices") or []
-            message = choices[0].get("message", {}) if choices else {}
-            images = message.get("images") or []
-            if not images and isinstance(message.get("content"), list):
-                images = [part for part in message["content"] if part.get("type") == "image_url"]
-            data_url = (images[0].get("image_url") or {}).get("url", "") if images else ""
-            if isinstance(data_url, str) and data_url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")):
-                break
-            content = message.get("content")
-            reply_text = content if isinstance(content, str) else ""
-            log.warning("image model returned no inline image (attempt %d/%d): %s", attempt + 1, IMAGE_ATTEMPTS, reply_text[:160])
-            time.sleep(1.5 * (attempt + 1))
-        if not isinstance(data_url, str) or not data_url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")):
-            detail = f" Model reply: {reply_text.strip()[:200]}" if reply_text.strip() else ""
-            raise RuntimeError(f"Arvan returned no inline image after {IMAGE_ATTEMPTS} attempts; no placeholder was substituted.{detail}")
-        encoded = data_url.split(",", 1)[1]
-        if len(encoded) > 40 * 1024 * 1024:
-            raise RuntimeError("Arvan returned an oversized image")
-        selected_model = model
-
-        import base64
-        try:
-            image_bytes = base64.b64decode(encoded, validate=True)
-            from PIL import Image
-            image = Image.open(io.BytesIO(image_bytes))
-            image.load()
-            width, height = image.size
-            out_path = output_dir / f"arvan_{uuid.uuid4().hex[:12]}.png"
-            image.convert("RGB").save(out_path, format="PNG")
-        except Exception as exc:
-            raise RuntimeError(f"image provider returned an invalid image: {exc}") from exc
-
-        return MediaResult(
-            file_path=str(out_path),
-            source="arvan_image",
-            cost_usd=None,
-            generation_id=out_path.stem.removeprefix("arvan_"),
-            width=width,
-            height=height,
-            metadata={"prompt": prompt, "model": selected_model,
-                      "requested_model": model, "fallback_used": selected_model != model,
-                      "aspect": aspect, "billing_reported": False},
-        )
-
-    def generate_video(self, prompt: str, duration: float, aspect: str,
-                       output_dir: Path) -> MediaResult:
-        still = self.generate_image(prompt, aspect, output_dir)
-        return still_to_motion_video(
-            still.file_path, output_dir, duration, aspect,
-            generation_id=still.generation_id, cost_usd=still.cost_usd,
-            source="arvan_image_motion", metadata=still.metadata,
-        )
-
-
 _registry: dict[str, ProviderAdapter] = {}
 
 
@@ -338,9 +219,12 @@ def register_provider(name: str, adapter: ProviderAdapter) -> None:
 
 
 def get_provider(name: str) -> ProviderAdapter:
+    """Images come from the AI router (its image routes) or, in tests, the local fixture: there is no direct provider."""
     if name != "local_fixture":
         from .lm_gateway import configured
-        name = 'lm_gateway' if configured() else 'arvan_image'
+        if not configured():
+            raise RuntimeError("The AI router is not configured; no image was requested")
+        name = 'lm_gateway'
     if name not in _registry:
         raise KeyError(f"unknown provider: {name!r}. registered: {list(_registry.keys())}")
     return _registry[name]
@@ -395,4 +279,3 @@ class GatewayImageProvider(ProviderAdapter):
 
 register_provider('lm_gateway',GatewayImageProvider())
 register_provider("local_fixture", LocalFixtureProvider())
-register_provider("arvan_image", ArvanImageProvider())

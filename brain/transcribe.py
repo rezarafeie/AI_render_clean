@@ -78,9 +78,7 @@ def choose_engine(language: Optional[str] = None, explicit: Optional[str] = None
     if env in ("elevenlabs", "whisper"):
         return env
     from brain.lm_gateway import configured
-    if configured():return 'elevenlabs'
-    if (language or "").lower() == "fa" and os.environ.get("ELEVENLABS_API_KEY"):
-        return "elevenlabs"
+    if configured():return 'elevenlabs'          # the AI router first (its transcription route), direct ElevenLabs only as its fallback
     return "whisper"
 
 
@@ -576,46 +574,48 @@ def transcribe(
                 log.warning("local long transcription failed for %s (%s: %s); trying the provider chain", video.name, type(exc).__name__, str(exc)[:200])
 
     if selected_engine == "elevenlabs":
-        from brain.transcribe_elevenlabs import transcribe_elevenlabs
+        from brain.lm_gateway import configured
+        from brain.transcribe_elevenlabs import transcribe_elevenlabs, transcribe_gateway
+        history = []
+
+        def store(transcript, cost):
+            _archive_current(out_dir)
+            transcript_path.write_text(json.dumps(transcript, ensure_ascii=False, indent=2))
+            (out_dir / "asr_cost.json").write_text(json.dumps({
+                "engine": transcript.get("engine", "elevenlabs"),
+                "audio_seconds": transcript.get("duration", 0),
+                "cost_usd": cost,
+            }, indent=2))
+            (out_dir / "asr_attempts.json").write_text(json.dumps(history))
+            return effective_transcript(out_dir)
+
+        # The AI router comes first (its "transcription" route: Jarvis). Direct ElevenLabs is only the router's fallback, then local Whisper.
+        # A provider is never replayed.
+        if configured():
+            try:
+                log.info("transcribing %s (AI router, transcription route) …", video.name)
+                transcript, cost = transcribe_gateway(video, out_dir, provider="jarvis", language=language, file_digest=fhash)
+                history.append({"provider": "router", "status": "completed"})
+                return store(transcript, cost)
+            except Exception as exc:
+                history.append({"provider": "router", "status": "failed", "error_type": type(exc).__name__})
+                elevenlabs_error = exc
+                log.warning("Router STT failed (%s); trying the direct ElevenLabs fallback", type(exc).__name__)
         try:
-            log.info("transcribing %s (elevenlabs scribe) …", video.name)
+            log.info("transcribing %s (elevenlabs scribe, direct fallback) …", video.name)
             transcript, asr_cost = transcribe_elevenlabs(
                 video, out_dir,
                 language=language,
                 file_digest=fhash,
                 keyterms=keyterms or hotwords,
             )
-            _archive_current(out_dir)
-            encoded = json.dumps(transcript, indent=2, ensure_ascii=False)
-            transcript_path.write_text(encoded)
-
-            cost_path = out_dir / "asr_cost.json"
-            cost_path.write_text(json.dumps({
-                "engine": transcript.get('engine','elevenlabs'),
-                "audio_seconds": transcript.get("duration", 0),
-                "cost_usd": asr_cost,
-            }, indent=2))
-
-            return effective_transcript(out_dir)
+            history.append({"provider": "elevenlabs_direct", "status": "completed"})
+            return store(transcript, asr_cost)
         except Exception as exc:
-            log.warning("Own ElevenLabs STT failed (%s); trying the configured provider chain", type(exc).__name__)
-            elevenlabs_error = exc
-        # Explicit user policy: own ElevenLabs relay, Jarvis ElevenLabs,
-        # Sarovi ElevenLabs, then local Whisper. Never replay a provider.
-        from brain.transcribe_elevenlabs import transcribe_gateway
-        history=[{'provider':'elevenlabs_own_vercel','status':'failed','error_type':type(elevenlabs_error).__name__}]
-        for provider in ('jarvis','sarovi'):
-            try:
-                transcript,cost=transcribe_gateway(video,out_dir,provider=provider,language=language,file_digest=fhash)
-                _archive_current(out_dir)
-                transcript_path.write_text(json.dumps(transcript,ensure_ascii=False))
-                history.append({'provider':provider,'status':'completed'})
-                (out_dir/'asr_attempts.json').write_text(json.dumps(history))
-                (out_dir/'asr_cost.json').write_text(json.dumps({'engine':transcript['engine'],'audio_seconds':transcript.get('duration',0),'cost_usd':cost}))
-                return effective_transcript(out_dir)
-            except Exception as exc:
-                history.append({'provider':provider,'status':'unavailable_or_failed','error_type':type(exc).__name__})
-        (out_dir/'asr_attempts.json').write_text(json.dumps(history))
+            history.append({"provider": "elevenlabs_direct", "status": "failed", "error_type": type(exc).__name__})
+            elevenlabs_error = elevenlabs_error or exc
+            log.warning("Direct ElevenLabs STT failed (%s)", type(exc).__name__)
+        (out_dir / "asr_attempts.json").write_text(json.dumps(history))
     from brain.lm_direct import config as direct_config
     local_stt = direct_config()['stt']
     if elevenlabs_error is not None and not local_stt['enabled']:

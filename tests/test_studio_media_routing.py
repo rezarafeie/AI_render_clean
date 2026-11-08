@@ -14,7 +14,7 @@ def test_configured_image_generation_uses_database_gateway_route(monkeypatch,tmp
         calls.append((route,prompt,kwargs))
         return {'model':'tested-image','data':[{'b64_json':base64.b64encode(image.getvalue()).decode()}]},{'requested_model':'tested-image','cost':None}
     monkeypatch.setattr(gateway,'complete',complete)
-    provider=get_provider('arvan_image')
+    provider=get_provider('lm_gateway')
     assert provider.name=='lm_gateway'
     result=provider.generate_image('A landscape','9:16',tmp_path)
     assert Image.open(result.file_path).size==(32,32)

@@ -1,18 +1,10 @@
-"""Existing editor intelligence contract, centrally routed through Rafiei LM API.
-
-Chosen by env vars:
-  LLM_PROVIDER   (arvan|anthropic|openai|openai_compatible) – default: arvan
-  LLM_MODEL      – text/plan model                          – default: GPT-5.6-Sol
-  VISION_PROVIDER (arvan|anthropic|openai|openai_compatible) – default: same as LLM_PROVIDER
-  VISION_MODEL   – image-capable model (content gen/editing/hints) – default: gpt-5-5-image
-
-When LM API is configured, database routes take precedence over legacy model
-environment settings. Arvan remains the compatibility/specialist transport and uses
-``Authorization: apikey ...`` scheme.
+"""Existing editor intelligence contract: every model call goes through the AI router (the gateway's routes, with the gateway's own direct fallbacks).
 
 Two top-level functions:
-  chat_json()    → text/JSON plan generation      uses LLM_PROVIDER + LLM_MODEL
-  chat_vision()  → image + text content analysis  uses VISION_PROVIDER + VISION_MODEL
+  chat_json()    → text/JSON plan generation   (the route's models)
+  chat_vision()  → image + text content analysis  (the route's vision-capable models)
+
+With no router configured nothing is sent: there is no other transport here.
 """
 from __future__ import annotations
 
@@ -89,31 +81,9 @@ def _getenv_ci(name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _provider() -> str:
-    return "arvan"
-
-
-def _model(provider: str | None = None) -> str:
-    if (provider or _provider()) == "arvan":
-        return _getenv_ci("ARVAN_AI_MODEL") or settings.ARVAN_AI_MODEL
-    return _getenv_ci("LLM_MODEL") or settings.LLM_MODEL
-
-
-def _vision_provider() -> str:
-    return "arvan"
-
-
-def _vision_model() -> str:
-    return settings.ARVAN_VISION_MODEL or settings.ARVAN_AI_MODEL
-
-
-_PRESETS: dict[str, tuple[str, str]] = {}
-
-
 def provider_configured() -> bool:
     from .lm_gateway import configured
-    if configured(): return True
-    return bool(_getenv_ci("ARVAN_AI_API_KEY") and _getenv_ci("ARVAN_AI_API_BASE"))
+    return configured()
 
 
 # ── plan/text model ───────────────────────────────────────────────────────────
@@ -134,10 +104,9 @@ def chat_json(
     Uses LLM_PROVIDER + LLM_MODEL (default: CLAUDE_SONNET_5_5).
     Returns (parsed_json, usage).
     """
-    from .lm_gateway import configured, route_context
-    if configured():
-        return gateway_json(system, user, route or route_context.get() or "editing_agent", max_tokens)
-    return _arvan_call(system, user, model or _model("arvan"), max_tokens, temperature, timeout_seconds)
+    from .lm_gateway import route_context
+    _require_router()
+    return gateway_json(system, user, route or route_context.get() or "editing_agent", max_tokens)
 
 
 def gateway_json(system, user, route="editing_agent", max_tokens=16000):
@@ -197,156 +166,38 @@ def chat_vision(
 ) -> tuple[str | dict, LLMUsage]:
     """Image-capable call for content generation, editing, and engagement hints.
 
-    Uses the configured Arvan image-capable model.
+    Goes through the AI router (the route's vision-capable models).
 
     images: list of file paths (str/Path), URLs (str starting with http), or raw bytes.
     return_json: if True, parse the response as JSON and return a dict.
     Returns (text_or_dict, usage).
     """
-    from .lm_gateway import configured, complete
-    if configured():
-        from .lm_adapters import text
-        content = []
-        for img in images or []:
-            if isinstance(img, str) and img.startswith("https://"):
-                url = img
-            else:
-                b64, media_type = _encode_image(img)
-                url = f"data:{media_type};base64,{b64}"
-            content.append({"type":"image_url","image_url":{"url":url}})
-        content.append({"type":"text","text":user})
-        data, record = complete(route, [{"role":"system","content":system},
-            {"role":"user","content":content}], required={"chat","vision"}, tokens=max_tokens,
-            validate_response=_extract_json if return_json else None)
-        value = text("chat", data)
-        usage = LLMUsage(input_tokens=record.get("input_tokens") or 0, output_tokens=record.get("output_tokens") or 0,
-            model=record.get("actual_model") or record["requested_model"], elapsed_sec=record["latency_ms"]/1000)
-        return (_extract_json(value) if return_json else value), usage
-    result = _arvan_vision_call(
-        system, user, images or [], model or _vision_model(), max_tokens, temperature,
-        timeout_seconds=timeout_seconds,
-    )
-    text, usage = result
-    if return_json:
-        return _extract_json(text), usage
-    return text, usage
-
-
-# ── Arvan API ──────────────────────────────────────────────────────────────
-
-def _arvan_request(payload: dict, timeout_seconds: Optional[float] = None) -> dict:
-    """Call Arvan AI without rewriting its non-Bearer authorization scheme."""
-    from .http_ssl import ssl_context
-
-    api_key = _getenv_ci("ARVAN_AI_API_KEY")
-    base_url = _getenv_ci("ARVAN_AI_API_BASE") or settings.ARVAN_AI_API_BASE
-    if not api_key:
-        raise ValueError("ARVAN_AI_API_KEY not set")
-    if not base_url:
-        raise ValueError("ARVAN_AI_API_BASE not set")
-    url = base_url.rstrip("/") + "/chat/completions"
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"apikey {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(
-            request,
-            timeout=_provider_timeout_seconds(timeout_seconds),
-            context=ssl_context(),
-        ) as response:
-            result = json.load(response)
-    except urllib.error.HTTPError as exc:
-        try:
-            detail = json.load(exc)
-        except Exception:
-            detail = None
-        error = detail.get("error", detail) if isinstance(detail, dict) else None
-        if isinstance(error, dict):
-            message = str(error.get("message") or error.get("code") or "")
-        else:
-            message = str(error or "")
-        raise RuntimeError(
-            f"Arvan AI request failed (HTTP {exc.code})" + (f": {message}" if message else "")
-        ) from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("Arvan AI returned an invalid JSON response")
-    return result
-
-
-def _arvan_completion_text(result: dict) -> str:
-    choices = result.get("choices") or []
-    if not choices or not isinstance(choices[0], dict):
-        raise RuntimeError("Arvan AI returned no completion choices")
-    message = choices[0].get("message") or {}
-    text = message.get("content") if isinstance(message, dict) else ""
-    if not isinstance(text, str) or not text.strip():
-        raise RuntimeError("Arvan AI returned no text")
-    return text
-
-
-def _arvan_usage(result: dict, model: str, started: float) -> LLMUsage:
-    reported = result.get("usage") or {}
-    return LLMUsage(
-        input_tokens=int(reported.get("prompt_tokens") or reported.get("input_tokens") or 0),
-        output_tokens=int(reported.get("completion_tokens") or reported.get("output_tokens") or 0),
-        model=str(result.get("model") or model),
-        elapsed_sec=round(time.monotonic() - started, 2),
-    )
-
-
-def _arvan_call(
-    system: str, user: str, model: str, max_tokens: int, temperature: float,
-    timeout_seconds: Optional[float] = None,
-) -> tuple[dict, LLMUsage]:
-    started = time.monotonic()
-    result = _arvan_request({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "response_format": {"type": "json_object"},
-    }, timeout_seconds)
-    usage = _arvan_usage(result, model, started)
-    _log_usage(usage, provider="arvan", call_type="text")
-    return _extract_json(_arvan_completion_text(result)), usage
-
-
-def _arvan_vision_call(
-    system: str, user: str, images: list, model: str, max_tokens: int,
-    temperature: float, timeout_seconds: Optional[float] = None,
-) -> tuple[str, LLMUsage]:
-    started = time.monotonic()
-    content: list[dict] = []
-    for img in images:
-        if isinstance(img, str) and img.startswith("http"):
+    from .lm_gateway import complete
+    from .lm_adapters import text
+    _require_router()
+    content = []
+    for img in images or []:
+        if isinstance(img, str) and img.startswith("https://"):
             url = img
         else:
             b64, media_type = _encode_image(img)
             url = f"data:{media_type};base64,{b64}"
-        content.append({"type": "image_url", "image_url": {"url": url}})
-    content.append({"type": "text", "text": user})
-    result = _arvan_request({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": content},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }, timeout_seconds)
-    usage = _arvan_usage(result, model, started)
-    _log_usage(usage, provider="arvan", call_type="vision")
-    return _arvan_completion_text(result), usage
+        content.append({"type":"image_url","image_url":{"url":url}})
+    content.append({"type":"text","text":user})
+    data, record = complete(route, [{"role":"system","content":system},
+        {"role":"user","content":content}], required={"chat","vision"}, tokens=max_tokens,
+        validate_response=_extract_json if return_json else None)
+    value = text("chat", data)
+    usage = LLMUsage(input_tokens=record.get("input_tokens") or 0, output_tokens=record.get("output_tokens") or 0,
+        model=record.get("actual_model") or record["requested_model"], elapsed_sec=record["latency_ms"]/1000)
+    return (_extract_json(value) if return_json else value), usage
+
+
+def _require_router() -> None:
+    """Every model call goes through the AI router (gateway routes, with its own direct fallbacks): with no router configured nothing is sent."""
+    from .lm_gateway import configured
+    if not configured():
+        raise RuntimeError("The AI router is not configured; no model request was sent")
 
 
 # ── shared helpers ─────────────────────────────────────────────────────────

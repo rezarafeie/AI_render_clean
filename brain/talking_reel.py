@@ -74,10 +74,10 @@ def _chat(system: str, user: str) -> dict:
         from .llm import gateway_json_resilient
         data, _ = gateway_json_resilient(system, user, "editing_agent")
         return data
-    from .ai_provider import ArvanProvider
+    from .ai_provider import RouterProvider
 
     errors = []
-    provider = ArvanProvider()
+    provider = RouterProvider()
     for attempt in range(3):
         try:
             data, usage = provider._chat_json(system, user)
@@ -85,8 +85,8 @@ def _chat(system: str, user: str) -> dict:
             return data
         except Exception as exc:  # hosted links may fail transiently
             errors.append(f"attempt {attempt + 1}: {exc}")
-            log.warning("talking reel Arvan AI attempt failed: %s", exc)
-    raise RuntimeError("Arvan AI unavailable for the talking reel: " + " | ".join(errors)[:600])
+            log.warning("talking reel router attempt failed: %s", exc)
+    raise RuntimeError("The AI router was unavailable for the talking reel: " + " | ".join(errors)[:600])
 
 
 def recommend_style(sentences: list[dict]) -> tuple[str, str]:

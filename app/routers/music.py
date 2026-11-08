@@ -175,7 +175,7 @@ async def generate_music(job_id: str, body: GenerateMusicBody):
     job = jobstore.get(job_id)
     if not job:
         raise HTTPException(404, "job not found")
-    raise HTTPException(422, "AI music generation is not configured on Arvan. Choose an existing music track or upload one.")
+    raise HTTPException(422, "AI music generation is not configured on the AI router. Choose an existing music track or upload one.")
 
 
 def _music_status(job) -> dict:

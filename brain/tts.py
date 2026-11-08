@@ -45,53 +45,12 @@ def _generate_elevenlabs(
     text: str, output_path: str, voice_id: str = "", model_id: str = "",
     *, language: str = "", context: str = "",
 ) -> None:
-    """Generate one MP3 through ElevenLabs with a bounded network timeout."""
+    """Generate one MP3 through the AI router (its speech route: Jarvis TTS models; the gateway's own fallbacks apply there)."""
     from . import lm_gateway
-    if lm_gateway.configured():
-        extra = {"language": language, "context": context} if language or context else {}
-        Path(output_path).write_bytes(lm_gateway.speech('narration',text,voice_id or os.environ.get('ELEVENLABS_VOICE_ID',''), **extra))
-        return
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    voice_id = voice_id.strip() or os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
-    model_id = model_id.strip() or os.environ.get(
-        "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"
-    ).strip()
-    if not api_key or not voice_id:
-        raise RuntimeError("ElevenLabs is not configured with API key and voice ID")
-    from .speech_policy import eleven_cast, persian
-    voice_id, model_id = eleven_cast(text, voice_id, model_id, language=language, context=context)
-    try:
-        import httpx
-        from brain.elevenlabs_transport import url as elevenlabs_url
-
-        response = httpx.post(
-            elevenlabs_url(f"v1/text-to-speech/{voice_id}"),
-            headers={"xi-api-key": api_key, "accept": "audio/mpeg"},
-            json={"text": text, "model_id": model_id, **({"language_code": "fa"} if persian(text, language) else {})},
-            # Short connect timeout to fail fast, longer read timeout because
-            # ElevenLabs only responds after synthesizing the whole clip.
-            timeout=httpx.Timeout(
-                max(_ELEVENLABS_TIMEOUT_SECONDS, float(os.environ.get("ELEVENLABS_READ_TIMEOUT", "200")), 60 + len(text)/6),
-                connect=float(os.environ.get("ELEVENLABS_CONNECT_TIMEOUT", "20")),
-            ),
-        )
-        response.raise_for_status()
-        Path(output_path).write_bytes(response.content)
-    except Exception as exc:
-        Path(output_path).unlink(missing_ok=True)
-        response = getattr(exc, "response", None)
-        if getattr(response, "status_code", None) == 402:
-            try:
-                detail = response.json().get("detail", {})
-            except Exception:
-                detail = {}
-            if isinstance(detail, dict) and detail.get("code") == "paid_plan_required":
-                raise RuntimeError(
-                    "This Persian ElevenLabs voice requires a paid plan for API use. "
-                    "Choose an API-enabled Persian ElevenLabs voice."
-                ) from exc
-            raise RuntimeError("ElevenLabs request failed (HTTP 402)") from exc
-        raise RuntimeError(f"ElevenLabs request failed ({type(exc).__name__})") from exc
+    if not lm_gateway.configured():
+        raise RuntimeError("The AI router is not configured; no speech request was sent")
+    extra = {"language": language, "context": context} if language or context else {}
+    Path(output_path).write_bytes(lm_gateway.speech('narration',text,voice_id or os.environ.get('ELEVENLABS_VOICE_ID',''), **extra))
 
 
 def generate_narration(

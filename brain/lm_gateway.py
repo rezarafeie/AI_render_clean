@@ -50,7 +50,7 @@ def configured():
 
 def safe(value, limit=6000):
     text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
-    for key in (secret(), settings.ARVAN_AI_API_KEY, settings.ELEVENLABS_API_KEY):
+    for key in (secret(), settings.ELEVENLABS_API_KEY):
         if key: text = text.replace(key, "[REDACTED]")
     text = re.sub(r'data:[^;\s]+;base64,[A-Za-z0-9+/=]+', '[media omitted]', text)
     text = re.sub(r'("b64_json"\s*:\s*")[^"]*', r'\1[media omitted]', text)
@@ -648,7 +648,7 @@ def observe_specialized(route, provider, endpoint=None):
             started=time.monotonic(); error=None
             is_audio=route=="audio"
             from .localize import tts_model
-            model=(kwargs.get("model_id") or (args[3] if len(args)>3 else "") or tts_model()) if is_audio else settings.ARVAN_IMAGE_MODEL
+            model=(kwargs.get("model_id") or (args[3] if len(args)>3 else "") or tts_model()) if is_audio else (kwargs.get("model") or "")
             prompt=args[0] if is_audio else (args[1] if len(args)>1 else kwargs.get("prompt",""))
             try:return function(*args,**kwargs)
             except Exception as exc:error=exc;raise

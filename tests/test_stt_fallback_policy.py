@@ -34,42 +34,61 @@ def test_good_or_empty_transcript_does_not_call_ai(monkeypatch,tmp_path):
         raw={'words':words};assert transcribe.improve_local_transcript(raw,tmp_path)==raw
 
 
-def test_stt_priority_own_jarvis_sarovi_and_no_paid_repeat(monkeypatch,tmp_path):
-    import brain.transcribe_elevenlabs as providers
-    monkeypatch.setattr(lm_direct.settings,'JOBS_DIR',str(tmp_path))
-    video=tmp_path/'input.mp4';video.write_bytes(b'fixture')
-    calls=[]
-    def own(*a,**kw):calls.append('own_vercel');raise RuntimeError('unavailable')
-    def gateway(*a,provider,**kw):
-        calls.append(provider)
-        if provider=='jarvis':raise RuntimeError('unavailable')
-        return {'engine':'elevenlabs_sarovi','file_hash':transcribe.file_hash(video),'requested_language':'fa','cache_key':'chain',
-                'words':[{'w':'سلام','start':0,'end':1,'prob':.99}],
-                'sentences':[{'text':'سلام','start':0,'end':1}]},None
-    monkeypatch.setattr(providers,'transcribe_elevenlabs',own)
-    monkeypatch.setattr(providers,'transcribe_gateway',gateway)
-    root=tmp_path/'job'
-    assert transcribe.transcribe(video,root,language='fa',engine='elevenlabs')['engine']=='elevenlabs_sarovi'
-    transcribe.transcribe(video,root,language='fa',engine='elevenlabs')
-    assert calls==['own_vercel','jarvis','sarovi']
+def _transcript(video, engine, key):
+    return {'engine': engine, 'file_hash': transcribe.file_hash(video), 'requested_language': 'fa', 'cache_key': key,
+            'words': [{'w': 'سلام', 'start': 0, 'end': 1, 'prob': .99}], 'sentences': [{'text': 'سلام', 'start': 0, 'end': 1}]}
 
 
-def test_local_whisper_runs_only_after_all_remote_slots(monkeypatch,tmp_path):
+def test_stt_goes_to_the_router_first_and_never_repeats_a_paid_call(monkeypatch, tmp_path):
     import brain.transcribe_elevenlabs as providers
-    monkeypatch.setattr(lm_direct.settings,'JOBS_DIR',str(tmp_path))
-    video=tmp_path/'input.mp4';video.write_bytes(b'fixture');calls=[]
-    def own(*a,**k):calls.append('own');raise RuntimeError('unavailable')
-    def remote(*a,provider,**k):calls.append(provider);raise RuntimeError('unavailable')
-    def local(video,root,digest,model,*args):
+    from brain import lm_gateway
+    monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
+    monkeypatch.setattr(lm_direct.settings, 'JOBS_DIR', str(tmp_path))
+    video = tmp_path / 'input.mp4'; video.write_bytes(b'fixture')
+    calls = []
+    def direct(*a, **kw): calls.append('direct_elevenlabs'); raise AssertionError('the router answered: no direct call')
+    def router(*a, provider, **kw): calls.append(provider); return _transcript(video, 'elevenlabs_jarvis', 'router'), None
+    monkeypatch.setattr(providers, 'transcribe_elevenlabs', direct)
+    monkeypatch.setattr(providers, 'transcribe_gateway', router)
+    root = tmp_path / 'job'
+    assert transcribe.transcribe(video, root, language='fa', engine='elevenlabs')['engine'] == 'elevenlabs_jarvis'
+    transcribe.transcribe(video, root, language='fa', engine='elevenlabs')           # cached: nothing is paid for twice
+    assert calls == ['jarvis']
+
+
+def test_direct_elevenlabs_is_only_the_routers_fallback(monkeypatch, tmp_path):
+    import brain.transcribe_elevenlabs as providers
+    from brain import lm_gateway
+    monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
+    monkeypatch.setattr(lm_direct.settings, 'JOBS_DIR', str(tmp_path))
+    video = tmp_path / 'input.mp4'; video.write_bytes(b'fixture')
+    calls = []
+    def direct(*a, **kw): calls.append('direct_elevenlabs'); return _transcript(video, 'elevenlabs', 'direct'), 0.0
+    def router(*a, provider, **kw): calls.append(provider); raise RuntimeError('unavailable')
+    monkeypatch.setattr(providers, 'transcribe_elevenlabs', direct)
+    monkeypatch.setattr(providers, 'transcribe_gateway', router)
+    assert transcribe.transcribe(video, tmp_path / 'job', language='fa', engine='elevenlabs')['engine'] == 'elevenlabs'
+    assert calls == ['jarvis', 'direct_elevenlabs']
+
+
+def test_local_whisper_runs_only_after_the_router_and_the_direct_fallback(monkeypatch, tmp_path):
+    import brain.transcribe_elevenlabs as providers
+    from brain import lm_gateway
+    monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
+    monkeypatch.setattr(lm_direct.settings, 'JOBS_DIR', str(tmp_path))
+    video = tmp_path / 'input.mp4'; video.write_bytes(b'fixture'); calls = []
+    def own(*a, **k): calls.append('direct'); raise RuntimeError('unavailable')
+    def remote(*a, provider, **k): calls.append(provider); raise RuntimeError('unavailable')
+    def local(video, root, digest, model, *args):
         calls.append('whisper')
-        assert model=='small'
-        value={'file_hash':digest,'cache_key':'local','requested_language':'fa','engine':'whisper',
-               'words':[{'w':'سلام','start':0,'end':1,'prob':.99}],
-               'sentences':[{'text':'سلام','start':0,'end':1}]}
-        (root/'transcript.json').write_text(json.dumps(value));return value
-    monkeypatch.setattr(providers,'transcribe_elevenlabs',own)
-    monkeypatch.setattr(providers,'transcribe_gateway',remote)
-    monkeypatch.setattr(transcribe,'_transcribe_whisper',local)
-    monkeypatch.setenv('WHISPER_ENABLED','true')
-    result=transcribe.transcribe(video,tmp_path/'job',language='fa',engine='elevenlabs')
-    assert result['engine']=='whisper' and calls==['own','jarvis','sarovi','whisper']
+        assert model == 'small'
+        value = {'file_hash': digest, 'cache_key': 'local', 'requested_language': 'fa', 'engine': 'whisper',
+                 'words': [{'w': 'سلام', 'start': 0, 'end': 1, 'prob': .99}],
+                 'sentences': [{'text': 'سلام', 'start': 0, 'end': 1}]}
+        (root / 'transcript.json').write_text(json.dumps(value)); return value
+    monkeypatch.setattr(providers, 'transcribe_elevenlabs', own)
+    monkeypatch.setattr(providers, 'transcribe_gateway', remote)
+    monkeypatch.setattr(transcribe, '_transcribe_whisper', local)
+    monkeypatch.setenv('WHISPER_ENABLED', 'true')
+    result = transcribe.transcribe(video, tmp_path / 'job', language='fa', engine='elevenlabs')
+    assert result['engine'] == 'whisper' and calls == ['jarvis', 'direct', 'whisper']

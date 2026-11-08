@@ -1,7 +1,6 @@
 """Unified text-intelligence providers for planning and content creation.
 
-Arvan AI is the only hosted intelligence provider.
-Media generation and vision-specific clients remain separate concerns.
+Every request goes through the AI router (the gateway routes, with its own direct fallbacks); nothing is sent to a provider from here.
 """
 from __future__ import annotations
 
@@ -23,75 +22,6 @@ from .llm import LLMUsage, _extract_json
 log = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 60.0
-_DEFAULT_ARVAN_URL = "https://aiapi.rafiei.co/v1"
-
-
-def _config(name: str, *legacy_names: str, default: str = "") -> str:
-    """Read current process env first, then the loaded application settings."""
-    for candidate in (name, *legacy_names):
-        if candidate in os.environ:
-            return os.environ[candidate].strip()
-        value = getattr(settings, candidate, None)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return default
-
-
-def _timeout_seconds() -> float:
-    raw = _config("AI_TIMEOUT_SECONDS", default=str(_DEFAULT_TIMEOUT_SECONDS))
-    try:
-        timeout = float(raw)
-    except (TypeError, ValueError):
-        return _DEFAULT_TIMEOUT_SECONDS
-    if not math.isfinite(timeout) or timeout <= 0:
-        return _DEFAULT_TIMEOUT_SECONDS
-    return timeout
-
-
-def _endpoint(base_url: str, path: str) -> str:
-    clean = base_url.rstrip("/")
-    suffix = "/" + path.lstrip("/")
-    return clean if clean.endswith(suffix) else clean + suffix
-
-
-def _post_json(
-    url: str, payload: dict, api_key: str, timeout: float,
-    *, auth_scheme: str = "Bearer",
-) -> dict:
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"{auth_scheme} {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout, context=ssl_context()) as response:
-            result = json.load(response)
-    except urllib.error.HTTPError as exc:
-        try:
-            detail = json.load(exc)
-        except Exception:
-            detail = None
-        message = ""
-        if isinstance(detail, dict):
-            error = detail.get("error", detail)
-            if isinstance(error, dict):
-                message = str(error.get("message") or error.get("code") or "")
-            elif error:
-                message = str(error)
-        suffix = f": {message}" if message else ""
-        if exc.code in {408, 502, 503, 504}:
-            raise ConnectionError(
-                f"provider transport failed (HTTP {exc.code}){suffix}"
-            ) from exc
-        raise RuntimeError(f"provider request failed (HTTP {exc.code}){suffix}") from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("provider returned an invalid JSON response")
-    return result
 
 
 def _is_connection_failure(exc: BaseException) -> bool:
@@ -289,58 +219,15 @@ class _ExternalProvider(AIProvider):
             return fallback(LocalFallbackProvider(reason=reason[:300]))
 
 
-class ArvanProvider(_ExternalProvider):
-    name = "arvan"
+class RouterProvider(_ExternalProvider):
+    """Plans, storyboards and edit suggestions through the AI router (gateway routes) only: nothing is sent to a provider directly."""
+    name = "lmapi"
     configured = True
+    model = "route-managed"
 
-    def __init__(self) -> None:
-        self.api_key = _config("ARVAN_AI_API_KEY")
-        self.api_url = _config(
-            "ARVAN_AI_API_BASE", default=_DEFAULT_ARVAN_URL
-        ) or _DEFAULT_ARVAN_URL
-        self.model = _config(
-            "ARVAN_AI_MODEL", default="GPT-5.6-Sol"
-        ) or "GPT-5.6-Sol"
-
-    def _arvan_chat_json(self, system: str, user: str) -> tuple[dict, LLMUsage]:
-        started = time.monotonic()
-        result = _post_json(
-            _endpoint(self.api_url, "chat/completions"),
-            {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-            },
-            self.api_key,
-            _timeout_seconds(),
-            auth_scheme="apikey",
-        )
-        choices = result.get("choices") or []
-        if not choices or not isinstance(choices[0], dict):
-            raise RuntimeError("Arvan AI returned no completion choices")
-        message = choices[0].get("message") or {}
-        text = message.get("content") if isinstance(message, dict) else ""
-        if not isinstance(text, str) or not text.strip():
-            raise RuntimeError("Arvan AI returned no text")
-        reported = result.get("usage") or {}
-        usage = LLMUsage(
-            input_tokens=int(reported.get("prompt_tokens") or reported.get("input_tokens") or 0),
-            output_tokens=int(reported.get("completion_tokens") or reported.get("output_tokens") or 0),
-            model=str(result.get("model") or self.model),
-            elapsed_sec=round(time.monotonic() - started, 2),
-        )
-        return _extract_json(text), usage
-
-    def _chat_json(self, system: str, user: str) -> tuple[dict, LLMUsage]:
-        from .lm_gateway import configured
-        if configured():
-            from .llm import gateway_json
-            return gateway_json(system, user)
-        return self._arvan_chat_json(system, user)
+    def _chat_json(self, system: str, user: str, route: str = "editing_agent") -> tuple[dict, LLMUsage]:
+        from .llm import gateway_json
+        return gateway_json(system, user, route)
 
     def generate_plan(self, video_metadata: dict, transcript: dict) -> tuple[dict, LLMUsage]:
         system = str(video_metadata.get("system_prompt") or "Return a valid edit plan as JSON.")
@@ -353,13 +240,9 @@ class ArvanProvider(_ExternalProvider):
 
     def generate_storyboard(self, prompt: Any, style: Any) -> tuple[dict, LLMUsage]:
         system, user, context = _prompt_parts(prompt, style, "Return a storyboard as JSON.")
-        from .lm_gateway import configured
-        if configured():
-            from .llm import gateway_json
-            return gateway_json(system, user, "storyboard_generation")
         return self._with_fallback(
             "storyboard generation",
-            lambda: self._chat_json(system, user),
+            lambda: self._chat_json(system, user, "storyboard_generation"),
             lambda local: local.generate_storyboard(prompt, context),
         )
 
@@ -376,12 +259,10 @@ class ArvanProvider(_ExternalProvider):
 
 
 def get_provider(provider_name: str | None = None) -> AIProvider:
-    provider = ArvanProvider()
     from .lm_gateway import configured
-    if configured():
-        provider.name = "lmapi"
-        provider.model = "route-managed"
-    return provider
+    if not configured():
+        return LocalFallbackProvider(reason="the AI router is not configured")
+    return RouterProvider()
 
 
 def provider_status() -> dict[str, Any]:

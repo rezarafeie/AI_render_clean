@@ -18,7 +18,7 @@ def isolated(tmp_path, monkeypatch):
     for name in list(os.environ):
         if name.startswith("DIRECT_"):
             monkeypatch.delenv(name)
-    for legacy in ("ARVAN_AI_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"):
+    for legacy in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.setattr(direct.settings, legacy, "")
     return tmp_path
 
@@ -51,9 +51,9 @@ def test_keys_are_write_only_and_stored_privately(isolated):
 
 
 def test_legacy_env_keys_are_reused_so_nothing_is_entered_twice(monkeypatch):
-    monkeypatch.setattr(direct.settings, "ARVAN_AI_API_KEY", "arvan-legacy-key-9999")
-    arvan = next(p for p in direct.status()["providers"] if p["id"] == "arvan")
-    assert arvan["configured"] and arvan["key_source"] == "environment"
+    monkeypatch.setattr(direct.settings, "OPENAI_API_KEY", "openai-legacy-key-9999")
+    openai = next(p for p in direct.status()["providers"] if p["id"] == "openai")
+    assert openai["configured"] and openai["key_source"] == "environment"
 
 
 def test_config_defaults_order_and_validation():

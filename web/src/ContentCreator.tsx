@@ -58,7 +58,7 @@ export default function ContentCreator() {
       const list = Array.isArray(items) ? items : [];
       setProviders(list);
       setProvider(current => current || (
-        list.find((p: any) => p.name === "arvan_image" && p.key_configured)?.name
+        list.find((p: any) => p.name === "lm_gateway" && p.key_configured)?.name
         || "local_fixture"
       ));
     }).catch((e: Error) => {
@@ -257,8 +257,8 @@ export default function ContentCreator() {
                 <option key={p.name} value={p.name}>
                   {{
                     local_fixture: "Local Fixture — placeholder demo",
-                    arvan_image: "Generated visuals — Arvan AI",
-                  }[p.name as "local_fixture" | "arvan_image"] || p.name}
+                    lm_gateway: "Generated visuals — AI router",
+                  }[p.name as "local_fixture" | "lm_gateway"] || p.name}
                   {p.name !== "local_fixture" && !p.key_configured ? " (not configured)" : ""}
                 </option>
               ))}

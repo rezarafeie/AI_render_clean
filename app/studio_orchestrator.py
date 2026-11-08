@@ -204,15 +204,9 @@ def _resolved_intent(text, attachments, current, on_title=None, motion=None, his
 
 
 def _provider() -> str:
-    from brain.lm_gateway import configured
-    if configured():
-        return 'lm_gateway'
-    from brain.media_provider import list_providers
-    items = list_providers()
-    for name in ("arvan_image",):
-        if any(item["name"] == name and item["key_configured"] for item in items):
-            return name
-    return "arvan_image"
+    """The only image/video provider is the AI router (its image routes); there is no direct provider to fall back to."""
+    return 'lm_gateway'
+
 
 
 _generation = __import__("contextvars").ContextVar("studio_generation", default=None)

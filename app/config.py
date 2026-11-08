@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     JWT_ACCESS_HOURS: int = 24
     JWT_REFRESH_DAYS: int = 30
-    AI_PROVIDER: str = "arvan"
     LMAPI_BASE_URL: str = "https://lmapi.rafiei.co/v1"
     LMAPI_API_KEY: str = ""
     LMAPI_API_KEY_FILE: str = ".lmapi_key"
@@ -22,8 +21,6 @@ class Settings(BaseSettings):
     AI_PROVIDER_TIMEOUT_SECONDS: int = 300
     AI_TIMEOUT_SECONDS: int = 60
     AI_CORRECTION_TIMEOUT_SECONDS: int = 45
-    LLM_PROVIDER: str = "arvan"
-    LLM_MODEL: str = "GPT-5.6-Sol"
     # Content Creator can use a dedicated text provider without changing the
     # upload/edit planner used elsewhere in the application.
     CONTENT_LLM_PROVIDER: str = ""
@@ -31,8 +28,6 @@ class Settings(BaseSettings):
     CORRECTION_MODEL: str = ""
     VISION_PROVIDER: str = ""
     VISION_MODEL: str = "GPT-5.6-Sol"
-    ARVAN_VISION_MODEL: str = "Gemini-3-Flash-Preview"
-    ARVAN_IMAGE_MODEL: str = "Gemini-3.1-Flash-Image-Preview"
     CONTENT_VOICE_PROVIDER: str = "elevenlabs"
     # Per-call Content Creator narration provider. When empty, the legacy
     # CONTENT_VOICE_PROVIDER/TTS_PROVIDER compatibility rules remain active.
@@ -45,9 +40,6 @@ class Settings(BaseSettings):
     TTS_RATE: str = "+0%"
     AZURE_SPEECH_KEY: str = ""
     AZURE_SPEECH_REGION: str = ""
-    ARVAN_AI_API_KEY: str = ""
-    ARVAN_AI_API_BASE: str = "https://aiapi.rafiei.co/v1"
-    ARVAN_AI_MODEL: str = "GPT-5.6-Sol"
     GEMINI_API_KEY: str = ""
     GEMINI_API_BASE: str = "https://generativelanguage.googleapis.com"
     GEMINI_MODEL: str = "gemini-3.5-flash-lite"
@@ -91,10 +83,6 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def enforce_provider_policy(self):
         # Old environment values and saved projects cannot re-enable retired services.
-        self.AI_PROVIDER = self.LLM_PROVIDER = self.CONTENT_LLM_PROVIDER = "arvan"
-        self.CORRECTION_PROVIDER = self.VISION_PROVIDER = "arvan"
-        self.LLM_MODEL = self.CORRECTION_MODEL = self.ARVAN_AI_MODEL
-        self.VISION_MODEL = self.ARVAN_VISION_MODEL
         self.TTS_PROVIDER = self.CONTENT_TTS_PROVIDER = self.CONTENT_VOICE_PROVIDER = "elevenlabs"
         return self
 

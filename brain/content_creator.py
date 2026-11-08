@@ -78,7 +78,7 @@ def create_content(
     content_type: str,
     language: str = "fa",
     style: str = "rafiei_reel",
-    provider_name: str = "arvan_image",
+    provider_name: str = "lm_gateway",
     creative_brief: Optional[dict[str, str]] = None,
     user_id: Optional[str] = None,
     source_assets: Optional[list[Path]] = None,

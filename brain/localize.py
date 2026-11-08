@@ -265,24 +265,9 @@ def _coalesce_caption_cards(cards: list[dict], target: int) -> None:
 
 
 def _chat_with_fallback(system: str, request: str) -> tuple[dict, object]:
-    """Call the configured Arvan text model with bounded retries."""
+    """Translate through the AI router (the "subtitles" route: its models, then the gateway's own direct fallbacks)."""
     from brain.llm import chat_json
-    from brain.lm_gateway import configured
-    if configured():
-        return chat_json(system, request, max_tokens=3000, route="subtitles")
-
-    errors = []
-    for attempt in range(3):
-        try:
-            return chat_json(system, request, max_tokens=3000, temperature=0.3,
-                             provider="arvan", timeout_seconds=90)
-        except Exception as exc:
-            errors.append(f"arvan: {exc}")
-            log.warning("translation via Arvan AI attempt %d failed: %s", attempt + 1, exc)
-            if re.search(r"\b(?:401|402|403)\b|insufficient[_ ](?:quota|credits)|insufficienttokens", str(exc), re.I):
-                break
-            time.sleep(2 * (attempt + 1))
-    raise RuntimeError("translation failed: " + "; ".join(errors)[-400:])
+    return chat_json(system, request, max_tokens=3000, route="subtitles")
 
 
 def translate(lines: list[dict], source_headline: str = "") -> tuple[dict, dict]:

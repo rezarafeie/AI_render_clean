@@ -957,7 +957,7 @@ def _talking_image_provider() -> str:
     import os
     from brain.media_provider import get_provider
 
-    return "arvan_image"
+    return "lm_gateway"
 
 
 def _visual_prompt(subject: str, style: str) -> str:
