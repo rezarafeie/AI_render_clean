@@ -897,7 +897,7 @@ def test_mlt_hook_rebases_assets_without_modifying_timeline_or_source(tmp_path,m
         assert path.startswith('assets/') and (project/path).read_bytes()==b'owned-video'
         assert tree.find('tractor').get('out')=='29'
         assert kw['width']==540 and kw['height']==960 and kw['duration']==1
-        assert set(kw['features']) == {'subtitles', 'preview', 'custom-export'}
+        assert set(kw['features']) == {'subtitles', 'preview', 'custom-export', 'mlt-preset:veryfast'}
         return True
     monkeypatch.setattr(service,'render_prepared',render)
     token=hooks.identity.set(('user','job',(tmp_path,)))

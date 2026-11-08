@@ -160,7 +160,13 @@ def mlt(project_file, output, *, on_progress=None, **options):
         scale = min(1.0,max(.1,float(style.get('render',{}).get('preview_scale',.5))))
         width, height = max(2,int(width*scale)&~1), max(2,int(height*scale)&~1)
     caption_properties = {'ai-render:caption_font_file', 'ai-render:burn_ass', 'ai-render:captions_ass'}
-    features = []
+    render_settings = style.get('render', {})
+    preset = 'veryfast' if options.get('preview') else render_settings.get('preset', 'medium')
+    if not isinstance(preset, str) or preset not in {
+        'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow', 'placebo',
+    }:
+        return False
+    features = [f'mlt-preset:{preset}']
     if any(prop.text and prop.get('name') in caption_properties for prop in tree.iter('property')):
         features.append('subtitles')
     if options.get('preview'):
