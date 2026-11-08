@@ -589,32 +589,30 @@ def transcribe(
             (out_dir / "asr_attempts.json").write_text(json.dumps(history))
             return effective_transcript(out_dir)
 
-        # The AI router comes first (its "transcription" route: Jarvis). Direct ElevenLabs is only the router's fallback, then local Whisper.
-        # A provider is never replayed.
-        if configured():
-            try:
-                log.info("transcribing %s (AI router, transcription route) …", video.name)
-                transcript, cost = transcribe_gateway(video, out_dir, provider="jarvis", language=language, file_digest=fhash)
-                history.append({"provider": "router", "status": "completed"})
-                return store(transcript, cost)
-            except Exception as exc:
-                history.append({"provider": "router", "status": "failed", "error_type": type(exc).__name__})
-                elevenlabs_error = exc
-                log.warning("Router STT failed (%s); trying the direct ElevenLabs fallback", type(exc).__name__)
+        # ElevenLabs speech-to-text first (through the Vercel relay, as before: it gives the word timestamps the editor needs), then the AI router's
+        # "transcription" route (only a model the operator verified there), then local Whisper. A provider is never replayed.
         try:
-            log.info("transcribing %s (elevenlabs scribe, direct fallback) …", video.name)
+            log.info("transcribing %s (elevenlabs scribe) …", video.name)
             transcript, asr_cost = transcribe_elevenlabs(
                 video, out_dir,
                 language=language,
                 file_digest=fhash,
                 keyterms=keyterms or hotwords,
             )
-            history.append({"provider": "elevenlabs_direct", "status": "completed"})
+            history.append({"provider": "elevenlabs", "status": "completed"})
             return store(transcript, asr_cost)
         except Exception as exc:
-            history.append({"provider": "elevenlabs_direct", "status": "failed", "error_type": type(exc).__name__})
-            elevenlabs_error = elevenlabs_error or exc
-            log.warning("Direct ElevenLabs STT failed (%s)", type(exc).__name__)
+            history.append({"provider": "elevenlabs", "status": "failed", "error_type": type(exc).__name__})
+            elevenlabs_error = exc
+            log.warning("ElevenLabs STT failed (%s); trying the AI router's transcription route", type(exc).__name__)
+        if configured():
+            try:
+                transcript, cost = transcribe_gateway(video, out_dir, provider="jarvis", language=language, file_digest=fhash)
+                history.append({"provider": "router", "status": "completed"})
+                return store(transcript, cost)
+            except Exception as exc:
+                history.append({"provider": "router", "status": "failed", "error_type": type(exc).__name__})
+                log.warning("Router STT failed (%s)", type(exc).__name__)
         (out_dir / "asr_attempts.json").write_text(json.dumps(history))
     from brain.lm_direct import config as direct_config
     local_stt = direct_config()['stt']

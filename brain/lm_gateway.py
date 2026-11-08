@@ -530,6 +530,23 @@ def probe_model(mid, capability="chat"):
 
 
 @observe_request
+def search(query, *, count=5, topic=None):
+    """Web search through the router's /v1/search (the search engines enabled on the gateway). Raises GatewayError when none is enabled or it fails."""
+    if not configured():
+        raise GatewayError('The AI router is not configured', 503)
+    body={'query':str(query).strip()[:400],'max_results':max(1,min(int(count),10))}
+    if not body['query']:
+        raise GatewayError('Empty search query',422)
+    if topic in {'general','news'}:body['topic']=topic
+    with _client(60) as client:
+        response=client.post(_url('search'),headers=headers(),json=body)
+    if not response.is_success:
+        raise GatewayError(f'Router search HTTP {response.status_code}: {safe(response.text,200)}',response.status_code)
+    rows=(response.json() or {}).get('results') or []
+    return [{'title':str(r.get('title') or '')[:200],'url':str(r.get('url') or ''),'content':str(r.get('content') or r.get('snippet') or '')[:1500]}
+            for r in rows if isinstance(r,dict) and str(r.get('url') or '').startswith(('http://','https://'))]
+
+
 def transcription(audio, language=None, *, provider=None):
     """One verified multipart STT submission; never retries paid transcription."""
     cfg=defaults().get('transcription',{})

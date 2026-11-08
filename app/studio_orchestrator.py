@@ -945,7 +945,8 @@ def _link_hosts(text: str) -> tuple[list[str], list[str]]:
     return references, [link for link in links if link not in references]
 
 
-def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = False, directory: Path | None = None) -> dict | None:
+def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = False, directory: Path | None = None,
+               request_text: str = "", allow_search: bool = True, quiet: bool = False) -> dict | None:
     """Read one linked page: the real text, real screenshots in the chat when the text is thin, and a narrated message about what it says (with its pictures).
     None, after telling the person why, when nothing usable could be read."""
     from urllib.parse import urlsplit
@@ -961,6 +962,11 @@ def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = F
     except _Stopped:
         raise
     except Exception as exc:
+        alternative = _read_alternative(conversation_id, user_key, url, request_text, directory, brief) if allow_search else None
+        if alternative:
+            return alternative
+        if quiet:
+            return None
         _emit(conversation_id, "tool.failed", tool="inspect_url", message="صفحهٔ لینک خوانده نشد.")
         studio_narrator.narrate(conversation_id, user_key, "source_page_failed", {"url": url, "error": str(exc)[:140]},
                                 fallback=f"نتوانستم صفحهٔ این لینک را باز کنم ({str(exc)[:120]}). برای اینکه چیزی از خودم نسازم، متن یا نکات اصلی را همین‌جا بفرستید.")
@@ -968,6 +974,11 @@ def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = F
     try:
         _page_screenshots(conversation_id, user_key, page)       # real screenshots in the chat; read with vision when the text is thin
     except Exception as exc:
+        alternative = _read_alternative(conversation_id, user_key, url, request_text, directory, brief) if allow_search else None
+        if alternative:
+            return alternative
+        if quiet:
+            return None
         _emit(conversation_id, "tool.failed", tool="inspect_url", message="متن صفحه حتی از اسکرین‌شات هم خوانده نشد.")
         studio_narrator.narrate(conversation_id, user_key, "source_page_unreadable", {"url": url, "screenshots_shown_above": True, "error": str(exc)[:140]},
                                 fallback="متن صفحه از روی HTML و اسکرین‌شات هم قابل‌خواندن نبود؛ اسکرین‌شات واقعی بالا نمایش داده شد. متن یا نکات اصلی را همین‌جا بفرستید.")
@@ -976,6 +987,11 @@ def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = F
     title = str(page.get("title") or "").strip()
     images = [item["file"] for item in page.get("images", []) if item.get("file")]
     if len(text) < 40 and not title and not images:
+        alternative = _read_alternative(conversation_id, user_key, url, request_text, directory, brief) if allow_search else None
+        if alternative:
+            return alternative
+        if quiet:
+            return None
         _emit(conversation_id, "tool.failed", tool="inspect_url", message="محتوای قابل‌استفاده‌ای در صفحه نبود.")
         studio_narrator.narrate(conversation_id, user_key, "source_page_empty", {"url": url},
                                 fallback="صفحه محتوای قابل‌خواندنی نداشت. متن یا نکات اصلی را همین‌جا بفرستید.")
@@ -993,6 +1009,51 @@ def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = F
     studio_narrator.narrate(conversation_id, user_key, "source_page", narration, attachments=attachments,
                             fallback=("از صفحه خواندم" + (f" «{title}»" if title else "") + ": " + "؛ ".join(_short(line, 110) for line in lines[:4])).strip())
     return {"url": url, "title": title, "text": text, "page": page, "facts": facts, "images": images}
+
+
+def _search_query(url: str, request_text: str = "") -> str:
+    """What to look for when a linked page cannot be read: the words of its address (a product page names the product in its path) and, when the
+    address says little, the start of the person's own request (links removed)."""
+    from urllib.parse import unquote, urlsplit
+    parts = urlsplit(url)
+    segments = []
+    for segment in unquote(parts.path).split("/"):
+        segment = segment.strip()
+        if not segment or re.fullmatch(r"(?:[A-Za-z]+[-_])?\d+|[0-9a-f]{12,}", segment) or segment.lower() in {"product", "products", "item", "items", "p", "dp", "buy"}:
+            continue                    # an id or a generic word says nothing about what the page is
+        segments.append(re.sub(r"[-_+.]+", " ", segment))
+    words = " ".join(" ".join(segments).split())
+    host = (parts.hostname or "").removeprefix("www.")
+    if len(words) < 12:
+        own = re.sub(r"https?://\S+", " ", request_text or "")
+        words = f"{words} {' '.join(own.split())[:160]}".strip()
+    return f"{words} {host}".strip()[:300]
+
+
+def _read_alternative(conversation_id: str, user_key: str, url: str, request_text: str, directory: Path | None, brief: bool) -> dict | None:
+    """The linked page could not be read: search the web (through the AI router's search) for the same thing and read the best results instead.
+    None when no search engine is enabled, nothing was found, or none of the results could be read."""
+    from urllib.parse import urlsplit
+    from brain import lm_gateway
+    try:
+        hits = lm_gateway.search(_search_query(url, request_text), count=8)
+    except Exception as exc:
+        log.info("web search fallback unavailable: %s", str(exc)[:160])
+        return None
+    host = (urlsplit(url).hostname or "").lower()
+    candidates = [hit for hit in hits if (urlsplit(hit["url"]).hostname or "").lower() != host][:3]
+    if not candidates:
+        return None
+    _emit(conversation_id, "tool.started", tool="inspect_url",
+          message="صفحهٔ لینک باز نشد؛ در وب دنبال همین موضوع می‌گردم و از بهترین نتیجه‌ها اطلاعات و تصاویر را برمی‌دارم.")
+    for hit in candidates:
+        item = _read_page(conversation_id, user_key, hit["url"], brief=brief, directory=directory, request_text=request_text,
+                          allow_search=False, quiet=True)
+        if item:
+            item["found_by_search"] = True
+            item["requested_url"] = url
+            return item
+    return None
 
 
 def _gather_sources(conversation_id: str, user_key: str, text: str, attachments: list[dict], *, brief: bool = False, max_pages: int = 2,
@@ -1021,7 +1082,7 @@ def _gather_sources(conversation_id: str, user_key: str, text: str, attachments:
         if result.reference.usable:
             result.style = _reference_style(result.reference)
     for index, url in enumerate(pages[:max_pages]):
-        item = _read_page(conversation_id, user_key, url, brief=brief and index == 0)
+        item = _read_page(conversation_id, user_key, url, brief=brief and index == 0, request_text=text)
         _checkpoint(conversation_id)
         if item:
             result.pages.append(item)

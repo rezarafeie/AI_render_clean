@@ -39,39 +39,39 @@ def _transcript(video, engine, key):
             'words': [{'w': 'سلام', 'start': 0, 'end': 1, 'prob': .99}], 'sentences': [{'text': 'سلام', 'start': 0, 'end': 1}]}
 
 
-def test_stt_goes_to_the_router_first_and_never_repeats_a_paid_call(monkeypatch, tmp_path):
+def test_stt_starts_with_elevenlabs_and_never_repeats_a_paid_call(monkeypatch, tmp_path):
     import brain.transcribe_elevenlabs as providers
     from brain import lm_gateway
     monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
     monkeypatch.setattr(lm_direct.settings, 'JOBS_DIR', str(tmp_path))
     video = tmp_path / 'input.mp4'; video.write_bytes(b'fixture')
     calls = []
-    def direct(*a, **kw): calls.append('direct_elevenlabs'); raise AssertionError('the router answered: no direct call')
-    def router(*a, provider, **kw): calls.append(provider); return _transcript(video, 'elevenlabs_jarvis', 'router'), None
+    def direct(*a, **kw): calls.append('elevenlabs'); return _transcript(video, 'elevenlabs', 'direct'), 0.0
+    def router(*a, provider, **kw): calls.append(provider); raise AssertionError('ElevenLabs answered: the router is not asked')
     monkeypatch.setattr(providers, 'transcribe_elevenlabs', direct)
     monkeypatch.setattr(providers, 'transcribe_gateway', router)
     root = tmp_path / 'job'
-    assert transcribe.transcribe(video, root, language='fa', engine='elevenlabs')['engine'] == 'elevenlabs_jarvis'
+    assert transcribe.transcribe(video, root, language='fa', engine='elevenlabs')['engine'] == 'elevenlabs'
     transcribe.transcribe(video, root, language='fa', engine='elevenlabs')           # cached: nothing is paid for twice
-    assert calls == ['jarvis']
+    assert calls == ['elevenlabs']
 
 
-def test_direct_elevenlabs_is_only_the_routers_fallback(monkeypatch, tmp_path):
+def test_the_router_is_the_second_slot(monkeypatch, tmp_path):
     import brain.transcribe_elevenlabs as providers
     from brain import lm_gateway
     monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
     monkeypatch.setattr(lm_direct.settings, 'JOBS_DIR', str(tmp_path))
     video = tmp_path / 'input.mp4'; video.write_bytes(b'fixture')
     calls = []
-    def direct(*a, **kw): calls.append('direct_elevenlabs'); return _transcript(video, 'elevenlabs', 'direct'), 0.0
-    def router(*a, provider, **kw): calls.append(provider); raise RuntimeError('unavailable')
+    def direct(*a, **kw): calls.append('elevenlabs'); raise RuntimeError('unavailable')
+    def router(*a, provider, **kw): calls.append(provider); return _transcript(video, 'elevenlabs_jarvis', 'router'), None
     monkeypatch.setattr(providers, 'transcribe_elevenlabs', direct)
     monkeypatch.setattr(providers, 'transcribe_gateway', router)
-    assert transcribe.transcribe(video, tmp_path / 'job', language='fa', engine='elevenlabs')['engine'] == 'elevenlabs'
-    assert calls == ['jarvis', 'direct_elevenlabs']
+    assert transcribe.transcribe(video, tmp_path / 'job', language='fa', engine='elevenlabs')['engine'] == 'elevenlabs_jarvis'
+    assert calls == ['elevenlabs', 'jarvis']
 
 
-def test_local_whisper_runs_only_after_the_router_and_the_direct_fallback(monkeypatch, tmp_path):
+def test_local_whisper_runs_only_after_elevenlabs_and_the_router(monkeypatch, tmp_path):
     import brain.transcribe_elevenlabs as providers
     from brain import lm_gateway
     monkeypatch.setattr(lm_gateway, 'configured', lambda: True)
@@ -91,4 +91,4 @@ def test_local_whisper_runs_only_after_the_router_and_the_direct_fallback(monkey
     monkeypatch.setattr(transcribe, '_transcribe_whisper', local)
     monkeypatch.setenv('WHISPER_ENABLED', 'true')
     result = transcribe.transcribe(video, tmp_path / 'job', language='fa', engine='elevenlabs')
-    assert result['engine'] == 'whisper' and calls == ['jarvis', 'direct', 'whisper']
+    assert result['engine'] == 'whisper' and calls == ['direct', 'jarvis', 'whisper']
