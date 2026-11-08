@@ -204,8 +204,12 @@ def test_engine_reuses_existing_entrypoint(tmp_path, monkeypatch):
 
 def test_storage_prefix_is_user_scoped():
     from app.render_cloud.storage import ObjectStore
-    assert ObjectStore.prefix('a') != ObjectStore.prefix('b')
-    assert 'alice@example.com' not in ObjectStore.prefix('alice@example.com')
+    store = ObjectStore(None, 'private-bucket')
+    production = ObjectStore(None, 'private-bucket', namespace='render/production/v1/')
+    assert store.prefix('a') != store.prefix('b')
+    assert 'alice@example.com' not in store.prefix('alice@example.com')
+    assert production.prefix('a').startswith('render/production/v1/')
+    assert production.key('a', 'digest') != store.key('a', 'digest')
 
 
 IMAGE = 'registry/worker@sha256:' + 'a' * 64

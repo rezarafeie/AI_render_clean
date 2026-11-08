@@ -13,14 +13,15 @@ from .contracts import RenderSpec
 
 
 class ObjectStore:
-    def __init__(self, client, bucket: str, *, expiry=3600):
-        if not bucket or not 60 <= expiry <= 21600:
+    def __init__(self, client, bucket: str, *, expiry=3600, namespace='render/v1/'):
+        if (not bucket or not 60 <= expiry <= 21600
+                or namespace not in {'render/v1/', 'render/production/v1/'}):
             raise ValueError('Invalid storage configuration')
         self.client, self.bucket, self.expiry = client, bucket, expiry
+        self.namespace = namespace
 
-    @staticmethod
-    def prefix(user: str) -> str:
-        return 'render/v1/' + hashlib.sha256(user.encode()).hexdigest() + '/'
+    def prefix(self, user: str) -> str:
+        return self.namespace + hashlib.sha256(user.encode()).hexdigest() + '/'
 
     def key(self, user, digest):
         return self.prefix(user) + 'assets/' + digest

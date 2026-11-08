@@ -78,6 +78,7 @@ Environment variables (all except the stated aliases use `RENDER_CLOUD_`):
 | `RENDER_CLOUD_DEPLOYMENT` | resource identity label; default editor |
 | `RENDER_CLOUD_S3_BUCKET` | private bucket |
 | `RENDER_CLOUD_S3_ENDPOINT`, `RENDER_CLOUD_S3_REGION` | endpoint; region us-east-1 |
+| `RENDER_CLOUD_S3_NAMESPACE` | `render/v1/` by default; use `render/production/v1/` for a distinct production lifecycle |
 | `RENDER_CLOUD_STORAGE_HOSTS` | exact comma-separated signed-URL hosts |
 | `RENDER_CLOUD_RUNPOD_API_KEY` or `RUNPOD_API_KEY` | server-only provider key |
 | `ENABLE_CLOUD_REAPER` | 1 for independent cleanup CLI |
@@ -104,7 +105,8 @@ SQLite requires shared persistent **local disk on one VPS**, not NFS or independ
 multi-VPS copies. Include it in backups and retain it across application releases.
 The private bucket needs signer-scoped object read/write/HEAD permissions and a
 lifecycle expiration policy for bootstrap, status/control, candidate and staging
-objects. Choose retention beyond maximum job/recovery time; never public-read.
+objects. Scope the policy to `render/production/v1/` when using the production
+namespace. Choose retention beyond maximum job/recovery time; never public-read.
 Configure storage billing/retention independently; deleted compute is not free
 object storage. No browser CORS policy is required by the implemented server path.
 

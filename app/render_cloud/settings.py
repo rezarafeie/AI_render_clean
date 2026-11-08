@@ -1,5 +1,6 @@
 """Server-only rollout configuration. No credentials are returned to the UI."""
 from pathlib import Path
+from typing import Literal
 from pydantic import Field, SecretStr, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,6 +39,7 @@ class CloudSettings(BaseSettings):
     s3_bucket: str = ''
     s3_endpoint: str = ''
     s3_region: str = 'us-east-1'
+    s3_namespace: Literal['render/v1/', 'render/production/v1/'] = 'render/v1/'
     # boto3 uses the normal server credential chain; no key in this model.
     runpod_api_key: SecretStr = Field(default=SecretStr(''),validation_alias=AliasChoices('RENDER_CLOUD_RUNPOD_API_KEY','RUNPOD_API_KEY'))
     runpod_relay_url: str = ''
@@ -91,7 +93,8 @@ def object_store(config):
                                         s3={'addressing_style':'path'},request_checksum_calculation='when_required',
                                         response_checksum_validation='when_required',
                                         retries={'mode': 'standard', 'max_attempts': 3}))
-    return ObjectStore(client, config.s3_bucket, expiry=config.max_wall_seconds + 600)
+    return ObjectStore(client, config.s3_bucket, expiry=config.max_wall_seconds + 600,
+                       namespace=config.s3_namespace)
 
 
 def _data_path(name):
