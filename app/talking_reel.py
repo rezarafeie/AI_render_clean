@@ -529,8 +529,10 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
             return bool(event and event.is_set())
         def cloud_stage(stage):
             _stage(job_dir, 'cloud ' + stage)
+        def cloud_detail(text):
+            _stage(job_dir, str(load(job_dir).get('stage') or 'cloud rendering'), message=text)
         cloud_token = identity.set((str(owner_id) if owner_id else None, job_dir.name, (job_dir,),
-                                    cloud_cancelled, cloud_stage))
+                                    cloud_cancelled, cloud_stage, cloud_detail))
         try:
             started = time.time()
             _run(job_dir, raw_video, regenerate=regenerate)

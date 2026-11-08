@@ -21,8 +21,11 @@ def job_context(function):
         def stage(value):
             job.render.message = 'cloud ' + value
             _write_status(job)
+        def detail(text):
+            job.render.message = text
+            _write_status(job)
         token = identity.set((str(job.user_id) if job.user_id else None, job.id, (job.dir,),
-                              lambda: job.render.status in {'cancelled','canceled'}, stage))
+                              lambda: job.render.status in {'cancelled','canceled'}, stage, detail))
         try:
             return function(job, *args, **kwargs)
         finally:
@@ -43,7 +46,7 @@ def eligible():
 
 
 def hyperframes(project, output, *, engine, timeout, on_progress=None, should_cancel=None,
-                user=None, project_id=None, owned_roots=(), on_stage=None,fmt='mp4'):
+                user=None, project_id=None, owned_roots=(), on_stage=None,fmt='mp4', on_detail=None):
     if not enabled():
         return False
     who = identity.get()
@@ -53,6 +56,8 @@ def hyperframes(project, output, *, engine, timeout, on_progress=None, should_ca
             should_cancel = who[3]
         if len(who) > 4 and on_stage is None:
             on_stage = who[4]
+        if len(who) > 5 and on_detail is None:
+            on_detail = who[5]
     if not user:
         # Legacy/anonymous projects are never admitted to paid cloud resources.
         return False
@@ -80,7 +85,7 @@ def hyperframes(project, output, *, engine, timeout, on_progress=None, should_ca
     return render_prepared(project, output, user=user, project_id=project_id, engine=engine,
                            duration=duration, width=width, height=height, timeout=timeout,
                            on_progress=on_progress, should_cancel=should_cancel,
-                           owned_roots=owned_roots, on_stage=on_stage,
+                           owned_roots=owned_roots, on_stage=on_stage, on_detail=on_detail,
                            export_format=fmt,
                            features=features, audio_required=audio)
 
@@ -143,7 +148,7 @@ def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
                                features=features,
                                lock_root=job_dir,
                                should_cancel=who[3] if len(who) > 3 else None,
-                               on_stage=who[4] if len(who) > 4 else None,
+                               on_stage=who[4] if len(who) > 4 else None, on_detail=who[5] if len(who) > 5 else None,
                                audio_required=music or narration)
 
 
@@ -228,7 +233,7 @@ def mlt(project_file, output, *, on_progress=None, **options):
                                entrypoint='project.mlt',mlt_options=options,on_progress=on_progress,
                                features=features,
                                should_cancel=who[3] if len(who)>3 else None,
-                               on_stage=who[4] if len(who)>4 else None,lock_root=root)
+                               on_stage=who[4] if len(who)>4 else None, on_detail=who[5] if len(who)>5 else None, lock_root=root)
 
 
 def talking(video,plan,output,*,style='talking_1',on_progress=None,**options):
@@ -293,5 +298,5 @@ def talking(video,plan,output,*,style='talking_1',on_progress=None,**options):
         lock_root=Path(who[2][0])
         return render_prepared(staged,output,user=who[0],project_id=who[1],engine=style,entrypoint='talking.json',
                                duration=seconds,width=1080,height=1920,fps=fps,on_progress=on_progress,
-                               should_cancel=who[3] if len(who)>3 else None,on_stage=who[4] if len(who)>4 else None,
+                               should_cancel=who[3] if len(who)>3 else None,on_stage=who[4] if len(who)>4 else None, on_detail=who[5] if len(who)>5 else None,
                                lock_root=lock_root,audio_required=True)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -21,13 +22,19 @@ from .provider import RunPod, reconcile
 from .settings import CloudSettings, object_store
 
 
+log = logging.getLogger(__name__)
+
+
 class CloudRenderError(RuntimeError):
     """Never reinterpret as a creative/layout error or silently start another render."""
 
 
 def validate_output(spec, path):
     measured = probe(path)
-    if (measured['width'], measured['height'], Fraction(measured['fps'])) != (spec.width, spec.height, Fraction(spec.fps)):
+    # ffprobe reports the average rate as a ratio of frames to duration (1640000000/54666333 for a clean 30 fps clip): compare with a tolerance far
+    # smaller than any real rate difference (29.97 vs 30 is 0.03).
+    if ((measured['width'], measured['height']) != (spec.width, spec.height)
+            or abs(float(Fraction(measured['fps'])) - float(Fraction(spec.fps))) > .005):
         raise ValueError('Cloud output dimensions or frame rate differ')
     if abs(measured['duration'] - spec.duration_seconds) > max(1/spec.fps, .05):
         raise ValueError('Cloud output duration differs')
@@ -41,13 +48,61 @@ def validate_output(spec, path):
     return measured
 
 
+_STAGE_TEXT = {
+    'queued': 'در صف رندر ابری…',
+    'provisioning': 'در حال راه‌اندازی سرور ابری RunPod…',
+    'preparing': 'آماده‌سازی محیط رندر روی RunPod…',
+    'downloading': 'دریافت فایل‌ها روی RunPod…',
+    'uploading': 'ارسال ویدیوی آماده از RunPod…',
+    'delivering': 'دریافت ویدیو از ابر و بررسی نهایی…',
+}
+
+
+def _duration_text(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    minutes, rest = divmod(seconds, 60)
+    return f'{minutes} دقیقه و {rest} ثانیه' if minutes else f'{rest} ثانیه'
+
+
+def cloud_detail(state: str, progress=None, rendering_seconds: float = 0.0) -> str:
+    """What the person sees under the progress bar while a render runs on RunPod: the stage, and while rendering the exact percentage and time left
+    (estimated from the pace so far, shown once there is enough of it to mean something)."""
+    if state == 'rendering' and progress is not None:
+        percent = max(0.0, min(100.0, float(progress)))
+        text = f'رندر روی RunPod: {percent:.0f}٪'
+        if percent >= 3 and rendering_seconds >= 5:
+            text += f' · حدود {_duration_text(rendering_seconds * (100 - percent) / percent)} باقی مانده'
+        else:
+            text += ' · در حال محاسبهٔ زمان باقی‌مانده…'
+        return text
+    if state == 'rendering':
+        return 'رندر روی RunPod شروع شد…'
+    return _STAGE_TEXT.get(state, 'در حال انجام روی RunPod…')
+
+
+
 def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_stage=None,
-                 should_cancel=None, sleep=time.sleep):
+                 should_cancel=None, sleep=time.sleep, on_detail=None):
     row = ledger.get(spec.job_id, spec.user_id)
     storage = json.loads(row['details']).get('storage')
     if not storage:
         raise CloudRenderError('Cloud storage references are missing')
     last_stage = None
+    rendering_since = None
+    last_detail = None
+
+    def detail(state, progress=None):
+        nonlocal last_detail
+        if on_detail is None:
+            return
+        text = cloud_detail(state, progress, time.monotonic() - rendering_since if rendering_since else 0.0)
+        if text != last_detail:
+            last_detail = text
+            try:
+                on_detail(text)
+            except Exception:       # a failing status line never stops a render
+                pass
+
     while row['state'] == 'completed' or time.time() < row['deadline']:
         if should_cancel and should_cancel():
             ledger.cancel(spec.job_id, spec.user_id)
@@ -75,8 +130,12 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                                 report.history, report.observation.model_dump(),timings=report.timings,resources=report.resources)
                 if report.observation.state in {'failed', 'cancelled'}:
                     raise CloudRenderError('Cloud worker stopped before completion')
+                if report.observation.state == 'rendering' and rendering_since is None:
+                    rendering_since = time.monotonic()
                 if on_progress and report.observation.progress is not None and report.observation.state == 'rendering':
                     on_progress(report.observation.progress)
+                if report.observation.state == 'rendering':
+                    detail('rendering', report.observation.progress)
                 if report.uploaded:
                     if report.observation.state != 'uploading' or not report.sha256 or not report.size:
                         raise CloudRenderError('Invalid cloud upload receipt')
@@ -84,6 +143,8 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
         current = ledger.get(spec.job_id, spec.user_id)
         if on_stage and current['state'] != last_stage:
             on_stage(current['state'])
+        if current['state'] != last_stage and current['state'] != 'rendering':
+            detail(current['state'])
             last_stage = current['state']
         if candidate:
             if current['state'] != 'completed' and not json.loads(current['details']).get('compute_finished'):
@@ -91,6 +152,7 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                 # Pod now avoids billing while the VPS fetches/validates output.
                 ledger.compute_finished(spec.job_id,spec.user_id,candidate)
                 reconcile(provider,ledger)
+            detail('delivering')
             output.parent.mkdir(parents=True, exist_ok=True)
             temporary = output.with_name('.cloud-' + uuid.uuid4().hex + '.mp4')
             try:
@@ -138,7 +200,7 @@ def render_prepared(project: Path, output: Path, **kwargs):
 
 def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                     duration, width, height, fps=30, timeout=1800, on_progress=None,
-                    on_stage=None, should_cancel=None, config=None, entrypoint='index.html',
+                    on_stage=None, should_cancel=None, config=None, entrypoint='index.html', on_detail=None,
                     owned_roots=(), audio_required=False, marker_root=None, mlt_options=None,export_format='mp4',features=()):
     """True if cloud rendered; False means the original renderer must run unchanged.
 
@@ -249,14 +311,16 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                       bootstrap=lambda token: store.bootstrap(spec, root, token, time.time() + config.max_wall_seconds, ledger,
                                                               local_output=output.resolve()))
             await_result(spec, output, ledger=ledger, store=store, provider=provider,
-                         on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel)
+                         on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail)
             return True
         except InterruptedError:
             ledger.cancel(spec.job_id, spec.user_id)
             ledger.finish(spec.job_id, spec.user_id, 'cancelled', 'cancelled')
             raise
-        except Exception:
+        except Exception as failure:
             ledger.finish(spec.job_id, spec.user_id, 'failed', 'cloud_execution_failed')
+            if isinstance(failure, (CloudRenderError, ValueError)):       # our own checks, never a provider response with a URL in it
+                log.warning('cloud render %s failed: %s', spec.job_id, str(failure)[:200])
             raise CloudRenderError('Cloud render failed; resource cleanup is tracked separately') from None
         finally:
             try:
