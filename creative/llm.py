@@ -6,11 +6,12 @@ of the unpinned ``auto`` route that most editor calls fall into.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
 import time
-from typing import TypeVar
+from typing import Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -27,6 +28,16 @@ REVISION_ROUTE = "creative_revision"
 _sleep = time.sleep  # indirection so tests do not really wait
 _RESET = re.compile(r"reset(?:s)? (?:in )?~?(\d+)\s*s", re.I)
 MAX_COOLDOWN_WAIT_S = 60
+
+# Set by the studio for the message being processed: it raises the studio's own "stopped" exception once the person pressed Stop.
+# A model call cannot be interrupted, but no further attempt, retry or cooldown wait is started after that.
+STOP_CHECK: contextvars.ContextVar[Callable[[], None] | None] = contextvars.ContextVar("creative_stop_check", default=None)
+
+
+def _stop_point() -> None:
+    check = STOP_CHECK.get()
+    if check is not None:
+        check()
 
 
 def _transient_network(exc: Exception) -> bool:
@@ -87,6 +98,7 @@ def _ask(schema: type[T], system: str, user: str, *, route: str, tokens: int = 6
     last = "no response"
     budget = tokens
     for attempt in range(attempts):
+        _stop_point()
         try:
             data, usage = gateway_json(system, prompt, route, budget)
         except json.JSONDecodeError as exc:
@@ -102,6 +114,7 @@ def _ask(schema: type[T], system: str, user: str, *, route: str, tokens: int = 6
                 # A connection the proxy dropped mid-answer (long generations) says nothing about the request: ask again.
                 log.warning("creative %s connection dropped (%s); retrying", route, type(exc).__name__)
                 last = f"connection dropped ({type(exc).__name__})"
+                _stop_point()
                 _sleep(3)
                 continue
             wait = cooldown_seconds(exc)
@@ -109,6 +122,7 @@ def _ask(schema: type[T], system: str, user: str, *, route: str, tokens: int = 6
                 # Thin provider capacity: a short cooldown is worth waiting out once, a long one is not.
                 log.warning("creative %s rate-limited; waiting %ss", route, wait)
                 last = f"rate limited ({wait}s)"
+                _stop_point()
                 _sleep(wait)
                 continue
             raise CreativeUnavailable(f"{route}: {type(exc).__name__}: {str(exc)[:160]}") from exc

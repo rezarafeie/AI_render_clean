@@ -281,6 +281,16 @@ def request_stop(conversation_id: str, user_key: str) -> dict:
                 stopped.append("project")
         except Exception:
             log.warning("stop: the running project could not be canceled", exc_info=True)
+    try:
+        # An agent run still queued, running or waiting would otherwise stay "unfinished" for ever: it blocks the next run in this chat and its worker goes on.
+        from app.agents import store as agent_store
+        unfinished = {"queued", "running", "waiting_approval", "waiting_job"}
+        for record in run(agent_store.runs(conversation_id, user_key)):
+            if record["status"] in unfinished and run(agent_store.update(record["id"], user_key, status="cancelled", claim=unfinished, patch={"stopped": True})):
+                stopped.append("agent")
+                stopped_ids["agent_run_id"] = record["id"]
+    except Exception:
+        log.warning("stop: an agent run could not be cancelled", exc_info=True)
     _emit(conversation_id, "message.stopped", stopped=stopped, **stopped_ids)       # the ids make the cards and the composer re-read their state now
     return {"stopped": stopped}
 
@@ -607,6 +617,8 @@ def process_message(conversation_id: str, user_key: str, message_id: int | str,
                     text: str, attachment_ids: list[str], manual_question_id: str | None = None) -> None:
     """Every message runs under a "working" mark visible to every process, and stops at its next checkpoint when Stop was pressed."""
     _generation.set((conversation_id, user_key, studio_flags.generation(user_key, conversation_id)))
+    from creative import llm as creative_llm
+    creative_llm.STOP_CHECK.set(lambda cid=conversation_id: _checkpoint(cid))       # no further model attempt starts after Stop
     # A worker thread is reused between messages: the previous request's topic must not appear in this one's steps.
     from app import studio_activity
     studio_activity.subject.set(_short(re.sub(r"https?://\S+", "", text).strip(), 56))
