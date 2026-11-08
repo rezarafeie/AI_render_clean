@@ -537,13 +537,15 @@ def transcription(audio, language=None, *, provider=None):
         raise GatewayError('Transcription routing is disabled',503)
     candidates=cfg.get('models',[])
     if provider:
-        group={'jarvis':'jarvis-all-models','sarovi':'sarovi-all-models'}.get(provider)
+        from .lm_tasks import PROVIDERS
+        group=(PROVIDERS.get(provider) or {}).get('group')
         if not group:raise GatewayError('Unsupported STT provider',422)
-        candidates=[m for m in candidates if m.endswith('#'+group) and ('scribe' in m.lower() or 'eleven' in m.lower())]
-    candidates=candidates[:1]
-    model=candidates[0] if candidates else ''
-    item=store.records('models').get(model,{})
-    if not model_allowed(model) or not item.get('enabled') or 'transcription' not in capabilities(item):
+        candidates=[m for m in candidates if m.endswith('#'+group)]
+    # The route decides the model; only one the operator verified for transcription (word timestamps included) is used.
+    catalog=store.records('models')
+    usable=[m for m in candidates if model_allowed(m) and catalog.get(m,{}).get('enabled') and 'transcription' in capabilities(catalog.get(m,{}))]
+    model=usable[0] if usable else ''
+    if not model:
         raise GatewayError('No verified gateway STT model; local Whisper fallback is available',422)
     from .media_policy import response_timeout,request_headers,require_gateway_safety
     body={'model':model,'response_format':'verbose_json','timestamp_granularities[]':'word'}
