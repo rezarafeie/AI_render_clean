@@ -19,6 +19,7 @@ class CloudSettings(BaseSettings):
     sandbox_verified: bool = False
     network_namespace_verified: bool = False
     browser_guest_verified: bool = False
+    native_browser_verified: bool = False
     admin_user_ids: str = ''
     image: str = ''
     deployment: str = 'editor'
@@ -79,6 +80,7 @@ class CloudSettings(BaseSettings):
         from .socketless import ENGINES
         return self.sandbox_verified and (
             engine in ENGINES or self.network_namespace_verified or self.browser_guest_verified
+            or self.native_browser_verified
         )
 
 

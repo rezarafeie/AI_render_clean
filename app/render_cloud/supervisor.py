@@ -107,12 +107,16 @@ def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_
             socketless.protect_supervisor()
             if spec.engine in socketless.ENGINES:
                 command = [sys.executable, '-m', 'app.render_cloud.socketless', '--', *command]
-            elif offline_guest.available():
-                command = [sys.executable, '-m', 'app.render_cloud.socketless', '--',
-                           sys.executable, '-m', 'app.render_cloud.offline_guest', str(workspace)]
             else:
-                command = isolated_command(command)
-                env['EDITOR_RENDER_ISOLATED'] = '1'
+                from . import native_loopback
+                if native_loopback.available():
+                    command = [sys.executable, '-m', 'app.render_cloud.native_loopback', *command]
+                elif offline_guest.available():
+                    command = [sys.executable, '-m', 'app.render_cloud.socketless', '--',
+                               sys.executable, '-m', 'app.render_cloud.offline_guest', str(workspace)]
+                else:
+                    command = isolated_command(command)
+                    env['EDITOR_RENDER_ISOLATED'] = '1'
         process = subprocess.Popen(command,
                                    env=env, start_new_session=True,
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)

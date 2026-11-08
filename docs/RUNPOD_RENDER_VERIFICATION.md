@@ -146,6 +146,17 @@ with Docker networking disabled and a separate syscall policy permitting
 only the job's active loopback listeners. This result is for a synthetic
 fixture and needs verification on the actual RunPod host.
 
+The first native RunPod tests stopped at Remotion port selection. The same
+error reproduced in [CI with IPv6 disabled](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42497211604).
+An [IPv4-only adapter](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42497331419)
+then passed both the CI smoke and the live RunPod audio fixture. RunPod
+returned 90 frames at 1080×1920 and 30 fps, with video starting at 0 s and
+audio starting at 0 s with 3.008 s duration. End-to-end time was 71.23 s,
+including 47.23 s in the render stage. This is still a short canary, not a
+representative performance profile. Separate [reachable peer tests](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42496394434)
+also verified the native broker denied traffic to a reachable private peer,
+an unrelated loopback server, and attempts to replace its seccomp filter.
+
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch
 base `fafcf6e` is a descendant, 283 commits ahead. The tests ran in an isolated

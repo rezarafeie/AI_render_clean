@@ -762,7 +762,9 @@ def test_browser_and_talking_styles_require_verified_namespace(tmp_path):
         assert not config.isolates(engine)
         assert config.model_copy(update={'network_namespace_verified': True}).isolates(engine)
         assert config.model_copy(update={'browser_guest_verified': True}).isolates(engine)
+        assert config.model_copy(update={'native_browser_verified': True}).isolates(engine)
         assert not config.model_copy(update={'sandbox_verified': False, 'browser_guest_verified': True}).isolates(engine)
+        assert not config.model_copy(update={'sandbox_verified': False, 'native_browser_verified': True}).isolates(engine)
 
 
 def test_benchmark_keeps_webm_format(tmp_path, monkeypatch):

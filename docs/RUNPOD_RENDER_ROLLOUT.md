@@ -64,6 +64,7 @@ Environment variables (all except the stated aliases use `RENDER_CLOUD_`):
 | `RENDER_CLOUD_SANDBOX_VERIFIED` | false; set only after the file-based worker passes target-host isolation and resource checks |
 | `RENDER_CLOUD_NETWORK_NAMESPACE_VERIFIED` | false; set only after a loopback-only namespace check on the selected worker |
 | `RENDER_CLOUD_BROWSER_GUEST_VERIFIED` | false; set only after the selected guest image passes live browser isolation and rendering checks |
+| `RENDER_CLOUD_NATIVE_BROWSER_VERIFIED` | false; set only after the selected native worker passes isolation and representative rendering on its target host |
 | `RENDER_CLOUD_ADMIN_USER_IDS` | comma-separated authenticated user IDs |
 | `RENDER_CLOUD_IMAGE` | immutable `registry/image@sha256:...` |
 | `RENDER_CLOUD_CPU_IDS`, `RENDER_CLOUD_GPU_IDS` | verified RunPod resource IDs |
@@ -133,8 +134,12 @@ that may use Tscaps overlays, need local sockets and a loopback-only network.
 Use either a verified namespace (`unshare --user --map-root-user --net`) or
 the optional Linux guest. The guest runs QEMU under the socketless host
 filter with no NIC, a read-only system disk and only the per-job workspace
-shared via 9P. Both paths preserve existing render-engine entrypoints. Each
-engine still requires an approved profile for the exact image.
+shared via 9P. The optional native browser image instead uses a seccomp
+notification broker for socket operations and a pinned Chrome Headless Shell.
+The broker creates and connects sockets itself and permits only listeners
+created by that render. The Node adapter advertises the worker's IPv4 loopback
+to Remotion's port discovery. Each path preserves existing render-engine
+entrypoints. Each engine still requires an approved profile for the exact image.
 For a credential-free network smoke test of the image on a Linux build host:
 
 ```sh
@@ -166,6 +171,24 @@ smoke succeeds. Verify the pinned digest on the target RunPod hardware and
 measure a representative workload before admitting browser renders. CPU
 emulation has startup and render overhead. Measure the whole job, including
 image pull and guest startup, before approving any profile.
+
+Build and check the native browser candidate separately on Linux. The first
+command tests loopback access and external socket denial. The second renders
+a typed portrait composition with IPv6 disabled, matching the observed RunPod
+host constraint.
+
+```sh
+docker build -f deploy/runpod/native-browser.Dockerfile \
+  --build-arg EDITORGPT_RUNPOD_BASE=REGISTRY/RENDER@sha256:DIGEST \
+  -t editorgpt-native-browser .
+docker run --rm --network none --memory 384m \
+  -v "$PWD/deploy/runpod:/experiment:ro" --entrypoint python editorgpt-native-browser \
+  -m app.render_cloud.native_loopback python /experiment/native-loopback-smoke.py
+docker run --rm --network none --sysctl net.ipv6.conf.all.disable_ipv6=1 \
+  --cpus 2 --memory 3072m --pids-limit 192 \
+  -v "$PWD/deploy/runpod:/experiment:ro" --entrypoint python editorgpt-native-browser \
+  /experiment/native-browser-smoke.py
+```
 
 Verify target CPU, RAM, disk and PID limits, cancellation, deadlines and network
 denial on real RunPod before setting SANDBOX_VERIFIED. Include Chromium
