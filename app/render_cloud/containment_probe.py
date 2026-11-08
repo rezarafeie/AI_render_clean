@@ -1,5 +1,6 @@
 """Test worker network containment without provisioning, storage, or user media."""
 import argparse
+import ctypes
 import errno
 import json
 import os
@@ -82,6 +83,95 @@ def inspect_socketless():
     return result.returncode == 0
 
 
+def diagnose_host():
+    """Report only capability results. Do not print host identifiers or stderr."""
+    if sys.platform != 'linux' or os.geteuid() == 0:
+        return {}
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    results = {}
+    for name, options in (
+        ('user_namespace', ['--user', '--map-root-user']),
+        ('network_namespace', ['--user', '--map-root-user', '--net']),
+    ):
+        check = subprocess.run(['unshare', *options, '--', 'true'], env={
+            **child_environment(), 'LC_ALL': 'C',
+        }, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=4)
+        results[name] = 'ok' if check.returncode == 0 else (
+            'permission_denied' if b'Operation not permitted' in check.stderr or b'Permission denied' in check.stderr
+            else 'failed'
+        )
+    if os.uname().machine != 'x86_64':
+        return results
+
+    class IOVec(ctypes.Structure):
+        _fields_ = [('base', ctypes.c_void_p), ('length', ctypes.c_size_t)]
+
+    abi = libc.syscall(444, 0, 0, 1)  # landlock_create_ruleset VERSION
+    results['landlock_abi'] = max(0, abi)
+    # The probe child inherits known memory and a harmless pipe descriptor.
+    # Read it from its actual parent, the relationship a broker would need.
+    source = ctypes.create_string_buffer(b'x', 1)
+    destination = ctypes.create_string_buffer(1)
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(write_fd)
+        try:
+            os.read(read_fd, 1)
+        finally:
+            os._exit(0)
+    os.close(read_fd)
+    try:
+        ours = IOVec(ctypes.addressof(destination), 1)
+        theirs = IOVec(ctypes.addressof(source), 1)
+        copied = libc.syscall(310, pid, ctypes.byref(ours), 1, ctypes.byref(theirs), 1, 0)
+        results['process_vm_readv'] = copied == 1 and destination.raw == b'x'
+        results['pidfd_getfd'] = False
+        if hasattr(os, 'pidfd_open'):
+            try:
+                process_fd = os.pidfd_open(pid)
+            except OSError:
+                process_fd = None
+            if process_fd is not None:
+                try:
+                    duplicate = libc.syscall(438, process_fd, read_fd, 0)
+                    if duplicate >= 0:
+                        os.close(duplicate)
+                        results['pidfd_getfd'] = True
+                finally:
+                    os.close(process_fd)
+    finally:
+        os.close(write_fd)
+        os.waitpid(pid, 0)
+    # Install a listener only in a disposable child. The selected syscall is
+    # never used by the probe so no userspace broker is needed here.
+    pid = os.fork()
+    if pid == 0:
+        try:
+            class Filter(ctypes.Structure):
+                _fields_ = [('code', ctypes.c_ushort), ('yes', ctypes.c_ubyte),
+                            ('no', ctypes.c_ubyte), ('value', ctypes.c_uint32)]
+
+            class Program(ctypes.Structure):
+                _fields_ = [('length', ctypes.c_ushort), ('filters', ctypes.POINTER(Filter))]
+
+            code = (Filter * 4)(Filter(0x20, 0, 0, 0), Filter(0x15, 0, 1, 121),
+                                Filter(0x06, 0, 0, 0x7fc00000), Filter(0x06, 0, 0, 0x7fff0000))
+            program = Program(len(code), code)
+            if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
+                os._exit(2)
+            listener = libc.syscall(317, 1, 8, ctypes.byref(program))  # SET_MODE_FILTER, NEW_LISTENER
+            if listener >= 0:
+                os.close(listener)
+            os._exit(0 if listener >= 0 else 2)
+        finally:
+            os._exit(2)
+    _, status = os.waitpid(pid, 0)
+    results['seccomp_listener'] = status == 0
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--child', help=argparse.SUPPRESS)
@@ -100,8 +190,12 @@ def main():
         socketless_passed = inspect_socketless()
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
         socketless_passed = False
+    try:
+        host = diagnose_host()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        host = {}
     print(json.dumps({'network_containment_passed': passed, 'socketless_containment_passed': socketless_passed,
-                      'sandbox_certified': False}))
+                      'sandbox_certified': False, 'host_capabilities': host}))
     return 0 if (socketless_passed if args.require_socketless else passed) else 2
 
 

@@ -75,6 +75,25 @@ render and 65.40 s end-to-end. The Mac reference took 56.63 s. The difference
 between the two cloud end-to-end times illustrates provisioning variability.
 The actual provider charge was not recorded in the benchmark report.
 
+The [host diagnostic candidate](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42438500616)
+confirmed that a Secure Cloud `cpu3c` host denies both user and network
+namespace creation. Its inherited socketless filter still passed. The host
+reported Landlock ABI 4 and seccomp notification support. The diagnostic
+could not duplicate a child socket with `pidfd_getfd`. The Pod was deleted
+and its absence confirmed in the RunPod API.
+
+An independent VPS reconciliation timer is active. It is scoped to the
+production render ledger and skips execution until that ledger exists. A
+separate readiness ledger verified access to the private R2 test bucket and
+the authenticated RunPod relay. It returned zero resources and recovery jobs.
+The R2 bucket's public development URL is disabled. Its only lifecycle rule
+aborts incomplete multipart uploads, so staged objects have no automatic TTL.
+
+The [isolated Linux boot check](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42439127328)
+passed in a non-root Docker container with the host socketless filter. The
+Linux guest could use loopback and had no network device or default route.
+This boot check does not certify a Chromium render or the target RunPod host.
+
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch
 base `fafcf6e` is a descendant, 283 commits ahead. The tests ran in an isolated

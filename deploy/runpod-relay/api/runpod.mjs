@@ -9,6 +9,19 @@ const createFields = ['name', 'imageName', 'computeType', 'cloudType', 'interrup
 const fields = (value, keys) => Object.fromEntries(keys.filter(k =>
   ['string', 'number'].includes(typeof value?.[k])).map(k => [k, value[k]]));
 
+function hostCapabilities(data) {
+  const result = {};
+  for (const key of ['user_namespace', 'network_namespace']) {
+    if (['ok', 'permission_denied', 'failed'].includes(data?.[key])) result[key] = data[key];
+  }
+  for (const key of ['process_vm_readv', 'pidfd_getfd', 'seccomp_listener']) {
+    if (typeof data?.[key] === 'boolean') result[key] = data[key];
+  }
+  if (Number.isInteger(data?.landlock_abi) && data.landlock_abi >= 0 && data.landlock_abi <= 100)
+    result.landlock_abi = data.landlock_abi;
+  return result;
+}
+
 function canaryRejection(data) {
   const parts = [data?.code, data?.message, data?.detail, data?.error?.code, data?.error?.message];
   const reason = parts.filter(value => typeof value === 'string').join(' ').toLowerCase();
@@ -95,6 +108,7 @@ async function probeResult(body, headers, signal) {
               network_containment_passed: probe.network_containment_passed,
               ...(typeof probe.socketless_containment_passed === 'boolean'
                 ? { socketless_containment_passed: probe.socketless_containment_passed } : {}),
+              ...(probe.host_capabilities ? { host_capabilities: hostCapabilities(probe.host_capabilities) } : {}),
             } };
         } catch { /* Ignore unrelated log entries. */ }
       }

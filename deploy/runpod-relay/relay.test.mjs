@@ -36,6 +36,8 @@ test('relay refuses unauthorized traffic, arbitrary paths, and never returns ups
     if (url.pathname === '/v2/pods/created/logs') {
       const line = JSON.stringify({
         network_containment_passed: false, socketless_containment_passed: true, sandbox_certified: false,
+        host_capabilities: { user_namespace: 'permission_denied', landlock_abi: 6, seccomp_listener: true,
+          pidfd_getfd: false, leaked_detail: 'must-not-return' },
       });
       return new Response('data: ' + JSON.stringify({ source: 'container', line }) + '\n\n');
     }
@@ -81,5 +83,7 @@ test('relay refuses unauthorized traffic, arbitrary paths, and never returns ups
   assert.deepEqual(await call({ method: 'GET', path: 'canary/pods/created/result', query: { name } }),
     [200, { upstream_status: 200, result: {
       network_containment_passed: false, socketless_containment_passed: true,
+      host_capabilities: { user_namespace: 'permission_denied', landlock_abi: 6,
+        seccomp_listener: true, pidfd_getfd: false },
     } }]);
 });
