@@ -1986,7 +1986,17 @@ def confirm_action(action_id: str, user_key: str) -> dict:
 def cancel_project(project_id: str, user_key: str) -> dict:
     project = run(repo.get_project(project_id, user_key))
     if not project.get("external_ref"): raise ValueError("عملیات فعالی وجود ندارد")
-    result = execute("cancel_operation", {"engine": project["engine"], "external_ref": project["external_ref"]})
+    try:
+        result = execute("cancel_operation", {"engine": project["engine"], "external_ref": project["external_ref"]})
+    except ValueError as exc:
+        # The engine has nothing to cancel (its job was stopped already, or a restart ended it) while the project still reads "running":
+        # the person pressed Stop to end exactly that, so settle the project instead of leaving the chat "working" for ever.
+        # (Bad input is not that: a validation error is raised, not settled.)
+        from pydantic import ValidationError
+        if isinstance(exc, ValidationError):
+            raise
+        log.info("cancel: nothing was running for project %s (%s)", project_id, str(exc)[:120])
+        result = {"status": "not_running"}
     run(repo.update_project(project_id, user_key, status="canceled", state={**project["state"], "last_observed": {}}))
     _emit(project["conversation_id"], "tool.completed", tool="cancel_operation", message="عملیات لغو شد.")
     return result
