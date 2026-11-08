@@ -6,6 +6,7 @@ const T0 = Date.parse("2026-10-20T10:00:00Z");
 const at = s => new Date(T0 + s * 1000).toISOString();
 const msg = (id, role, s, content = "x") => ({ id, role, content, attachments: [], created_at: at(s) });
 const ev = (seq, type, s, data = {}) => ({ id: seq, seq, type, data, created_at: at(s) });
+const near = s => Date.parse(at(s)) + 1000;
 const project = (state = {}, status = "running") => ({ id: "p1", conversation_id: "c", engine: "motion", title: "T", status, current_version: 1, state, created_at: at(0), updated_at: at(0) });
 
 test('reload keeps saved narration even when completion has no text', () => {
@@ -238,14 +239,23 @@ test('a ready plan releases stale analysis busy state without unlocking subseque
   const busy = ev(1, 'work.state', 0, { busy: true });
   const ready = ev(2, 'plan.ready', 5, { project_id: 'p1', version: 1 });
   assert.equal(serverBusy([busy, ready], true), false);
-  assert.equal(serverBusy([busy, ready, ev(3, 'work.state', 6, { busy: true })], false), true);
+  assert.equal(serverBusy([busy, ready, ev(3, 'work.state', 6, { busy: true })], false, near(6)), true);
 });
 
 test('a motion job that failed after the last busy signal is not busy any more', () => {
   const busy = ev(1, 'work.state', 0, { busy: true });
-  assert.equal(serverBusy([busy], false), true);
+  assert.equal(serverBusy([busy], false, near(0)), true);
   assert.equal(serverBusy([busy, ev(2, 'job.failed', 5)], false), false);
   assert.equal(serverBusy([busy, ev(2, 'motion.progress', 5, { status: 'failed' })], true), false);
   assert.equal(serverBusy([busy, ev(2, 'motion.completed', 5)], true), false);
-  assert.equal(serverBusy([ev(1, 'job.failed', 1), ev(2, 'work.state', 2, { busy: true })], false), true);
+  assert.equal(serverBusy([ev(1, 'job.failed', 1), ev(2, 'work.state', 2, { busy: true })], false, near(2)), true);
+});
+
+test('a "busy" left by a worker that died is dropped once the server says nothing runs and no event came for two minutes', () => {
+  const busy = ev(1, 'work.state', 0, { busy: true });
+  const later = Date.parse(at(0)) + 3 * 60 * 1000;
+  assert.equal(serverBusy([busy], false, later), false);
+  assert.equal(serverBusy([busy], true, later), true);          // the server still says it is working
+  assert.equal(serverBusy([busy], undefined, later), true);     // unknown: keep the event's word
+  assert.equal(serverBusy([busy], false, Date.parse(at(0)) + 30 * 1000), true);   // recent: still busy
 });

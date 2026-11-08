@@ -81,7 +81,7 @@ test("a streamed narration keeps the pictures it talks about", () => {
 test("the server's own word about working wins over guessing from events, and Stop settles it", () => {
   assert.equal(serverBusy([], undefined), undefined);
   assert.equal(serverBusy([], true), true);                                     // the conversation payload says it is working
-  assert.equal(serverBusy([event("work.state", { busy: true }, 1)], false), true);
+  assert.equal(serverBusy([event("work.state", { busy: true }, 1)], false, Date.parse("2026-10-24T10:00:30Z")), true);   // a live event newer than the loaded payload wins
   assert.equal(serverBusy([event("work.state", { busy: true }, 1), event("work.state", { busy: false }, 2)], true), false);
   assert.equal(serverBusy([event("work.state", { busy: true }, 1), event("message.stopped", {}, 2)], true), false);
 });

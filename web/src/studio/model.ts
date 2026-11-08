@@ -448,9 +448,13 @@ export function buildTimeline({ messages, events, projects, pending, processing,
 
 /** True while the assistant is working on the latest user turn or a project is running. */
 /** The server's own answer to "is anything working for this chat?", from the latest `work.state` event (any process emits it) or, before one arrives, the conversation. */
-export function serverBusy(events: StudioEvent[], fallback?: boolean): boolean | undefined {
+export function serverBusy(events: StudioEvent[], fallback?: boolean, now: number = Date.now()): boolean | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].type === "work.state") return Boolean(events[i].data.busy);
+    if (events[i].type === "work.state") {
+      // A worker that died (a server restart) never said "idle". When the server itself reports nothing running and no event has come for a while, that last "busy" is stale.
+      if (events[i].data.busy && fallback === false && now - parseTime(events[events.length - 1].created_at) > 2 * 60 * 1000) return false;
+      return Boolean(events[i].data.busy);
+    }
     // A ready plan is a human approval boundary, not unfinished analysis.
     // A later work.state (e.g. a new revision request) still takes precedence.
     if (events[i].type === "plan.ready") return false;

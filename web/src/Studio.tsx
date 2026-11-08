@@ -325,7 +325,7 @@ export default function Studio() {
   const motionActive = useMotionActive(conversation?.state?.motion?.motion_id, events);
   const discoveryActive = useDiscoveryActive(conversation?.state?.discovery?.analysis_id, events);
   const projectRunning = projects.some(project => project.status === "running");
-  const busyOnServer = serverBusy(events, conversation?.busy);
+  const busyOnServer = serverBusy(events, conversation?.busy, now);
   const processing = isProcessing({ sending, messages, events, project: current, now }) || motionActive || discoveryActive || projectRunning || busyOnServer === true;
   // The live stream can be held back by a proxy or a mobile network (nothing arrives until a reload): also ask for new events every few seconds.
   React.useEffect(() => {
