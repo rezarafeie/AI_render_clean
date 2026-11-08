@@ -180,7 +180,8 @@ def _render_split_panel(project: Path, output: Path, meta: dict, *, timeout, on_
     from .sparse import restore_continuous_audio
     beats = [VisualBeat.model_validate(b) for b in meta['visual_library']]
     source = (project/'assets/base.mp4').resolve()
-    panel = project.parent/'hyperframes_panel'
+    from .scratch import scratch_dir
+    panel = scratch_dir(project, 'hyperframes_panel')
     build_project(panel, source, beats, duration=max(b.end for b in beats),
                   enable_registry=False, motion_only=True)
     panel_output = panel/'panel.mp4'

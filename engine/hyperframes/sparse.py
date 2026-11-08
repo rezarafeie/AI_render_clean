@@ -95,7 +95,8 @@ def render_sparse(project: Path, output: Path, render_clip, *, on_progress=None,
     from .renderer import audit_key
     key = hashlib.sha256(audit_key(project).encode() +
         repr((str(source),source.stat().st_size,source.stat().st_mtime_ns,windows,'sparse-v1')).encode()).hexdigest()[:20]
-    root = project.parent/'hyperframes_sparse'/key
+    from .scratch import scratch_dir
+    root = scratch_dir(project, 'hyperframes_sparse')/key
     root.mkdir(parents=True, exist_ok=True)
 
     def checkpoint():
