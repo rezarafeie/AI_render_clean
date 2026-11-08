@@ -107,6 +107,19 @@ guest boot and verification, on a two-CPU container. The sample had no audio.
 This establishes basic browser rendering in the guest on the CI host. It
 does not establish real RunPod timing, visual parity or a routing profile.
 
+The [published offline worker](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42440942490)
+passed the same frame check through the standard supervisor. The pinned GHCR
+digest is `sha256:a32f00f6eabe05c5fe268998261d4a963ac90f43db2ead03598f5de8f9601ec1`.
+A dedicated RunPod Secure Cloud `cpu3c` Pod then completed the synthetic
+HyperFrames job with private R2 input and output delivery. FFprobe verified
+320×180, 30 fps, 30 frames. The job took 123.02 s end to end, including
+77.42 s in the render stage and roughly 0.9 s each for preparing, downloading
+and uploading. The worker container recorded a 2.50 GB cgroup memory peak.
+The rate quoted at preflight was USD 0.06/hour, with no confirmed provider
+charge in the report. An independent inventory check confirmed Pod deletion.
+The low-priority VPS baseline timed out at 120 s and is excluded from the
+speed comparison. This short sample has no audio and is not a routing profile.
+
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch
 base `fafcf6e` is a descendant, 283 commits ahead. The tests ran in an isolated
