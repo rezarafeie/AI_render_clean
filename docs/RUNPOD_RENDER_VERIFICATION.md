@@ -120,6 +120,32 @@ charge in the report. An independent inventory check confirmed Pod deletion.
 The low-priority VPS baseline timed out at 120 s and is excluded from the
 speed comparison. This short sample has no audio and is not a routing profile.
 
+The [offline Remotion check](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42441626113)
+reached 61% progress on a 15-frame 1080×1920 fixture before the 405-second
+deadline. The offline guest remains useful for functional smoke tests, but
+this result does not support enabling Remotion production routing. A separate
+[native loopback probe](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42494789882)
+passed IPv4/IPv6 loopback and denied external TCP and nested UDP in CI. The
+probe is experimental and is not part of the production worker.
+
+A separate synthetic 30-second portrait export went through the Studio MLT
+hook, with fallback disabled in its isolated coordinator. RunPod returned
+900 frames at 1080×1920 and 30 fps, with both audio and video starting at 0 s
+and lasting 30 s. End-to-end time was 59.73 s and the worker render stage was
+16.29 s. The dedicated Pod was absent from the provider inventory after
+delivery. The [native Linux CI baseline](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42495248248)
+returned the same frame count and timing in 24.38 s of local render time.
+SHA-256 hashes of the decoded video and audio both matched the native CI
+reference exactly. This one fixture used a `veryfast` export preset.
+The low-priority VPS attempt reached its deadline and is not used as a
+performance baseline.
+
+The [native Remotion experiment with Chrome Headless Shell](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42495810470)
+rendered the same 15-frame 1080×1920 fixture in 17.18 s in CI. Its test ran
+with Docker networking disabled and a separate syscall policy permitting
+only the job's active loopback listeners. This result is for a synthetic
+fixture and needs verification on the actual RunPod host.
+
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch
 base `fafcf6e` is a descendant, 283 commits ahead. The tests ran in an isolated
