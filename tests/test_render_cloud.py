@@ -862,7 +862,8 @@ def test_mlt_hook_rebases_assets_without_modifying_timeline_or_source(tmp_path,m
     monkeypatch.setenv('RENDER_CLOUD_ENABLE_CLOUD_RENDER','1')
     monkeypatch.setenv('RENDER_CLOUD_ADMIN_USER_IDS','user')
     (tmp_path/'raw.mp4').write_bytes(b'owned-video')
-    markup=f'<mlt><profile width="1080" height="1920" frame_rate_num="30"/><producer><property name="resource">{tmp_path}/raw.mp4</property></producer><tractor id="main" in="0" out="29"/></mlt>'
+    (tmp_path/'captions.ass').write_text('fixture subtitles')
+    markup=f'<mlt><profile width="1080" height="1920" frame_rate_num="30"/><property name="ai-render:burn_ass">captions.ass</property><producer><property name="resource">{tmp_path}/raw.mp4</property></producer><tractor id="main" in="0" out="29"/></mlt>'
     source=tmp_path/'project.mlt'
     source.write_text(markup)
     def render(project,output,**kw):
@@ -871,6 +872,7 @@ def test_mlt_hook_rebases_assets_without_modifying_timeline_or_source(tmp_path,m
         assert path.startswith('assets/') and (project/path).read_bytes()==b'owned-video'
         assert tree.find('tractor').get('out')=='29'
         assert kw['width']==540 and kw['height']==960 and kw['duration']==1
+        assert set(kw['features']) == {'subtitles', 'preview', 'custom-export'}
         return True
     monkeypatch.setattr(service,'render_prepared',render)
     token=hooks.identity.set(('user','job',(tmp_path,)))

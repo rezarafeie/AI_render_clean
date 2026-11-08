@@ -159,6 +159,16 @@ def mlt(project_file, output, *, on_progress=None, **options):
     if options.get('preview'):
         scale = min(1.0,max(.1,float(style.get('render',{}).get('preview_scale',.5))))
         width, height = max(2,int(width*scale)&~1), max(2,int(height*scale)&~1)
+    caption_properties = {'ai-render:caption_font_file', 'ai-render:burn_ass', 'ai-render:captions_ass'}
+    features = []
+    if any(prop.text and prop.get('name') in caption_properties for prop in tree.iter('property')):
+        features.append('subtitles')
+    if options.get('preview'):
+        features.append('preview')
+    if options.get('apply_loudnorm'):
+        features.append('loudnorm')
+    if options.get('style_override') or options.get('crf_override') is not None:
+        features.append('custom-export')
     with tempfile.TemporaryDirectory(prefix='editorgpt-mlt-input-') as directory:
         staged = Path(directory)
         approved = [root, *(Path(p).resolve() for p in who[2]),
@@ -197,6 +207,7 @@ def mlt(project_file, output, *, on_progress=None, **options):
         return render_prepared(staged, output, user=who[0], project_id=who[1], engine='mlt',
                                duration=frames/fps,width=width,height=height,fps=fps,
                                entrypoint='project.mlt',mlt_options=options,on_progress=on_progress,
+                               features=features,
                                should_cancel=who[3] if len(who)>3 else None,
                                on_stage=who[4] if len(who)>4 else None,lock_root=root)
 
