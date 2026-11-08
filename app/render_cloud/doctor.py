@@ -29,6 +29,8 @@ def inspect(config=None, *, phase='admission'):
     checks['storage_destination'] = bool(config.s3_bucket and config.storage_hosts)
     checks['storage_sdk'] = importlib.util.find_spec('boto3') is not None
     checks['immutable_worker_image'] = bool(re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}',config.image))
+    if config.browser_image:
+        checks['immutable_browser_worker_image'] = bool(re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}',config.browser_image))
     checks['administrator_canary_allowlist'] = bool(config.admin_user_ids.strip())
     checks['hardware_allowlist'] = bool(config.cpu_ids.strip() or config.gpu_ids.strip())
     checks['worker_sandbox_certified'] = config.sandbox_verified
@@ -47,7 +49,7 @@ def inspect(config=None, *, phase='admission'):
     except (OSError,ValueError,TypeError):
         checks['valid_profile_registry'] = False
     checks['eligible_measured_profile'] = any(
-        p.parity_verified and config.isolates(p.engine) and p.image_digest==config.image and p.vcpu==config.vcpu
+        p.parity_verified and config.isolates(p.engine) and p.image_digest==config.image_for(p.engine) and p.vcpu==config.vcpu
         and p.hourly_usd>0 and p.min_memory_gb>0 and p.estimated_usd>0
         and p.hardware_id in (config.cpu_ids if p.backend=='runpod_cpu' else config.gpu_ids).split(',')
         and (p.backend=='runpod_cpu' or p.backend=='runpod_gpu' and p.gpu_acceleration_verified)

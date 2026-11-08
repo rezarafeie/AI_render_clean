@@ -184,23 +184,31 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, target)
                     paths.append(name.as_posix())
+            runtime_env = {k: os.environ[k] for k in ('REMOTION_LOOK', 'REMOTION_CONCURRENCY', 'HYPERFRAMES_WORKERS')
+                           if k in os.environ}
+            render_features = list(features)
+            worker_key = ('REMOTION_CONCURRENCY' if engine == 'remotion' else
+                          'HYPERFRAMES_WORKERS' if engine.startswith('hyperframes_') else None)
+            if worker_key and config.browser_render_workers is not None:
+                runtime_env[worker_key] = str(config.browser_render_workers)
+                render_features.append('browser-workers:' + runtime_env[worker_key])
             spec = freeze(root, paths, job_id='pending', user_id=str(user), project_id=str(project_id), engine=engine,
                           entrypoint=entrypoint, duration_seconds=duration, width=width, height=height, fps=fps,
                           timeout_seconds=min(int(timeout), config.max_wall_seconds),
                           workspace_bytes=config.disk_gb * 1024**3 // 2, audio_required=audio_required,
                           mlt_options=mlt_options or {},
                           export_format=export_format,output='output.'+export_format,
-                          features=list(features),
-                          runtime_env={k:os.environ[k] for k in ('REMOTION_LOOK','REMOTION_CONCURRENCY','HYPERFRAMES_WORKERS') if k in os.environ})
+                          features=render_features, runtime_env=runtime_env)
         except (ValueError, OSError):
             if config.enable_local_fallback and config.override == 'auto':
                 return False
             raise CloudRenderError('Prepared project is not portable') from None
+        image = config.image_for(engine)
         backend, _ = choose(spec, profiles, config.flags(), admin=True, override=config.override,
-                            max_cost=config.max_cost, image_digest=config.image)
+                            max_cost=config.max_cost, image_digest=image)
         if backend == 'local':
             return False
-        profile = min((p for p in profiles if p.backend == backend and p.engine == engine and p.image_digest == config.image
+        profile = min((p for p in profiles if p.backend == backend and p.engine == engine and p.image_digest == image
                        and (p.width,p.height,p.fps) == (width,height,fps) and p.parity_verified and p.max_duration >= duration
                        and p.export_format==spec.export_format and set(p.features)==set(spec.features)
                        and (backend!='runpod_gpu' or p.gpu_acceleration_verified)
@@ -234,7 +242,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                             config.max_workers, config.max_gpu, config.max_wall_seconds)
             provision(spec, ledger=ledger, provider=provider, flags=config.flags(), admin=True,
                       backend=backend, estimate=max(profile.estimated_usd, profile.hourly_usd * config.max_wall_seconds / 3600),
-                      limits=limits, image=config.image,
+                      limits=limits, image=image,
                       hardware_ids=[profile.hardware_id],
                       deployment=config.deployment, vcpu=config.vcpu, disk_gb=config.disk_gb,
                       storage_hosts=config.storage_hosts,max_hourly_usd=profile.hourly_usd,min_memory_gb=profile.min_memory_gb,

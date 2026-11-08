@@ -18,7 +18,7 @@ also verified the registry reference in the live RunPod API account. This checks
 the reference, not the image pull.
 
 Branch: `feat/runpod-render-infrastructure-20261107`, based on main `fafcf6e`.
-The production EditorGPT app has not been deployed with cloud admission enabled.
+At this stage production cloud admission was still disabled.
 An independent VPS smoke test of the private R2 bucket verified signed PUT/GET,
 matching content, and cleanup.
 
@@ -156,6 +156,24 @@ including 47.23 s in the render stage. This is still a short canary, not a
 representative performance profile. Separate [reachable peer tests](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42496394434)
 also verified the native broker denied traffic to a reachable private peer,
 an unrelated loopback server, and attempts to replace its seccomp filter.
+
+The hardened native candidate passed its [CI build and smoke](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42497789539)
+and two separate RunPod CPU tests. Remotion returned 450 frames at 1080×1920
+with 15.019 s of audio. It took 283.19 s end to end and 163.49 s in the
+render stage. HyperFrames returned 360 frames at the same resolution with
+12.0 s of audio. It took 85.57 s end to end and 38.92 s in the render stage.
+Both outputs used 30 fps and started audio and video at 0 s. These were
+synthetic, single-job benchmarks and actual provider charges were unavailable.
+The [native reference runs](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42498845652)
+matched decoded video and audio SHA-256 for both outputs. The exact release
+image also passed the [reachable peer isolation test](https://github.com/rezarafeie/editorgpt-runpod-worker-build/actions/runs/42499075061).
+
+On 2026-11-08 the existing production API and Celery worker were updated with
+an administrator-only CPU pilot for the tested 1080×1920 MLT preset. Other
+profiles stayed local. The API and worker health checks passed, an unauthenticated
+status request returned HTTP 401, and the authenticated Settings panel showed
+the administrator canary enabled. The private R2 staging prefix
+`render/production/v1/` has an enabled seven-day expiration rule.
 
 The live VPS checkout is based on `ac81e30` and has tracked local modifications
 in Studio, Talking styles and the server Compose overlay. The RunPod branch

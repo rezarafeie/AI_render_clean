@@ -757,6 +757,10 @@ def test_browser_and_talking_styles_require_verified_namespace(tmp_path):
     from app.render_cloud.settings import CloudSettings
     config = CloudSettings(sandbox_verified=True, ledger=tmp_path/'ledger', benchmarks=tmp_path/'profiles')
     assert config.isolates('mlt')
+    split_images = config.model_copy(update={'image': 'mlt-image', 'browser_image': 'browser-image'})
+    assert split_images.image_for('mlt') == 'mlt-image'
+    assert split_images.image_for('remotion') == 'browser-image'
+    assert split_images.model_copy(update={'browser_image': ''}).image_for('remotion') == 'mlt-image'
     for engine in ('hyperframes_page', 'hyperframes_project', 'hyperframes_product', 'remotion',
                    'talking_1', 'talking_2', 'talking_3', 'talking_4'):
         assert not config.isolates(engine)

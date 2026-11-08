@@ -2,9 +2,10 @@
 
 ## Status and boundaries
 
-Implemented opt-in integration; **not production enabled or live-certified**.
-All cloud flags default off. Existing local engines remain the default. No real
-RunPod/S3 benchmark, container build or deployment is claimed by this document.
+The production installation has an administrator-only RunPod CPU pilot for
+the measured MLT portrait profile. Cloud flags default off in a fresh install.
+Unmatched jobs continue to use the local engines. See the verification report
+for live measurements and rollout gates.
 
 The existing job orchestration remains authoritative. Prepared engine inputs are
 frozen and hashed on the VPS, dispatched to a dedicated CPU/GPU Pod, downloaded
@@ -67,6 +68,8 @@ Environment variables (all except the stated aliases use `RENDER_CLOUD_`):
 | `RENDER_CLOUD_NATIVE_BROWSER_VERIFIED` | false; set only after the selected native worker passes isolation and representative rendering on its target host |
 | `RENDER_CLOUD_ADMIN_USER_IDS` | comma-separated authenticated user IDs |
 | `RENDER_CLOUD_IMAGE` | immutable `registry/image@sha256:...` |
+| `RENDER_CLOUD_BROWSER_IMAGE` | optional separate immutable image for browser engines |
+| `RENDER_CLOUD_BROWSER_RENDER_WORKERS` | optional 1–4 capture workers for cloud HyperFrames and Remotion only |
 | `RENDER_CLOUD_CPU_IDS`, `RENDER_CLOUD_GPU_IDS` | verified RunPod resource IDs |
 | `RENDER_CLOUD_VCPU`, `RENDER_CLOUD_DISK_GB` | 8, 40 |
 | `RENDER_CLOUD_MAX_WORKERS`, `RENDER_CLOUD_MAX_GPU` | 1, 0 |

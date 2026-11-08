@@ -74,13 +74,15 @@ def hyperframes(project, output, *, engine, timeout, on_progress=None, should_ca
         return False
     from .service import render_prepared
     markup = (project / 'index.html').read_text()
+    audio = '<audio ' in markup or 'data-has-audio="true"' in markup
+    features = [name for enabled, name in ((fmt == 'webm', 'transparent'), ('<canvas' in markup, 'canvas'),
+                                          (audio, 'audio')) if enabled]
     return render_prepared(project, output, user=user, project_id=project_id, engine=engine,
                            duration=duration, width=width, height=height, timeout=timeout,
                            on_progress=on_progress, should_cancel=should_cancel,
                            owned_roots=owned_roots, on_stage=on_stage,
                            export_format=fmt,
-                           features=(['transparent'] if fmt=='webm' else [])+(['canvas'] if '<canvas' in markup else []),
-                           audio_required='<audio ' in markup or 'data-has-audio="true"' in markup)
+                           features=features, audio_required=audio)
 
 
 def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
@@ -93,7 +95,8 @@ def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
     user, project_id, owned_roots = who[:3]
     root = job_dir.resolve()
     config = json.loads(json.dumps(config))
-    if os.environ.get('REMOTION_LOOK','classic') == 'cinematic':
+    look = os.environ.get('REMOTION_LOOK', 'classic')
+    if look == 'cinematic':
         from engine.remotion_renderer import _enrich
         _enrich(config, root)
     # Called after existing renderer argument validation/enrichment. Rebase only
@@ -124,14 +127,24 @@ def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
         frames = sum(s['frames'] for s in config['scenes'])
         native = config.get('version') == 3
         width, height = (int(config['width']),int(config['height'])) if native else (1080,1920)
+        version = config.get('version') if config.get('version') in (2, 3) else 1
+        scenes = config['scenes']
+        narration = any(scene.get('narration') for scene in scenes)
+        music = bool(config.get('music'))
+        images = all(Path(scene.get('asset') or '').suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}
+                     for scene in scenes)
+        features = [f'version:{version}', f'scenes:{len(scenes)}', f'look:{look}']
+        features.extend(name for enabled, name in ((native, 'native-shotcraft'), (images, 'image-source'),
+                        (narration, 'narration'), (music, 'music'),
+                        (any(s.get('supporting_assets') for s in scenes), 'supporting-assets')) if enabled)
         return render_prepared(staged, output, user=user, project_id=project_id, engine='remotion',
                                duration=frames/30, width=width, height=height, timeout=timeout or 5400,
                                on_progress=on_progress, entrypoint='render.json',
-                               features=['native-shotcraft'] if native else [],
+                               features=features,
                                lock_root=job_dir,
                                should_cancel=who[3] if len(who) > 3 else None,
                                on_stage=who[4] if len(who) > 4 else None,
-                               audio_required=bool(config.get('music') or any(s.get('narration') for s in config['scenes'])))
+                               audio_required=music or narration)
 
 
 def mlt(project_file, output, *, on_progress=None, **options):

@@ -22,6 +22,8 @@ class CloudSettings(BaseSettings):
     native_browser_verified: bool = False
     admin_user_ids: str = ''
     image: str = ''
+    browser_image: str = ''
+    browser_render_workers: int | None = Field(default=None, ge=1, le=4)
     deployment: str = 'editor'
     cpu_ids: str = ''
     gpu_ids: str = ''
@@ -75,6 +77,10 @@ class CloudSettings(BaseSettings):
 
     def admin(self, user):
         return bool(user and str(user) in {v.strip() for v in self.admin_user_ids.split(',') if v.strip()})
+
+    def image_for(self, engine):
+        from .socketless import ENGINES
+        return self.browser_image if self.browser_image and engine not in ENGINES else self.image
 
     def isolates(self, engine):
         from .socketless import ENGINES

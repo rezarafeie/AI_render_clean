@@ -52,7 +52,7 @@ def measure(spec, workspace, output, backend, *, allow_paid=False, max_hourly=No
                       backend=backend,estimate=max_hourly*config.max_wall_seconds/3600,
                       limits=Limits(config.max_cost,config.daily_budget,config.monthly_budget,
                                     config.max_workers,config.max_gpu,config.max_wall_seconds),
-                      image=config.image,hardware_ids=[(config.cpu_ids if backend=='runpod_cpu' else config.gpu_ids).split(',')[0]],
+                      image=config.image_for(spec.engine),hardware_ids=[(config.cpu_ids if backend=='runpod_cpu' else config.gpu_ids).split(',')[0]],
                       deployment=config.deployment,vcpu=config.vcpu,disk_gb=config.disk_gb,
                       storage_hosts=config.storage_hosts,max_hourly_usd=max_hourly,
                       bootstrap=lambda token:store.bootstrap(spec,workspace,token,time.time()+config.max_wall_seconds,ledger,
