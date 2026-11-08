@@ -141,10 +141,11 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                         raise CloudRenderError('Invalid cloud upload receipt')
                     candidate = {'sha256': report.sha256, 'size': report.size}
         current = ledger.get(spec.job_id, spec.user_id)
-        if on_stage and current['state'] != last_stage:
-            on_stage(current['state'])
-        if current['state'] != last_stage and current['state'] != 'rendering':
-            detail(current['state'])
+        if current['state'] != last_stage:
+            if on_stage:
+                on_stage(current['state'])
+            if current['state'] != 'rendering':          # while rendering the line carries the percentage instead
+                detail(current['state'])
             last_stage = current['state']
         if candidate:
             if current['state'] != 'completed' and not json.loads(current['details']).get('compute_finished'):

@@ -40,3 +40,49 @@ def test_a_real_frame_rate_difference_is_still_rejected(monkeypatch):
     monkeypatch.setattr(service, 'probe', lambda path: _media(fps='30000/1001'))
     with pytest.raises(ValueError, match='frame rate'):
         service.validate_output(_spec(), 'x.mp4')
+
+
+def test_await_result_reports_each_stage_once_and_the_percent_while_rendering(monkeypatch):
+    """on_stage fires when the stage changes (not every poll); on_detail carries the stage line and then the pod's own percentage."""
+    import json
+    import time
+
+    steps = [('provisioning', None), ('preparing', None), ('rendering', 10.0), ('rendering', 40.0), ('rendering', 70.0)]
+    cursor = {'i': -1, 'polls': 0}
+
+    class Ledger:
+        def get(self, job, user):
+            state = steps[max(cursor['i'], 0)][0]
+            return {'state': state, 'deadline': time.time() + 999, 'cancel_requested': 0, 'pod_id': 'pod',
+                    'details': json.dumps({'storage': {'mailbox_key': 'm', 'control_key': 'c', 'output_key': 'o'}})}
+
+        def snapshot(self, *args, **kwargs):
+            pass
+
+        def cancel(self, *args, **kwargs):
+            pass
+
+    class Store:
+        def read_json(self, key):
+            cursor['i'] = min(cursor['i'] + 1, len(steps) - 1)
+            state, progress = steps[cursor['i']]
+            return {'token': 't' * 40, 'sequence': cursor['i'] + 1, 'history': [state],
+                    'observation': {'state': state, 'progress': progress}}
+
+        def write_json(self, *args, **kwargs):
+            pass
+
+    def cancelled():
+        cursor['polls'] += 1
+        return cursor['polls'] > len(steps)
+
+    monkeypatch.setattr(service, 'reconcile', lambda *a, **k: None)
+    stages, details, percents = [], [], []
+    spec = SimpleNamespace(job_id='j', user_id='1')
+    with pytest.raises(InterruptedError):
+        service.await_result(spec, 'out.mp4', ledger=Ledger(), store=Store(), provider=None, on_progress=percents.append,
+                             on_stage=stages.append, on_detail=details.append, should_cancel=cancelled, sleep=lambda s: None)
+    assert stages == ['provisioning', 'preparing', 'rendering']
+    assert percents == [10.0, 40.0, 70.0]
+    assert details[0] == service.cloud_detail('provisioning') and details[1] == service.cloud_detail('preparing')
+    assert any('10٪' in d for d in details) and any('70٪' in d for d in details)
