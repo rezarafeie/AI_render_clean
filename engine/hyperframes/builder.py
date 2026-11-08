@@ -31,6 +31,15 @@ def _visual_type(title: str, items: list[str], requested: str = "") -> str:
     return "concept"
 
 
+def _beat_visual_type(title: str, items: list[str], idea: dict) -> str:
+    """The type of a beat. A beat whose motion resource was chosen for the director's type keeps that type: the resource is only valid for it, and the
+    title/items guess (a "concept" with two items reads as "steps") would otherwise reject the resource and stop the whole render."""
+    requested = str(idea.get('visual_type') or '')
+    if idea.get('resource_id') and requested in VISUAL_TYPES:
+        return requested
+    return _visual_type(title, items, requested)
+
+
 def _out_time(plan, source_time: float) -> float | None:
     """Map a source transcript timestamp to the edited output timeline."""
     matches = [shot for shot in plan.shots if float(shot.src_in) <= source_time <= float(shot.src_out)]
@@ -198,7 +207,7 @@ def _continuous_beats(plan, decisions: dict, transcript: dict) -> list[VisualBea
             end = float(shot.out_start) + max(0, boundary-float(shot.src_in)) if shot else float(plan.duration)
         if end-start < .65:
             continue
-        visual_type = _visual_type(title, idea.get('items') or [], str(idea.get('visual_type') or ''))
+        visual_type = _beat_visual_type(title, idea.get('items') or [], idea)
         recipe_id = ''
         if idea.get('resource_id'):
             from creative.resources.planning import resolve_talking_recipe
