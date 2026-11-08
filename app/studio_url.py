@@ -140,6 +140,23 @@ def _relay_fetch(url: str, *, max_bytes: int, accept: str, allow_http_error: boo
     return (data, final, content_type, status) if with_status else (data, final, content_type)
 
 
+def _relay_or_direct(url: str, *, max_bytes: int, accept: str, headers: dict[str, str] | None, timeout: float,
+                     allow_http_error: bool, with_status: bool):
+    """The relay answers for hosts this network cannot reach. A host the relay cannot reach itself (an Iranian shop that refuses foreign addresses)
+    was only given a few seconds directly, which a busy server can miss: when the relay fails too, ask the host directly once more, with the full timeout."""
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        return _relay_fetch(url, max_bytes=max_bytes, accept=accept, allow_http_error=allow_http_error, with_status=with_status)
+    except Exception as relay_error:
+        try:
+            result = _fetch_direct(url, max_bytes=max_bytes, accept=accept, headers=headers, timeout=timeout,
+                                   allow_http_error=allow_http_error, with_status=with_status)
+        except Exception:
+            raise relay_error
+        _DIRECT_FAILED.pop(host, None)          # it does answer directly: stop sending it to the relay
+        return result
+
+
 def _fetch(url: str, *, max_bytes: int, accept: str,
            headers: dict[str, str] | None = None, timeout: float = 20, allow_http_error: bool = False, with_status: bool = False):
     """Directly first; when this network cannot reach the host (reset, timeout) the relay outside it answers instead."""
@@ -149,7 +166,8 @@ def _fetch(url: str, *, max_bytes: int, accept: str,
     url = _relay_public_url(url)
     host = urllib.parse.urlsplit(url).hostname or ""
     if time.monotonic() < _DIRECT_FAILED.get(host, 0):          # this host just failed directly: do not wait for it again for every image and script
-        return _relay_fetch(url, max_bytes=max_bytes, accept=accept, allow_http_error=allow_http_error, with_status=with_status)
+        return _relay_or_direct(url, max_bytes=max_bytes, accept=accept, headers=headers, timeout=timeout,
+                                allow_http_error=allow_http_error, with_status=with_status)
     # A host this network half-reaches answers slowly rather than failing: give the direct attempt a hard wall-clock limit.
     attempt = _DIRECT_POOL.submit(_fetch_direct, url, max_bytes=max_bytes, accept=accept, headers=headers, timeout=min(timeout, 8),
                                   allow_http_error=allow_http_error, with_status=with_status)
@@ -157,12 +175,29 @@ def _fetch(url: str, *, max_bytes: int, accept: str,
         return attempt.result(timeout=DIRECT_WAIT_S)
     except (urllib.error.URLError, OSError, http.client.HTTPException, TimeoutError, concurrent.futures.TimeoutError):
         _DIRECT_FAILED[host] = time.monotonic() + 300
-        return _relay_fetch(url, max_bytes=max_bytes, accept=accept, allow_http_error=allow_http_error, with_status=with_status)
+        return _relay_or_direct(url, max_bytes=max_bytes, accept=accept, headers=headers, timeout=timeout,
+                                allow_http_error=allow_http_error, with_status=with_status)
     except ValueError as exc:
         if str(exc) not in {'Private, loopback and reserved addresses are not allowed', 'The page hostname could not be resolved', 'The page returned HTTP 403'}:
             raise
         _DIRECT_FAILED[host] = time.monotonic() + 300
-        return _relay_fetch(url, max_bytes=max_bytes, accept=accept, allow_http_error=allow_http_error, with_status=with_status)
+        return _relay_or_direct(url, max_bytes=max_bytes, accept=accept, headers=headers, timeout=timeout,
+                                allow_http_error=allow_http_error, with_status=with_status)
+
+
+def _render_relay_or_direct(url: str, output: Path) -> dict:
+    """The relay's browser first; a site it cannot reach is rendered by this server's own browser instead."""
+    from .public_page_browser import render_page, render_page_via_relay
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        return render_page_via_relay(url, output)
+    except Exception as relay_error:
+        try:
+            result = render_page(url, output)
+        except Exception:
+            raise relay_error
+        _DIRECT_FAILED.pop(host, None)
+        return result
 
 
 def _render(url: str, output: Path) -> dict:
@@ -172,11 +207,11 @@ def _render(url: str, output: Path) -> dict:
         return render_page(url, output)
     host = urllib.parse.urlsplit(url).hostname or ""
     if time.monotonic() < _DIRECT_FAILED.get(host, 0):
-        return render_page_via_relay(url, output)
+        return _render_relay_or_direct(url, output)
     try:
         return render_page(url, output)
     except (OSError, ValueError):
-        return render_page_via_relay(url, output)
+        return _render_relay_or_direct(url, output)
 
 
 def _fetch_direct(url: str, *, max_bytes: int, accept: str,
