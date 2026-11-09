@@ -1253,6 +1253,21 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             logger = logging.getLogger(__name__)
             rendered = False
             if os.environ.get("REEL_ENGINE", "hyperframes") == "hyperframes":
+                # The motion designer authors each scene for this content (the approved words, timing, narration and pictures are its brief); the built-in page is the floor.
+                try:
+                    from creative import reel_designer
+                    from engine.remotion_renderer import prepare_reel_config
+                    job.render.message = "designing motion scenes"
+                    _write_status(job)
+                    rendered = reel_designer.render(job, data, prepare_reel_config(motion_config, job.dir), out_path, on_progress=report)
+                    if rendered:
+                        job.render.message = "rendering"
+                except Exception as exc:
+                    from app.render_cloud.service import CloudRenderError
+                    if isinstance(exc, CloudRenderError):
+                        raise
+                    logger.warning("Designed reel failed (%s); the built-in reel page is used", str(exc)[:300])
+            if os.environ.get("REEL_ENGINE", "hyperframes") == "hyperframes" and not rendered:
                 # The HyperFrames engine renders the cinematic reel; Remotion stays as the fallback when it cannot run.
                 try:
                     from engine.hyperframes import product_reel
@@ -1350,6 +1365,8 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                 persian = {voice for voice, _, _ in NARRATORS[1:10]}
                 used = {n.get('voice_id') for n in (job.plan_data or {}).get('generation_meta', {}).get('voices', []) if isinstance(n, dict)}
                 notes = output_issues(board, music=bool(data.get('music')), voice_ids=used, persian_voices=persian)
+                if getattr(job, 'designer_note', None):
+                    notes.append('طراح موشن اجرا نشد و قالب پایه استفاده شد: ' + str(job.designer_note))
             except Exception:
                 notes = []
             if notes:

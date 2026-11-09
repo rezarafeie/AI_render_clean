@@ -9,7 +9,7 @@ RENDER_STAGES_FA = {
     "building mlt": "آماده‌سازی برنامهٔ رندر", "rendering": "رندر صحنه‌ها", "rendering motion scenes": "رندر موشن‌گرافیک صحنه‌ها",
     "adding poster to video": "افزودن پوستر به ویدیو", "checking export": "بررسی فایل خروجی",
     "reviewing creative output": "بازبینی کیفیت خلاقانهٔ خروجی", "checking reference fidelity": "بررسی تطابق با مرجع",
-    "reviewing motion scenes": "بازبینی کیفیت صحنه‌های موشن",
+    "reviewing motion scenes": "بازبینی کیفیت صحنه‌های موشن", "designing motion scenes": "طراحی صحنه‌های موشن توسط طراح",
 }
 
 

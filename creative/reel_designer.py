@@ -1,0 +1,218 @@
+"""A storyboard video designed by the motion designer, scene by scene, instead of poured into one fixed page.
+
+The approved storyboard (its words, its timing, its narration, its pictures) is the brief. Each scene is authored by the same designer the motion-graphic
+engine uses (HTML + CSS + GSAP written for THIS content, with the product pictures available, validated before anything is rendered), the scenes are
+assembled with their entrances, the narration and a ducked music bed, checked in the browser and rendered by HyperFrames.
+
+It can only raise the ceiling: when anything fails the caller keeps the built-in reel page, so a video is still produced.
+"""
+from __future__ import annotations
+
+import contextvars
+import hashlib
+import json
+import logging
+import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from . import motion_graphic as mg
+from .schemas import CreativeUnavailable
+
+log = logging.getLogger(__name__)
+
+MAX_PARALLEL = 3
+PICTURE_PX = 1600
+
+
+def enabled() -> bool:
+    import os
+    from . import director
+    return director.enabled() and os.environ.get("REEL_DESIGNER", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _picture(source: Path, work: Path) -> tuple[str, int, int]:
+    """The product picture as the designer may reference it: ./assets/ui-<16 hex>.png, fitted inside PICTURE_PX."""
+    name = "ui-" + hashlib.sha256(str(source).encode()).hexdigest()[:16] + ".png"
+    target = work / "assets" / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.is_file():
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-vf",
+                        f"scale='min({PICTURE_PX},iw)':'min({PICTURE_PX},ih)':force_original_aspect_ratio=decrease", "-frames:v", "1", str(target)],
+                       check=True, capture_output=True, timeout=60)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(target)],
+                           capture_output=True, text=True, timeout=30).stdout.strip().split(",")
+    return f"./assets/{name}", int(probe[0]), int(probe[1])
+
+
+def _subjects(job_dir: Path) -> dict[str, str]:
+    """Picture file name -> what it shows (from the asset catalog the director used)."""
+    try:
+        catalog = json.loads((job_dir / "generated" / "asset_catalog.json").read_text())
+        mapping = json.loads((job_dir / "generated" / "asset_map.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    by_index = {str(row.get("index")): str(row.get("subject") or "") for row in catalog if isinstance(row, dict)}
+    return {Path(rel).name: by_index.get(index, "") for index, rel in mapping.items()}
+
+
+def build_plan(config: dict, storyboard: dict, creative: dict, design, work: Path, job_dir: Path):
+    """The MotionPlan the designers receive, made from the approved storyboard: words, timing and pictures are fixed; the design is theirs."""
+    scenes_in, boards = config["scenes"], storyboard.get("scenes", [])
+    subjects = _subjects(job_dir)
+    pictures: dict[str, tuple[str, int, int]] = {}
+    plans, cursor = [], 0.0
+    for i, row in enumerate(scenes_in):
+        board = boards[i] if i < len(boards) else {}
+        source = Path(row["asset"])
+        if source.name not in pictures:
+            pictures[source.name] = _picture(source, work)
+        src = pictures[source.name][0]
+        length = row["frames"] / 30
+        items = ", ".join(row.get("items") or [])
+        idea = (f"{board.get('description') or row.get('role') or ''}. Camera/motion: {board.get('motion_style') or ''}. "
+                f"This scene shows the product picture <img src=\"{src}\"> ({subjects.get(source.name) or 'a product picture'}); design how it appears, "
+                f"moves and is framed (crop to the relevant part, callouts for: {items or 'the key point'}). Why this visual: {board.get('why_visual') or ''}.").strip()
+        plans.append(mg.ScenePlan(headline=str(row.get("title") or board.get("text_overlay") or "")[:120] or "—", idea=idea[:900],
+                                  start=round(cursor, 3), end=round(cursor + length, 3), narration=str(row.get("narration_text") or "")))
+        cursor += length
+    chosen = creative.get("chosen") or {}
+    direction = "; ".join(x for x in (chosen.get("visual_language"), f"mood: {design.mood}", f"motion personality: {design.personality}", f"shape language: {design.shape}",
+                                      f"pacing: {chosen.get('pacing')}" if chosen.get("pacing") else "") if x)[:2400]
+    def six(color: str) -> str:
+        color = str(color)
+        return "#" + "".join(c * 2 for c in color[1:]) if len(color) == 4 else color
+    design = design.model_copy(update={k: six(getattr(design, k)) for k in ("bg", "surface", "ink", "accent", "accent2")})
+    palette = mg.Palette(bg=design.bg, surface=design.surface, ink=design.ink, accent=design.accent, accent2=design.accent2)
+    plan = mg.MotionPlan(title=str(chosen.get("name") or storyboard.get("prompt", "")[:40] or "ویدیو")[:60], summary=str(chosen.get("angle") or "")[:300],
+                         format="vertical", duration=round(cursor, 3), palette=palette, signature=str(chosen.get("name") or ""), design_direction=direction, scenes=plans)
+    return plan, pictures, subjects
+
+
+def _context(facts: dict, pictures: dict, subjects: dict) -> str:
+    lines = ["PRODUCT FACTS (verified; the only facts you may state): " + json.dumps(facts, ensure_ascii=False)[:2800],
+             "ATTACHED PICTURES the person already gave (never ask them to upload one). You cannot see them; use the exact src and this description:"]
+    for name, (src, width, height) in pictures.items():
+        lines.append(f'- <img src="{src}"> ({width}x{height} px, aspect {width / height:.2f}): {subjects.get(name) or "a product picture"}')
+    lines.append("USE OF PICTURES: the product is the hero. Show it large with width and height in px, object-fit: contain (or cover inside an overflow:hidden box), "
+                 "never stretched; frame it with shapes drawn in the film's palette, give it depth (layers, shadow, parallax), crop to the part the scene talks about, "
+                 "and never leave the same layout twice.")
+    return "\n".join(lines)
+
+
+def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]):
+    scene = plan.scenes[n - 1]
+    key = hashlib.sha256(json.dumps([scene.headline, scene.idea, scene.narration, round(scene.end - scene.start, 2), plan.design_direction, plan.palette.model_dump()],
+                                    ensure_ascii=False).encode()).hexdigest()[:20]
+    path = cache / f"s{n}.json"
+    try:
+        saved = json.loads(path.read_text())
+        if saved.get("fp") == key:
+            return mg.SceneDraft.model_validate(saved["draft"]), "reused"
+    except (OSError, ValueError):
+        pass
+    try:
+        draft = mg.author_scene(plan, n, brief, context=context, used=used)
+        path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
+        return draft, "designed"
+    except Exception as exc:
+        log.warning("reel scene %d could not be designed (%s); a plain scene is used", n, str(exc)[:200])
+        return mg.fallback_scene(plan, n), "plain"
+
+
+def _skipped(job, reason: str) -> bool:
+    """The caller falls back to the built-in page; the reason is kept so the review can tell the person the designer was not used."""
+    try:
+        job.designer_note = reason
+    except Exception:
+        pass
+    return False
+
+
+def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, should_cancel=None, timeout: int = 5400) -> bool:
+    """Design, check and render the reel. True when out_path was written; False (nothing raised) when the caller should use the built-in page."""
+    from engine.hyperframes import product_reel, standalone
+    meta = data.get("generation_meta") or {}
+    creative = meta.get("creative_plan")
+    if not enabled() or not creative or not config.get("scenes"):
+        return _skipped(job, "برنامهٔ خلاقانه یا طراح موشن در دسترس نبود")
+    work = job.dir / "reel_design"
+    cache = work / "scenes"
+    try:
+        from . import motion as motion_designer
+        shutil.rmtree(work / "project", ignore_errors=True)
+        project = work / "project"
+        cache.mkdir(parents=True, exist_ok=True)
+        project.mkdir(parents=True, exist_ok=True)
+        storyboard = json.loads((job.dir / "storyboard.json").read_text())
+        used: list[str] = []
+        public = motion_designer.plan_from_public(creative)
+        design_file = work / "design.json"
+        try:
+            design = motion_designer.DesignSystem(**json.loads(design_file.read_text()))
+        except (OSError, ValueError, TypeError):
+            brief = public.brief
+            design = motion_designer.design_system(f"topic: {brief.topic}; message: {brief.core_message}; audience: {brief.audience}; tone: {brief.tone}",
+                                                   f"{public.chosen.name}: {public.chosen.angle}. Visual language: {public.chosen.visual_language}. Pacing: {public.chosen.pacing}", used)
+            design_file.write_text(json.dumps(design.model_dump(), ensure_ascii=False))
+        plan, pictures, subjects = build_plan(config, storyboard, creative, design, project, job.dir)
+        facts = {k: v for k, v in (creative.get("facts") or {}).items()} if isinstance(creative.get("facts"), dict) else (creative.get("brief") or {})
+        context = _context(facts, pictures, subjects)
+        brief = str(storyboard.get("prompt") or "")[:1500]
+        if on_progress:
+            on_progress(2)
+        count = len(plan.scenes)
+        contexts = [contextvars.copy_context() for _ in range(count)]
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
+            results = list(pool.map(lambda n: contexts[n - 1].run(_author, plan, n, brief, context, cache, used), range(1, count + 1)))
+        drafts = [draft for draft, _ in results]
+        how = [kind for _, kind in results]
+        log.info("reel designer: %s", how)
+        if how.count("plain") * 2 > count:
+            log.warning("reel designer: most scenes fell back to plain scenes; the built-in reel page is used instead")
+            return _skipped(job, "طراحی بیشتر صحنه‌ها پس از چند بار تلاش از اعتبارسنجی رد شد")
+        if on_progress:
+            on_progress(8)
+        total = plan.duration
+        audio = []
+        cursor = 0.0
+        for row in config["scenes"]:
+            length = row["frames"] / 30
+            if row.get("narration"):
+                audio.append({"path": str(Path(row["narration"])), "start": round(cursor, 3), "duration": round(length, 3)})
+            cursor += length
+        music = (data.get("music") or {}).get("file")
+        if music:
+            try:
+                from .music_bed import make_bed
+                bed = make_bed(Path(music), work / "bed.m4a", total, audio)
+                audio.append({"path": str(bed), "start": 0, "duration": round(total, 3), "role": "music"})
+            except Exception as exc:
+                log.warning("reel music bed failed (%s); the reel is made without music", str(exc)[:200])
+        page = mg.assemble_scenes(plan, drafts, audio)
+        problems = [p for p in mg.validate_page(page, min_scenes=1) if not p.startswith("use 2-6 scenes")]      # a storyboard may have up to ten scenes
+        if problems:
+            log.warning("reel page invalid: %s", problems[:3])
+            return _skipped(job, "صفحهٔ طراحی‌شده معتبر نبود: " + mg.explain_problem(problems[0]))
+        mg.write_project(project, page)
+        check = standalone.check(project, should_cancel=should_cancel)
+        if check.blocking:
+            log.warning("reel page failed the browser check: %s", check.blocking[:2])
+            return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
+        if on_progress:
+            on_progress(12)
+        product_reel._run_cli(project, out_path, timeout=timeout,
+                              on_progress=(lambda pct: on_progress(12 + int(pct * 0.83))) if on_progress else None, should_cancel=should_cancel)
+        return out_path.is_file()
+    except CreativeUnavailable as exc:
+        log.warning("reel designer unavailable: %s", exc)
+        return _skipped(job, "طراح موشن در دسترس نبود: " + str(exc)[:160])
+    except Exception as exc:
+        from app.render_cloud.service import CloudRenderError
+        if isinstance(exc, CloudRenderError):
+            raise
+        log.warning("reel designer failed (%s); the built-in reel page is used", str(exc)[:300])
+        return _skipped(job, "طراحی موشن با خطا متوقف شد: " + str(exc)[:160])
+    finally:
+        shutil.rmtree(work / "project", ignore_errors=True)
