@@ -17,6 +17,8 @@ STYLES = {
     "talking_5": ("صحبتی ۵ (پک استایل: پنل، کارت گوینده، افکت)", "engine.talking_styles.talking_5"),
 }
 DEFAULT_STYLE = "talking_1"
+# Retired from every list a person or the planner picks from; saved jobs that used them still render through get_style.
+RETIRED = frozenset({"talking_4"})
 
 
 def get_style(style_id: str | None) -> ModuleType:
@@ -26,4 +28,4 @@ def get_style(style_id: str | None) -> ModuleType:
 
 
 def style_list() -> list[dict]:
-    return [{"id": key, "label": label} for key, (label, _) in STYLES.items()]
+    return [{"id": key, "label": label} for key, (label, _) in STYLES.items() if key not in RETIRED]

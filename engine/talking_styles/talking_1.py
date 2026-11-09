@@ -433,7 +433,7 @@ def hook_line(hook: str, highlight: list[str]) -> str:
 
 
 def build_ass(plan: ReelPlan, hook: str, highlight: list[str], name: str, title: str,
-              fonts_dir: Optional[Path], *, moments: bool = True, caption_font: str | None = None) -> str:
+              fonts_dir: Optional[Path], *, moments: bool = True, caption_font: str | None = None, plain: bool = False) -> str:
     CAPTION_FONT = caption_font or globals()['CAPTION_FONT']
     end = max(0.05, plan.duration - 0.02)
     hook_size = int(H * 0.041)
@@ -458,10 +458,10 @@ def build_ass(plan: ReelPlan, hook: str, highlight: list[str], name: str, title:
     half = widest / 2 + BOX_PAD_X * hook_size
 
     # The hook pops in (scale bounce) at the start and then stays.
-    events = [_rounded_rect(1, 0, end, W / 2 - half, top, W / 2 + half, bottom, "#000000", 18,
-                            extra=f"\\1a{BOX_ALPHA}\\fad(200,0)")]
+    events = [] if plain else [_rounded_rect(1, 0, end, W / 2 - half, top, W / 2 + half, bottom, "#000000", 18,
+                                             extra=f"\\1a{BOX_ALPHA}\\fad(200,0)")]
     pop = "\\fscx140\\fscy140\\t(0,260,\\fscx92\\fscy92)\\t(260,420,\\fscx100\\fscy100)\\fad(120,0)"
-    for line, y in zip(lines, anchors):
+    for line, y in ([] if plain else zip(lines, anchors)):          # subtitles only: the caption geometry is kept, the pinned title is not drawn
         events.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(end)},hook,,0,0,0,,"
                       f"{{\\an5\\q2\\pos({W / 2:.0f},{y:.1f}){pop}}}{hook_line(line, highlight)}")
 
@@ -1069,8 +1069,9 @@ def render(video: Path, plan: ReelPlan, out: Path, *, hook: str, highlight: list
     fonts = fonts_bundle(work_dir)
     ass = work_dir / "reel.ass"
     settings = render_settings or {}
-    ass_text = build_ass(plan, hook, highlight, name, title, fonts, moments=overlay is None,
-                         caption_font='Vazirmatn' if settings.get('caption_font') == 'Vazirmatn' else None)
+    plain = bool(settings.get('subtitles_only'))
+    ass_text = build_ass(plan, hook or "ـ", highlight, name, title, fonts, moments=overlay is None and not plain,
+                         caption_font='Vazirmatn' if settings.get('caption_font') == 'Vazirmatn' else None, plain=plain)
     from engine.caption_looks import apply as apply_caption_looks
     ass_text = apply_caption_looks(ass_text, plan.captions)
     title_color = str(settings.get("title_color") or YELLOW)

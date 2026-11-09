@@ -33,6 +33,7 @@ DEFAULTS = {
         "grade": {"brightness": 0, "contrast": 100, "saturation": 100, "temperature": 0, "vignette": 50, "auto": True},
         "zoom": {"enabled": True, "amount": 100, "base_scale": 100, "close_scale": 125},
         "framing": {"auto": True, "shift_x": 0, "shift_y": 0},
+        "subtitles_only": False,
         "key_moments_enabled": True,
         "first_key_moment_enabled": True,
         "first_key_moment_sentence": None,
@@ -228,6 +229,9 @@ def _clean_render_settings(value: object) -> dict:
     )
     for key in ("key_moments_enabled", "first_key_moment_enabled"):
         current[key] = bool(value.get(key, current[key]))
+    current["subtitles_only"] = bool(value.get("subtitles_only", current.get("subtitles_only", False)))
+    if current["subtitles_only"]:                      # captions only: no pinned title, no key frames
+        current["key_moments_enabled"] = current["first_key_moment_enabled"] = False
     try:
         selected = value.get("first_key_moment_sentence")
         current["first_key_moment_sentence"] = None if selected in (None, "") else max(0, int(selected))
@@ -461,10 +465,14 @@ def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str =
     if not selected:
         _stage(job_dir, "choosing style", progress=15)
         try:
-            selected, reason = base_brain.recommend_style(transcript["sentences"])
+            selected, reason, plain = base_brain.recommend_style_full(transcript["sentences"])
         except Exception as exc:  # a slow selector must not kill the job; the selector's own rule is "calm when unsure"
             log.warning("style selector failed for %s: %s", job_dir.name, type(exc).__name__)
-            selected, reason = "talking_4", "انتخاب خودکار سبک در دسترس نبود؛ سبک امن و ساده انتخاب شد."
+            selected, reason, plain = "talking_1", "انتخاب خودکار سبک در دسترس نبود؛ سبک امن و ساده (فقط زیرنویس) انتخاب شد.", True
+        if plain:
+            current = load(job_dir)
+            current["render_settings"] = {**(current.get("render_settings") or {}), "subtitles_only": True}
+            save(job_dir, current)
     from engine.talking_reel import STYLES
     if selected not in STYLES:
         raise ValueError(f"unknown style {selected!r}")

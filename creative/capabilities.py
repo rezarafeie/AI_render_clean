@@ -14,8 +14,6 @@ TALKING_STYLES = {
                  "before/after) timed to the speech, plus chips for tool names or steps. Best for teaching, lists, processes, tools.",
     "talking_3": "Cinematic split: like talking_2 but still-life photographic pictures and elegant chapter title cards. "
                  "Best for emotional stories, big ideas, reflective narratives.",
-    "talking_4": "Minimal speaker-led: clean captions and light accents, no generated imagery. Best for calm, authentic "
-                 "talks where graphics would distract, or when unsure.",
 }
 
 NOT_AVAILABLE = ("generated or stock video footage, face or voice cloning, 3D scenes, logos or brand assets the user "

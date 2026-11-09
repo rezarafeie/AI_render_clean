@@ -19,7 +19,7 @@ from .schemas import CreativeUnavailable
 Op = Literal["rewrite_hook", "edit_caption", "remove_sentence", "remove_range", "set_render", "change_style", "replace_visual", "drop_visual", "set_cta", "clear_identity", "add_key_moment", "remove_key_moment", "add_effect", "remove_effect", "unsupported"]
 VISUAL_TYPES = {"concept", "stat", "comparison", "steps", "ui_showcase", "media_collage", "chat", "map_route",
                 "spec_callout", "kinetic_type", "before_after"}
-STYLES = {"talking_1", "talking_2", "talking_3", "talking_4"}
+STYLES = {"talking_1", "talking_2", "talking_3"}
 
 # Render settings the model may change, with the engine's own limits (see app/talking_reel._clean_render_settings).
 GRADE_LIMITS = {"brightness": (-30, 30), "contrast": (50, 160), "saturation": (0, 180), "temperature": (-50, 50), "vignette": (0, 100)}
@@ -95,7 +95,7 @@ Operations (use exactly these):
     A 10% larger full frame multiplies current base_scale and close_scale by 1.1.
     Disabling first_key_moment_enabled removes ONLY the opening teaser, keeping other moments.
     bottom_shade adds a soft black gradient under the lower-third in Talking 1; subtle=20-30.
-- {"op":"change_style","style":"talking_1|talking_2|talking_3|talking_4"}   (re-plans the edit in that style)
+- {"op":"change_style","style":"talking_1|talking_2|talking_3"}   (re-plans the edit in that style)
 - {"op":"replace_visual","sentence":<index>,"text":"<2-6 word Persian title>","visual_type":"<concept|stat|comparison|steps|ui_showcase|media_collage|chat|map_route|spec_callout|kinetic_type|before_after>","items":["<up to 4 facts the speaker says>"]}
 - {"op":"drop_visual","sentence":<index>}
 - {"op":"set_cta","text":"<call to action>"}

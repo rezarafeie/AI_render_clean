@@ -16,7 +16,7 @@ from pathlib import Path
 from .render_ass import ass_burner_ffmpeg, subtitles_filter
 
 ROOT = Path(__file__).resolve().parent.parent
-STYLE_IDS = ("talking_1", "talking_2", "talking_3", "talking_4")
+STYLE_IDS = ("talking_1", "talking_2", "talking_3")
 SAMPLE_PHOTO = ROOT / "assets" / "style_previews" / "cinematic_still.jpg"   # a style 3 still-life, generated once
 SECONDS = 1.2   # entrance animations (pops, fades, slides) have settled by then
 PREVIEW_VERSION = 4   # bump when previews change, so cached plan frames are rebuilt

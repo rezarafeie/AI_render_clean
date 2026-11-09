@@ -56,11 +56,11 @@ black-and-white moment: write it in Persian words only (no English words, no Lat
 FILLER_WORDS = re.compile(r"^(?:[اآ]+[ِ]?)+$|^(?:ا?م+|ا?و?م+|ا?ه+)$")
 
 STYLE_SELECTOR_PROMPT = """Choose the best edit style for a Persian talking-head reel from its transcript.
-Return ONLY JSON: {"style":"talking_1|talking_2|talking_3|talking_4","reason":"short Persian reason"}.
+Return ONLY JSON: {"style":"talking_1|talking_2|talking_3|subtitles","reason":"short Persian reason"}.
 Use talking_1 for energetic personal-brand clips that benefit from bold hooks and punchy zooms.
 Use talking_2 for practical education, lists, tools, steps, or concrete explanations where a few minimal illustrations help.
 Use talking_3 for emotional stories, dramatic ideas, or reflective narratives that benefit from cinematic chapter cards.
-Use talking_4 for calm, authentic speaker-led clips where generated visuals would distract. Prefer talking_4 when uncertain."""
+Use subtitles for calm, authentic speaker-led clips that need nothing but readable captions (no pinned title, no key frames, no generated visuals). Prefer subtitles when uncertain."""
 
 
 def _sentences_prompt(sentences: list[dict]) -> str:
@@ -89,13 +89,20 @@ def _chat(system: str, user: str) -> dict:
     raise RuntimeError("The AI router was unavailable for the talking reel: " + " | ".join(errors)[:600])
 
 
-def recommend_style(sentences: list[dict]) -> tuple[str, str]:
-    """Select a talking-reel style before rendering and explain it to the editor."""
+def recommend_style_full(sentences: list[dict]) -> tuple[str, str, bool]:
+    """(style, reason, subtitles_only). "subtitles" is Talking 1 drawn without its pinned title and key frames: the former Talking 4 is retired."""
     data = _chat(STYLE_SELECTOR_PROMPT, _sentences_prompt(sentences))
     style = str(data.get("style") or "").strip()
-    if style not in {"talking_1", "talking_2", "talking_3", "talking_4"}:
-        style = "talking_4"
+    plain = style in {"subtitles", "talking_4"}
+    if plain or style not in {"talking_1", "talking_2", "talking_3"}:
+        style, plain = "talking_1", True
     reason = str(data.get("reason") or "").strip()
+    return style, reason, plain
+
+
+def recommend_style(sentences: list[dict]) -> tuple[str, str]:
+    """Select a talking-reel style before rendering and explain it to the editor."""
+    style, reason, _plain = recommend_style_full(sentences)
     return style, reason
 
 
