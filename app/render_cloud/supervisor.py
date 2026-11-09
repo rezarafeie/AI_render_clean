@@ -95,6 +95,18 @@ def terminate(process, *, grace=2):
     process.wait(timeout=5)
 
 
+def _oom_kills():
+    """Kernel out-of-memory kills in this container so far (cgroup v2); None where it cannot be read."""
+    try:
+        for line in Path('/sys/fs/cgroup/memory.events').read_text().splitlines():
+            name, _, value = line.partition(' ')
+            if name == 'oom_kill':
+                return int(value)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _stderr_tail(handle, limit=16384):
     try:
         size = handle.seek(0, 2)
@@ -141,6 +153,7 @@ def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_
                 else:
                     command = isolated_command(command)
                     env['EDITOR_RENDER_ISOLATED'] = '1'
+        oom_before = _oom_kills()
         errlog = tempfile.TemporaryFile()           # only its scrubbed tail is ever reported
         process = subprocess.Popen(command,
                                    env=env, start_new_session=True,
@@ -180,7 +193,9 @@ def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_
             if on_progress:
                 on_progress(progress)
         if process.returncode:
-            raise RuntimeError('Render child failed: ' + _stderr_tail(errlog))
+            oom = _oom_kills()
+            note = f' [out-of-memory kills: {oom - oom_before}]' if oom is not None and oom_before is not None and oom > oom_before else ''
+            raise RuntimeError('Render child failed' + note + ': ' + _stderr_tail(errlog))
         output = workspace / spec.output
         if (output.is_symlink() or not output.resolve().is_relative_to(workspace.resolve())
                 or not output.is_file() or not output.stat().st_size):
