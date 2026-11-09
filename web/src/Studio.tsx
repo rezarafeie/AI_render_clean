@@ -2,7 +2,6 @@ import React from "react";
 import { getUser } from "./auth";
 import { processingPreferences } from "./local/preferences";
 import { verifyLocalBackend } from "./local/backend";
-const ProjectRender = React.lazy(() => import("./local/ProjectRender").then(m => ({default:m.ProjectRender})));
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioFile, StudioEvent, StudioMessage } from "./api";
@@ -670,7 +669,6 @@ export default function Studio() {
       </header> : null}
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="chat-inner">
-          {current ? <React.Suspense fallback={null}><ProjectRender key={current.id} project={current} onChanged={()=>void refresh()}/></React.Suspense> : null}
           {!ready && !pending ? <div className="thread-loading" role="status" aria-label="در حال بارگذاری گفتگو"><span className="skeleton skeleton-bubble"/><span className="skeleton skeleton-line"/><span className="skeleton skeleton-bubble skeleton-end"/><span className="skeleton skeleton-line"/></div> : null}
           {ready && hasMore ? <div className="older-row" role="status">{loadingOlder ? <><span className="spinner"/> در حال بارگذاری پیام‌های قبلی…</> : <button type="button" className="btn btn-sm btn-ghost" onClick={() => void loadOlder()}>پیام‌های قبلی</button>}</div> : null}
           {ready || pending ? <Thread items={shown} events={events} conversation={conversation} projects={projects} localFiles={localFiles} thinking={thinking} sourceUrl={sourceUrl} linkTitles={linkTitles} compactRender={layout === "desktop" && desktopOpen}
