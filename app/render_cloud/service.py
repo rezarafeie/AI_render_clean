@@ -129,6 +129,7 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                 ledger.snapshot(spec.job_id, spec.user_id, report.token, report.sequence,
                                 report.history, report.observation.model_dump(),timings=report.timings,resources=report.resources)
                 if report.observation.state in {'failed', 'cancelled'}:
+                    log.warning('cloud worker %s stopped: %s', spec.job_id, report.observation.reason or report.observation.error_code)
                     raise CloudRenderError('Cloud worker stopped before completion')
                 if report.observation.state == 'rendering' and rendering_since is None:
                     rendering_since = time.monotonic()

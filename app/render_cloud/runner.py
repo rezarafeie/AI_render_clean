@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import os
 import tempfile
 import time
@@ -42,10 +43,19 @@ def run(envelope: Envelope, hosts, *, report_factory=Reporter,
                             resources=meter.finish())
     except BaseException as error:
         try:
-            reporter.report('cancelled' if isinstance(error, InterruptedError) else 'failed')
+            reporter.report('cancelled' if isinstance(error, InterruptedError) else 'failed', reason=failure_reason(error))
         except Exception:
             pass  # Independent reaper remains authoritative if reporting fails.
         raise
+
+
+def failure_reason(error):
+    """Class name and a scrubbed message: enough to diagnose, nothing that could carry a secret."""
+    text = f'{type(error).__name__}: {error}'
+    text = re.sub(r'https?://\S+', '<url>', text)
+    text = re.sub(r'(?:/[\w.\-]+){2,}', lambda m: '…/' + m.group(0).rsplit('/', 1)[-1], text)
+    text = re.sub(r'[A-Za-z0-9_\-]{32,}', '<id>', text)
+    return text.replace('\n', ' ')[:200]
 
 
 def main():

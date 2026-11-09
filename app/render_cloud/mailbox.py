@@ -117,7 +117,7 @@ class Reporter:
             self.report(self.state, self.progress)
         return self.cancelled
 
-    def report(self, state, progress=None, *, uploaded=False, sha256=None, size=None, resources=None):
+    def report(self, state, progress=None, *, uploaded=False, sha256=None, size=None, resources=None, reason=None):
         order = ['preparing', 'downloading', 'rendering', 'uploading']
         if state not in {'failed', 'cancelled'}:
             if state not in order or (self.history and state != self.history[-1] and order.index(state) != len(self.history)):
@@ -132,7 +132,8 @@ class Reporter:
         self.sequence += 1
         event = Snapshot(token=self.envelope.token, sequence=self.sequence, history=self.history,
                          observation=Observation(state=state, progress=progress,
-                                                 error_code='worker_failed' if state == 'failed' else None),
+                                                 error_code='worker_failed' if state == 'failed' else None,
+                                                 reason=reason if state == 'failed' else None),
                          uploaded=uploaded, sha256=sha256, size=size,
                          resources=resources or {},
                          timings={**self.timings,**({state:now-self.phase_started} if state in order else {})})
