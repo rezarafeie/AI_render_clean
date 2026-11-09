@@ -650,7 +650,9 @@ def source_colour_filter(video: Path) -> str:
     if raw not in {"arib-std-b67", "smpte2084"}:
         return "null"
     return (
-        "zscale=transfer=linear:npl=100,format=gbrpf32le,"
+        # The input properties are stated, not inherited: zoompan and crop can drop the stream's colour tags, and zscale then stops with
+        # "no path between colorspaces" (a talking_3 full-frame shot).
+        f"zscale=tin={raw}:pin=bt2020:min=bt2020nc:rin=tv:transfer=linear:npl=100,format=gbrpf32le,"
         # This shoulder closely matches the browser's SDR presentation of
         # iPhone HLG. Mobius left faces and pale clothes visibly overexposed.
         "zscale=primaries=bt709,tonemap=hable:desat=0,"
