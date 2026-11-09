@@ -29,6 +29,14 @@ class CloudRenderError(RuntimeError):
     """Never reinterpret as a creative/layout error or silently start another render."""
 
 
+class WorkerRejected(CloudRenderError):
+    """The worker stopped on the project itself (for example a HyperFrames check finding). `reason` is its scrubbed finding, so the caller
+    that authored the project can repair it; every other cloud failure stays final."""
+    def __init__(self, message, reason=''):
+        super().__init__(message)
+        self.reason = reason
+
+
 def validate_output(spec, path):
     measured = probe(path)
     # ffprobe reports the average rate as a ratio of frames to duration (1640000000/54666333 for a clean 30 fps clip): compare with a tolerance far
@@ -130,7 +138,8 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                                 report.history, report.observation.model_dump(),timings=report.timings,resources=report.resources)
                 if report.observation.state in {'failed', 'cancelled'}:
                     log.warning('cloud worker %s stopped: %s', spec.job_id, report.observation.reason or report.observation.error_code)
-                    raise CloudRenderError('Cloud worker stopped before completion')
+                    # The reason (a scrubbed check finding, for example) rides along so a caller can repair what the worker rejected.
+                    raise WorkerRejected('Cloud worker stopped before completion', report.observation.reason or '')
                 if report.observation.state == 'rendering' and rendering_since is None:
                     rendering_since = time.monotonic()
                 if on_progress and report.observation.progress is not None and report.observation.state == 'rendering':
@@ -323,7 +332,8 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
             ledger.finish(spec.job_id, spec.user_id, 'failed', 'cloud_execution_failed')
             if isinstance(failure, (CloudRenderError, ValueError)):       # our own checks, never a provider response with a URL in it
                 log.warning('cloud render %s failed: %s', spec.job_id, str(failure)[:200])
-            raise CloudRenderError('Cloud render failed; resource cleanup is tracked separately') from None
+            reason = getattr(failure, 'reason', '')
+            raise CloudRenderError('Cloud render failed; resource cleanup is tracked separately' + (f' | {reason}' if reason else '')) from None
         finally:
             try:
                 reconcile(provider, ledger)

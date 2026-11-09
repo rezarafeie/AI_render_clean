@@ -86,3 +86,14 @@ def test_await_result_reports_each_stage_once_and_the_percent_while_rendering(mo
     assert percents == [10.0, 40.0, 70.0]
     assert details[0] == service.cloud_detail('provisioning') and details[1] == service.cloud_detail('preparing')
     assert any('10٪' in d for d in details) and any('70٪' in d for d in details)
+
+
+def test_worker_rejection_carries_its_finding_and_scrubs_it():
+    from app.render_cloud.runner import failure_reason
+    from app.render_cloud.service import CloudRenderError, WorkerRejected
+    class HyperFramesError(RuntimeError):
+        pass
+    text = failure_reason(HyperFramesError('HyperFrames check failed: contrast 2.6:1 @#beat-0-group-0-very-long-label-name-x in /work/space/p/index.html https://x.io/a?s=1'))
+    assert '#beat-0-group-0-very-long-label-name-x' in text and 'https://' not in text and '/work/space' not in text
+    assert isinstance(WorkerRejected('stopped', text), CloudRenderError)
+    assert WorkerRejected('stopped', text).reason == text

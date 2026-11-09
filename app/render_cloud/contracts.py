@@ -106,4 +106,4 @@ class Observation(Strict):
     progress: float | None = Field(default=None, ge=0, le=100)
     error_code: str | None = Field(default=None, pattern=r'^[a-z0-9_]{1,80}$')
     # Short sanitized failure class + message (no URLs, paths or tokens) so a failed stage can be diagnosed.
-    reason: str | None = Field(default=None, max_length=200)
+    reason: str | None = Field(default=None, max_length=2400)

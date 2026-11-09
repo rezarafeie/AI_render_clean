@@ -102,7 +102,9 @@ def _stderr_tail(handle, limit=2048):
     except Exception:
         return ''
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return (lines[-1] if lines else '')[-150:]
+    last = lines[-1] if lines else ''
+    # A HyperFrames check finding names the scene and how to fix it: keep it whole so the author can repair that scene.
+    return last[-2300:] if 'HyperFramesError' in last else last[-150:]
 
 
 def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_network=False):

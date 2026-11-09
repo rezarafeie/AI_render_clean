@@ -53,9 +53,10 @@ def failure_reason(error):
     """Class name and a scrubbed message: enough to diagnose, nothing that could carry a secret."""
     text = f'{type(error).__name__}: {error}'
     text = re.sub(r'https?://\S+', '<url>', text)
-    text = re.sub(r'(?:/[\w.\-]+){2,}', lambda m: '…/' + m.group(0).rsplit('/', 1)[-1], text)
-    text = re.sub(r'[A-Za-z0-9_\-]{32,}', '<id>', text)
-    return text.replace('\n', ' ')[:200]
+    text = re.sub(r'(?<![\w#.-])(?:/[\w.\-]+){2,}', lambda m: '…/' + m.group(0).rsplit('/', 1)[-1], text)
+    text = re.sub(r'[0-9a-f]{32,}', '<id>', text)
+    text = text.replace('\n', ' ')
+    return text[:2400] if 'HyperFramesError' in text else text[:200]
 
 
 def main():
