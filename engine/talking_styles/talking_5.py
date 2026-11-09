@@ -350,8 +350,13 @@ def _mattes(video: Path, plan: ReelPlan, pack: StylePack, work_dir: Path, src_w:
     return dict(zip(index, outs))
 
 
-def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, mattes: dict[int, Path], first_matte_input: int) -> tuple[list[str], list[str]]:
-    """(filter parts, extra -i arguments) for: bg + panel + speaker layer + head layer + text. Inputs 0 = video, 1 = card mask, then mattes."""
+def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, mattes: dict[int, Path], first_matte_input: int,
+           video: Path | None = None) -> tuple[list[str], list[str], int]:
+    """(filter parts, extra -i arguments, how many of those are pinned-shot inputs) for: bg + panel + speaker layer + head layer + text.
+    Inputs 0 = video, 1 = card mask, then mattes, then one short window of the video per pinned shot.
+
+    A shot that plays before footage the reel shows later (the cold open) reads its own window of the file: on the shared input, the processed
+    frames of every shot in between would wait in concat's queues, gigabytes of them."""
     grade = GRADES.get(pack.grade, GRADES["neutral"])
     parts, slayer, player, alabels = [], [], [], []
     matte_args: list[str] = []
@@ -359,9 +364,19 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
     for k, i in enumerate(sorted(mattes)):
         matte_input[i] = first_matte_input + k
         matte_args += ["-i", str(mattes[i])]
+    pinned: dict[int, tuple[int, float]] = {}
+    if video is not None:
+        for i, shot in enumerate(plan.shots):
+            if any(plan.shots[j].src_in < shot.src_in - 0.5 for j in range(i + 1, len(plan.shots))):
+                begin = max(0.0, shot.src_in - 1.0)
+                pinned[i] = (first_matte_input + len(mattes) + len(pinned), begin)
+                matte_args += ["-ss", f"{begin:.3f}", "-t", f"{shot.src_out - begin + 1.0:.3f}", "-i", str(video)]
     for i, shot in enumerate(plan.shots):
         a, b = shot.src_in, shot.src_out
         d = b - a
+        vin, off = (f"[{pinned[i][0]}:v]", pinned[i][1]) if i in pinned else ("[0:v]", 0.0)
+        ain = f"[{pinned[i][0]}:a]" if i in pinned else "[0:a]"
+        ta, tb_ = a - off, b - off
         x, y, w, h = _crop(plan, shot, src_w, src_h, pack, shot.split)
         if shot.split:
             sx, sy, sw, sh = _crop(plan, shot, src_w, src_h, pack, False)
@@ -380,11 +395,11 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
             parts.append(f"{''.join(pieces)}concat=n={len(pieces)}:v=1:a=0,format=gray[mk{i}]")
             drop = _placement(plan, src_w, src_h)[4]
             slide = _slide(drop, enter, leave, d)
-            parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,crop={sw}:{sh}:{sx}:{sy},scale={W}:{H}:flags=lanczos,{grade},format=yuv420p[pic{i}]")
+            parts.append(f"{vin}trim=start={ta:.3f}:end={tb_:.3f},setpts=PTS-STARTPTS,crop={sw}:{sh}:{sx}:{sy},scale={W}:{H}:flags=lanczos,{grade},format=yuv420p[pic{i}]")
             parts.append(f"color=c=black@0.0:s={W}x{H}:r={fps}:d={d:.3f},format=yuva420p[cv{i}]")
             parts.append(f"[cv{i}][pic{i}]overlay=0:'{slide}':eval=frame:format=auto,format=yuv420p[pd{i}]")
             parts.append(f"[pd{i}][mk{i}]alphamerge,format=yuva420p[s{i}]")
-            parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,crop={w}:{h}:{x}:{y},scale={W}:{TALL_H}:flags=lanczos,{grade},format=yuv420p[tb{i}]")
+            parts.append(f"{vin}trim=start={ta:.3f}:end={tb_:.3f},setpts=PTS-STARTPTS,crop={w}:{h}:{x}:{y},scale={W}:{TALL_H}:flags=lanczos,{grade},format=yuv420p[tb{i}]")
             if i in matte_input:
                 parts.append(f"[{matte_input[i]}:v]format=gray,scale={W}:{TALL_H}:flags=bilinear,eq=contrast=1.35:brightness=-0.12,erosion,gblur=sigma=0.9,format=gray[mm{i}]")
                 parts.append(f"[tb{i}][mm{i}]alphamerge[person{i}]")
@@ -394,14 +409,14 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
                 parts.append(f"[tb{i}]nullsink")
                 parts.append(f"color=c=black@0.0:s={W}x{H}:r={fps}:d={d:.3f},format=yuva420p[p{i}]")
         else:
-            parts.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,crop={w}:{h}:{x}:{y},scale={W}:{H}:flags=lanczos,{grade},format=yuva420p[s{i}]")
+            parts.append(f"{vin}trim=start={ta:.3f}:end={tb_:.3f},setpts=PTS-STARTPTS,crop={w}:{h}:{x}:{y},scale={W}:{H}:flags=lanczos,{grade},format=yuva420p[s{i}]")
             parts.append(f"color=c=black@0.0:s={W}x{H}:r={fps}:d={d:.3f},format=yuva420p[p{i}]")
         n_frames = max(1, int(round(d * fps)))
         for lab in ("s", "p"):                              # every piece of both layers has exactly the same number of frames: no drift between them
             parts[:] = [(part[:part.rindex("[")] + f"[{lab}r{i}]") if part.endswith(f"[{lab}{i}]") and "color=c=black@0.0" not in part[:0] and part.rindex("[") > 0 and f"[{lab}{i}]" == part[part.rindex("["):] else part for part in parts]
             # setsar=1: footage with a non-square pixel aspect (1984:1989 from some phones) gives each piece a slightly different SAR and concat refuses to join them
             parts.append(f"[{lab}r{i}]tpad=stop_mode=clone:stop_duration=1,trim=end_frame={n_frames},setpts=N/{fps}/TB,setsar=1[{lab}{i}]")
-        parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        parts.append(f"{ain}atrim=start={ta:.3f}:end={tb_:.3f},asetpts=PTS-STARTPTS[a{i}]")
         slayer.append(f"[s{i}]")
         player.append(f"[p{i}]")
         alabels.append(f"[a{i}]")
@@ -409,7 +424,7 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
     parts.append(f"{''.join(slayer)}concat=n={n}:v=1:a=0[L1]")
     parts.append(f"{''.join(player)}concat=n={n}:v=1:a=0[L2]")
     parts.append(f"{''.join(alabels)}concat=n={n}:v=0:a=1[ca]")
-    return parts, matte_args
+    return parts, matte_args, len(pinned)
 
 
 def render_composite(video: Path, plan: ReelPlan, panel: Optional[Path], text: Optional[Path], out: Path, *, work_dir: Path,
@@ -423,9 +438,9 @@ def render_composite(video: Path, plan: ReelPlan, panel: Optional[Path], text: O
     mask = _round_mask(work_dir / "card_mask.png")
     mattes = _mattes(video, plan, pack, work_dir, src_w, src_h, fps)
     inputs = ["-i", str(video), "-loop", "1", "-framerate", str(fps), "-i", str(mask)]
-    parts, matte_args = _graph(plan, pack, src_w, src_h, fps, mattes, 2)
+    parts, matte_args, pinned_inputs = _graph(plan, pack, src_w, src_h, fps, mattes, 2, video)
     inputs += matte_args
-    nxt = 2 + len(mattes)
+    nxt = 2 + len(mattes) + pinned_inputs
     parts.append(f"color=c={_hex(pack.palette.panel_bg)}:s={W}x{H}:r={fps}:d={plan.duration:.3f}[bg]")
     last = "bg"
     if panel and panel.is_file():
