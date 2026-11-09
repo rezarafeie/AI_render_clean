@@ -23,6 +23,8 @@ class CloudSettings(BaseSettings):
     admin_user_ids: str = ''
     image: str = ''
     browser_image: str = ''
+    # engine -> immutable image, for an engine whose measured profile belongs to a newer worker build than the rest.
+    engine_images: dict[str, str] = Field(default_factory=dict)
     browser_render_workers: int | None = Field(default=None, ge=1, le=4)
     deployment: str = 'editor'
     cpu_ids: str = ''
@@ -48,6 +50,15 @@ class CloudSettings(BaseSettings):
     runpod_relay_url: str = ''
     runpod_relay_token: SecretStr = SecretStr('')
     runpod_registry_auth_id: str = ''
+
+    @field_validator('engine_images')
+    @classmethod
+    def immutable_images(cls, value):
+        import re
+        for engine, image in value.items():
+            if not re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}', image):
+                raise ValueError('Engine worker images must be immutable digests')
+        return value
 
     @field_validator('ledger','benchmarks')
     @classmethod
@@ -80,6 +91,8 @@ class CloudSettings(BaseSettings):
 
     def image_for(self, engine):
         from .socketless import ENGINES
+        if engine in self.engine_images:
+            return self.engine_images[engine]
         return self.browser_image if self.browser_image and engine not in ENGINES else self.image
 
     def isolates(self, engine):
