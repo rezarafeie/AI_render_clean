@@ -1366,7 +1366,7 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                 used = {n.get('voice_id') for n in (job.plan_data or {}).get('generation_meta', {}).get('voices', []) if isinstance(n, dict)}
                 notes = output_issues(board, music=bool(data.get('music')), voice_ids=used, persian_voices=persian)
                 if getattr(job, 'designer_note', None):
-                    notes.append('طراح موشن اجرا نشد و قالب پایه استفاده شد: ' + str(job.designer_note))
+                    notes.append('طراح موشن: ' + str(job.designer_note))
             except Exception:
                 notes = []
             if notes:

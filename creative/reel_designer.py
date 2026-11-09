@@ -12,6 +12,7 @@ import contextvars
 import hashlib
 import json
 import logging
+import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -101,6 +102,42 @@ def _context(facts: dict, pictures: dict, subjects: dict) -> str:
     return "\n".join(lines)
 
 
+_NUM = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
+_ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "A": 7, "Z": 0}
+
+
+def path_problem(d: str) -> str | None:
+    """Why an SVG path's `d` would not parse in the browser (a missing or extra number, a stray character), or None. A bad path stops the whole page."""
+    import re
+    text = d.strip()
+    if not text or text[0] not in "Mm":
+        return "path must start with M"
+    for command, body in re.findall(r"([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)", text):
+        leftover = re.sub(_NUM, " ", body)
+        if command in "Aa":                                   # arc flags may be written together (0 1 → 01): not worth accepting, ask for spaces
+            pass
+        if re.sub(r"[\s,]", "", leftover):
+            return f"path has an invalid number near «{body.strip()[:24]}»"
+        count = len(re.findall(_NUM, body))
+        need = _ARGS[command.upper()]
+        if need == 0:
+            if count:
+                return "path has numbers after Z"
+        elif count == 0 or count % need:
+            return f"path command {command} needs groups of {need} numbers (got {count})"
+    return None
+
+
+def svg_problems(html: str) -> list[str]:
+    import re
+    found = []
+    for d in re.findall(r'\bd\s*=\s*"([^"]*)"', html):
+        problem = path_problem(d)
+        if problem:
+            found.append(f"inline SVG: {problem}. Every path d must be valid SVG (each command followed by the right number of numbers, numbers separated by spaces or commas).")
+    return found[:3]
+
+
 def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]):
     scene = plan.scenes[n - 1]
     key = hashlib.sha256(json.dumps([scene.headline, scene.idea, scene.narration, round(scene.end - scene.start, 2), plan.design_direction, plan.palette.model_dump()],
@@ -114,6 +151,11 @@ def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]
         pass
     try:
         draft = mg.author_scene(plan, n, brief, context=context, used=used)
+        bad = svg_problems(draft.html)
+        if bad:                                              # one correction with the exact reason; a scene that is still wrong is replaced, never rendered broken
+            draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=bad)
+            if svg_problems(draft.html):
+                raise CreativeUnavailable("the scene's SVG paths are still invalid")
         path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
         return draft, "designed"
     except Exception as exc:
@@ -124,7 +166,7 @@ def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]
 def _skipped(job, reason: str) -> bool:
     """The caller falls back to the built-in page; the reason is kept so the review can tell the person the designer was not used."""
     try:
-        job.designer_note = reason
+        job.designer_note = "اجرا نشد و قالب پایه استفاده شد — " + reason
     except Exception:
         pass
     return False
@@ -197,9 +239,39 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             return _skipped(job, "صفحهٔ طراحی‌شده معتبر نبود: " + mg.explain_problem(problems[0]))
         mg.write_project(project, page)
         check = standalone.check(project, should_cancel=should_cancel)
+        rounds = 0
+        while check.blocking and rounds < 3:
+            # A scene that breaks the page is repaired once from the browser's own message, then replaced by a plain scene: one bad scene never costs the whole design.
+            rounds += 1
+            hit = sorted({int(m) for text in check.blocking for m in re.findall(r"#?\bs(\d{1,2})-", text) if 1 <= int(m) <= count})
+            if not hit:
+                hit = sorted({int(m) for text in check.blocking for m in re.findall(r"\bs(\d{1,2})\b", text) if 1 <= int(m) <= count})
+            if not hit:
+                hit = [n for n, kind in enumerate(how, 1) if kind != "plain"][:1]      # the page names no scene: the first designed scene is swapped out and the page is checked again
+            log.warning("reel check round %d blocked on scenes %s: %s", rounds, hit, check.blocking[:2])
+            for n in hit:
+                reason = [t for t in check.blocking if re.search(rf"\bs{n}\b|\bs{n}-", t)] or check.blocking
+                try:
+                    if rounds == 1:
+                        draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=[mg.explain_problem(t) + " — " + t[:300] for t in reason[:3]])
+                        if svg_problems(draft.html):
+                            raise CreativeUnavailable("invalid svg")
+                    else:
+                        raise CreativeUnavailable("replaced after a second failure")
+                except Exception:
+                    draft = mg.fallback_scene(plan, n)
+                    how[n - 1] = "plain"
+                drafts[n - 1] = draft
+            if how.count("plain") * 2 > count:
+                return _skipped(job, "بررسی مرورگر چند بار صحنه‌ها را رد کرد: " + mg.explain_problem(check.blocking[0]))
+            page = mg.assemble_scenes(plan, drafts, audio)
+            mg.write_project(project, page)
+            check = standalone.check(project, should_cancel=should_cancel)
         if check.blocking:
             log.warning("reel page failed the browser check: %s", check.blocking[:2])
             return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
+        if "plain" in how:
+            job.designer_note = f"{how.count('plain')} صحنه پس از ردشدن در بررسی با صحنهٔ ساده جایگزین شد"
         if on_progress:
             on_progress(12)
         product_reel._run_cli(project, out_path, timeout=timeout,
