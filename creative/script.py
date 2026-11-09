@@ -46,6 +46,12 @@ Craft rules
 - Use the chosen structure; let the turn (reframe/reveal) land late and the payoff be the last line, never a summary of earlier lines.
 - Never write: filler, textbook definitions, empty slogans, advertising clichés, invented facts or numbers, a closing line that
   merely repeats the title. Do not add a sales call to action to education, a story or an opinion.
+- Every spoken line is a complete, natural sentence that makes sense on its own and carries its own idea. Never a fragment that only continues the previous
+  line (for example "برای تا دو ساعت موسیقی."): the sentence is finished within its own line, then the next line starts a new thought.
+- For a product or an offer, SELL what it has: the strongest real benefits first (what the buyer gains in daily life, durability, the real numbers that matter
+  such as battery hours, the price or offer), not trivia. Never give a scene to what the product lacks, to a limitation or to a disclaimer, and never say a feature
+  is missing («ندارد»، «نیست»، «فاقد»): leave it out. Only when the brief itself asks to address it, do it in one honest clause inside a line.
+- In a sales video the last line is the call to action: it names the offer or the next step (the price, where to buy, what to do now), not a vague "check it out".
 - Each line must be a picture: say what is HEARD, what is SEEN (a concrete image or motion for THIS sentence, never generic
   decoration), WHY that picture, which element guides attention, and how this scene follows from the previous one.
 - On-screen text (title) is 1-4 words that ADD to the narration (a number, a label, a contrast); it never repeats it.
@@ -77,6 +83,9 @@ Criteria: hook_strength, originality, clarity, emotional_impact, audience_releva
 natural_persian (does it sound spoken, or like a translation / an ad?), visual_potential (does every line become a concrete picture?),
 timing (use `measured` speech seconds against the budget), payoff_quality, reference_alignment (only when a reference profile
 is given; otherwise score 10 with the reason "no reference").
+
+In a sales video these are must_fix whatever the scores: a scene that is about a missing feature, a limitation or a disclaimer; a line that is a sentence fragment;
+a closing line without a concrete offer or next step; weak trivia chosen over the product's strongest real benefits.
 
 Then decide: verdict "ship" only if the hook and payoff are genuinely strong and no criterion is below 6; otherwise "rewrite".
 For a rewrite, list must_fix (specific, actionable: name the line ids and what is wrong) and `change`, the structural moves
