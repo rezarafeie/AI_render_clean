@@ -290,9 +290,18 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
     n = len(plan.shots)
     source_colour = split.base.source_colour_filter(video)
     inputs = ["-i", str(video)]
-    vf = [f"[0:v]split={n}" + "".join(f"[s{k}]" for k in range(n)),
-          f"[0:a]asplit={n}" + "".join(f"[r{k}]" for k in range(n))]
+    # A shot that plays before footage the reel shows later (the hook pinned to the start) must not share the main input: while it plays, its
+    # neighbours' processed frames would pile up in concat's queues, gigabytes of them. It reads its own short window of the file instead.
+    pinned = {k: max(0.0, shot.src_in - 1.0) for k, shot in enumerate(plan.shots)
+              if any(plan.shots[j].src_in < shot.src_in - 0.5 for j in range(k + 1, n))}
+    shared = [k for k in range(n) if k not in pinned]
+    vf = [f"[0:v]split={len(shared)}" + "".join(f"[s{k}]" for k in shared),
+          f"[0:a]asplit={len(shared)}" + "".join(f"[r{k}]" for k in shared)]
     nxt = 1
+    for k, begin in pinned.items():
+        inputs += ["-ss", f"{begin:.3f}", "-t", f"{plan.shots[k].src_out - begin + 1.0:.3f}", "-i", str(video)]
+        vf += [f"[{nxt}:v]null[s{k}]", f"[{nxt}:a]anull[r{k}]"]
+        nxt += 1
     zoom = settings.get("zoom") or {}
     zoom_amount = float(zoom.get("amount", 100)) / 100 if zoom.get("enabled", True) else 0.0
     base_zoom = float(zoom.get("base_scale", 100)) / 100 if zoom.get("enabled", True) else 1.0
@@ -300,7 +309,7 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
     for k, shot in enumerate(plan.shots):
         frames = max(1, round(shot.length * fps_value))
         cw, ch, x, y = speaker_crop(shot, sw, sh, base_zoom, close_zoom)
-        cut = f"[s{k}]trim={shot.src_in:.3f}:{shot.src_out:.3f},setpts=PTS-STARTPTS,crop={cw}:{ch}:{x}:{y}"
+        cut = f"[s{k}]trim={shot.src_in - pinned.get(k, 0.0):.3f}:{shot.src_out - pinned.get(k, 0.0):.3f},setpts=PTS-STARTPTS,crop={cw}:{ch}:{x}:{y}"
         push = f"zoompan=z='1.0+{PICTURE_ZOOM * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1"
         if shot.split and id(shot) in plan.full_pictures:
             inputs += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(panel(shot.picture, "full"))]
@@ -321,7 +330,7 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
                       f"zoompan=z='1.0+{0.05 * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih*0.4-ih/zoom*0.4':d=1:s={W}x{H}:fps={fps},"
                       f"{source_colour},setsar=1,{custom_grade}[v{k}]")
         fade = min(0.012, shot.length / 4)
-        vf.append(f"[r{k}]atrim={shot.src_in:.3f}:{shot.src_out:.3f},asetpts=PTS-STARTPTS,"
+        vf.append(f"[r{k}]atrim={shot.src_in - pinned.get(k, 0.0):.3f}:{shot.src_out - pinned.get(k, 0.0):.3f},asetpts=PTS-STARTPTS,"
                   f"afade=t=in:d={fade:.3f},afade=t=out:st={shot.length - fade:.3f}:d={fade:.3f}[a{k}]")
     vf.append("".join(f"[v{k}][a{k}]" for k in range(n)) + f"concat=n={n}:v=1:a=1[cv][ca]")
     inputs += ["-loop", "1", "-framerate", fps, "-i", str(seam_png(work_dir / "p3_seam.png"))]
