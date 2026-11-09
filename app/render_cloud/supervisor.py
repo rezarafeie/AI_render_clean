@@ -11,6 +11,7 @@ import os
 import queue
 import signal
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -93,6 +94,17 @@ def terminate(process, *, grace=2):
     process.wait(timeout=5)
 
 
+def _stderr_tail(handle, limit=2048):
+    try:
+        size = handle.seek(0, 2)
+        handle.seek(max(0, size - limit))
+        text = handle.read().decode('utf-8', 'replace')
+    except Exception:
+        return ''
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return (lines[-1] if lines else '')[-150:]
+
+
 def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_network=False):
     # Manifest contains identity/references but no signed URLs or API credentials.
     manifest = workspace / '.worker-manifest.json'
@@ -117,9 +129,10 @@ def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_
                 else:
                     command = isolated_command(command)
                     env['EDITOR_RENDER_ISOLATED'] = '1'
+        errlog = tempfile.TemporaryFile()           # only its scrubbed tail is ever reported
         process = subprocess.Popen(command,
                                    env=env, start_new_session=True,
-                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                                   stdout=subprocess.PIPE, stderr=errlog, text=True)
     except BaseException:
         manifest.unlink(missing_ok=True)
         raise
@@ -155,7 +168,7 @@ def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_
             if on_progress:
                 on_progress(progress)
         if process.returncode:
-            raise RuntimeError('Render child failed')
+            raise RuntimeError('Render child failed: ' + _stderr_tail(errlog))
         output = workspace / spec.output
         if (output.is_symlink() or not output.resolve().is_relative_to(workspace.resolve())
                 or not output.is_file() or not output.stat().st_size):
