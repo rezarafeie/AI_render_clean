@@ -401,8 +401,11 @@ def tts_model() -> str:
 LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"   # ElevenLabs premade "Liam"
 
 
+CONNERY_VOICE_ID = "4D8rX5FMrycxXbF6iW0I"   # ElevenLabs library "Connery - Persian Narrator": a native Persian voice (Liam is English and reads Persian with a foreign accent)
+
+
 def tts_voice() -> str:
-    return os.environ.get("LOCALIZE_VOICE_ID", "").strip() or LIAM_VOICE_ID
+    return os.environ.get("LOCALIZE_VOICE_ID", "").strip() or CONNERY_VOICE_ID
 
 
 def audio_duration(path: Path) -> float:
@@ -415,10 +418,19 @@ def audio_duration(path: Path) -> float:
 
 VOICE_PROVIDERS = ("elevenlabs",)
 
-# Narrators the person can pick per project (ElevenLabs premade voices, each checked to speak Persian through eleven_v3).
+# Narrators the person can pick per project (native Persian library voices first, then premade voices that speak Persian through eleven_v3).
 # "" is the studio's own casting (the Persian catalogue voice); any other id is used as chosen.
 NARRATORS = (
     ("", "پیش‌فرض استودیو", "گوینده‌ی فارسیِ ثبت‌شده در تنظیمات"),
+    ("4D8rX5FMrycxXbF6iW0I", "کانری", "مرد، راوی فارسی طبیعی"),
+    ("PEdcOLzbXYhL8IKOswXB", "آران", "مرد، فارسی بومی و روشن"),
+    ("btWlswzMAoBbSI0PWhbz", "میثم", "مرد، فارسی حرفه‌ای"),
+    ("vJZ82xJdoy9JqX5RmoBD", "مرد قصه‌گو", "مرد، مسن و بازیگر"),
+    ("QMSZ0tTD0GwA4wrqCGak", "آرامفن", "مرد، جوان و آرام"),
+    ("kPvNckaRrVKKOdG48z3b", "نجیب", "مرد، سینمایی و عمیق"),
+    ("zagI4JNTfBvHyoNxaZWj", "آیلین", "زن، راوی گرم فارسی"),
+    ("01Hje9fLgarTAqnLKNEK", "میترا", "زن، قصه‌گو و آرام"),
+    ("erDXAXYfyESLe4hXMyU3", "لیلی", "زن، مخملی و عمیق"),
     ("TX3LPaxmHKxFdv7VOQHJ", "Liam", "مرد، جوان و گرم"),
     ("JBFqnCBsd6RMkjVDRZzb", "George", "مرد، قصه‌گو و گرم"),
     ("onwK4e9ZLuTAKqWW03F9", "Daniel", "مرد، عمیق و رسمی"),

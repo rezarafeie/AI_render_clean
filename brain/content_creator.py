@@ -492,6 +492,7 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
                             "file_path": tts_result.file_path,
                             "duration_s": tts_result.duration_s,
                             "provider": "elevenlabs",
+                            "voice_id": voice_kwargs["voice_id"],
                             "fingerprint":identity,
                             "reused":False,
                         }
@@ -579,6 +580,16 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
                     log.warning("Skipping unreadable background music %s: %s", candidate.name, exc)
         except Exception as exc:
             log.warning("Background music lookup skipped: %s", exc)
+        if background_music_path:
+            # The reel engine mixes the bed at a fixed low level; a library track at that level cannot be heard under the voice. A louder copy (+8 dB, faded in) goes to the job.
+            try:
+                import subprocess
+                bed = gen_dir / "music_bed.mp3"
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", background_music_path, "-af", "volume=8dB,afade=t=in:d=1.2",
+                                "-c:a", "libmp3lame", "-b:a", "160k", str(bed)], check=True, capture_output=True, timeout=120)
+                background_music_path = str(bed)
+            except Exception as exc:
+                log.warning("Louder music copy failed, the original is used: %s", exc)
         if not background_music_path:
             warnings.append("No playable background music was found in the library. Add or upload music in the plan editor.")
 
@@ -595,6 +606,7 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
         plan_data["generation_meta"]["warnings"] = warnings
         plan_data["generation_meta"]["voice_provider"] = voice_provider if narration_segments else None
         plan_data["generation_meta"]["music_source"] = music_source
+        plan_data["generation_meta"]["voices"] = [{"voice_id": n.get("voice_id")} for n in narration_segments if n.get("voice_id")]
         if (job.dir/'creative_plan.json').is_file():
             plan_data['generation_meta']['creative_plan']=json.loads((job.dir/'creative_plan.json').read_text())
         if not preset["is_static"] and all(scene.media_method == "upload" and scene.motion_engine=='default' for scene in storyboard.scenes):

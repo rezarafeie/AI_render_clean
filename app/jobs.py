@@ -1344,6 +1344,18 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                 if fit['status']=='needs_attention' and report.get('status')=='passed':
                     report['status']='needs_attention'
                     report['summary']=((report.get('summary') or '')+' '+fit['summary']).strip()
+            try:
+                from creative.checks import output_issues
+                from brain.localize import NARRATORS
+                persian = {voice for voice, _, _ in NARRATORS[1:10]}
+                used = {n.get('voice_id') for n in (job.plan_data or {}).get('generation_meta', {}).get('voices', []) if isinstance(n, dict)}
+                notes = output_issues(board, music=bool(data.get('music')), voice_ids=used, persian_voices=persian)
+            except Exception:
+                notes = []
+            if notes:
+                report['status'] = 'needs_attention' if report.get('status') == 'passed' else report.get('status')
+                report['summary'] = ((report.get('summary') or '') + ' ' + ' '.join(notes)).strip()
+                report['checks'] = notes
             job.render.technical_qc['creative_review']=report
             _write_status(job)
             # A video that exists is shown to the user with the reviewer's notes, never discarded: the notes are the starting point for the next edit.
