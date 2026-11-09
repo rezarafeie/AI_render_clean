@@ -399,7 +399,8 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
         n_frames = max(1, int(round(d * fps)))
         for lab in ("s", "p"):                              # every piece of both layers has exactly the same number of frames: no drift between them
             parts[:] = [(part[:part.rindex("[")] + f"[{lab}r{i}]") if part.endswith(f"[{lab}{i}]") and "color=c=black@0.0" not in part[:0] and part.rindex("[") > 0 and f"[{lab}{i}]" == part[part.rindex("["):] else part for part in parts]
-            parts.append(f"[{lab}r{i}]tpad=stop_mode=clone:stop_duration=1,trim=end_frame={n_frames},setpts=N/{fps}/TB[{lab}{i}]")
+            # setsar=1: footage with a non-square pixel aspect (1984:1989 from some phones) gives each piece a slightly different SAR and concat refuses to join them
+            parts.append(f"[{lab}r{i}]tpad=stop_mode=clone:stop_duration=1,trim=end_frame={n_frames},setpts=N/{fps}/TB,setsar=1[{lab}{i}]")
         parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
         slayer.append(f"[s{i}]")
         player.append(f"[p{i}]")
