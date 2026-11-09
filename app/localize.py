@@ -270,6 +270,12 @@ def _start(project_id: str, target, status: str) -> None:
         _pause_events[project_id] = threading.Event()
 
     def run() -> None:
+        from app.render_cloud.hooks import identity
+        owner = str(load(project_id).get("user_id") or "") or None
+        token = identity.set((owner, project_id, (_dir(project_id),),
+                              lambda: _cancel_events.get(project_id) is not None and _cancel_events[project_id].is_set(),
+                              lambda stage: _stage(project_id, "cloud " + stage),
+                              lambda text: _stage(project_id, str(load(project_id).get("stage") or "rendering"), message=text)))
         try:
             target(project_id)
         except TaskCanceled:
@@ -282,6 +288,7 @@ def _start(project_id: str, target, status: str) -> None:
             state.update(status="error", message=str(exc)[:500])
             save(state)
         finally:
+            identity.reset(token)
             with _lock:
                 _running.discard(project_id)
                 _cancel_events.pop(project_id, None)

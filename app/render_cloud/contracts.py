@@ -50,7 +50,7 @@ class RenderSpec(Strict):
     project_id: str = Field(min_length=1, max_length=100)
     # Server-derived identity, never accepted without an ownership check upstream.
     user_id: str = Field(min_length=1, max_length=200)
-    engine: Literal['hyperframes_page', 'hyperframes_project', 'hyperframes_product', 'remotion', 'mlt', 'talking_1', 'talking_2', 'talking_3', 'talking_4']
+    engine: Literal['hyperframes_page', 'hyperframes_project', 'hyperframes_product', 'remotion', 'mlt', 'talking_1', 'talking_2', 'talking_3', 'talking_4', 'talking_5', 'localize']
     entrypoint: str
     assets: list[Asset] = Field(min_length=1, max_length=20000)
     duration_seconds: float = Field(gt=0, le=7200)

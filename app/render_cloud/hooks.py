@@ -300,3 +300,50 @@ def talking(video,plan,output,*,style='talking_1',on_progress=None,**options):
                                duration=seconds,width=1080,height=1920,fps=fps,on_progress=on_progress,
                                should_cancel=who[3] if len(who)>3 else None,on_stage=who[4] if len(who)>4 else None, on_detail=who[5] if len(who)>5 else None,
                                lock_root=lock_root,audio_required=True)
+
+
+def localize(video, state, placements, output, *, work_dir, fonts_dir=None, music=None, logo=None, on_progress=None, only_covers=False):
+    """Localize's final composition: the source video, the dubbed voice clips, the caption/overlay plan and the music, rendered on a worker.
+    Translation, voice generation and caption detection have already run on the server; only this ffmpeg composition leaves it."""
+    if not eligible():
+        return False
+    import hashlib
+    import shutil
+    import tempfile
+    from fractions import Fraction
+    from engine import localize as engine
+    from .service import render_prepared
+    who = identity.get()
+    root = Path(engine.__file__).resolve().parents[1]
+    if fonts_dir is not None and Path(fonts_dir).resolve() != (root / 'presets/fonts').resolve():
+        return False                      # the worker only has the library fonts
+    cadence = Fraction(str(engine.probe_fps(video)))
+    if cadence.denominator != 1:
+        return False                      # fractional cadence keeps its local export
+    with tempfile.TemporaryDirectory(prefix='editorgpt-localize-input-') as directory:
+        staged = Path(directory)
+        approved = [*(Path(p).resolve() for p in who[2]), (root / 'assets/music').resolve(), (root / 'assets/brand').resolve()]
+
+        def asset(value):
+            source = Path(value).resolve(strict=True)
+            if not any(source.is_relative_to(base) for base in approved) or not source.is_file():
+                raise ValueError('Localize asset is not owned or library-approved')
+            name = 'assets/' + hashlib.sha256(str(source).encode()).hexdigest() + source.suffix
+            (staged / 'assets').mkdir(exist_ok=True)
+            shutil.copy2(source, staged / name)
+            return name
+        src_w, src_h, source_duration = engine.probe_video(video)
+        width, height = engine.output_size(src_w, src_h)
+        duration, _ = engine.output_timing(state, placements, source_duration)
+        data = {'state': state, 'video': asset(video), 'only_covers': bool(only_covers),
+                'placements': [{**p, 'file': asset(p['file'])} for p in placements],
+                'music': asset(music) if music and Path(music).is_file() else None,
+                'logo': asset(logo) if logo and Path(logo).is_file() else None}
+        try:
+            (staged / 'localize.json').write_text(json.dumps(data, ensure_ascii=False))
+        except TypeError:
+            return False
+        return render_prepared(staged, output, user=who[0], project_id=who[1], engine='localize', entrypoint='localize.json',
+                               duration=duration, width=width, height=height, fps=int(cadence), on_progress=on_progress,
+                               should_cancel=who[3] if len(who) > 3 else None, on_stage=who[4] if len(who) > 4 else None,
+                               on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)

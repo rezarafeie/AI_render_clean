@@ -1475,6 +1475,10 @@ def render(
     on_progress: Optional[Callable[[int], None]] = None,
     only_covers: bool = False,
 ) -> Path:
+    from app.render_cloud.hooks import localize as cloud_localize
+    if cloud_localize(video, state, placements, out, work_dir=work_dir, fonts_dir=fonts_dir, music=music, logo=logo,
+                      on_progress=on_progress, only_covers=only_covers):
+        return out
     ffmpeg = ass_burner_ffmpeg()
     if ffmpeg is None:
         raise RuntimeError("Localized rendering needs an ffmpeg with libass (brew install ffmpeg-full)")

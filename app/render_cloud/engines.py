@@ -105,6 +105,22 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
         from .contracts import relative_path
         video = workspace/relative_path(data['video'])
         module.render(video,plan,output,work_dir=workspace/'render-work',on_progress=on_progress,**options)
+    elif spec.engine == 'localize':
+        from engine import localize
+        from .contracts import relative_path
+        data = prepared_json(entry)
+
+        def owned(value):
+            path = workspace / relative_path(value)
+            if not path.resolve().is_relative_to(workspace.resolve()) or not path.is_file():
+                raise ValueError('Localize asset outside workspace')
+            return path
+        placements = [{**p, 'file': str(owned(p['file']))} for p in data['placements']]
+        localize.render(owned(data['video']), data['state'], placements, output, work_dir=workspace / 'render-work',
+                        fonts_dir=Path(localize.__file__).resolve().parents[1] / 'presets/fonts',
+                        music=owned(data['music']) if data.get('music') else None,
+                        logo=owned(data['logo']) if data.get('logo') else None,
+                        on_progress=on_progress, only_covers=bool(data.get('only_covers')))
     elif spec.engine == 'mlt':
         from engine.render import render
         render(entry, output, on_progress=on_progress, **spec.mlt_options.model_dump())

@@ -8,9 +8,9 @@ from pathlib import Path
 
 
 def probe(path: Path) -> dict:
-    result = subprocess.run(['ffprobe', '-v', 'error', '-count_frames', '-show_streams',
+    result = subprocess.run(['ffprobe', '-v', 'error', '-count_packets', '-show_streams',
                              '-show_format', '-of', 'json', str(path.resolve())],
-                            capture_output=True, timeout=120, check=False)
+                            capture_output=True, timeout=600, check=False)
     if result.returncode or len(result.stdout) > 1024 * 1024:
         raise ValueError('Output media could not be probed')
     data = json.loads(result.stdout)
@@ -20,7 +20,9 @@ def probe(path: Path) -> dict:
         raise ValueError('Output video stream missing')
     return {'width': int(video['width']), 'height': int(video['height']),
             'fps': str(Fraction(video['avg_frame_rate'])),
-            'frames': int(video.get('nb_read_frames', 0)),
+            # One packet per video frame in these encodes: counting packets reads the container only, counting decoded frames of a
+            # several-hundred-megabyte reel took longer than the probe's limit on a busy server.
+            'frames': int(video.get('nb_read_packets') or video.get('nb_read_frames') or 0),
             'duration': float(video.get('duration') or data['format']['duration']),
             'video_start': float(video.get('start_time', 0)),
             'audio_duration': float(audio.get('duration') or data['format']['duration']) if audio else None,
