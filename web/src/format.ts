@@ -35,13 +35,29 @@ export function relativeTime(time: number, now = Date.now()): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: new Date(time).getFullYear() === new Date(now).getFullYear() ? undefined : "numeric" }).format(time);
 }
 
-export function clock(time: number): string {
-  return time ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(time) : "";
+/** Is this text written in Persian/Arabic script? Chats in Persian show Persian digits and 24-hour clocks, everything else keeps the browser's own. */
+export const isPersianText = (text: string | undefined | null): boolean => /[\u0600-\u06FF]/.test(text || "");
+
+export function faNumber(value: number): string { return Math.round(value).toLocaleString("fa-IR", { useGrouping: false }); }
+
+export function clock(time: number, fa = false): string {
+  if (!time) return "";
+  return fa
+    ? new Intl.DateTimeFormat("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(time)
+    : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(time);
 }
 
-export function formatDuration(ms: number): string {
+/** Hour and minute under a message. */
+export function messageClock(time: number, fa = false): string {
+  return fa
+    ? new Intl.DateTimeFormat("fa-IR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(time)
+    : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(time);
+}
+
+export function formatDuration(ms: number, fa = false): string {
   const total = Math.max(0, Math.round(ms / 1000));
   const m = Math.floor(total / 60), s = total % 60;
+  if (fa) return m ? `${faNumber(m)} دقیقه${s ? ` و ${faNumber(s)} ثانیه` : ""}` : `${faNumber(s)} ثانیه`;
   return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 

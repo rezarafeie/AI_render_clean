@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import copy
 import json
@@ -20,6 +21,8 @@ from app.studio_orchestrator import cancel_project, confirm_action, dispatch_mes
 from app.studio_store import ROOT, repo
 from app.studio_tools import list_tools
 from app.job_access import get_job_for_request, is_local_auth_bypass
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/studio", tags=["studio"])
 
@@ -455,28 +458,54 @@ async def stream_events(request: Request, conversation_id: str,
     try: cursor = max(after, int(last_event_id or 0))
     except ValueError: cursor = after
 
+    async def _sync_quietly():
+        try:
+            await sync_conversation(conversation_id, user_key)
+        except Exception:
+            log.warning("studio stream: conversation sync failed", exc_info=True)
+
     async def generate():
         nonlocal cursor
-        quiet, last_sent, last_sync = 0, time.monotonic(), 0.0
-        while not await request.is_disconnected():
-            now = time.monotonic()
-            if now - last_sync >= 2.0:                       # the conversation sync is the heavy part: every two seconds is enough
-                await sync_conversation(conversation_id, user_key)
-                last_sync = now
-            events = await repo.events(conversation_id, user_key, cursor, check=False)       # access was verified above
-            if events:
-                quiet = 0
-                for event in events:
-                    cursor = event["seq"]
-                    public_event = _public_event(event)
-                    yield f"id: {cursor}\nevent: {event['type']}\ndata: {json.dumps(public_event, ensure_ascii=False)}\n\n"
-                last_sent = time.monotonic()
-            else:
-                quiet += 1
-                if time.monotonic() - last_sent > 25:
-                    yield ": keep-alive\n\n"; last_sent = time.monotonic()
-            # Text that is being written arrives in small events: poll fast while events are flowing, relax when nothing happens.
-            await asyncio.sleep(0.25 if quiet < 8 else 1.0 if quiet < 40 else 2.0)
+        from app import studio_live
+        quiet, last_sent, last_sync, last_poll = 0, time.monotonic(), 0.0, 0.0
+        live_seen = studio_live.newest(conversation_id)             # running text from before this connection is not replayed: the saved message covers it
+        subscription = studio_live.Subscription(conversation_id)
+        syncing: asyncio.Task | None = None
+        try:
+            while not await request.is_disconnected():
+                # Running text first, the moment it is written (no database in its way). No `id`, so a reconnect's cursor never depends on it.
+                sent_live = False
+                for item in studio_live.since(conversation_id, live_seen):
+                    live_seen = max(live_seen, item["live"])
+                    payload = {"type": item["type"], "seq": 0, "data": {**item["data"], "live": True}}
+                    yield f"event: {item['type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    last_sent = time.monotonic(); quiet = 0; sent_live = True
+                now = time.monotonic()
+                if now - last_sync >= 2.0 and (syncing is None or syncing.done()):
+                    # The conversation sync is the heavy part (up to a couple of seconds on a busy server): it runs beside the stream, never in front of it.
+                    syncing = asyncio.create_task(_sync_quietly())
+                    last_sync = now
+                interval = 0.25 if quiet < 8 else 1.0 if quiet < 40 else 2.0
+                if now - last_poll >= interval:
+                    last_poll = now
+                    events = await repo.events(conversation_id, user_key, cursor, check=False)       # access was verified above
+                    if events:
+                        quiet = 0
+                        for event in events:
+                            cursor = event["seq"]
+                            public_event = _public_event(event)
+                            yield f"id: {cursor}\nevent: {event['type']}\ndata: {json.dumps(public_event, ensure_ascii=False)}\n\n"
+                        last_sent = time.monotonic()
+                    elif not sent_live:
+                        quiet += 1
+                        if time.monotonic() - last_sent > 25:
+                            yield ": keep-alive\n\n"; last_sent = time.monotonic()
+                # Wake at once for running text; otherwise wait for the next database poll.
+                await subscription.wait(0.05 if sent_live else max(0.02, min(interval, last_poll + interval - time.monotonic())))
+        finally:
+            subscription.close()
+            if syncing is not None and not syncing.done():
+                syncing.cancel()
     return StreamingResponse(generate(), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

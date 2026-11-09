@@ -147,14 +147,14 @@ function stepLabel(event: StudioEvent): string {
   const { tool, stage, message } = event.data;
   if (event.type === 'tool.failed' && message === 'یکی از گزینه‌های همین مرحله را انتخاب کنید.') return 'منتظر انتخاب شما';
   if (tool && TOOL_LABELS[tool]) return TOOL_LABELS[tool];
-  const known = STAGE_LABELS[stageKey(stage)] || STAGE_LABELS[String(message || "").toLocaleLowerCase().replace(/[._-]+/g, " ")];
+  const known = STAGE_LABELS[stageKey(stage)] || stageText(stage) || STAGE_LABELS[String(message || "").toLocaleLowerCase().replace(/[._-]+/g, " ")] || stageText(message);
   if (known) return known;
   if (event.type === "agent.thinking_summary") return "بررسی درخواست شما";
   if (event.type === "storyboard.ready") return "استوری‌بورد آماده است";
   if (event.type === "tool.failed") return "این مرحله نیاز به بررسی دارد";
-  const said = String(message || "").trim();
-  if (said && said.length <= 70) return said;                               // the step's own description beats a generic word
-  return "در حال پردازش درخواست";
+  const said = presentable(message) || "";
+  if (said && said.length <= 70) return said;                               // the step's own description beats a generic word; English wording is never shown
+  return GENERIC_STEP;
 }
 
 function stepKey(event: StudioEvent): string | null {
@@ -355,7 +355,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     if (typeof event.data.progress === "number") step.progress = Math.round(event.data.progress);
     if (typeof event.data.request === "string" && event.data.request.trim() && event.data.request.trim() !== "{}") step.request = event.data.request;
     const rawNote = String(event.data.message || "").trim();
-    const note = /^Planning the edit\.?$/i.test(rawNote) ? STAGE_LABELS.planning : rawNote;
+    const note = /^Planning the edit\.?$/i.test(rawNote) ? STAGE_LABELS.planning : (presentable(rawNote) || "");      // the raw text stays in the step's log
     if (note && !step.notes.includes(note)) {
       if (/در انتظار پاسخ سرویس هوش مصنوعی/.test(note)) step.notes = step.notes.filter(n => !/در انتظار پاسخ سرویس هوش مصنوعی/.test(n));
       step.notes.push(note);
@@ -511,7 +511,54 @@ export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: 
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
-  const informative = notes.some(note => note !== step.label) || step.status === "failed" || updates > 1 || Boolean(step.tool) || Boolean(step.request);
-  if (!informative) return null;
+  if (!updates && !notes.length && !step.request) return null;                // a step with recorded events always opens to its log
   return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request };
 }
+
+// ── Persian wording of steps (no English stage names in a Persian chat); the raw text stays in each step's log ──
+const hasPersian = (text: string) => /[؀-ۿ]/.test(text);
+const normalize = (value: unknown) => String(value || "").trim().toLocaleLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
+
+/** Stage names the engines report, in Persian. */
+export const STAGE_FA: Record<string, string> = {
+  queued: "در صف شروع", pending: "در انتظار شروع", running: "در حال اجرا", done: "انجام شد", completed: "انجام شد", failed: "ناموفق", stopped: "متوقف شد", stopping: "در حال توقف",
+  checking: "بررسی", enhancing: "بهبود نتیجه", finding: "جست‌وجو", planning: "طراحی برنامهٔ کار", repair: "اصلاح", understanding: "درک درخواست", validating: "اعتبارسنجی", writing: "نوشتن",
+  "quality review": "بازبینی کیفیت", analyzing: "تحلیل ویدیو", transcribing: "استخراج متن گفتار", transcribed: "متن گفتار آماده است", translating: "آماده‌سازی ترجمهٔ فارسی",
+  "loading transcript": "خواندن متن ذخیره‌شدهٔ گفتار", "choosing style": "انتخاب سبک تدوین", "editing text": "آماده‌سازی زیرنویس و هوک", "directing the edit": "طراحی ایدهٔ تدوین",
+  "planning render": "آماده‌سازی برنامهٔ رندر", "planning visual beats": "طراحی بخش‌های تصویری", "planning caption phrases": "آماده‌سازی عبارت‌های زیرنویس",
+  "finding captions": "شناسایی زیرنویس روی تصویر", "finding english text": "شناسایی متن انگلیسی روی تصویر", "tracking caption frames": "ردیابی قاب‌های زیرنویس", "tracking the face": "ردیابی چهرهٔ گوینده",
+  "generating voice": "ساخت گویندگی", "generating": "آماده‌سازی دارایی‌ها", "generating assets": "آماده‌سازی دارایی‌ها", "finding pictures": "انتخاب تصاویر مکمل",
+  "reusing prepared cut": "استفاده از برش آمادهٔ قبلی", "designing motion scenes": "طراحی صحنه‌های موشن", "repairing motion scenes": "اصلاح صحنه‌های موشن",
+  "building motion graphics": "ساخت موشن‌گرافیک", "reviewing motion graphics": "بازبینی موشن‌گرافیک", "improving motion graphics": "اصلاح موشن‌گرافیک",
+  "reviewing creative output": "بازبینی خلاقانهٔ خروجی", "reviewing localized output": "بازبینی خروجی دوبله",
+  rendering: "رندر ویدیو", "rendering source preparation": "تبدیل فرمت و آماده‌سازی ویدیو", "rendering captions": "آماده‌سازی زیرنویس و تیتر", "rendering outro": "ساخت صفحهٔ پایانی و لوگو",
+  "rendering shot": "رندر بخش‌های تدوین", "rendering composition": "ترکیب تصویر و صدا و رمزگذاری خروجی", "rendering finalizing": "نهایی‌سازی فایل ویدیو", "rendering effects": "افزودن افکت‌ها روی ویدیو",
+  "rendering rough cut": "رندر نسخهٔ اولیه", "rendering motion graphics": "رندر موشن‌گرافیک", "rendering motion": "رندر موشن‌گرافیک",
+  "cloud provisioning": "آماده‌سازی سرور رندر ابری", "cloud preparing": "آماده‌سازی موتور رندر ابری", "cloud downloading": "ارسال فایل‌ها به سرور ابری", "cloud rendering": "رندر روی سرور ابری",
+  "cloud uploading": "دریافت خروجی از سرور ابری", "cloud completed": "خروجی ابری دریافت شد",
+  "translation revision ready": "اصلاح ترجمه آماده است", "awaiting confirmation": "منتظر تأیید شما", "awaiting plan": "منتظر تأیید برنامه", ready: "آماده است",
+  storyboard: "طراحی استوری‌بورد", "storyboard ready": "استوری‌بورد آماده است",
+};
+
+/** Persian wording for a stage or short status text; undefined when there is none. */
+export function stageText(raw: unknown): string | undefined {
+  const key = normalize(raw);
+  return key ? STAGE_FA[key] : undefined;
+}
+
+/**
+ * Text fit to show in a Persian chat: Persian as written, a known stage name translated, anything else in English hidden (it stays in the log).
+ * Returns null when nothing presentable remains.
+ */
+export function presentable(raw: unknown): string | null {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const known = stageText(text);
+  if (known) return known;
+  if (hasPersian(text)) return text;
+  return /^[\x00-\x7F\s]*$/.test(text) && /[a-zA-Z]{3}/.test(text) ? null : text;     // plain English wording: not shown; numbers, symbols and mixed text are
+}
+
+/** Generic wording for a step whose own name is unusable. */
+export const GENERIC_STEP = "در حال انجام کار";
+

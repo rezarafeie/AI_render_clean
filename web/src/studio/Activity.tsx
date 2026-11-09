@@ -1,39 +1,48 @@
 import React from "react";
-import { Icon, IconName } from "../components/Icon";
-import { clock, formatDuration } from "../format";
+import { Icon } from "../components/Icon";
+import { clock, faNumber, formatDuration, parseTime } from "../format";
+import { useFa } from "./locale";
+import { stepLog, toolIcon } from "./steps";
 import { Link } from "react-router-dom";
 import { ActivityStep, friendlyFailure, stepDetails } from "./model";
 
-function toolIcon(step: ActivityStep): IconName {
-  const name = `${step.tool || ""} ${step.stage || ""}`.toLowerCase();
-  if (/storyboard|concept/.test(name)) return "storyboard";
-  if (/render/.test(name)) return "film";
-  if (/motion/.test(name)) return "motion";
-  if (/review|critic|qc|visual_analysis/.test(name)) return "eye";
-  if (/creative|direction|planning/.test(name)) return "wand";
-  if (/url|page/.test(name)) return "globe";
-  if (/voice|narration|audio/.test(name)) return "mic2";
-  if (/caption|transcript|translat|localize/.test(name)) return "captions";
-  if (/image|asset|picture/.test(name)) return "image";
-  if (/script|text/.test(name)) return "edit";
-  if (/video|talking/.test(name)) return "video";
-  return "thinking";
-}
-
 /** How long this step has been running, counted live (like a coding agent's status line). */
 function Elapsed({ since }: { since: number }) {
+  const fa = useFa();
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const ms = Math.max(0, now - since);
-  return ms >= 1000 ? <span className="act-elapsed" aria-hidden="true">{formatDuration(ms)}</span> : null;
+  return ms >= 1000 ? <span className="act-elapsed" aria-hidden="true">{formatDuration(ms, fa)}</span> : null;
+}
+
+/** The technical log of one step, like the log a coding agent shows when a step is opened: every event the server recorded, its raw payload on demand. */
+function StepLog({ step }: { step: ActivityStep }) {
+  const fa = useFa();
+  const lines = React.useMemo(() => stepLog(step.events, parseTime), [step.events]);
+  const [copied, setCopied] = React.useState(false);
+  if (!lines.length) return null;
+  const everything = lines.map(line => `[${clock(line.at)}] ${line.kind}${line.text ? ` — ${line.text}` : ""}\n${line.raw}`).join("\n\n");
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(everything); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
+  return <div className="act-log">
+    <div className="act-log-head"><span>گزارش فنی</span><button type="button" className="link-btn" onClick={copy}>{copied ? "کپی شد" : "کپی گزارش"}</button></div>
+    <ol>{lines.map((line, index) => <li key={index}>
+      <details>
+        <summary><time dir="ltr">{clock(line.at, fa)}</time><b>{line.kind}</b>{line.text ? <span dir="auto" className="bidi wrap-safe">{line.text}</span> : null}</summary>
+        <pre dir="ltr">{line.raw}</pre>
+      </details>
+    </li>)}</ol>
+  </div>;
 }
 
 function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryHref?: string; onOpenEditor?: () => void }) {
+  const fa = useFa();
   const details = stepDetails(step);
   const [open, setOpen] = React.useState(false);
   const failed = step.status === "failed";
   const active = step.status === "active";
-  const icon = <Icon name={failed ? "alert" : toolIcon(step)} size={14}/>;
+  const icon = <Icon name={failed ? "alert" : toolIcon(step.tool, step.stage)} size={14}/>;
   const thinking = active && step.events[step.events.length - 1]?.data.thinking === true;
   const label = <>
     <span className="act-icon" data-status={step.status}>{icon}</span>
@@ -47,7 +56,7 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
     {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p>{retryHref ? (onOpenEditor ? <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenEditor}><Icon name="refresh" size={14}/>Open editor to retry</button> : <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={14}/>Open editor to retry</Link>) : null}</div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
     {active ? <div className="act-timing">
-      {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{step.progress}%</span> : null}
+      {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{fa ? `${faNumber(step.progress)}٪` : `${step.progress}%`}</span> : null}
       <Elapsed since={step.startedAt}/>
     </div> : null}
     {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
@@ -55,10 +64,11 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
       {details.request ? <div className="act-request"><span>درخواست این مرحله</span><pre dir="auto">{details.request}</pre></div> : null}
       {details.notes.map((note, index) => <p key={index} dir="auto" className="bidi wrap-safe">{note}</p>)}
       <dl>
-        <div><dt>شروع</dt><dd>{clock(step.startedAt)}</dd></div>
-        {details.durationMs >= 1000 ? <div><dt>مدت</dt><dd>{formatDuration(details.durationMs)}</dd></div> : null}
-        {details.updates > 1 ? <div><dt>گزارش‌ها</dt><dd>{details.updates}</dd></div> : null}
+        <div><dt>شروع</dt><dd dir="ltr">{clock(step.startedAt, fa)}</dd></div>
+        {details.durationMs >= 1000 ? <div><dt>مدت</dt><dd>{formatDuration(details.durationMs, fa)}</dd></div> : null}
+        {details.updates > 1 ? <div><dt>گزارش‌ها</dt><dd>{fa ? faNumber(details.updates) : details.updates}</dd></div> : null}
       </dl>
+      <StepLog step={step}/>
     </div> : null}
   </li>;
 }
@@ -73,8 +83,9 @@ export function ActivityBlock({ steps, live, retryHref, onOpenEditor }: { steps:
   const current = steps.filter(step => step.status === "active" || step.status === "failed");
   const history = steps.filter(step => step.status === "done");
   const total = steps[steps.length - 1].endedAt - steps[0].startedAt;
-  const count = `${history.length} مرحله`;
-  const summary = `${count} انجام شد${!live && total >= 1000 ? ` · ${formatDuration(total)}` : ""}`;
+  const fa = useFa();
+  const count = `${fa ? faNumber(history.length) : history.length} مرحله`;
+  const summary = `${count} انجام شد${!live && total >= 1000 ? ` · ${formatDuration(total, fa)}` : ""}`;
   // Finished with a single step: just show it. Otherwise show the current step(s) and collapse history.
   const visible = expanded || (!live && !failed && history.length === steps.length && steps.length === 1) ? steps : current.length ? current : history.slice(-1);
   const canCollapse = steps.length > 1 && (expanded || visible.length < steps.length || history.length > 1);

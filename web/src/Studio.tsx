@@ -28,6 +28,8 @@ import { templatePrompts } from "./templateData";
 import { mergeEvents, mergeMessages, nearTop, keepPosition } from "./studio/windowing";
 import { StudioHomePage } from "./studio/Home";
 import { readChat, writeChat } from "./studio/chatCache";
+import { FaContext } from "./studio/locale";
+import { isPersianText } from "./format";
 
 type MobileView = "chat" | WorkspaceTab;
 const WORKSPACE_BOUNDS = { min: 340, max: 1100 };
@@ -58,6 +60,8 @@ export default function Studio() {
   const [conversations, setConversations] = React.useState<StudioConversation[]>([]);
   const [conversation, setConversation] = React.useState<StudioConversation | null>(null);
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
+  // Text still being written arrives live (never saved as events): the newest text of each running answer, shown until its saved message replaces it.
+  const [liveText, setLiveText] = React.useState<Record<string, string>>({});
   // Messages are loaded newest-first in a window; older pages come in as the reader scrolls up. `ready` is true once the newest window and the live
   // history that belongs to it have both arrived (until then a skeleton is shown, never old messages first).
   const MESSAGE_WINDOW = 40;
@@ -188,7 +192,7 @@ export default function Studio() {
   // previous chat. The chat being left is stored on the way out.
   React.useEffect(() => {
     const hit = authenticated && activeId ? readChat(activeId) : undefined;
-    setSelectedProject(null);
+    setSelectedProject(null); setLiveText({});
     if (hit && activeId) {
       setConversation(hit.conversation); setLoadedMessages(hit.messages); setHasMore(hit.hasMore); setEvents(hit.events);
       eventsFromRef.current = hit.eventsFrom; cursorRef.current = hit.cursor; windowRef.current = activeId;
@@ -250,9 +254,16 @@ export default function Studio() {
         try {
           connection = new AbortController();
           await api.streamStudioEvents(activeId, cursorRef.current, event => {
+            if (event.type === "assistant.response.delta" && event.data.live) {      // running text: shown at once, nothing to save or re-read
+              setLiveText(value => ({ ...value, [String(event.data.response_id)]: String(event.data.text || "") }));
+              return;
+            }
             cursorRef.current = Math.max(cursorRef.current, event.seq);
             setEvents(value => value.some(item => item.seq === event.seq) ? value : [...value, event]);
-            if (event.type === "assistant.response.delta") return;          // streamed text only grows the message; nothing on the server needs re-reading per word
+            if (event.type === "assistant.response.completed" || event.type === "assistant.response.failed") {
+              setLiveText(value => { const { [String(event.data.response_id)]: _gone, ...rest } = value; return rest; });
+            }
+            if (event.type === "assistant.response.delta") return;          // (an older server still sends saved deltas) nothing to re-read per word
             if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
             refreshTimerRef.current = window.setTimeout(() => void refresh(activeId, true), 180);
             if (listTimerRef.current == null) listTimerRef.current = window.setTimeout(() => {
@@ -344,6 +355,15 @@ export default function Studio() {
   const motionActive = useMotionActive(conversation?.state?.motion?.motion_id, events);
   const discoveryActive = useDiscoveryActive(conversation?.state?.discovery?.analysis_id, events);
   const projectRunning = projects.some(project => project.status === "running");
+  const shownEvents = React.useMemo(() => {
+    const ids = Object.keys(liveText);
+    if (!ids.length) return events;
+    const finished = new Set(events.filter(e => e.type === "assistant.response.completed" || e.type === "assistant.response.failed").map(e => String(e.data.response_id)));
+    const last = events.length ? events[events.length - 1].seq : 0;
+    const stamp = new Date().toISOString();
+    return [...events, ...ids.filter(id => !finished.has(id) && liveText[id]).map((id, index) =>
+      ({ id: -1 - index, seq: last + 1 + index, type: "assistant.response.delta", data: { response_id: id, text: liveText[id] }, created_at: stamp } as StudioEvent))];
+  }, [events, liveText]);
   const busyOnServer = serverBusy(events, conversation?.busy, now);
   const processing = isProcessing({ sending, messages, events, project: current, now }) || motionActive || discoveryActive || projectRunning || busyOnServer === true;
   // The live stream can be held back by a proxy or a mobile network (nothing arrives until a reload): also ask for new events every few seconds.
@@ -362,7 +382,7 @@ export default function Studio() {
     }, processing ? 2000 : 4000);
     return () => { alive = false; window.clearInterval(timer); };
   }, [activeId, processing, refresh]);
-  const items = React.useMemo(() => buildTimeline({ messages, events, projects, pending, processing, discoveryId: conversation?.state?.discovery?.analysis_id, motionId: conversation?.state?.motion?.motion_id }), [messages, events, projects, pending, processing, conversation?.state?.discovery?.analysis_id, conversation?.state?.motion?.motion_id]);
+  const items = React.useMemo(() => buildTimeline({ messages, events: shownEvents, projects, pending, processing, discoveryId: conversation?.state?.discovery?.analysis_id, motionId: conversation?.state?.motion?.motion_id }), [messages, shownEvents, projects, pending, processing, conversation?.state?.discovery?.analysis_id, conversation?.state?.motion?.motion_id]);
   // A live render card is its own progress indicator; otherwise show what the assistant is doing.
   const renderLive = items.some(item => item.kind === "render" && ["queued", "rendering", "finalizing"].includes(renderView(projects.find(p => p.id === item.projectId)).phase));
   // While the render card shows the real progress (the same block as the Preview and Edit tabs), the render steps of the activity log
@@ -634,7 +654,8 @@ export default function Studio() {
   if (!showConversation) return <StudioHomePage composer={composer("home")} authenticated={authenticated} onPrompt={prompt => { setText(prompt); textareaRef.current?.focus(); }}/>;
 
   const shownWorkspace = liveWorkspace ?? workspaceWidth;
-  return <div className="studio" ref={studioRef} data-layout={layout} data-ws={wsVisible ? "open" : "closed"} data-view={mobileView} data-resizing={resizingWorkspace || undefined}
+  const fa = isPersianText(messages.find(message => message.role === "user")?.content || conversation?.title || text);     // a Persian chat shows Persian clocks and numbers
+  return <FaContext.Provider value={fa}><div className="studio" ref={studioRef} data-layout={layout} data-ws={wsVisible ? "open" : "closed"} data-view={mobileView} data-resizing={resizingWorkspace || undefined}
     style={layout === "desktop" && wsVisible && shownWorkspace ? { ["--ws-w" as string]: `${shownWorkspace}px` } : undefined}>
     <section className="chat-col" aria-label="Conversation" hidden={layout === "mobile" && mobileView !== "chat"}>
       {layout !== "mobile" ? <header className="chat-head">
@@ -703,5 +724,5 @@ export default function Studio() {
       {([["chat", "Chat", "spark"], ["preview", "Preview", "eye"], ["edit", "Edit", "edit"]] as const).map(([id, label, icon]) => <button key={id} aria-current={mobileTab === id ? "page" : undefined}
         onClick={() => { if (id === "chat") setMobileView("chat"); else { setWsTab(id); setMobileView(id); } }}><Icon name={icon} size={20}/><span>{label}</span></button>)}
     </nav> : null}
-  </div>;
+  </div></FaContext.Provider>;
 }

@@ -81,7 +81,7 @@ def _stream(conversation_id: str, user_key: str, kind: str, facts: dict, attachm
                 text += chunk
                 if len(text) > MAX_CHARS * 1.6:
                     break                                        # enough: the message is cut at a sentence end below
-                if _public_narration(text, facts) and (not flushed or time.monotonic() - tick > 0.12):
+                if _public_narration(text, facts) and (not flushed or time.monotonic() - tick > 0.04):
                     _emit(conversation_id, "assistant.response.delta", response_id=response_id, text=text)
                     flushed, tick = text, time.monotonic()
             text = _trim(text)

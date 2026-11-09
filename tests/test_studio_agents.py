@@ -196,7 +196,9 @@ def test_medium_opening_streams_persists_and_is_not_repeated(monkeypatch):
     assert len(history["messages"]) == 2
     assert history["messages"][-1]["agent_mode"] == "medium"
     events = call(s.repo.events(record["conversation_id"], "alice"))
-    assert any(e["type"] == "assistant.response.delta" for e in events)
+    assert not any(e["type"] == "assistant.response.delta" for e in events)         # running text is passed on live, never saved (app/studio_live.py)
+    from app import studio_live
+    assert studio_live.since(record["conversation_id"], 0)                         # ...and it did go out
     assert sum(e["type"] == "assistant.response.completed" for e in events) == 1
 
 

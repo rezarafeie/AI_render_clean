@@ -111,10 +111,22 @@ test("a failed step stays failed", () => {
   assert.equal(stepDetails(a.steps.at(-1)).failed, true);
 });
 
-test("steps with nothing to add have no details (no empty expandable panels)", () => {
+test("every step with a recorded event opens to its log; one with none has nothing to open", () => {
   const events = [ev(1, "tool.progress", 1, { project_id: "p1", stage: "planning", message: "Planning the edit" })];
   const a = buildTimeline({ messages: [msg(1, "user", 0)], events, projects: [project()], processing: false }).find(i => i.kind === "activity");
-  assert.equal(stepDetails(a.steps[0]), null);
+  assert.equal(stepDetails(a.steps[0]).updates, 1);                                   // its log has the event
+  assert.equal(stepDetails({ ...a.steps[0], events: [], notes: [], request: undefined }), null);
+});
+
+test("English stage names never reach a Persian chat; the raw text stays in the log", () => {
+  const raw = [ev(1, "tool.progress", 1, { project_id: "p1", stage: "designing motion scenes", message: "designing motion scenes" }),
+               ev(2, "tool.progress", 2, { project_id: "p1", stage: "queued", message: "queued" }),
+               ev(3, "tool.progress", 3, { project_id: "p1", stage: "something new", message: "something new happened here" })];
+  const a = buildTimeline({ messages: [msg(1, "user", 0)], events: raw, projects: [project()], processing: false }).find(i => i.kind === "activity");
+  const shown = a.steps.flatMap(step => [step.label, ...step.notes]).join(" | ");
+  assert.doesNotMatch(shown, /[a-zA-Z]{4}/);                                          // nothing in plain English is shown
+  assert.match(a.steps.map(step => step.label).join(" "), /طراحی صحنه‌های موشن/);
+  assert.equal(a.steps.flatMap(step => step.events).length, 3);                       // ...and every raw event is still in the logs
 });
 
 test("only the latest unanswered question is actionable", () => {

@@ -357,7 +357,7 @@ def _stream_response(cid: str, user: str, message_id, conversation: dict, attach
                 break                                  # the model started writing the post/plan/JSON itself: discard it, the studio produces it in the next steps
             if len(text) > 420:
                 break                                  # an opening reply is two short sentences: never let it become the deliverable
-            if not flushed or time.monotonic()-tick>.12:
+            if not flushed or time.monotonic()-tick>.04:
                 _emit(cid,'assistant.response.delta',response_id=response_id,text=text)
                 flushed=text;tick=time.monotonic()
         text = _opening_cut(text)
@@ -422,6 +422,11 @@ def _page_screenshots(cid, user, page):
 
 
 def _emit(conversation_id: str, event_type: str, **data: Any) -> None:
+    if event_type == "assistant.response.delta":
+        # Running text goes straight to the open chats (see app/studio_live.py); only the finished message is saved.
+        from app import studio_live
+        studio_live.publish(conversation_id, event_type, data)
+        return
     event = run(repo.emit(conversation_id, event_type, data))
     if event_type in {"tool.started", "storyboard.ready", "render.started", "render.completed"} and data.get("message"):
         try:

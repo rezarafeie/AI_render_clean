@@ -9,6 +9,8 @@ import { MotionGraphicCard } from "./MotionGraphic";
 import { RichText } from "./RichText";
 import { TimelineItem } from "./model";
 import { ImagePreview } from "./ImagePreview";
+import { useFa } from "./locale";
+import { messageClock } from "../format";
 
 export interface LocalFileInfo { name: string; type: string; url: string }
 
@@ -38,6 +40,7 @@ function Attachments({ conversationId, ids, local, autoOpen }: { conversationId?
 
 /** Time and a copy button under a message: shown on hover (mouse) or when the message is tapped (touch). */
 function MessageMeta({ text, at }: { text: string; at: number }) {
+  const fa = useFa();
   const [copied, setCopied] = React.useState(false);
   const copy = async (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -46,8 +49,8 @@ function MessageMeta({ text, at }: { text: string; at: number }) {
     setCopied(true); window.setTimeout(() => setCopied(false), 1500);
   };
   return <div className="msg-meta">
-    {Number.isFinite(at) && at > 0 ? <time dateTime={new Date(at).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at)}</time> : null}
-    {text ? <button type="button" className="msg-copy" onClick={copy} aria-label={copied ? "Copied" : "Copy message"}><Icon name={copied ? "check" : "copy"} size={14}/><span>{copied ? "Copied" : "Copy"}</span></button> : null}
+    {Number.isFinite(at) && at > 0 ? <time dateTime={new Date(at).toISOString()}>{messageClock(at, fa)}</time> : null}
+    {text ? <button type="button" className="msg-copy" onClick={copy} aria-label={copied ? (fa ? "کپی شد" : "Copied") : (fa ? "کپی پیام" : "Copy message")}><Icon name={copied ? "check" : "copy"} size={14}/><span>{copied ? (fa ? "کپی شد" : "Copied") : (fa ? "کپی" : "Copy")}</span></button> : null}
   </div>;
 }
 

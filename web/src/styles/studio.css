@@ -811,3 +811,13 @@ a.pe-tool { text-decoration: none; }
 .plan-actions[data-compact] { flex-wrap: nowrap; justify-content: space-between; gap: 10px; padding-block: 8px calc(8px + var(--safe-bottom, 0px)); }
 .plan-actions[data-compact] .btn { min-height: 38px; padding: 6px 16px; font-size: 14px; white-space: nowrap; flex: none; }
 .plan-actions[data-compact] small { flex: 1 1 0; min-width: 0; font-size: 11px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A step's technical log (opened by clicking the step) */
+.act-log { margin-top: 10px; border-top: 1px solid var(--line, rgba(255,255,255,.08)); padding-top: 8px; font-size: 12px; }
+.act-log-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted, #8b8b8b); margin-bottom: 4px; }
+.act-log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.act-log summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 3px 0; list-style: none; }
+.act-log summary::-webkit-details-marker { display: none; }
+.act-log summary time { color: var(--muted, #8b8b8b); font-variant-numeric: tabular-nums; }
+.act-log summary b { font-weight: 600; }
+.act-log pre { margin: 4px 0 6px; padding: 8px 10px; max-height: 220px; overflow: auto; border-radius: 8px; background: rgba(255,255,255,.04); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
