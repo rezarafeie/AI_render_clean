@@ -347,3 +347,42 @@ def localize(video, state, placements, output, *, work_dir, fonts_dir=None, musi
                                duration=duration, width=width, height=height, fps=int(cadence), on_progress=on_progress,
                                should_cancel=who[3] if len(who) > 3 else None, on_stage=who[4] if len(who) > 4 else None,
                                on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)
+
+
+def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progress=None):
+    """Talking 5's heavy half: the two HyperFrames layers, the person matte, the face effects and the composition run on a worker. The model-written
+    panels and the effect plan are already in `plan`/`fx`; the tscaps hook is a finished overlay file."""
+    if not eligible():
+        return False
+    import dataclasses
+    import hashlib
+    import shutil
+    import tempfile
+    from engine.talking_styles import talking_1 as engine
+    from .service import render_prepared
+    who = identity.get()
+    with tempfile.TemporaryDirectory(prefix='editorgpt-talking5-input-') as directory:
+        staged = Path(directory)
+        approved = [*(Path(p).resolve() for p in who[2]), (engine.PROJECT_ROOT / 'assets/music').resolve()]
+
+        def asset(value):
+            source = Path(value).resolve(strict=True)
+            if not any(source.is_relative_to(base) for base in approved) or not source.is_file():
+                raise ValueError('Talking 5 asset is not owned or library-approved')
+            name = 'assets/' + hashlib.sha256(str(source).encode()).hexdigest() + source.suffix
+            (staged / 'assets').mkdir(exist_ok=True)
+            shutil.copy2(source, staged / name)
+            return name
+        try:
+            data = {'video': asset(video), 'plan': dataclasses.asdict(plan), 'script': plan.script, 'pack': pack.model_dump(mode='json'),
+                    'sentences': plan.sentences, 'creative_plan': getattr(plan, 'creative_plan', None), 'fx': list(fx or []),
+                    'music': asset(music) if music and Path(music).is_file() else None,
+                    'hook': asset(hook) if hook and Path(hook).is_file() else None}
+            (staged / 'talking5.json').write_text(json.dumps(data, ensure_ascii=False))
+        except (TypeError, ValueError):
+            return False                      # anything that cannot travel as plain data keeps its local render
+        return render_prepared(staged, output, user=who[0], project_id=who[1], engine='talking_5', entrypoint='talking5.json',
+                               duration=plan.duration, width=1080, height=1920, fps=30, on_progress=on_progress,
+                               features=['face-effects'] if fx else [],
+                               should_cancel=who[3] if len(who) > 3 else None, on_stage=who[4] if len(who) > 4 else None,
+                               on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)

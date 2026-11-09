@@ -71,6 +71,24 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
         from engine.hyperframes.product_reel import _run_cli
         _run_cli(entry.parent, output, timeout=spec.timeout_seconds,
                  on_progress=on_progress, should_cancel=should_cancel,fmt=spec.export_format)
+    elif spec.engine == 'talking_5':
+        from pydantic import TypeAdapter
+        from creative.style_packs import StylePack
+        from engine.talking_styles import talking_2, talking_5
+        from .contracts import relative_path
+        data = prepared_json(entry)
+
+        def owned(value):
+            path = workspace / relative_path(value)
+            if not path.resolve().is_relative_to(workspace.resolve()) or not path.is_file():
+                raise ValueError('Talking 5 asset outside workspace')
+            return path
+        plan = TypeAdapter(talking_2.ReelPlan).validate_python(data['plan'])
+        plan.script, plan.pack = data['script'], StylePack.model_validate(data['pack'])
+        plan.sentences, plan.creative_plan, plan.effects = data['sentences'], data['creative_plan'], data['fx']
+        talking_5.compose(owned(data['video']), plan, output, work_dir=workspace / 'render-work',
+                          music=owned(data['music']) if data.get('music') else None, pack=plan.pack, fx=data['fx'],
+                          hook=owned(data['hook']) if data.get('hook') else None, on_progress=on_progress)
     elif spec.engine.startswith('talking_'):
         from pydantic import TypeAdapter
         from engine.talking_styles import talking_1,talking_2

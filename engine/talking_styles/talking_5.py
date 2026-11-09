@@ -545,21 +545,33 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
 
 def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Optional[Path] = None,
            on_progress: Optional[Callable[[int], None]] = None, **kwargs) -> Path:
+    """Server side: everything that asks a model (the panels, the effects) and the tscaps hook. The browser layers, the person matte, the effects and the
+    composition are `compose`, which runs on a RunPod worker when the cloud profile admits it and here otherwise."""
     work_dir.mkdir(parents=True, exist_ok=True)
     pack = kwargs.get("pack") or plan.pack
-    report = (lambda lo, hi: (lambda p: on_progress(lo + int(p * (hi - lo) / 100)))) if on_progress else (lambda lo, hi: None)
     if getattr(plan, "creative_plan", None) is not None and author_panels(plan, work_dir):
         bg = next((s["beat"]["custom"].get("bg") for s in plan.script["segments"] if s.get("beat") and s["beat"].get("custom")), None)
         if bg:                                          # the speaker card's rounded corners show this colour: it must be the panel's
             pack = pack.model_copy(update={"palette": pack.palette.model_copy(update={"panel_bg": bg})})
-    panel = render_layer(plan, work_dir / "t5_panel.webm", work_dir=work_dir, part="panel", pack=pack, on_progress=report(5, 45))
     hook = render_hook(plan, work_dir, pack)
-    text = render_layer(plan, work_dir / "t5_text.webm", work_dir=work_dir, part="text", pack=pack, on_progress=report(45, 75))
     try:
         fx = choose_effects(plan, pack, work_dir)
     except Exception as exc:
         log.warning("effects not chosen: %s", str(exc)[:300])
         fx = []
+    from app.render_cloud.hooks import talking5 as cloud_talking5
+    if cloud_talking5(video, plan, out, work_dir=work_dir, music=music, pack=pack, fx=fx, hook=hook, on_progress=on_progress):
+        return out
+    return compose(video, plan, out, work_dir=work_dir, music=music, pack=pack, fx=fx, hook=hook, on_progress=on_progress)
+
+
+def compose(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Optional[Path], pack: StylePack, fx: list[dict],
+            hook: Optional[Path], on_progress: Optional[Callable[[int], None]] = None) -> Path:
+    """The panel and text layers (HyperFrames pages), then the speaker, the person matte, the face effects, the music and the loudness in one pass."""
+    work_dir.mkdir(parents=True, exist_ok=True)
+    report = (lambda lo, hi: (lambda p: on_progress(lo + int(p * (hi - lo) / 100)))) if on_progress else (lambda lo, hi: None)
+    panel = render_layer(plan, work_dir / "t5_panel.webm", work_dir=work_dir, part="panel", pack=pack, on_progress=report(5, 45))
+    text = render_layer(plan, work_dir / "t5_text.webm", work_dir=work_dir, part="text", pack=pack, on_progress=report(45, 75))
     if fx:
         try:
             apply_effects(video, plan, panel, text, hook, fx, out, work_dir=work_dir, music=music, pack=pack, on_progress=report(75, 97))
