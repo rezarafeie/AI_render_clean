@@ -728,13 +728,17 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         user_messages = [m for m in conversation.get('messages', []) if m['role'] == 'user']
         first_turn = len(user_messages) == 1 and str(user_messages[0]['id']) == str(message_id)
         original_title = conversation.get('title', '')
-        automatic_title = original_title in {'گفتگوی جدید', 'New media edit', 'New edit', text[:70]}
+        from app.studio_title import is_automatic
+        automatic_title = is_automatic(original_title, text)
         def set_title(title):
             # Do not overwrite a title manually renamed while the model was answering.
             latest = run(repo.get_conversation(conversation_id, user_key))
             if latest.get('title') == original_title:
                 run(repo.set_conversation(conversation_id, user_key, title=title))
                 _emit(conversation_id, 'conversation.updated', title=title)
+        if first_turn and automatic_title:
+            from app.studio_title import title_in_background       # whatever route the message takes, the chat ends with a made title
+            title_in_background(conversation_id, user_key, text)
         marker = _engine_marker(text)
         if marker:
             text = _ENGINE_MARKER.sub("", text, count=1).lstrip()       # the brief itself, without the routing tag

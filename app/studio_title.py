@@ -19,6 +19,20 @@ _SYSTEM = ('Write a concise, specific conversation title of 3 to 7 words for a v
            'No quotes, no URLs, no generic words like "New edit", nothing invented. Return only JSON {"title": "..."}.')
 
 
+def _flat(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def is_automatic(current: str, text: str) -> bool:
+    """Is this title one the person never chose? The default names, or the start of the first message (the chat is named after it when it is
+    created, cut and trimmed, with or without a trailing ellipsis): such a title is replaced by a made one, a title the person wrote is not."""
+    shown = _flat(current).rstrip("…").strip()
+    if not shown or _flat(current) in AUTOMATIC:
+        return True
+    body = _flat(_MARKER.sub("", text or ""))
+    return len(shown) >= 10 and (body.startswith(shown) or _flat(text).startswith(shown))
+
+
 def fallback_title(text: str) -> str:
     """The first meaningful words of the message: directive lines, links and routing tags are not part of a title."""
     from creative import directives
@@ -53,7 +67,7 @@ def title_chat(conversation_id: str, user: str, text: str) -> bool:
         current = conversation.get("title", "")
         users = [m for m in conversation.get("messages", []) if m["role"] == "user"]
         clean = _MARKER.sub("", text or "").strip()
-        if len(users) != 1 or not (current in AUTOMATIC or current == clean[:70] or current == (text or "")[:70]):
+        if len(users) != 1 or not is_automatic(current, text):
             return False
         title = make_title(clean)
         latest = run(repo.get_conversation(conversation_id, user))

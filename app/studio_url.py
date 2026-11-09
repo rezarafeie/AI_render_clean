@@ -391,6 +391,67 @@ def _spa_product(parser: PageParser, base: str) -> dict | None:
     return None
 
 
+_DIGIKALA_PRODUCT = re.compile(r"^/product/dkp-(\d{3,12})(?:/|$)")
+
+
+def _digikala_product(url: str) -> dict | None:
+    """A Digikala product page is a client-rendered shell (no text in its HTML, and a headless browser here cannot load it); the site's own product API
+    carries everything the page shows. Returns {title, structured, lines} or None when it is not a Digikala product or the API does not answer."""
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower()
+    found = _DIGIKALA_PRODUCT.match(parts.path or "")
+    if not (host == "digikala.com" or host.endswith(".digikala.com")) or not found:
+        return None
+    try:
+        raw, _final, _kind = _fetch(f"https://api.digikala.com/v2/product/{found.group(1)}/", max_bytes=MAX_HTML, accept="application/json")
+        product = (json.loads(raw.decode("utf-8", errors="replace")).get("data") or {}).get("product") or {}
+    except (ValueError, OSError):
+        return None
+    title = str(product.get("title_fa") or product.get("title_en") or "").strip()
+    if not title:
+        return None
+
+    def plain(value: Any) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(value or ""))).strip()
+
+    pictures: list[str] = []
+    gallery = product.get("images") or {}
+    for entry in [gallery.get("main"), *(gallery.get("list") or [])]:
+        for link in ((entry or {}).get("url") or []) if isinstance(entry, dict) else []:
+            if isinstance(link, str) and link not in pictures:
+                pictures.append(link)
+    brand = plain((product.get("brand") or {}).get("title_fa") or (product.get("brand") or {}).get("title_en"))
+    category = plain((product.get("category") or {}).get("title_fa"))
+    variant = product.get("default_variant") or {}
+    price = (variant.get("price") or {}).get("selling_price")
+    lines = [title]
+    if brand:
+        lines.append(f"برند: {brand}")
+    if category:
+        lines.append(f"دسته‌بندی: {category}")
+    if isinstance(price, (int, float)) and price > 0:
+        lines.append(f"قیمت فروش: {int(price) // 10:,} تومان")
+    for group in product.get("specifications") or []:
+        for attribute in group.get("attributes") or []:
+            values = "، ".join(plain(item) for item in attribute.get("values") or [] if plain(item))
+            if attribute.get("title") and values:
+                lines.append(f"{plain(attribute['title'])}: {values}")
+    for property_ in (product.get("properties") or {}).get("properties") or []:
+        if isinstance(property_, dict) and property_.get("title") and property_.get("value"):
+            lines.append(f"{plain(property_['title'])}: {plain(property_['value'])}")
+    review = plain((product.get("review") or {}).get("description"))
+    if review:
+        lines.append(review[:1500])
+    for side, key in (("مزیت", "advantages"), ("عیب", "disadvantages")):
+        for item in ((product.get("pros_and_cons") or {}).get(key) or [])[:6]:
+            if plain(item):
+                lines.append(f"{side}: {plain(item)}")
+    structured = {"@type": "Product", "name": title, "description": review[:600] or title, "sku": str(product.get("id") or found.group(1)),
+                  "category": category, "brand": brand, "images": pictures[:12],
+                  "offers": {"price": int(price) // 10 if isinstance(price, (int, float)) else None, "currency": "IRT"}}
+    return {"title": title, "structured": {key: value for key, value in structured.items() if value not in (None, "", [])}, "lines": lines[:90]}
+
+
 def inspect_page(url: str, output_dir: Path) -> dict:
     try:
         html, final_url, content_type = _fetch(url, max_bytes=MAX_HTML, accept="text/html,application/xhtml+xml")
@@ -402,6 +463,11 @@ def inspect_page(url: str, output_dir: Path) -> dict:
     parser = PageParser()
     parser.feed(html.decode("utf-8", errors="replace"))
     base = final_url
+    digikala = _digikala_product(url)
+    if digikala:                                                  # the product's own data instead of an empty shell and a browser that cannot open it
+        parser.structured.append(digikala["structured"])
+        parser.text.extend(digikala["lines"])
+        parser.title = digikala["title"]
     spa_product = None
     if not parser.text and not _structured_products(parser.structured):
         spa_product = _spa_product(parser, base)
