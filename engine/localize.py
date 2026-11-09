@@ -1562,7 +1562,7 @@ def render(
         af.append("anullsrc=r=48000:cl=stereo[silence]")
         mix.append("[silence]")
     af.append(f"{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=longest,"
-              f"atrim=0:{duration:.3f},loudnorm=I=-14:TP=-1.5,aresample=48000[a]")
+              f"apad=whole_dur={duration:.3f},atrim=0:{duration:.3f},loudnorm=I=-14:TP=-1.5,aresample=48000[a]")
 
     cmd = [ffmpeg, "-hide_banner", "-y", *inputs,
            "-filter_complex", ";".join(vf + af),
