@@ -30,6 +30,7 @@ def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, styl
     seconds_each = _allocate(duration, weights, [max(n, .5) for n in needs])
     lengths = [round(sec*30) for sec in seconds_each[:-1]]
     lengths.append(frames-sum(lengths))
+    _assign_missing_assets(beats, asset_indices)
     scenes = []
     for index, (beat, length) in enumerate(zip(beats, lengths)):
         seconds = length/30
@@ -53,6 +54,25 @@ def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, styl
         # Zero is not a price estimate. Studio separately reports unknown cost
         # for generation providers; actual provider cost remains authoritative.
         estimated_total_cost=0, usage={'model':','.join(plan.models),'source':'creative_plan_v2'})
+
+
+def _assign_missing_assets(beats, asset_indices: set[int]) -> None:
+    """The approved script may leave a scene (a kinetic-type or a plain motion scene) without a picture while the verified product images are
+    the material of the video: each such scene takes the picture used least so far (the first one, the product itself, for the opening), rather than the
+    whole production being refused over a choice the script did not need to make."""
+    if not asset_indices:
+        return
+    order = sorted(asset_indices)
+    uses = {index: 0 for index in order}
+    for beat in beats:
+        if beat.source_asset_index in uses:
+            uses[beat.source_asset_index] += 1
+    for position, beat in enumerate(beats):
+        if beat.source_asset_index in uses:
+            continue
+        choice = order[0] if position == 0 else min(order, key=lambda index: (uses[index], index))
+        beat.source_asset_index = choice
+        uses[choice] += 1
 
 
 def _allocate(total: float, weights: list[float], minimum: list[float]) -> list[float]:

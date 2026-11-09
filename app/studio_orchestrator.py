@@ -876,6 +876,7 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
     except Exception as exc:
         log.exception("Studio message failed")
         message = str(exc)[:500] or "عملیات انجام نشد"
+        studio_narrator.wait_idle(conversation_id)                       # what was already being said is posted first: the stop comes last, as it happened
         _emit(conversation_id, "tool.failed", message=message)
         _assistant(conversation_id, user_key, f"عملیات متوقف شد: {message}")
 

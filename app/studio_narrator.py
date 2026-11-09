@@ -49,6 +49,21 @@ def _executor(conversation_id: str) -> ThreadPoolExecutor:
         return _queues[conversation_id]
 
 
+def wait_idle(conversation_id: str, timeout: float = 25.0) -> None:
+    """Block until everything queued for this chat's narrator has been posted (or the timeout passes). A failure message is written after the narration
+    that was already on its way, so the chat reads in the order things happened instead of continuing past a stop."""
+    with _lock:
+        executor = _queues.get(conversation_id)
+    if executor is None:
+        return
+    done = Future()
+    try:
+        executor.submit(lambda: done.set_result(None))          # the queue is one worker deep: this runs after everything before it
+        done.result(timeout=timeout)
+    except Exception:
+        pass
+
+
 def _trim(text: str) -> str:
     """A narration is short: cut a rambling answer at a sentence end instead of showing a wall of text."""
     text = text.strip()
