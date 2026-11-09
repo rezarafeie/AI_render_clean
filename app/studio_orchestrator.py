@@ -1401,6 +1401,13 @@ def _scenario_message(storyboard: dict, duration: int, *, motion_scenes: int = 0
         if getattr(chosen, "visual_language", ""):
             said.append(f"زبان بصری: {_short(chosen.visual_language, 160)}")
         blocks.append("\n".join(said))
+        try:
+            from creative import design_choice
+            decision = design_choice.note(design_choice.assess(idea), _short)
+            if decision:
+                blocks.append(decision)
+        except Exception:
+            log.debug("design decision note skipped", exc_info=True)
     blocks.append(f"**سناریوی پیشنهادی** — {len(scenes)} صحنه، حدود {total:g} ثانیه")
     for number, scene in enumerate(scenes, 1):
         rows = [f"**صحنهٔ {number} · {round(float(scene.get('duration_s', 0)), 1):g} ثانیه**"]
