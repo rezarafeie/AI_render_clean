@@ -40,8 +40,10 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "arvan": {"title": "ArvanCloud", "base_url": "https://aiapi.rafiei.co/v1", "model": "GPT-5.6-Sol", "format": "openai", "group": "arvancloud-all-models", "auth": "apikey"},
     "openai": {"title": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4.1-mini", "format": "openai", "group": "openai-all-models"},
     "gemini": {"title": "Gemini (via Vercel proxy)", "base_url": "https://ai-gateway.vercel.sh/v1", "model": "gemini-3.5-flash", "format": "openai", "group": None},
+    # The account's own ElevenLabs voices (My Voices), through the studio's Vercel relay (ELEVENLABS_PROXY_URL). Speech only: a route lists its models as `elevenlabs:<model>`.
+    "elevenlabs": {"title": "ElevenLabs (via Vercel relay)", "base_url": "https://api.elevenlabs.io", "model": "eleven_v3", "format": "elevenlabs", "group": None, "speech_only": True},
 }
-FORMATS = ("openai", "gemini")
+FORMATS = ("openai", "gemini", "elevenlabs")
 
 
 class DirectError(RuntimeError):
@@ -118,7 +120,7 @@ def config() -> dict:
 
 def _env_key(provider: str) -> str:
     """Keys already configured for the legacy single-provider paths are reused, so nothing has to be entered twice."""
-    legacy = {"openai": settings.OPENAI_API_KEY, "gemini": settings.GEMINI_API_KEY}.get(provider, "")
+    legacy = {"openai": settings.OPENAI_API_KEY, "gemini": settings.GEMINI_API_KEY, "elevenlabs": os.environ.get("ELEVENLABS_API_KEY", "")}.get(provider, "")
     return (os.environ.get(f"DIRECT_{provider.upper()}_API_KEY") or legacy or "").strip()
 
 
@@ -363,6 +365,9 @@ def _scrub(text: str, key: str, limit: int = 240) -> str:
 def model_for(provider: dict, candidates: list[str]) -> str:
     """Prefer a model the route already names for this provider; otherwise the provider's configured default."""
     base = PROVIDERS[provider["id"]]
+    if base.get("speech_only"):
+        return next((c.split(":", 1)[1] for c in candidates if c.startswith("elevenlabs:") and c.split(":", 1)[1]), "")
+    candidates = [c for c in candidates if not c.startswith("elevenlabs:")]            # an ElevenLabs model is only ever asked of ElevenLabs
     for candidate in candidates:
         if base["group"] and candidate.startswith("custom:") and candidate.endswith("#" + base["group"]):
             return candidate[len("custom:"):-len("#" + base["group"])]
@@ -388,12 +393,14 @@ def _note_failure(provider: dict, exc: "DirectError") -> None:
         _REJECTED[provider["id"]] = time.monotonic() + 120          # no credit left on this key: do not retry it on every call
 
 
-def usable(providers: list[dict] | None = None, *, google_first: bool = False) -> list[dict]:
+def usable(providers: list[dict] | None = None, *, google_first: bool = False, kind: str = "chat") -> list[dict]:
+    """Providers that are on, have a key and are not resting after a failure. A speech-only provider (ElevenLabs) is offered only to speech requests."""
     cfg = config()
     if not cfg["enabled"]:
         return []
     now = time.monotonic()
-    found = [p for p in (providers or cfg["providers"]) if p["enabled"] and key_for(p["id"]) and _REJECTED.get(p["id"], 0) <= now]
+    found = [p for p in (providers or cfg["providers"]) if p["enabled"] and key_for(p["id"]) and _REJECTED.get(p["id"], 0) <= now
+             and (kind == "speech" or not PROVIDERS[p["id"]].get("speech_only"))]
     if google_first:
         # Gemini/Google models are asked of Google itself before any reseller.
         found.sort(key=lambda p: 0 if p["id"] == "gemini" else 1)
@@ -406,6 +413,9 @@ MEDIA_PATHS = {"image": "images/generations", "speech": "audio/speech", "embeddi
 def media_model_for(provider: dict, candidates: list[str]) -> str:
     """The model a media route names for this provider: a scoped id of the provider's own group, else a plain id (served by whichever provider is asked)."""
     base = PROVIDERS[provider["id"]]
+    if base.get("speech_only"):
+        return next((c.split(":", 1)[1] for c in candidates if c.startswith("elevenlabs:") and c.split(":", 1)[1]), "")
+    candidates = [c for c in candidates if not c.startswith("elevenlabs:")]            # an ElevenLabs model is only ever asked of ElevenLabs
     for candidate in candidates:
         if base["group"] and candidate.startswith("custom:") and candidate.endswith("#" + base["group"]):
             return candidate[len("custom:"):-len("#" + base["group"])]
@@ -415,6 +425,22 @@ def media_model_for(provider: dict, candidates: list[str]) -> str:
     return ""
 
 
+def _elevenlabs_speech(body: dict, model: str, timeout: float) -> httpx.Response:
+    """One text-to-speech request to ElevenLabs through the Vercel relay with the voice the route cast (a voice of the account)."""
+    from .elevenlabs_transport import url as relay_url
+    from .localize import language_of
+    voice = str(body.get("voice") or "")
+    if not voice:
+        raise DirectError("No voice was cast for this speech request", 422)
+    text = str(body.get("input") or "")
+    try:
+        target = relay_url(f"v1/text-to-speech/{voice}?output_format=mp3_44100_128")
+    except RuntimeError as exc:
+        raise DirectError(str(exc), 503) from exc
+    return _post(target, {"Content-Type": "application/json", "xi-api-key": key_for("elevenlabs")},
+                 {"text": text, "model_id": model, "language_code": (language_of(text) or "fa")[:2]}, timeout)
+
+
 def media_request(endpoint: str, candidates: list[str], body: dict, *, timeout: float) -> tuple[httpx.Response, str, str]:
     """Image, speech and embedding requests straight to a provider's own OpenAI-compatible API (the gateway is off): enabled providers with a key, in
     priority order, one submission each; a provider that has no model for the route is skipped. Returns (response, provider id, model)."""
@@ -422,11 +448,28 @@ def media_request(endpoint: str, candidates: list[str], body: dict, *, timeout: 
     if path is None:
         raise DirectError(f"{endpoint} is not available without the gateway", 422)
     last: DirectError | None = None
-    for provider in usable():
-        if provider["format"] != "openai":
-            continue
+    for provider in usable(kind="speech" if endpoint == "speech" else "chat"):
         model = media_model_for(provider, candidates)
-        if not model:
+        if provider["format"] == "elevenlabs":
+            if endpoint != "speech" or not model:
+                continue
+            try:
+                response = _elevenlabs_speech(body, model, timeout)
+            except DirectError as exc:
+                last = exc
+                continue
+            except httpx.TimeoutException as exc:
+                last = DirectError(f"elevenlabs {type(exc).__name__}", 504)
+                continue
+            except httpx.HTTPError as exc:
+                last = DirectError(f"elevenlabs {type(exc).__name__}", 502)
+                continue
+            if not response.is_success:
+                last = DirectError(f"elevenlabs HTTP {response.status_code}: {response.text[:200]}", response.status_code)
+                _note_failure(provider, last)
+                continue
+            return response, provider["id"], model
+        if provider["format"] != "openai" or not model:
             continue
         key = key_for(provider["id"])
         headers = {"Content-Type": "application/json", "Authorization": f"{PROVIDERS[provider['id']].get('auth', 'Bearer')} {key}"}

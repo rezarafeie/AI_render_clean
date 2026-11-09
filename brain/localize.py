@@ -622,34 +622,6 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     return base64.b64decode(data["audio_base64"]), data["alignment"]
 
 
-def elevenlabs_configured() -> bool:
-    return bool(os.environ.get("ELEVENLABS_API_KEY", "").strip())
-
-
-def elevenlabs_speak(text: str, voice: str, model_id: str = "", language: str = "", timeout: float = 200) -> tuple[bytes, str]:
-    """One MP3 spoken by `voice` (a voice of the ElevenLabs account, My Voices) through the studio's ElevenLabs relay. Returns (audio, model)."""
-    import httpx
-    from brain.elevenlabs_transport import url as elevenlabs_url
-
-    key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("ElevenLabs API key is not set")
-    model = model_id or tts_model()
-    response = httpx.post(elevenlabs_url(f"v1/text-to-speech/{voice}?output_format=mp3_44100_128"), headers={"xi-api-key": key},
-                          json={"text": text, "model_id": model, "language_code": (language or language_of(text) or "fa")[:2]},
-                          timeout=httpx.Timeout(timeout, connect=20.0))
-    if response.status_code == 403:
-        raise RuntimeError("ElevenLabs refused the request (HTTP 403); check the network/VPN")
-    if response.status_code == 402 or "quota" in response.text[:400].lower():
-        raise RuntimeError(f"ElevenLabs quota exceeded (HTTP {response.status_code})")
-    if response.status_code in (400, 404, 422):
-        raise RuntimeError(f"ElevenLabs rejected voice {voice} (HTTP {response.status_code}): {response.text[:200]}")
-    response.raise_for_status()
-    if not response.headers.get("content-type", "").startswith("audio/") or len(response.content) < 1000:
-        raise RuntimeError("ElevenLabs returned no audio")
-    return response.content, model
-
-
 def split_by_alignment(alignment: dict, spans: list[tuple[int, int]], total: float) -> list[tuple[float, float]]:
     """Audio (start, end) of each character span; cuts fall midway between lines."""
     starts = alignment["character_start_times_seconds"]
