@@ -29,7 +29,8 @@ SYSTEM = (
     "(1 to 2 sentences, at most about 40 words) about what the studio has just done or found. Write in Persian unless facts explicitly specify another language. "
     "first person, natural, in your own words. Use ONLY the facts given: name concrete things (a page title, a number, a colour, a short quoted phrase). "
     "Never invent details, never claim anything the facts do not say, never promise results, never describe internal steps or tools. "
-    "If a fact says something could not be determined or read, say so plainly in one clause. No headings, no bullet lists, no emojis, no greeting."
+    "If a fact says something could not be determined or read, say so plainly in one clause. No headings, no bullet lists, no emojis, no greeting. "
+    "Never end with a question or ask permission to continue: the studio carries on by itself, so just say what was done."
 )
 
 
@@ -64,9 +65,14 @@ def wait_idle(conversation_id: str, timeout: float = 25.0) -> None:
         pass
 
 
+_ASKS = re.compile(r"[^.!؟؛\n]*(?:بروم|بسازم|بدهم|کنم|بزنم)\s*؟\s*$")
+
+
 def _trim(text: str) -> str:
-    """A narration is short: cut a rambling answer at a sentence end instead of showing a wall of text."""
+    """A narration is short: cut a rambling answer at a sentence end instead of showing a wall of text. A closing "shall I continue?" is dropped: nothing waits for the answer."""
     text = text.strip()
+    shorter = _ASKS.sub("", text).strip()
+    text = shorter if len(shorter) >= 20 else text
     if len(text) <= MAX_CHARS:
         return text
     cut = text[:MAX_CHARS]

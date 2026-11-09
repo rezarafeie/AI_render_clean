@@ -35,7 +35,7 @@ function Attachments({ conversationId, ids, local, autoOpen }: { conversationId?
     ? <div className="attach-preview" key={index}><ImagePreview src={file.url} alt={file.name}/></div>
     : <div className="attach-chip" key={index}><span className="attach-icon"><Icon name={file.type.startsWith("video/") ? "video" : "music"} size={16}/></span><span className="attach-meta"><b className="wrap-safe">{file.name}</b></span></div>)}</div>;
   if (!ids.length || !conversationId) return null;
-  return <div className="msg-files">{ids.map((id, index) => <RemoteAttachment key={id} conversationId={conversationId} id={id} index={index} autoOpen={autoOpen}/>)}</div>;
+  return <div className={`msg-files${ids.length > 2 ? " msg-gallery" : ""}`}>{ids.map((id, index) => <RemoteAttachment key={id} conversationId={conversationId} id={id} index={index} autoOpen={autoOpen}/>)}</div>;
 }
 
 /** Time and a copy button under a message: shown on hover (mouse) or when the message is tapped (touch). */

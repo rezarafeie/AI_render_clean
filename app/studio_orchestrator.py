@@ -1027,7 +1027,7 @@ def _read_page(conversation_id: str, user_key: str, url: str, *, brief: bool = F
                  "read_from": "screenshots (the page text was not in its HTML)" if page.get("extraction") == "screenshot_vision" else "the page text"}
     if facts:
         narration["summary"] = {k: facts.get(k) for k in ("source_kind", "product_name", "factual_summary", "audience", "offer") if facts.get(k)}
-    attachments = _attach_files(conversation_id, user_key, images[:4], "source_page_image", "تصویر-صفحه")
+    attachments = _attach_files(conversation_id, user_key, images[:12], "source_page_image", "تصویر-صفحه")
     studio_narrator.narrate(conversation_id, user_key, "source_page", narration, attachments=attachments,
                             fallback=("از صفحه خواندم" + (f" «{title}»" if title else "") + ": " + "؛ ".join(_short(line, 110) for line in lines[:4])).strip())
     return {"url": url, "title": title, "text": text, "page": page, "facts": facts, "images": images}
