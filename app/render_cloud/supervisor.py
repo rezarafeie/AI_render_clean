@@ -108,6 +108,9 @@ def _stderr_tail(handle, limit=16384):
     if 'HyperFramesError' in last:
         return last[-2300:]
     # ffmpeg ends with a bare 'Conversion failed!': the line before it says why.
+    # A Python traceback ends with the exception itself: that line is the answer.
+    if re.match(r'^[\w.]*(Error|Exception)\b', last):
+        return last[-400:]
     # Tools such as libass and ffmpeg end with chatter: prefer the lines that name a failure, newest first.
     named = [line for line in lines if re.search(r'error|fail|invalid|no such|cannot|unable|not found|denied|missing|exception', line, re.I)
              and 'Loading font file' not in line]
