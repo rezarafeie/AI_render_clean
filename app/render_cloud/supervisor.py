@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import signal
 import subprocess
 import tempfile
@@ -94,7 +95,7 @@ def terminate(process, *, grace=2):
     process.wait(timeout=5)
 
 
-def _stderr_tail(handle, limit=2048):
+def _stderr_tail(handle, limit=16384):
     try:
         size = handle.seek(0, 2)
         handle.seek(max(0, size - limit))
@@ -107,7 +108,10 @@ def _stderr_tail(handle, limit=2048):
     if 'HyperFramesError' in last:
         return last[-2300:]
     # ffmpeg ends with a bare 'Conversion failed!': the line before it says why.
-    return ' | '.join(lines[-3:])[-300:]
+    # Tools such as libass and ffmpeg end with chatter: prefer the lines that name a failure, newest first.
+    named = [line for line in lines if re.search(r'error|fail|invalid|no such|cannot|unable|not found|denied|missing|exception', line, re.I)
+             and 'Loading font file' not in line]
+    return ' | '.join((named[-3:] or lines[-3:]))[-400:]
 
 
 def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_network=False):
