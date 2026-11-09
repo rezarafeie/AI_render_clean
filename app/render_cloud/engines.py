@@ -86,9 +86,17 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
         plan = TypeAdapter(talking_2.ReelPlan).validate_python(data['plan'])
         plan.script, plan.pack = data['script'], StylePack.model_validate(data['pack'])
         plan.sentences, plan.creative_plan, plan.effects = data['sentences'], data['creative_plan'], data['fx']
-        talking_5.compose(owned(data['video']), plan, output, work_dir=workspace / 'render-work',
-                          music=owned(data['music']) if data.get('music') else None, pack=plan.pack, fx=data['fx'],
-                          hook=owned(data['hook']) if data.get('hook') else None, on_progress=on_progress)
+        previous = os.environ.get('HYPERFRAMES_GSAP')
+        os.environ['HYPERFRAMES_GSAP'] = str(owned(data['gsap']))      # the layers' pages need GSAP and the worker has no network
+        try:
+            talking_5.compose(owned(data['video']), plan, output, work_dir=workspace / 'render-work',
+                              music=owned(data['music']) if data.get('music') else None, pack=plan.pack, fx=data['fx'],
+                              hook=owned(data['hook']) if data.get('hook') else None, on_progress=on_progress)
+        finally:
+            if previous is None:
+                os.environ.pop('HYPERFRAMES_GSAP', None)
+            else:
+                os.environ['HYPERFRAMES_GSAP'] = previous
     elif spec.engine.startswith('talking_'):
         from pydantic import TypeAdapter
         from engine.talking_styles import talking_1,talking_2

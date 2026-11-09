@@ -363,7 +363,8 @@ def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progres
     who = identity.get()
     with tempfile.TemporaryDirectory(prefix='editorgpt-talking5-input-') as directory:
         staged = Path(directory)
-        approved = [*(Path(p).resolve() for p in who[2]), (engine.PROJECT_ROOT / 'assets/music').resolve()]
+        from engine.hyperframes.assets import cache_dir, ensure_gsap
+        approved = [*(Path(p).resolve() for p in who[2]), (engine.PROJECT_ROOT / 'assets/music').resolve(), cache_dir().resolve()]
 
         def asset(value):
             source = Path(value).resolve(strict=True)
@@ -377,7 +378,7 @@ def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progres
             data = {'video': asset(video), 'plan': dataclasses.asdict(plan), 'script': plan.script, 'pack': pack.model_dump(mode='json'),
                     'sentences': plan.sentences, 'creative_plan': getattr(plan, 'creative_plan', None), 'fx': list(fx or []),
                     'music': asset(music) if music and Path(music).is_file() else None,
-                    'hook': asset(hook) if hook and Path(hook).is_file() else None}
+                    'hook': asset(hook) if hook and Path(hook).is_file() else None, 'gsap': asset(ensure_gsap())}
             (staged / 'talking5.json').write_text(json.dumps(data, ensure_ascii=False))
         except (TypeError, ValueError):
             return False                      # anything that cannot travel as plain data keeps its local render

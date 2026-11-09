@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import os
 import tarfile
 import threading
 from pathlib import Path
@@ -58,6 +59,9 @@ def extract_member(tarball: bytes, member: str) -> bytes:
 
 def ensure_gsap(directory: Path | None = None) -> Path:
     """Return a local ``gsap.min.js`` (downloading and verifying it on first use)."""
+    shipped = os.environ.get("HYPERFRAMES_GSAP")          # a cloud worker has no network: the server ships the verified copy with the job
+    if shipped and Path(shipped).is_file() and Path(shipped).stat().st_size > 50_000:
+        return Path(shipped)
     target = (directory or cache_dir()) / f"gsap-{GSAP_VERSION}.min.js"
     with _lock:
         if target.is_file() and target.stat().st_size > 50_000:
