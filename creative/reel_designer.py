@@ -91,6 +91,81 @@ def build_plan(config: dict, storyboard: dict, creative: dict, design, work: Pat
     return plan, pictures, subjects
 
 
+def _duration(path) -> float | None:
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=30).stdout.strip()
+        return float(out)
+    except Exception:
+        return None
+
+
+def scene_lengths(config: dict, target: float) -> list[float]:
+    """Each scene lasts as long as its narration plus a breath (the voice is measured, not estimated), so a scene never sits silent for seconds or cuts the voice;
+    when the whole film would fall well short of the planned length, the breaths grow a little."""
+    rows = config["scenes"]
+    spoken = [(_duration(row["narration"]) if row.get("narration") else None) for row in rows]
+    lengths = [max(2.2, (d + 0.55) if d else row["frames"] / 30) for d, row in zip(spoken, rows)]
+    total = sum(lengths)
+    if target and total < target * 0.9 and rows:
+        extra = min(1.2, (target * 0.9 - total) / len(rows))
+        lengths = [round(x + extra, 3) for x in lengths]
+    return [round(x, 3) for x in lengths]
+
+
+def _clean(text) -> str:
+    return re.sub(r"\s+", " ", str(text or "").replace("|", "/")).strip()
+
+
+def handoff_brief(config: dict, storyboard: dict, creative: dict, pictures: dict, subjects: dict, lengths: list[float]) -> str:
+    """The approved storyboard in the studio's own hand-over format, so the planner (which knows the whole component library) receives the scenes as final."""
+    chosen = creative.get("chosen") or {}
+    head = [f"ایده: {_clean(chosen.get('name'))} — {_clean(chosen.get('angle'))}", f"هوک (دو ثانیه‌ی اول): {_clean(chosen.get('hook'))}",
+            f"سبک بصری: {_clean(chosen.get('visual_language'))}", f"حس و حال: {_clean(chosen.get('pacing') or chosen.get('feeling'))}"]
+    boards = storyboard.get("scenes", [])
+    lines = []
+    for i, row in enumerate(config["scenes"]):
+        board = boards[i] if i < len(boards) else {}
+        src = pictures[Path(row["asset"]).name][0]
+        what = subjects.get(Path(row["asset"]).name) or "a product picture"
+        see = _clean(f"{board.get('description') or row.get('role') or ''}. Motion: {board.get('motion_style') or ''}. Picture to use: <img src=\"{src}\"> ({what}). "
+                     f"Call-outs: {', '.join(row.get('items') or []) or 'none'}. Why: {board.get('why_visual') or ''}")
+        lines.append(f"{i + 1}. ({lengths[i]:.1f}s) تصویر: {see} | متن روی صفحه: {_clean(row.get('title') or board.get('text_overlay'))} | روایت: {_clean(row.get('narration_text'))}")
+    return "\n".join([*head, "", *lines])
+
+
+def library_plan(config, storyboard, creative, pictures, subjects, lengths, context, cache: Path, used: list[str]):
+    """The planner designs the film from the approved script: palette, signature device, design bible, entrances and the ready-made components (Shotcraft recipes,
+    executable library components) where they fit; then the library scout looks at pictures of the components next to the scenes. Cached beside the job."""
+    brief = handoff_brief(config, storyboard, creative, pictures, subjects, lengths)
+    key = hashlib.sha256((brief + context).encode()).hexdigest()[:20]
+    path = cache / "plan.json"
+    try:
+        saved = json.loads(path.read_text())
+        if saved.get("fp") == key:
+            return mg.MotionPlan.model_validate(saved["plan"]), brief
+    except (OSError, ValueError):
+        pass
+    plan = mg.plan(brief, context=context, used=used)
+    if plan.asks() or len(plan.scenes) != len(config["scenes"]):
+        raise CreativeUnavailable("the planner did not keep the approved scenes")
+    try:
+        from . import library_scout
+        plan, report = library_scout.scout(plan, brief, used=used)
+        log.info("reel library scout: %s", [(p.get("scene"), p.get("resource_id"), p.get("used")) for p in report.get("picks", [])])
+    except Exception as exc:
+        log.warning("reel library scout failed: %s", str(exc)[:160])
+    path.write_text(json.dumps({"fp": key, "plan": plan.model_dump()}, ensure_ascii=False))
+    return plan, brief
+
+
+def retime(plan, lengths: list[float]):
+    cursor, scenes = 0.0, []
+    for scene, length in zip(plan.scenes, lengths):
+        scenes.append(scene.model_copy(update={"start": round(cursor, 3), "end": round(cursor + length, 3)}))
+        cursor += length
+    return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 3)})
+
+
 def _context(facts: dict, pictures: dict, subjects: dict) -> str:
     lines = ["PRODUCT FACTS (verified; the only facts you may state): " + json.dumps(facts, ensure_ascii=False)[:2800],
              "ATTACHED PICTURES the person already gave (never ask them to upload one). You cannot see them; use the exact src and this description:"]
@@ -159,6 +234,17 @@ def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]
         path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
         return draft, "designed"
     except Exception as exc:
+        scene = plan.scenes[n - 1]
+        if scene.native_component or scene.shotcraft_component:
+            # a ready-made component that does not fit this length or text: the scene is designed by hand instead
+            plan.scenes[n - 1] = scene.model_copy(update={"native_component": None, "shotcraft_component": None})
+            try:
+                draft = mg.author_scene(plan, n, brief, context=context, used=used)
+                if not svg_problems(draft.html):
+                    path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
+                    return draft, "designed"
+            except Exception:
+                pass
         log.warning("reel scene %d could not be designed (%s); a plain scene is used", n, str(exc)[:200])
         return mg.fallback_scene(plan, n), "plain"
 
@@ -189,19 +275,32 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         project.mkdir(parents=True, exist_ok=True)
         storyboard = json.loads((job.dir / "storyboard.json").read_text())
         used: list[str] = []
-        public = motion_designer.plan_from_public(creative)
-        design_file = work / "design.json"
-        try:
-            design = motion_designer.DesignSystem(**json.loads(design_file.read_text()))
-        except (OSError, ValueError, TypeError):
-            brief = public.brief
-            design = motion_designer.design_system(f"topic: {brief.topic}; message: {brief.core_message}; audience: {brief.audience}; tone: {brief.tone}",
-                                                   f"{public.chosen.name}: {public.chosen.angle}. Visual language: {public.chosen.visual_language}. Pacing: {public.chosen.pacing}", used)
-            design_file.write_text(json.dumps(design.model_dump(), ensure_ascii=False))
-        plan, pictures, subjects = build_plan(config, storyboard, creative, design, project, job.dir)
+        lengths = scene_lengths(config, float(storyboard.get("total_duration_s") or 0))
+        subjects = _subjects(job.dir)
+        pictures = {}
+        for row in config["scenes"]:
+            name = Path(row["asset"]).name
+            if name not in pictures:
+                pictures[name] = _picture(Path(row["asset"]), project)
         facts = {k: v for k, v in (creative.get("facts") or {}).items()} if isinstance(creative.get("facts"), dict) else (creative.get("brief") or {})
         context = _context(facts, pictures, subjects)
-        brief = str(storyboard.get("prompt") or "")[:1500]
+        try:
+            plan, brief = library_plan(config, storyboard, creative, pictures, subjects, lengths, context, work, used)
+        except Exception as exc:
+            # The planner could not take the approved scenes: the designer's own identity step plans them instead (still designed per scene, without library picks).
+            log.warning("reel planner unavailable (%s); the scenes are planned from the creative direction", str(exc)[:200])
+            public = motion_designer.plan_from_public(creative)
+            design_file = work / "design.json"
+            try:
+                design = motion_designer.DesignSystem(**json.loads(design_file.read_text()))
+            except (OSError, ValueError, TypeError):
+                bf = public.brief
+                design = motion_designer.design_system(f"topic: {bf.topic}; message: {bf.core_message}; audience: {bf.audience}; tone: {bf.tone}",
+                                                       f"{public.chosen.name}: {public.chosen.angle}. Visual language: {public.chosen.visual_language}. Pacing: {public.chosen.pacing}", used)
+                design_file.write_text(json.dumps(design.model_dump(), ensure_ascii=False))
+            plan, _, _ = build_plan(config, storyboard, creative, design, project, job.dir)
+            brief = str(storyboard.get("prompt") or "")[:1500]
+        plan = retime(plan, lengths)
         if on_progress:
             on_progress(2)
         count = len(plan.scenes)
@@ -218,12 +317,9 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             on_progress(8)
         total = plan.duration
         audio = []
-        cursor = 0.0
-        for row in config["scenes"]:
-            length = row["frames"] / 30
+        for scene, row in zip(plan.scenes, config["scenes"]):
             if row.get("narration"):
-                audio.append({"path": str(Path(row["narration"])), "start": round(cursor, 3), "duration": round(length, 3)})
-            cursor += length
+                audio.append({"path": str(Path(row["narration"])), "start": scene.start, "duration": round(scene.end - scene.start, 3)})
         music = (data.get("music") or {}).get("file")
         if music:
             try:
