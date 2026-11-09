@@ -1,5 +1,4 @@
 import { StudioProject } from "../api";
-const faNumber = (value: number) => String(value).replace(/\d/g, digit => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
 import { renderView } from "./model";
 import { ProgressNotice, useProgressAge } from "./ProgressNotice";
 
@@ -18,12 +17,11 @@ export function RenderProgress({ project, hideLabel }: { project: StudioProject;
   const percent = stagePercent ?? view.progress;
   const motion = metrics?.stage === project.state?.last_observed?.stage && stagePercent === undefined ? metrics : undefined;
   const motionDetail: string | undefined = motion?.detail || (motion ? "در حال رندر ویدیو" : undefined);
-  const eta: number | undefined = typeof motion?.eta_s === "number" ? motion.eta_s : undefined;
   return <div className="rc-progress" role="status" dir="rtl">
     <div className="meter" data-indeterminate={typeof percent === "number" && !stale ? undefined : ""} style={{ ["--value" as string]: `${percent ?? 0}%` }}
       role="progressbar" aria-label="Render progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={typeof percent === "number" ? percent : undefined}/>
     <div className="rc-meta"><span>{view.stageLabel === hideLabel ? "" : view.stageLabel}</span>{typeof percent === "number" ? <span dir="auto">{stale ? "در حال انجام، گزارش تازه‌ای نرسیده · " : ""}{stagePercent !== undefined ? "این مرحله: " : ""}<bdi dir="ltr">{percent}%</bdi></span> : null}</div>
-    {motionDetail ? <p className="rc-detail" dir="rtl">{motionDetail}{typeof eta === "number" ? ` · ${eta >= 60 ? `حدود ${faNumber(Math.round(eta / 60))} دقیقهٔ دیگر` : "کمتر از یک دقیقه مانده"}` : percent === 0 || percent === undefined ? " · زمان باقی‌مانده هنوز مشخص نیست" : ""}</p> : null}
+    {motionDetail ? <p className="rc-detail" dir="rtl">{motionDetail}</p> : null}
     <ProgressNotice project={project}/>
   </div>;
 }

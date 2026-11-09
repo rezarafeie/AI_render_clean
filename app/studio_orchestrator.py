@@ -2394,10 +2394,6 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
             if engine == 'motion' and stage == 'rendering' and isinstance(status, dict) and status.get('render'):
                 from app import studio_assets
                 metrics = {'stage': stage, 'detail': studio_assets.render_detail(status['render'].get('message'))}
-                phase = project['state'].get('activity_phase') or {}
-                started = phase.get('started_at') if phase.get('stage') == stage else None
-                if isinstance(progress, (int, float)) and progress >= 5 and started:
-                    metrics['eta_s'] = int(round((time.time() - float(started)) * (100 - progress) / progress / 30.0)) * 30   # rounded: a ticking number would rewrite the state on every poll
                 observed['render_metrics'] = metrics
             activity_changed = False
             if raw_status in {'running', 'analyzing', 'rendering', 'queued'}:
