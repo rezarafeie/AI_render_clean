@@ -68,3 +68,22 @@ def test_resume_reuses_owned_job_and_rejects_other_users(monkeypatch,tmp_path):
     assert o.resume_project(project['id'],'owner')['status']=='running'
     assert calls==['lm_gateway']
     assert run(repo.get_project(project['id'],'owner'))['external_ref']=='same-job'
+
+
+def test_narration_is_spoken_by_the_chosen_voice_of_the_elevenlabs_account(monkeypatch, tmp_path):
+    import httpx
+    from brain import elevenlabs_transport
+    from brain.tts import _generate_elevenlabs
+    monkeypatch.setenv('ELEVENLABS_API_KEY', 'test-key')
+    monkeypatch.setattr(gateway, 'configured', lambda: True)
+    monkeypatch.setattr(elevenlabs_transport, 'url', lambda path: 'https://relay.example/' + path)
+    sent = {}
+    def post(url, headers=None, json=None, timeout=None):
+        sent.update(url=url, headers=headers, json=json)
+        return httpx.Response(200, content=b'a' * 2000, headers={'content-type': 'audio/mpeg'}, request=httpx.Request('POST', url))
+    monkeypatch.setattr(httpx, 'post', post)
+    monkeypatch.setattr(gateway, 'speech', lambda *a, **k: (_ for _ in ()).throw(AssertionError('the router must not speak')))
+    output = tmp_path / 'v.mp3'
+    _generate_elevenlabs('سلام دنیا', str(output), voice_id='4D8rX5FMrycxXbF6iW0I', model_id='eleven_v3')
+    assert '/v1/text-to-speech/4D8rX5FMrycxXbF6iW0I' in sent['url'] and sent['json']['model_id'] == 'eleven_v3' and sent['json']['language_code'] == 'fa'
+    assert output.stat().st_size == 2000

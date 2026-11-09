@@ -171,6 +171,8 @@ def _context(facts: dict, pictures: dict, subjects: dict) -> str:
              "ATTACHED PICTURES the person already gave (never ask them to upload one). You cannot see them; use the exact src and this description:"]
     for name, (src, width, height) in pictures.items():
         lines.append(f'- <img src="{src}"> ({width}x{height} px, aspect {width / height:.2f}): {subjects.get(name) or "a product picture"}')
+    lines.append("SUBTITLES: after rendering the studio lays the narration's word-by-word subtitles (Tscaps) over the lower part of the frame, y = 1330 to 1580. Keep every "
+                 "headline, picture and label of your scene out of that band (a background or glow may continue behind it); never draw your own subtitles.")
     lines.append("USE OF PICTURES: the product is the hero. Show it large with width and height in px, object-fit: contain (or cover inside an overflow:hidden box), "
                  "never stretched; frame it with shapes drawn in the film's palette, give it depth (layers, shadow, parallax), crop to the part the scene talks about, "
                  "and never leave the same layout twice.")
@@ -211,6 +213,32 @@ def svg_problems(html: str) -> list[str]:
         if problem:
             found.append(f"inline SVG: {problem}. Every path d must be valid SVG (each command followed by the right number of numbers, numbers separated by spaces or commas).")
     return found[:3]
+
+
+def add_subtitles(video: Path, plan, config: dict, work: Path) -> bool:
+    """Word-by-word subtitles of the narration, drawn by Tscaps (the engine of the studio's talking styles) as a transparent layer and composited onto the finished
+    reel. Best effort: the reel stays as it was when the layer cannot be made."""
+    try:
+        from engine import tscaps_overlay as tso
+        cues = []
+        for scene, row in zip(plan.scenes, config["scenes"]):
+            text = str(row.get("narration_text") or scene.narration or "").strip()
+            words = tso.words_for(text, scene.start + 0.12, scene.end - 0.2) if text else []
+            if words:
+                cues.append(tso.Cue("caption", words[0].s, words[-1].e + 0.15, words))
+        if not cues or not tso.enabled():
+            return False
+        work.mkdir(parents=True, exist_ok=True)
+        overlay = tso.render_overlay(tso._tidy(cues), work / "subtitles.webm", width=1080, height=1920, fps=30, duration=plan.duration + 0.1, work_dir=work)
+        target = work / "with_subtitles.mp4"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video), "-i", str(overlay), "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto[v]", "-map", "[v]", "-map", "0:a?",
+                        "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "copy", str(target)], check=True, capture_output=True, timeout=900)
+        if target.is_file() and target.stat().st_size > 10_000:
+            target.replace(video)
+            return True
+    except Exception as exc:
+        log.warning("reel subtitles were not added: %s", str(exc)[:240])
+    return False
 
 
 def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]):
@@ -372,7 +400,11 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             on_progress(12)
         product_reel._run_cli(project, out_path, timeout=timeout,
                               on_progress=(lambda pct: on_progress(12 + int(pct * 0.83))) if on_progress else None, should_cancel=should_cancel)
-        return out_path.is_file()
+        if not out_path.is_file():
+            return False
+        if not add_subtitles(out_path, plan, config, work / "overlay"):
+            job.designer_note = ((getattr(job, "designer_note", "") or "") + " زیرنویس کلمه‌به‌کلمه اضافه نشد.").strip()
+        return True
     except CreativeUnavailable as exc:
         log.warning("reel designer unavailable: %s", exc)
         return _skipped(job, "طراح موشن در دسترس نبود: " + str(exc)[:160])

@@ -40,17 +40,51 @@ def _configured_provider(provider: str | None = None) -> str:
     return "disabled" if provider == "disabled" else "elevenlabs"
 
 
-@observe_specialized("audio", "elevenlabs-vercel-relay")
+def _audit_direct(text: str, voice: str, model: str, started: float, error: Exception | None, size: int = 0) -> None:
+    """The call goes straight to ElevenLabs (the account's own voices), so the studio records it itself: voice, model, latency and the outcome."""
+    try:
+        import time
+        import uuid as _uuid
+        from datetime import datetime, timezone
+        from . import lm_gateway
+        lm_gateway._audit({"id": str(_uuid.uuid4()), "timestamp": datetime.now(timezone.utc).isoformat(), "user_id": lm_gateway.user_context.get(),
+                           "job_id": lm_gateway.job_context.get(), "conversation_id": lm_gateway.conversation_context.get(), "route": "narration",
+                           "endpoint": "v1/text-to-speech", "requested_model": model, "actual_model": model, "provider": "elevenlabs", "transport": "direct-elevenlabs",
+                           "status": "failed" if error else "success", "latency_ms": round((time.monotonic() - started) * 1000), "input_tokens": None, "output_tokens": None,
+                           "cost": None, "http_status": None, "retry_count": 0, "fallback_history": [], "error": str(error)[:300] if error else None,
+                           "request_message": f"voice={voice}; {len(text)} characters", "response_message": f"{size} bytes of audio" if not error else None})
+    except Exception:
+        log.debug("narration audit could not be written", exc_info=True)
+
+
 def _generate_elevenlabs(
     text: str, output_path: str, voice_id: str = "", model_id: str = "",
     *, language: str = "", context: str = "",
 ) -> None:
-    """Generate one MP3 through the AI router (its speech route: Jarvis TTS models; the gateway's own fallbacks apply there)."""
-    from . import lm_gateway
-    if not lm_gateway.configured():
-        raise RuntimeError("The AI router is not configured; no speech request was sent")
-    extra = {"language": language, "context": context} if language or context else {}
-    Path(output_path).write_bytes(lm_gateway.speech('narration',text,voice_id or os.environ.get('ELEVENLABS_VOICE_ID',''), **extra))
+    """One MP3 from ElevenLabs with the account's own voice (My Voices), through the studio's ElevenLabs relay: the chosen voice is the voice that speaks.
+
+    Only when no ElevenLabs key is configured does the speech route of the AI router answer instead; a failing ElevenLabs request is reported, never replaced silently."""
+    import time
+    voice = voice_id or os.environ.get("ELEVENLABS_VOICE_ID", "")
+    from .localize import elevenlabs_configured
+    if not elevenlabs_configured():
+        from . import lm_gateway
+        if not lm_gateway.configured():
+            raise RuntimeError("Neither an ElevenLabs key nor the AI router is configured; no speech request was sent")
+        extra = {"language": language, "context": context} if language or context else {}
+        Path(output_path).write_bytes(lm_gateway.speech('narration', text, voice, **extra))
+        return
+    from .localize import elevenlabs_speak
+    started, error, size, model = time.monotonic(), None, 0, model_id
+    try:
+        audio, model = elevenlabs_speak(text, voice, model_id, language, _ELEVENLABS_TIMEOUT_SECONDS)
+        Path(output_path).write_bytes(audio)
+        size = len(audio)
+    except Exception as exc:
+        error = exc
+        raise
+    finally:
+        _audit_direct(text, voice, model, started, error, size)
 
 
 def generate_narration(
