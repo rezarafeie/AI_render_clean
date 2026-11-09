@@ -104,7 +104,10 @@ def _stderr_tail(handle, limit=2048):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     last = lines[-1] if lines else ''
     # A HyperFrames check finding names the scene and how to fix it: keep it whole so the author can repair that scene.
-    return last[-2300:] if 'HyperFramesError' in last else last[-150:]
+    if 'HyperFramesError' in last:
+        return last[-2300:]
+    # ffmpeg ends with a bare 'Conversion failed!': the line before it says why.
+    return ' | '.join(lines[-3:])[-300:]
 
 
 def run(spec, workspace: Path, *, on_progress=None, should_cancel=None, isolate_network=False):
