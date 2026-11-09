@@ -2370,7 +2370,7 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 from app import studio_assets
                 prepared = await asyncio.to_thread(studio_assets.from_job, job.dir) if confirmed else []
                 if prepared:
-                    signature = [[a["kind"], a["scene"], a["file"]] for a in prepared]
+                    signature = [[a["kind"], a["scene"], a["src"]] for a in prepared]
                     if signature != project["state"].get("assets_sig"):
                         project["state"] = {**project["state"], "assets_sig": signature}
                         await repo.update_project(project["id"], user_key, state=project["state"])
@@ -2440,6 +2440,19 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 await repo.emit(conversation_id, event_type, {"project_id": project["id"], "engine": engine,
                     "status": raw_status, "stage": stage, "progress": progress,
                     "message": failure_message or _status_message(engine, raw_status, stage), "output_url": output})
+                if output and engine == "motion":
+                    try:
+                        from app import studio_assets
+                        review = (job.render.technical_qc or {}).get("creative_review") or {}
+                        frames = await asyncio.to_thread(studio_assets.review_frames, job.dir, review)
+                        if frames and project["state"].get("frames_announced") != output:
+                            await repo.update_project(project["id"], user_key, state={**state, "frames_announced": output})
+                            verdict = {"passed": "قبول شد", "needs_attention": "نیازمند بررسی است"}.get(str(review.get("status")), "ثبت شد")
+                            await repo.emit(conversation_id, "tool.progress", {"project_id": project["id"], "engine": engine, "status": "running",
+                                "stage": "reviewing creative output", "progress": None, "assets": frames,
+                                "message": f"بازبینی خروجی {verdict}: " + str(review.get("summary") or "")[:500]})
+                    except Exception:
+                        log.debug("review frames could not be announced", exc_info=True)
                 if output and project["state"].get("announced_output") != output:       # once per finished video, however often the status is re-observed
                     await repo.update_project(project["id"], user_key, state={**state, "announced_output": output})
                     await repo.add_message(conversation_id, user_key, "assistant",

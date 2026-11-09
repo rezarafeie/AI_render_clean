@@ -524,14 +524,14 @@ export function activeStep(items: TimelineItem[]): ActivityStep | undefined {
 }
 
 /** Details worth expanding. Empty means: show no expand control at all. */
-export interface PreparedAsset { kind: "image" | "video" | "motion" | "audio"; scene: number; label: string; file: string; duration_s?: number | null; text?: string }
+export interface PreparedAsset { kind: "image" | "video" | "motion" | "audio"; scene: number; label: string; group?: string; src: string; duration_s?: number | null; text?: string }
 export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string; response?: string; run?: ActivityStep["run"]; assets: PreparedAsset[]; projectId?: string } | null {
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
   if (!updates && !notes.length && !step.request) return null;                // a step with recorded events always opens to its log
   let assets: PreparedAsset[] = [];
-  for (const event of step.events) if (Array.isArray(event.data?.assets)) assets = event.data.assets;      // the newest list wins
+  for (const event of step.events) if (Array.isArray(event.data?.assets)) assets = event.data.assets.filter((asset: any) => asset && typeof asset.src === "string" && asset.src);      // the newest list wins; the server hides keys named file/path, so the file is `src`
   const projectId = step.events.map(event => event.data?.project_id).find(Boolean);
   return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request, response: step.response, run: step.run, assets, projectId };
 }

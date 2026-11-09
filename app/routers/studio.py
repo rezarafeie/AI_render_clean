@@ -87,7 +87,10 @@ def _public_event(event: dict) -> dict:
             return [scrub(item) for item in value]
         return value
 
-    result["data"] = scrub(result.get("data") or {})
+    data = result.get("data") or {}
+    if isinstance(data.get("assets"), list):                  # the prepared files: `file` is a hidden key, the page reads `src` (older events stored `file`)
+        data["assets"] = [{**{k: v for k, v in row.items() if k != "file"}, "src": row.get("src") or row.get("file")} for row in data["assets"] if isinstance(row, dict)]
+    result["data"] = scrub(data)
     return result
 
 
