@@ -12,7 +12,8 @@ from .schemas import CreativePlan, CreativeUnavailable
 
 
 def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, style: str,
-                         duration: float, asset_indices: set[int], brief: dict | None = None):
+                         duration: float, asset_indices: set[int], brief: dict | None = None,
+                         catalog: list[dict] | None = None):
     from brain.storyboard import Scene, Storyboard
     beats = plan.chosen.beats
     if not 3 <= len(beats) <= 10 or not 10 <= duration <= 90:
@@ -31,6 +32,7 @@ def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, styl
     lengths = [round(sec*30) for sec in seconds_each[:-1]]
     lengths.append(frames-sum(lengths))
     _assign_missing_assets(beats, asset_indices)
+    spread_assets(beats, asset_indices, catalog or [])
     scenes = []
     for index, (beat, length) in enumerate(zip(beats, lengths)):
         seconds = length/30
@@ -48,7 +50,7 @@ def storyboard_from_plan(plan: CreativePlan, *, prompt: str, language: str, styl
             source_asset_index=beat.source_asset_index,estimated_cost=0,
             narrative_role=beat.role,visual_type=beat.visual_type,motion_style=beat.motion,
             motion_engine=beat.motion_engine,script_line=beat.line_id,why_visual=beat.why_visual,emotion=beat.emotion,
-            focus=beat.focus,link_prev=beat.link_prev,reference_trait=beat.reference_trait))
+            focus=beat.focus,link_prev=beat.link_prev,reference_trait=beat.reference_trait,items=list(getattr(beat, 'items', None) or [])[:4]))
     return Storyboard(prompt=prompt,content_type='reel',language=language,style=style,
         creative_brief=brief or {}, scenes=scenes,total_duration_s=frames/30,
         # Zero is not a price estimate. Studio separately reports unknown cost
@@ -71,6 +73,41 @@ def _assign_missing_assets(beats, asset_indices: set[int]) -> None:
         if beat.source_asset_index in uses:
             continue
         choice = order[0] if position == 0 else min(order, key=lambda index: (uses[index], index))
+        beat.source_asset_index = choice
+        uses[choice] += 1
+
+
+# What each kind of picture shows, in the words a scene uses for it (Persian) and the words an image description uses (English).
+_TOPICS = (
+    (("میکروفون", "صحبت", "گفت‌وگو", "گفتگو", "هم‌تیمی"), ("microphone", "boom", "mic", "pickup", "diagram")),
+    (("بالشتک", "نرم", "راحت", "گوش", "ارگونومیک"), ("cushion", "earcup", "ear cup", "padded", "close-up")),
+    (("نور", "ال‌ای‌دی", "چراغ", "درخشان", "رنگ"), ("led", "glow", "light", "lighting", "rgb")),
+    (("سیم", "اتصال", "جک", "یو‌اس‌بی", "usb"), ("jack", "usb", "plug", "connector", "cable")),
+)
+
+
+def spread_assets(beats, asset_indices: set[int], catalog: list[dict]) -> None:
+    """One picture for four scenes reads as a slideshow. A picture may serve at most ceil(scenes / pictures) scenes: a scene beyond that moves to the picture
+    that best matches what the scene is about (its title, line and visual against each picture's description), else the picture used least."""
+    order = sorted(asset_indices)
+    if len(order) < 2 or len(beats) < 4:
+        return
+    subjects = {row["index"]: str(row.get("subject") or "").lower() for row in catalog if isinstance(row, dict) and "index" in row}
+    cap = math.ceil(len(beats) / len(order))
+    uses = {index: 0 for index in order}
+
+    def fit(beat, index: int) -> int:
+        text = f"{beat.title} {beat.narration} {beat.visual}".lower()
+        subject = subjects.get(index, "")
+        return sum(1 for words, tags in _TOPICS if any(w in text for w in words) and any(t in subject for t in tags))
+
+    for position, beat in enumerate(beats):
+        keep = beat.source_asset_index if beat.source_asset_index in uses else None
+        if keep is not None and uses[keep] < cap and (position == 0 or fit(beat, keep) > 0 or uses[keep] == 0):
+            uses[keep] += 1
+            continue
+        pool = [i for i in order if uses[i] < cap] or order
+        choice = max(pool, key=lambda i: (fit(beat, i), -uses[i], -i))
         beat.source_asset_index = choice
         uses[choice] += 1
 

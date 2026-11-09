@@ -41,6 +41,7 @@ class Scene:
     focus: str = ''
     link_prev: str = ''
     reference_trait: str = ''
+    items: list[str] = field(default_factory=list)      # up to four verified short labels shown as call-outs on the picture
 
     def __post_init__(self):
         import re

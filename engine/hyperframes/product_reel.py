@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSITION_ID = "reel"
 FPS = 30
-OVERLAP_S = 9 / FPS                 # the next scene wipes in over the previous one
+OVERLAP_S = 9 / FPS                # the next scene wipes in over the previous one
 WIDTH, HEIGHT = 1080, 1920
 
 # Camera moves, one per scene in rotation (the same photo reads as different shots): scale, x, y, rotation  (start -> end)
@@ -29,6 +29,14 @@ CAMERAS = [
 ]
 CUTOUT_MAX_SCALE = 1.45             # a cut-out has a hard outline: keep it inside the frame
 PAGE_WORDS = 4
+MUSIC_VOLUME = 0.22                 # 0.1 sat so far under the voice that the music was never heard
+# How the next scene enters, in rotation: from the right, from below, an iris from the middle, from the left.
+ENTRIES = [
+    ("inset(0% 0% 0% 100%)", "inset(0% 0% 0% 0%)"),
+    ("inset(100% 0% 0% 0%)", "inset(0% 0% 0% 0%)"),
+    ("circle(0% at 50% 55%)", "circle(150% at 50% 55%)"),
+    ("polygon(0 0,0 0,0 100%,0 100%)", "polygon(0 0,100% 0,100% 100%,0 100%)"),
+]
 
 
 def _shade(color: str, amount: float) -> str:
@@ -73,6 +81,16 @@ def _scene_html(i: int, scene: dict, start: float, dur: float, lead: float, coun
         s0, s1 = min(s0, CUTOUT_MAX_SCALE), min(s1, CUTOUT_MAX_SCALE)
 
     title = str(scene.get("title") or "")
+    items = [str(x).strip()[:24] for x in (scene.get("items") or []) if str(x).strip()][:4]
+    layout = "hero" if i == 0 else "float" if (items or scene.get("visual_type") == "spec_callout") else ("wide" if i % 2 else "hero")
+    if cutout and layout == "wide":
+        layout = "hero"
+    callouts = []
+    for k, label in enumerate(items):
+        side = "right" if k % 2 == 0 else "left"
+        callouts.append(f'<div class="co" id="{sid}co{k}" style="top:{470 + k * 205}px;{side}:34px"><i class="cd" style="background:{accent};box-shadow:0 0 18px {accent}"></i><span>{escape(label)}</span></div>')
+        js.append(f'tl.fromTo("#{sid}co{k}",{{opacity:0,x:{90 if side == "right" else -90},scale:.82}},{{opacity:1,x:0,scale:1,duration:.5,ease:"back.out(1.8)"}},{_fmt(start + .9 + k * .38)});')
+        js.append(f'tl.to("#{sid}co{k}",{{y:-10,duration:1.4,ease:"sine.inOut",yoyo:true,repeat:{max(1, int(dur / 1.4))}}},{_fmt(start + 1.5 + k * .38)});')
     head_words = title.split()
     head_size = 78 if len(title) > 26 else 104
     head = "".join(f'<span class="hw">{escape(w)}</span>' for w in head_words)
@@ -108,9 +126,11 @@ def _scene_html(i: int, scene: dict, start: float, dur: float, lead: float, coun
 
     html = f"""<section id="{sid}" class="clip scene" data-start="{_fmt(t0)}" data-duration="{_fmt(total)}">
 <div class="wp" id="{sid}wp">
-<div class="bg" style="background:radial-gradient(120% 70% at 50% 40%,{_shade(accent, .42)} 0%,{_shade(accent, .14)} 48%,#07050a 100%)"></div>
+<img class="bgi" id="{sid}bi" src="assets/bg{i}.jpg" onerror="this.remove()">
+<div class="bg" style="background:radial-gradient(120% 70% at 50% 40%,{_shade(accent, .42)}cc 0%,{_shade(accent, .14)}aa 48%,#07050ae6 100%)"></div>
 <div class="glow" id="{sid}gl" style="background:radial-gradient(circle,{accent}66 0%,{accent}22 38%,transparent 66%)"></div>
-<div class="stage"><div class="pw" id="{sid}pw"><img class="pr{' cut' if cutout else ''}" id="{sid}pr" src="assets/p{i}{Path(scene['asset']).suffix}"></div></div>
+<div class="stage L-{layout}"><div class="pw" id="{sid}pw"><img class="pr{' cut' if cutout else ''}" id="{sid}pr" src="assets/p{i}{Path(scene['asset']).suffix}"></div><div class="swc"><i class="sw" id="{sid}sw"></i></div></div>
+{''.join(callouts)}
 {''.join(sparkles)}
 <div class="vs"></div>
 <div class="head" id="{sid}hd" style="font-size:{head_size}px">{head}</div>
@@ -125,12 +145,20 @@ def _scene_html(i: int, scene: dict, start: float, dur: float, lead: float, coun
 
     # --- timeline for this scene ---
     if i > 0:
-        js.append(f'tl.fromTo("#{sid}wp",{{clipPath:"inset(0% 0% 0% 100%)"}},{{clipPath:"inset(0% 0% 0% 0%)",duration:{_fmt(lead)},ease:"power3.out"}},{_fmt(t0)});')
-        js.append(f'tl.fromTo("#{sid}eg",{{x:{WIDTH},opacity:.9}},{{x:0,opacity:0,duration:{_fmt(lead)},ease:"power3.out"}},{_fmt(t0)});')
-        js.append(f'tl.fromTo("#{sid}fl",{{opacity:0}},{{opacity:.35,duration:{_fmt(lead / 3)},yoyo:true,repeat:1,ease:"none"}},{_fmt(t0)});')
+        entry_from, entry_to = ENTRIES[i % len(ENTRIES)]
+        js.append(f'tl.fromTo("#{sid}wp",{{clipPath:"{entry_from}",scale:{1.14 if i % 4 == 2 else 1}}},{{clipPath:"{entry_to}",scale:1,duration:{_fmt(lead)},ease:"power3.out"}},{_fmt(t0)});')
+        if i % 4 == 0:
+            js.append(f'tl.fromTo("#{sid}eg",{{x:{WIDTH},opacity:.9}},{{x:0,opacity:0,duration:{_fmt(lead)},ease:"power3.out"}},{_fmt(t0)});')
+        js.append(f'tl.fromTo("#{sid}fl",{{opacity:0}},{{opacity:{.5 if i % 4 == 2 else .35},duration:{_fmt(lead / 3)},yoyo:true,repeat:1,ease:"none"}},{_fmt(t0)});')
     js.append(f'tl.fromTo("#{sid}pr",{{scale:{s0},x:{cam["x"][0]},y:{cam["y"][0]},rotation:{cam["r"][0]}}},'
               f'{{scale:{s1},x:{cam["x"][1]},y:{cam["y"][1]},rotation:{cam["r"][1]},duration:{_fmt(total)},ease:"sine.inOut"}},{_fmt(t0)});')
-    js.append(f'tl.fromTo("#{sid}pw",{{opacity:0,scale:.9}},{{opacity:1,scale:1,duration:.6,ease:"power3.out"}},{_fmt(start)});')
+    if layout == "float":
+        js.append(f'tl.fromTo("#{sid}pw",{{opacity:0,scale:.82,rotationY:-28,transformPerspective:1400}},{{opacity:1,scale:1,rotationY:0,duration:.8,ease:"power3.out"}},{_fmt(start)});')
+        js.append(f'tl.to("#{sid}pw",{{rotationY:9,y:-14,duration:{_fmt(max(1.0, dur - .8))},ease:"sine.inOut"}},{_fmt(start + .8)});')
+    else:
+        js.append(f'tl.fromTo("#{sid}pw",{{opacity:0,scale:.9}},{{opacity:1,scale:1,duration:.6,ease:"power3.out"}},{_fmt(start)});')
+    js.append(f'tl.fromTo("#{sid}sw",{{x:-700}},{{x:1500,duration:1.1,ease:"power2.inOut"}},{_fmt(start + .5)});')
+    js.append(f'tl.fromTo("#{sid}bi",{{scale:1.05,x:{-40 if i % 2 else 40}}},{{scale:1.18,x:{40 if i % 2 else -40},duration:{_fmt(total)},ease:"none"}},{_fmt(t0)});')
     js.append(f'tl.fromTo("#{sid}gl",{{scale:.92}},{{scale:1.12,duration:{_fmt(total)},ease:"sine.inOut"}},{_fmt(t0)});')
     if head_words:
         js.append(f'tl.from("#{sid}hd .hw",{{opacity:0,y:-46,scale:.85,duration:.5,ease:"back.out(1.7)",stagger:.13}},{_fmt(start + .05)});')
@@ -147,6 +175,15 @@ html,body{margin:0;background:#08060b}
 .scene{position:absolute;inset:0;overflow:hidden}
 .wp{position:absolute;inset:0;overflow:hidden}
 .bg,.vs{position:absolute;inset:0}
+.bgi{position:absolute;left:0;top:0;width:1080px;height:1920px;object-fit:cover}
+.L-float .pw{left:110px;top:70px;width:860px;height:940px;transform-style:preserve-3d}
+.L-float .pr{width:860px;height:940px;-webkit-mask-image:none;mask-image:none;filter:drop-shadow(0 40px 60px #000c)}
+.L-wide .pw{left:50px;top:20px;width:980px;height:1040px;border-radius:46px;overflow:hidden;box-shadow:0 0 0 3px #ffffff40,0 40px 90px #000d}
+.L-wide .pr{width:980px;height:1040px;object-fit:cover;-webkit-mask-image:none;mask-image:none}
+.swc{position:absolute;left:0;top:0;width:1080px;height:1080px;overflow:hidden;pointer-events:none}
+.sw{position:absolute;left:0;top:-100px;width:150px;height:1300px;background:linear-gradient(90deg,transparent,#ffffff55,transparent);transform:skewX(-18deg)}
+.co{position:absolute;display:flex;align-items:center;gap:14px;max-width:470px;padding:14px 30px;border-radius:999px;background:#000a;border:2px solid #ffffff38;font-weight:800;font-size:50px;color:#fff;line-height:1.3;opacity:0;direction:rtl}
+.cd{width:18px;height:18px;border-radius:50%;flex:none}
 .vs{background:linear-gradient(180deg,#000b 0%,transparent 22%,transparent 52%,#000c 100%),radial-gradient(90% 60% at 50% 45%,transparent 45%,#000a 100%)}
 .glow{position:absolute;left:-110px;top:140px;width:1300px;height:1300px;border-radius:50%}
 .stage{position:absolute;left:0;top:245px;width:1080px;height:1080px}
@@ -170,8 +207,18 @@ html,body{margin:0;background:#08060b}
 
 def _fit_music(source: Path, target: Path, seconds: float) -> None:
     """The bed loops for the whole reel (the engine plays an audio file once)."""
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-stream_loop", "-1", "-i", str(source), "-t", f"{seconds:.3f}", "-c:a", "libmp3lame", "-b:a", "128k", str(target)],
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-stream_loop", "-1", "-i", str(source), "-t", f"{seconds:.3f}", "-af", f"afade=t=in:d=1.2,afade=t=out:st={max(0.0, seconds - 2.0):.3f}:d=2", "-c:a", "libmp3lame", "-b:a", "128k", str(target)],
                    check=True, capture_output=True, timeout=120)
+
+
+def _backdrop(source: Path, target: Path) -> None:
+    """A dark, soft copy of the scene's own picture fills the frame behind it (made small and blurred, then scaled up: cheap to draw every frame)."""
+    try:
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(source), "-vf",
+                        "scale=216:384:force_original_aspect_ratio=increase,crop=216:384,gblur=sigma=7,eq=brightness=-0.2:saturation=1.35,scale=1080:1920:flags=bicubic",
+                        "-frames:v", "1", "-q:v", "3", str(target)], check=True, capture_output=True, timeout=60)
+    except Exception:
+        target.unlink(missing_ok=True)          # the page's own gradient backdrop is used
 
 
 def build_project(directory: Path, config: dict) -> Path:
@@ -196,6 +243,7 @@ def build_project(directory: Path, config: dict) -> Path:
     for i, scene in enumerate(scenes):
         source = Path(scene["asset"])
         shutil.copy2(source, assets / f"p{i}{source.suffix}")
+        _backdrop(source, assets / f"bg{i}.jpg")
         dur = scene["frames"] / FPS
         lead = 0.0 if i == 0 else OVERLAP_S
         html, code = _scene_html(i, scene, starts[i], dur, lead, len(scenes), random.Random(f"{source.name}{i}"))
@@ -207,7 +255,7 @@ def build_project(directory: Path, config: dict) -> Path:
             audio.append(f'<audio id="vo{i}" src="assets/vo{i}{voice.suffix}" data-start="{_fmt(starts[i])}" data-duration="{_fmt(dur)}" data-track-index="1"></audio>')
     if config.get("music"):
         _fit_music(Path(config["music"]), assets / "music.mp3", total)
-        audio.append(f'<audio id="music" src="assets/music.mp3" data-start="0" data-duration="{_fmt(total)}" data-track-index="2" data-volume="0.1"></audio>')
+        audio.append(f'<audio id="music" src="assets/music.mp3" data-start="0" data-duration="{_fmt(total)}" data-track-index="2" data-volume="{MUSIC_VOLUME}"></audio>')
 
     page = f"""<!doctype html>
 <html lang="fa">

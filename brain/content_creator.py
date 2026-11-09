@@ -111,7 +111,7 @@ def create_content(
             'concepts':creative_plan.get('concepts') or [creative_plan['chosen']],
             'critique':creative_plan.get('critique') or {'chosen_id':creative_plan['chosen']['id']}})
         storyboard = storyboard_from_plan(plan,prompt=prompt,language=language,style=style,
-            duration=duration,asset_indices={row['index'] for row in asset_catalog},brief=brief)
+            duration=duration,asset_indices={row['index'] for row in asset_catalog},brief=brief,catalog=asset_catalog)
     else:
         storyboard = generate_storyboard(
             prompt, ct, language, style, brief,
@@ -580,16 +580,6 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
                     log.warning("Skipping unreadable background music %s: %s", candidate.name, exc)
         except Exception as exc:
             log.warning("Background music lookup skipped: %s", exc)
-        if background_music_path:
-            # The reel engine mixes the bed at a fixed low level; a library track at that level cannot be heard under the voice. A louder copy (+8 dB, faded in) goes to the job.
-            try:
-                import subprocess
-                bed = gen_dir / "music_bed.mp3"
-                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", background_music_path, "-af", "volume=8dB,afade=t=in:d=1.2",
-                                "-c:a", "libmp3lame", "-b:a", "160k", str(bed)], check=True, capture_output=True, timeout=120)
-                background_music_path = str(bed)
-            except Exception as exc:
-                log.warning("Louder music copy failed, the original is used: %s", exc)
         if not background_music_path:
             warnings.append("No playable background music was found in the library. Add or upload music in the plan editor.")
 
@@ -615,6 +605,10 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
             plan_data["generation_meta"]["remotion"] = scene_config(
                 storyboard, generated_media, narration_segments, job.dir, background_music_path,
             )
+            # Each scene's verified call-out labels ride along to the reel page (the Remotion adapter itself is a fixed, separately verified file).
+            from engine.persian_text import join_lam_alef
+            for scene, row in zip(storyboard.scenes, plan_data["generation_meta"]["remotion"]["scenes"]):
+                row["items"] = [join_lam_alef(str(item)) for item in (scene.items or [])][:4]
         if music_source == "generated_music" and plan_data.get("music"):
             plan_data["music"]["volume_db"] = -18.0
         job.plan_data = plan_data
