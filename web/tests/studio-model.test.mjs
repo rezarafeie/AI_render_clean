@@ -271,3 +271,10 @@ test('a "busy" left by a worker that died is dropped once the server says nothin
   assert.equal(serverBusy([busy], undefined, later), true);     // unknown: keep the event's word
   assert.equal(serverBusy([busy], false, Date.parse(at(0)) + 30 * 1000), true);   // recent: still busy
 });
+
+test("the creative stages have their own Persian names", () => {
+  const raw = [ev(1, "tool.started", 1, { tool: "creative_script", message: "دارم متن گفتاری فارسی را می‌نویسم." }),
+               ev(2, "tool.started", 2, { tool: "creative_script_review", message: "منتقد مستقل سناریو را می‌خواند." })];
+  const a = buildTimeline({ messages: [msg(1, "user", 0)], events: raw, projects: [], processing: false }).find(i => i.kind === "activity");
+  assert.deepEqual(a.steps.map(step => step.label), ["نوشتن سناریو", "نقد مستقل سناریو"]);
+});

@@ -85,6 +85,8 @@ export const TOOL_LABELS: Record<string, string> = {
   creative_brief: "بررسی هدف و محتوا",
   creative_concepts: "بررسی ایده‌های تدوین",
   creative_review: "ارزیابی ایده‌ها",
+  creative_script: "نوشتن سناریو",
+  creative_script_review: "نقد مستقل سناریو",
   creative_storyboard: "تکمیل استوری‌بورد",
   motion_generation: "ساخت موشن",
   motion_so: "کلیپ موشن هوشمند",
@@ -521,6 +523,8 @@ const normalize = (value: unknown) => String(value || "").trim().toLocaleLowerCa
 
 /** Stage names the engines report, in Persian. */
 export const STAGE_FA: Record<string, string> = {
+  "creative brief": "بررسی هدف و محتوا", "creative concepts": "بررسی ایده‌های تدوین", "creative review": "ارزیابی ایده‌ها", "creative storyboard": "تکمیل استوری‌بورد",
+  "creative script": "نوشتن سناریو", "creative script review": "نقد مستقل سناریو", "creative direction": "طراحی ایدهٔ تدوین", "script writer": "نوشتن سناریو", "script critic": "نقد مستقل سناریو",
   queued: "در صف شروع", pending: "در انتظار شروع", running: "در حال اجرا", done: "انجام شد", completed: "انجام شد", failed: "ناموفق", stopped: "متوقف شد", stopping: "در حال توقف",
   checking: "بررسی", enhancing: "بهبود نتیجه", finding: "جست‌وجو", planning: "طراحی برنامهٔ کار", repair: "اصلاح", understanding: "درک درخواست", validating: "اعتبارسنجی", writing: "نوشتن",
   "quality review": "بازبینی کیفیت", analyzing: "تحلیل ویدیو", transcribing: "استخراج متن گفتار", transcribed: "متن گفتار آماده است", translating: "آماده‌سازی ترجمهٔ فارسی",
