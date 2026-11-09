@@ -238,10 +238,14 @@ def conversation_busy(conversation: dict, user_key: str) -> bool:
     return False
 
 
+STOPPED_BY_USER = "شما این کار را متوقف کردید. هر وقت خواستید پیام تازه‌ای بفرستید یا بنویسید «ادامه بده» تا از همین‌جا ادامه بدهم."
+
+
 def request_stop(conversation_id: str, user_key: str) -> dict:
     """Stop everything in flight for this chat: the message being understood, a running project, a motion graphic, a discovery run."""
     studio_flags.bump_generation(user_key, conversation_id)
-    state = (run(repo.get_conversation(conversation_id, user_key)).get("state") or {})
+    conversation = run(repo.get_conversation(conversation_id, user_key))
+    state = conversation.get("state") or {}
     stopped: list[str] = ["message"]
     stopped_ids: dict = {}
     pointer = state.get("motion")
@@ -285,6 +289,14 @@ def request_stop(conversation_id: str, user_key: str) -> dict:
                 stopped_ids["agent_run_id"] = record["id"]
     except Exception:
         log.warning("stop: an agent run could not be cancelled", exc_info=True)
+    # The stop is written into the chat, so it is visible for everyone and after a reload: "stopped by you", not a silent halt. Pressing stop twice
+    # does not repeat it.
+    last = (conversation.get("messages") or [None])[-1]
+    if not (last and last.get("role") == "assistant" and last.get("content") == STOPPED_BY_USER):
+        try:
+            _assistant(conversation_id, user_key, STOPPED_BY_USER)
+        except Exception:
+            log.warning("stop: the note could not be written", exc_info=True)
     _emit(conversation_id, "message.stopped", stopped=stopped, **stopped_ids)       # the ids make the cards and the composer re-read their state now
     return {"stopped": stopped}
 

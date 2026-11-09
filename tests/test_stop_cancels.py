@@ -108,3 +108,11 @@ def test_a_cooldown_wait_is_not_started_after_stop(monkeypatch):
     finally:
         llm.STOP_CHECK.reset(token)
     assert attempts == [1] and waited == []
+
+
+def test_stop_is_written_into_the_chat_once():
+    cid, _ = _run("running")
+    orchestrator.request_stop(cid, "alice")
+    orchestrator.request_stop(cid, "alice")                    # pressing stop again adds nothing
+    notes = [m for m in call(s.repo.get_conversation(cid, "alice"))["messages"] if m["role"] == "assistant" and m["content"] == orchestrator.STOPPED_BY_USER]
+    assert len(notes) == 1
