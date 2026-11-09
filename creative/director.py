@@ -11,7 +11,11 @@ from .schemas import (Beat, Concept, ContentBrief, CreativePlan, CreativeUnavail
 log = logging.getLogger(__name__)
 
 # Keep the whole creative stage bounded: a slow model must not hold a job hostage.
+from .reuse import fingerprint
+
 DEFAULT_BUDGET_S = 900
+RESUME_TTL_S = 3600
+_RESUME: dict = {}          # request fingerprint -> (time, brief, concepts, critique): what a retry of the same request need not redo
 
 
 def enabled() -> bool:
@@ -111,8 +115,7 @@ def _write_script(chosen: Concept, brief: ContentBrief, critique: Critique, caps
     # Exhausting the rewrite/time budget is not approval. Never pass a rejected
     # script to the executable storyboard or bypass review with an expansion.
     if not scriptwriter.passes(report):
-        reasons = report.review.must_fix[:3] if report.review else []
-        raise CreativeUnavailable("سناریو هنوز معیارهای کیفیت را پاس نکرده؛ تولید شروع نشد. " + "؛ ".join(reasons))
+        raise CreativeUnavailable("سناریو معیارهای کیفیت را پاس نکرد؛ تولید شروع نشد. دلیل: " + (scriptwriter.refusal(report) or "نامشخص"))
     chosen.beats = scriptwriter.to_beats(draft, duration_s)
     chosen.visual_language = draft.visual_language or chosen.visual_language
     chosen.pacing = draft.pacing or chosen.pacing
@@ -126,7 +129,7 @@ def _write_script(chosen: Concept, brief: ContentBrief, critique: Critique, caps
 
 
 def _direct(kind: str, understand_system: str, source_text: str, caps: str, *, budget_s: float, duration_s: float = 30,
-            reference: ReferenceProfile | None = None, depth: str = "fast") -> CreativePlan:
+            reference: ReferenceProfile | None = None, depth: str = "fast", resume: bool = False) -> CreativePlan:
     started = time.monotonic()
     used: list[str] = []
     from . import instagram_playbook
@@ -134,30 +137,43 @@ def _direct(kind: str, understand_system: str, source_text: str, caps: str, *, b
     if reference is not None:
         source_text += "\n\n" + scriptwriter.reference_digest(reference)
 
-    brief = llm.ask(ContentBrief, understand_system, source_text, route=llm.DIRECTOR_ROUTE, tokens=4000, used=used)
-    brief.kind = kind  # the caller knows the kind better than the model
-
-    context = f"{llm.dumps(brief.model_dump())}\n\nSource:\n{source_text}\n\n{guide}\n\nCapabilities:\n{caps}"
-    proposal = llm.ask(_Concepts, prompts.PROPOSE, context, route=llm.DIRECTOR_ROUTE, tokens=6000, used=used)
-    concepts = [c for c in proposal.concepts if c.hook and c.angle][:3]
-    if not concepts:
-        raise CreativeUnavailable("no usable concepts returned")
-    for index, concept in enumerate(concepts):  # ids must be unique and stable
-        concept.id = "ABC"[index]
-        if kind != "talk":
-            concept.style_hint = None
-
-    critique: Critique
-    if time.monotonic() - started > budget_s:
-        critique = _fallback_critique(concepts, "time budget")
+    # A repeat of the same request within the hour (the person pressed retry after the script was refused) does not pay again for the three
+    # stages that already succeeded: understanding the brief, the concepts and their critique. The script is what is written again.
+    resume_key = fingerprint({"kind": kind, "source": source_text, "caps": caps, "depth": depth, "duration": duration_s})
+    resumed = _RESUME.get(resume_key) if resume else None             # only the studio asks for this: every other caller always runs the stages
+    if resumed is not None and time.monotonic() - resumed[0] < RESUME_TTL_S:
+        brief, critique = resumed[1].model_copy(deep=True), resumed[3].model_copy(deep=True)
+        concepts = [c.model_copy(deep=True) for c in resumed[2]]
+        log.info("creative direction resumed from the earlier brief, concepts and critique")
     else:
-        try:
-            review_input = llm.dumps({"brief": brief.model_dump(), "concepts": [c.model_dump() for c in concepts]})
-            critique = llm.ask(Critique, prompts.CRITIQUE, review_input + f"\n\nCapabilities:\n{caps}", route=llm.CRITIC_ROUTE,
-                               tokens=3000, used=used)
-        except CreativeUnavailable as exc:
-            log.warning("creative critique skipped: %s", exc)
-            critique = _fallback_critique(concepts, "reviewer unavailable")
+        brief = llm.ask(ContentBrief, understand_system, source_text, route=llm.DIRECTOR_ROUTE, tokens=4000, used=used)
+        brief.kind = kind  # the caller knows the kind better than the model
+
+        context = f"{llm.dumps(brief.model_dump())}\n\nSource:\n{source_text}\n\n{guide}\n\nCapabilities:\n{caps}"
+        proposal = llm.ask(_Concepts, prompts.PROPOSE, context, route=llm.DIRECTOR_ROUTE, tokens=6000, used=used)
+        concepts = [c for c in proposal.concepts if c.hook and c.angle][:3]
+        if not concepts:
+            raise CreativeUnavailable("no usable concepts returned")
+        for index, concept in enumerate(concepts):  # ids must be unique and stable
+            concept.id = "ABC"[index]
+            if kind != "talk":
+                concept.style_hint = None
+
+        critique: Critique
+        if time.monotonic() - started > budget_s:
+            critique = _fallback_critique(concepts, "time budget")
+        else:
+            try:
+                review_input = llm.dumps({"brief": brief.model_dump(), "concepts": [c.model_dump() for c in concepts]})
+                critique = llm.ask(Critique, prompts.CRITIQUE, review_input + f"\n\nCapabilities:\n{caps}", route=llm.CRITIC_ROUTE,
+                                   tokens=3000, used=used)
+            except CreativeUnavailable as exc:
+                log.warning("creative critique skipped: %s", exc)
+                critique = _fallback_critique(concepts, "reviewer unavailable")
+        if resume:
+            _RESUME[resume_key] = (time.monotonic(), brief.model_copy(deep=True), [c.model_copy(deep=True) for c in concepts], critique.model_copy(deep=True))
+            while len(_RESUME) > 24:
+                _RESUME.pop(next(iter(_RESUME)))
 
     chosen = _pick(critique, concepts)
     critique.chosen_id = chosen.id
@@ -188,19 +204,19 @@ def direct_talk(sentences: list[dict], request: str = "", *, style: str | None =
 
 def direct_product(facts: dict | None, request: str, *, image_count: int = 0, duration_s: int = 30,
                    budget_s: float = DEFAULT_BUDGET_S, assets: list[dict] | None = None,
-                   reference: ReferenceProfile | None = None, depth: str = "fast", excerpt: str = "") -> CreativePlan:
+                   reference: ReferenceProfile | None = None, depth: str = "fast", excerpt: str = "", resume: bool = False) -> CreativePlan:
     source = (f"What the user asked for: {request}\nTarget length: {duration_s} seconds. Usable images available: {image_count}.\n"
               f"Verified facts (from the page / user):\n{llm.dumps(facts or {})}\n"
               f"Visually inspected assets (only listed indices may be used):\n{llm.dumps(assets or [])}")
     if excerpt:
         source += f"\n\nSource text of the supplied page (verified: every fact in the script must come from here or from the request):\n{excerpt}"
     return _direct("product", prompts.UNDERSTAND_PRODUCT, source, capabilities.product_capabilities(), budget_s=budget_s,
-                   duration_s=duration_s, reference=reference, depth=depth)
+                   duration_s=duration_s, reference=reference, depth=depth, resume=resume)
 
 
 def direct_idea(request: str, *, image_count: int = 0, duration_s: int = 30, budget_s: float = DEFAULT_BUDGET_S,
                 assets: list[dict] | None = None, reference: ReferenceProfile | None = None, depth: str = "fast",
-                excerpt: str = "") -> CreativePlan:
+                excerpt: str = "", resume: bool = False) -> CreativePlan:
     from . import handoff
     adopted = None if image_count else handoff.adopt(request, duration_s)
     if adopted:                                             # an idea approved in Instagram GPT arrives with its script: produce it, do not rewrite it
@@ -211,4 +227,4 @@ def direct_idea(request: str, *, image_count: int = 0, duration_s: int = 30, bud
     if excerpt:
         source += f"\n\nSource text of the supplied page (verified: every fact in the script must come from here or from the request):\n{excerpt}"
     return _direct(kind, prompts.UNDERSTAND_IDEA, source, capabilities.product_capabilities(), budget_s=budget_s,
-                   duration_s=duration_s, reference=reference, depth=depth)
+                   duration_s=duration_s, reference=reference, depth=depth, resume=resume)

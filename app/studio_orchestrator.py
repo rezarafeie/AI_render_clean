@@ -1241,11 +1241,13 @@ def _creative_direction(conversation_id: str, text: str, facts: dict | None, ass
           message="در حال تحلیل مخاطب و پیام و سنجیدن چند ایدهٔ خلاقانه هستم.")
     try:
         evidence=[{'index':r['index'],'subject':r['subject']} for r in catalog or []]
-        plan = (creative.direct_product(facts, text, image_count=len(assets), duration_s=duration,assets=evidence,reference=reference,depth=_script_depth(),excerpt=excerpt) if facts
-                else creative.direct_idea(text, image_count=len(assets), duration_s=duration,assets=evidence,reference=reference,depth=_script_depth(),excerpt=excerpt))
+        plan = (creative.direct_product(facts, text, image_count=len(assets), duration_s=duration,assets=evidence,reference=reference,depth=_script_depth(),excerpt=excerpt,resume=True) if facts
+                else creative.direct_idea(text, image_count=len(assets), duration_s=duration,assets=evidence,reference=reference,depth=_script_depth(),excerpt=excerpt,resume=True))
     except creative.CreativeUnavailable as exc:
         log.warning("creative direction unavailable: %s", exc)
-        raise ValueError('طراحی خلاقانه کامل نشد؛ برای جلوگیری از خروجی قالبی، تولید مدیا شروع نشد.') from exc
+        # The reason is the useful part (what the critic or the measurements refused): say it, so the person can decide what to change.
+        why = str(exc).strip()
+        raise ValueError('طراحی خلاقانه کامل نشد؛ برای جلوگیری از خروجی قالبی، تولید مدیا شروع نشد.' + (f' ({why[:420]})' if why else '')) from exc
     _emit(conversation_id, "tool.completed", tool="creative_direction",
           message=f"ایدهٔ انتخاب‌شده: «{plan.chosen.name}» — {plan.chosen.angle}", result={"concept": plan.public()})
     return plan

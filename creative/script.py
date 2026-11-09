@@ -26,6 +26,7 @@ WRITER_ROUTE, CRITIC_ROUTE = "script_writer", "script_critic"
 log = logging.getLogger(__name__)
 
 DEPTH_REWRITES = {"fast": 3, "premium": 5}
+DECISIVE = ("hook_strength", "payoff_quality")
 PATIENCE = 2           # rounds without a better score after which the loop stops: more rewriting is not helping
 MAX_LINES = 8
 MIN_LINES = 3
@@ -144,7 +145,7 @@ def measure(draft: ScriptDraft, duration_s: float, *, outro_s: float = 0.0, must
     for line, text in zip(draft.lines, narrations):
         if not text.strip():
             problems.append(f"{line.id}: متن نریشن خالی است.")
-        if len(line.see.strip()) < 14 or any(generic in line.see for generic in GENERIC_VISUALS):
+        if len(line.see.strip()) < 14 or (len(line.see.strip()) < 45 and any(generic in line.see for generic in GENERIC_VISUALS)):
             problems.append(f"{line.id}: تصویر مشخص و اجرایی ندارد («{line.see[:40]}»).")
         if line.title and _tokens(line.title) and _tokens(line.title) <= _tokens(text):
             notes.append(f"{line.id}: متن روی تصویر فقط تکرار نریشن است.")
@@ -165,7 +166,8 @@ def measure(draft: ScriptDraft, duration_s: float, *, outro_s: float = 0.0, must
 
 def _verify(review: ScriptReview, draft: ScriptDraft, measured: dict, has_reference: bool) -> ScriptReview:
     """A score only stands if its evidence is on the page: a quoted phrase from the script or a real measured number."""
-    text = script_text(draft) + " " + " ".join(f"{line.title} {line.see}" for line in draft.lines)
+    text = script_text(draft) + " " + " ".join(f"{line.title} {line.see} {line.hear} {line.why_visual} {line.motion} {line.emotion} {line.focus} {line.link_prev} "
+                                              f"{' '.join(line.items)}" for line in draft.lines)
     squash = lambda value: re.sub(r"[\s\u200c\u200d\u200f\u200e.,،؛;:!?؟«»\"'“”‘’()\[\]…\-–—]+", "", value.replace("ي", "ی").replace("ك", "ک"))
     body = squash(text)
 
@@ -187,7 +189,9 @@ def _verify(review: ScriptReview, draft: ScriptDraft, measured: dict, has_refere
         none_ok = score.criterion == "reference_alignment" and not has_reference
         if not (quoted or measured_fact or none_ok):
             score.verified = False
-            score.score = min(score.score, 5.0)
+            if score.criterion in DECISIVE:                       # the hook and the payoff decide a ship: their proof must be on the page
+                score.score = min(score.score, 5.0)
+            # any other criterion keeps its score: the critic described the line instead of quoting it, which is no reason to fail a script it approved
         seen[score.criterion] = score
     for criterion in CRITERIA:                                   # a criterion the critic skipped is not a pass
         if criterion not in seen:
@@ -341,7 +345,7 @@ def passes(report: ScriptReport) -> bool:
     if review.verdict == "ship":
         return True
     by = {item.criterion: item for item in review.scores}
-    if len(by) < len(CRITERIA) or any(not item.verified and item.criterion != "reference_alignment" for item in by.values()):
+    if len(by) < len(CRITERIA) or any(not item.verified and item.criterion in DECISIVE for item in by.values()):
         return False
     return all(item.score >= 6 for item in by.values()) and by["hook_strength"].score >= 7 and by["payoff_quality"].score >= 7
 
@@ -359,3 +363,21 @@ def to_beats(draft: ScriptDraft, duration_s: float) -> list[Beat]:
             line_id=line.id or f"L{index}", why_visual=line.why_visual, emotion=line.emotion, focus=line.focus,
             link_prev=line.link_prev, reference_trait=line.reference_trait))
     return beats
+
+
+def refusal(report: ScriptReport) -> str:
+    """The plain reasons a script was not accepted: what stopped the loop, the measured facts, the criteria below the bar, the critic's own requests."""
+    parts = []
+    review = report.review
+    stopped = {"cap": "سقف دورهای بازنویسی تمام شد", "time": "زمان طراحی تمام شد", "stalled": "بازنویسی دیگر نمره را بهتر نکرد", "unavailable": "نویسنده در دسترس نبود"}.get(report.stopped)
+    if stopped:
+        parts.append(stopped)
+    if not report.timing_ok:
+        parts.append(f"نریشن {report.speech_seconds:.1f} ثانیه است و ظرفیت ویدیو {report.budget_seconds:.1f} ثانیه")
+    parts.extend(report.hard_problems[:3])
+    if review is not None:
+        weak = [f"{item.criterion} {item.score:g}" for item in review.scores if item.score < 6 or (item.criterion in DECISIVE and (not item.verified or item.score < 7))]
+        if weak:
+            parts.append("معیارهای زیر حد قبولی: " + "، ".join(weak[:4]))
+        parts.extend(review.must_fix[:2])
+    return "؛ ".join(dict.fromkeys(part for part in parts if part))
