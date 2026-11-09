@@ -289,50 +289,62 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
 
     n = len(plan.shots)
     source_colour = split.base.source_colour_filter(video)
-    inputs = ["-i", str(video)]
-    # A shot that plays before footage the reel shows later (the hook pinned to the start) must not share the main input: while it plays, its
-    # neighbours' processed frames would pile up in concat's queues, gigabytes of them. It reads its own short window of the file instead.
-    pinned = {k: max(0.0, shot.src_in - 1.0) for k, shot in enumerate(plan.shots)
-              if any(plan.shots[j].src_in < shot.src_in - 0.5 for j in range(k + 1, n))}
-    shared = [k for k in range(n) if k not in pinned]
-    vf = [f"[0:v]split={len(shared)}" + "".join(f"[s{k}]" for k in shared),
-          f"[0:a]asplit={len(shared)}" + "".join(f"[r{k}]" for k in shared)]
-    nxt = 1
-    for k, begin in pinned.items():
-        inputs += ["-ss", f"{begin:.3f}", "-t", f"{plan.shots[k].src_out - begin + 1.0:.3f}", "-i", str(video)]
-        vf += [f"[{nxt}:v]null[s{k}]", f"[{nxt}:a]anull[r{k}]"]
-        nxt += 1
     zoom = settings.get("zoom") or {}
     zoom_amount = float(zoom.get("amount", 100)) / 100 if zoom.get("enabled", True) else 0.0
     base_zoom = float(zoom.get("base_scale", 100)) / 100 if zoom.get("enabled", True) else 1.0
     close_zoom = float(zoom.get("close_scale", 140)) / 100 if zoom.get("enabled", True) else 1.0
-    for k, shot in enumerate(plan.shots):
+
+    def render_segment(k: int, shot) -> Path:
+        """One shot, picture or speaker, as its own short file. ffmpeg reads every input as fast as it can: in a single graph the pictures of all
+        shots were decoded long before their turn and waited in concat's queues (several GB for a minute of reel). A shot of its own costs one
+        picture and one window of the source at a time."""
+        segment = work_dir / f"p3_segment_{k:03d}.mp4"
+        begin = max(0.0, shot.src_in - 1.0)
+        ins = ["-ss", f"{begin:.3f}", "-t", f"{shot.src_out - begin + 1.0:.3f}", "-i", str(video)]
         frames = max(1, round(shot.length * fps_value))
         cw, ch, x, y = speaker_crop(shot, sw, sh, base_zoom, close_zoom)
-        cut = f"[s{k}]trim={shot.src_in - pinned.get(k, 0.0):.3f}:{shot.src_out - pinned.get(k, 0.0):.3f},setpts=PTS-STARTPTS,crop={cw}:{ch}:{x}:{y}"
+        cut = f"[0:v]trim={shot.src_in - begin:.3f}:{shot.src_out - begin:.3f},setpts=PTS-STARTPTS,crop={cw}:{ch}:{x}:{y}"
         push = f"zoompan=z='1.0+{PICTURE_ZOOM * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1"
         if shot.split and id(shot) in plan.full_pictures:
-            inputs += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(panel(shot.picture, "full"))]
-            vf.append(f"[{nxt}:v]{push}:s={W}x{H}:fps={fps},format=yuv420p,setsar=1[v{k}]")
-            vf.append(f"[s{k}]trim=0:0.04,nullsink")
-            nxt += 1
+            ins += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(panel(shot.picture, "full"))]
+            graph = [f"[1:v]{push}:s={W}x{H}:fps={fps},format=yuv420p,setsar=1[vraw]"]
         elif shot.split:
             kind = "card" if shot.picture in plan.card_pictures else "bleed"
             top = panel(shot.picture, kind) if shot.picture else plain
-            inputs += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(top)]
-            vf.append(f"[{nxt}:v]{push}:s={W}x{SPLIT_Y}:fps={fps},format=yuv420p,setsar=1[t{k}]")
-            vf.append(f"{cut},{source_colour},scale={W}:{H - SPLIT_Y}:flags=lanczos,fps={fps},setsar=1,{custom_grade}[b{k}]")
-            vf.append(f"[t{k}][b{k}]vstack=inputs=2[v{k}]")
-            nxt += 1
+            ins += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(top)]
+            graph = [f"[1:v]{push}:s={W}x{SPLIT_Y}:fps={fps},format=yuv420p,setsar=1[t]",
+                     f"{cut},{source_colour},scale={W}:{H - SPLIT_Y}:flags=lanczos,fps={fps},setsar=1,{custom_grade}[b]",
+                     "[t][b]vstack=inputs=2[vraw]"]
         else:
             # Full-frame speaker: a slow push-in, close on alternate shots.
-            vf.append(f"{cut},scale={W * 3 // 2}:{H * 3 // 2}:flags=lanczos,"
-                      f"zoompan=z='1.0+{0.05 * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih*0.4-ih/zoom*0.4':d=1:s={W}x{H}:fps={fps},"
-                      f"{source_colour},setsar=1,{custom_grade}[v{k}]")
+            graph = [f"{cut},scale={W * 3 // 2}:{H * 3 // 2}:flags=lanczos,"
+                     f"zoompan=z='1.0+{0.05 * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih*0.4-ih/zoom*0.4':d=1:s={W}x{H}:fps={fps},"
+                     f"{source_colour},setsar=1,{custom_grade}[vraw]"]
+        graph.append("[vraw]format=yuv420p,tpad=stop_mode=clone:stop_duration=0.5[vseg]")
+        command = [ffmpeg, "-hide_banner", "-y", *ins, "-filter_complex", ";".join(graph), "-map", "[vseg]", "-an",
+                   "-c:v", "libx264", "-crf", "10", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                   "-t", f"{shot.length:.3f}", "-r", fps, str(segment)]
+        done = subprocess.run(command, capture_output=True, text=True)
+        if done.returncode != 0:
+            raise RuntimeError(f"ffmpeg failed on shot {k} (exit {done.returncode}): {split.base.ffmpeg_error(done.stderr)}")
+        return segment
+
+    segments = []
+    for k, shot in enumerate(plan.shots):
+        segments.append(render_segment(k, shot))
+        if on_progress:
+            on_progress(int(50 * (k + 1) / n))
+    listing = work_dir / "p3_segments.txt"
+    listing.write_text("".join("file '" + str(path).replace("'", "'\\''") + "'\n" for path in segments))
+    inputs = ["-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(video)]
+    vf = ["[0:v]format=yuv420p[cv]",
+          f"[1:a]asplit={n}" + "".join(f"[r{k}]" for k in range(n))]
+    nxt = 2
+    for k, shot in enumerate(plan.shots):
         fade = min(0.012, shot.length / 4)
-        vf.append(f"[r{k}]atrim={shot.src_in - pinned.get(k, 0.0):.3f}:{shot.src_out - pinned.get(k, 0.0):.3f},asetpts=PTS-STARTPTS,"
+        vf.append(f"[r{k}]atrim={shot.src_in:.3f}:{shot.src_out:.3f},asetpts=PTS-STARTPTS,"
                   f"afade=t=in:d={fade:.3f},afade=t=out:st={shot.length - fade:.3f}:d={fade:.3f}[a{k}]")
-    vf.append("".join(f"[v{k}][a{k}]" for k in range(n)) + f"concat=n={n}:v=1:a=1[cv][ca]")
+    vf.append("".join(f"[a{k}]" for k in range(n)) + f"concat=n={n}:v=0:a=1[ca]")
     inputs += ["-loop", "1", "-framerate", fps, "-i", str(seam_png(work_dir / "p3_seam.png"))]
     vf.append(f"[{nxt}:v]format=rgba[seam]")
     nxt += 1
@@ -382,7 +394,7 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
         for row in proc.stdout:
             log_tail = (log_tail + [row])[-80:]
             if row.startswith("out_time_us=") and on_progress and total > 0:
-                try: on_progress(min(99, int(int(row.split("=")[1]) / 1e6 / total * 100)))
+                try: on_progress(min(99, 50 + int(int(row.split("=")[1]) / 1e6 / total * 49)))
                 except ValueError: pass
     except BaseException:
         proc.terminate(); proc.wait(timeout=5); out.unlink(missing_ok=True); raise
