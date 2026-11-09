@@ -386,8 +386,10 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
                 except ValueError: pass
     except BaseException:
         proc.terminate(); proc.wait(timeout=5); out.unlink(missing_ok=True); raise
-    if proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg failed: {split.base.ffmpeg_error(''.join(log_tail))}")
+    code = proc.wait()
+    if code != 0:
+        # -9 is the kernel's out-of-memory kill: say so, the log then ends without any error line.
+        raise RuntimeError(f"ffmpeg failed (exit {code}{', killed: out of memory?' if code == -9 else ''}): {split.base.ffmpeg_error(''.join(log_tail))}")
     return out
 
 
