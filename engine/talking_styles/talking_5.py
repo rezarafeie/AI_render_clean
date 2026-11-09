@@ -351,7 +351,7 @@ def _mattes(video: Path, plan: ReelPlan, pack: StylePack, work_dir: Path, src_w:
 
 
 def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, mattes: dict[int, Path], first_matte_input: int,
-           video: Path | None = None) -> tuple[list[str], list[str], int]:
+           video: Path | None = None, rng: range | None = None, with_audio: bool = True) -> tuple[list[str], list[str], int]:
     """(filter parts, extra -i arguments, how many of those are pinned-shot inputs) for: bg + panel + speaker layer + head layer + text.
     Inputs 0 = video, 1 = card mask, then mattes, then one short window of the video per pinned shot.
 
@@ -361,17 +361,21 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
     parts, slayer, player, alabels = [], [], [], []
     matte_args: list[str] = []
     matte_input = {}
+    rng = rng if rng is not None else range(len(plan.shots))
+    mattes = {i: m for i, m in mattes.items() if i in rng}
     for k, i in enumerate(sorted(mattes)):
         matte_input[i] = first_matte_input + k
         matte_args += ["-i", str(mattes[i])]
     pinned: dict[int, tuple[int, float]] = {}
     if video is not None:
-        for i, shot in enumerate(plan.shots):
-            if any(plan.shots[j].src_in < shot.src_in - 0.5 for j in range(i + 1, len(plan.shots))):
+        for i in rng:
+            shot = plan.shots[i]
+            if any(plan.shots[j].src_in < shot.src_in - 0.5 for j in range(i + 1, rng.stop)):
                 begin = max(0.0, shot.src_in - 1.0)
                 pinned[i] = (first_matte_input + len(mattes) + len(pinned), begin)
                 matte_args += ["-ss", f"{begin:.3f}", "-t", f"{shot.src_out - begin + 1.0:.3f}", "-i", str(video)]
-    for i, shot in enumerate(plan.shots):
+    for i in rng:
+        shot = plan.shots[i]
         a, b = shot.src_in, shot.src_out
         d = b - a
         vin, off = (f"[{pinned[i][0]}:v]", pinned[i][1]) if i in pinned else ("[0:v]", 0.0)
@@ -416,20 +420,41 @@ def _graph(plan: ReelPlan, pack: StylePack, src_w: int, src_h: int, fps: int, ma
             parts[:] = [(part[:part.rindex("[")] + f"[{lab}r{i}]") if part.endswith(f"[{lab}{i}]") and "color=c=black@0.0" not in part[:0] and part.rindex("[") > 0 and f"[{lab}{i}]" == part[part.rindex("["):] else part for part in parts]
             # setsar=1: footage with a non-square pixel aspect (1984:1989 from some phones) gives each piece a slightly different SAR and concat refuses to join them
             parts.append(f"[{lab}r{i}]tpad=stop_mode=clone:stop_duration=1,trim=end_frame={n_frames},setpts=N/{fps}/TB,setsar=1[{lab}{i}]")
-        parts.append(f"{ain}atrim=start={ta:.3f}:end={tb_:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        if with_audio:
+            parts.append(f"{ain}atrim=start={ta:.3f}:end={tb_:.3f},asetpts=PTS-STARTPTS[a{i}]")
+            alabels.append(f"[a{i}]")
         slayer.append(f"[s{i}]")
         player.append(f"[p{i}]")
-        alabels.append(f"[a{i}]")
-    n = len(plan.shots)
+    n = len(slayer)
     parts.append(f"{''.join(slayer)}concat=n={n}:v=1:a=0[L1]")
     parts.append(f"{''.join(player)}concat=n={n}:v=1:a=0[L2]")
-    parts.append(f"{''.join(alabels)}concat=n={n}:v=0:a=1[ca]")
+    if with_audio:
+        parts.append(f"{''.join(alabels)}concat=n={n}:v=0:a=1[ca]")
     return parts, matte_args, len(pinned)
+
+
+CHUNK_SECONDS = 8.0
+
+
+def _chunks(plan: ReelPlan) -> list[range]:
+    """Consecutive shots grouped to about CHUNK_SECONDS of the reel each."""
+    out, start, length = [], 0, 0.0
+    for i, shot in enumerate(plan.shots):
+        length += shot.length
+        if length >= CHUNK_SECONDS:
+            out.append(range(start, i + 1))
+            start, length = i + 1, 0.0
+    if start < len(plan.shots):
+        out.append(range(start, len(plan.shots)))
+    return out
 
 
 def render_composite(video: Path, plan: ReelPlan, panel: Optional[Path], text: Optional[Path], out: Path, *, work_dir: Path,
                      hook: Optional[Path] = None, music: Optional[Path] = None, pack: StylePack | None = None, on_progress=None) -> Path:
-    """One ffmpeg pass: panel colour -> panel layer -> speaker (full frame or card) -> head over the panel -> text; cuts, grade, music, loudness."""
+    """Panel colour -> panel layer -> speaker (full frame or card) -> head over the panel -> text, then cuts, grade, music, loudness.
+
+    The picture is made a few seconds at a time and the sound in one pass: in one graph, every piece of the reel was generated far ahead of its turn and
+    waited in concat's queues (gigabytes for a minute of reel, an out-of-memory kill on a 4 GB worker)."""
     pack = pack or plan.pack
     work_dir.mkdir(parents=True, exist_ok=True)
     probe = base.probe_video(video)
@@ -437,44 +462,73 @@ def render_composite(video: Path, plan: ReelPlan, panel: Optional[Path], text: O
     fps = int(round(base.eval_fps(base.probe_fps(video)) or 30))
     mask = _round_mask(work_dir / "card_mask.png")
     mattes = _mattes(video, plan, pack, work_dir, src_w, src_h, fps)
-    inputs = ["-i", str(video), "-loop", "1", "-framerate", str(fps), "-i", str(mask)]
-    parts, matte_args, pinned_inputs = _graph(plan, pack, src_w, src_h, fps, mattes, 2, video)
-    inputs += matte_args
-    nxt = 2 + len(mattes) + pinned_inputs
-    parts.append(f"color=c={_hex(pack.palette.panel_bg)}:s={W}x{H}:r={fps}:d={plan.duration:.3f}[bg]")
-    last = "bg"
-    if panel and panel.is_file():
-        inputs += ["-c:v", "libvpx-vp9", "-i", str(panel)]
-        parts.append(f"[{nxt}:v]format=yuva420p,setpts=PTS-STARTPTS[pn]")
-        parts.append(f"[{last}][pn]overlay=0:0:format=auto:eof_action=pass[x1]")
-        last, nxt = "x1", nxt + 1
-    parts.append(f"[{last}][L1]overlay=0:0:format=auto:shortest=0:eof_action=pass[x2]")
-    parts.append("[x2][L2]overlay=0:0:format=auto:eof_action=pass[x3]")
-    last = "x3"
-    if text and text.is_file():
-        inputs += ["-c:v", "libvpx-vp9", "-i", str(text)]
-        parts.append(f"[{nxt}:v]format=yuva420p,setpts=PTS-STARTPTS[tx]")
-        parts.append(f"[{last}][tx]overlay=0:0:format=auto:eof_action=pass[x4]")
-        last, nxt = "x4", nxt + 1
-    if hook and hook.is_file():
-        inputs += ["-c:v", "libvpx-vp9", "-i", str(hook)]
-        parts.append(f"[{nxt}:v]format=yuva420p,setpts=PTS-STARTPTS[hk]")
-        parts.append(f"[{last}][hk]overlay=0:0:format=auto:eof_action=pass[x5]")
-        last, nxt = "x5", nxt + 1
-    parts.append(f"[{last}]fps={fps},format=yuv420p[vout]")
+    chunks = _chunks(plan)
+    segments = []
+    for number, rng in enumerate(chunks):
+        t0 = plan.shots[rng.start].out_start
+        length = sum(plan.shots[i].length for i in rng)
+        inputs = ["-i", str(video), "-loop", "1", "-framerate", str(fps), "-i", str(mask)]
+        parts, extra, pinned_inputs = _graph(plan, pack, src_w, src_h, fps, mattes, 2, video, rng=rng, with_audio=False)
+        inputs += extra
+        nxt = 2 + len([i for i in mattes if i in rng]) + pinned_inputs
+        parts.append(f"color=c={_hex(pack.palette.panel_bg)}:s={W}x{H}:r={fps}:d={length:.3f}[bg]")
+        last = "bg"
+        window = ["-ss", f"{t0:.3f}", "-t", f"{length + 0.5:.3f}", "-c:v", "libvpx-vp9", "-i"]
+        for label, layer, name in (("pn", panel, "panel"), ("tx", text, "text"), ("hk", hook, "hook")):
+            if name == "text":                                  # the speaker layers go between the panel and the text
+                parts.append(f"[{last}][L1]overlay=0:0:format=auto:shortest=0:eof_action=pass[xa]")
+                parts.append("[xa][L2]overlay=0:0:format=auto:eof_action=pass[xb]")
+                last = "xb"
+            if layer and layer.is_file():
+                inputs += [*window, str(layer)]
+                parts.append(f"[{nxt}:v]format=yuva420p,setpts=PTS-STARTPTS[{label}]")
+                parts.append(f"[{last}][{label}]overlay=0:0:format=auto:eof_action=pass[o{label}]")
+                last, nxt = f"o{label}", nxt + 1
+        if last == "bg":                                         # no layers at all: the speaker layers still have to be laid over the colour
+            parts.append("[bg][L1]overlay=0:0:format=auto:shortest=0:eof_action=pass[xa]")
+            parts.append("[xa][L2]overlay=0:0:format=auto:eof_action=pass[xb]")
+            last = "xb"
+        elif "[xb]" not in ";".join(parts):                      # a panel but neither text nor hook
+            parts.append(f"[{last}][L1]overlay=0:0:format=auto:shortest=0:eof_action=pass[xa]")
+            parts.append("[xa][L2]overlay=0:0:format=auto:eof_action=pass[xb]")
+            last = "xb"
+        parts.append(f"[{last}]fps={fps},format=yuv420p[vout]")
+        segment = work_dir / f"t5_chunk_{number:03d}.mp4"
+        cmd = ["ffmpeg", "-hide_banner", "-y", *inputs, "-filter_complex", ";".join(parts), "-map", "[vout]", "-an",
+               "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", str(fps),
+               "-t", f"{length:.3f}", str(segment)]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError("ffmpeg failed: " + proc.stderr[-1600:])
+        segments.append(segment)
+        if on_progress:
+            on_progress(int(80 * (number + 1) / len(chunks)))
+
+    # the sound, once, over the whole reel
+    aparts, ainputs = [], ["-i", str(video)]
+    labels = []
+    for i, shot in enumerate(plan.shots):
+        aparts.append(f"[0:a]atrim=start={shot.src_in:.3f}:end={shot.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        labels.append(f"[a{i}]")
+    aparts.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1[ca]")
     loud = f"loudnorm=I={LOUDNESS}:TP=-1:LRA=8,aresample=48000[aout]"
     if music and music.is_file():
-        inputs += ["-i", str(music_bed(music, plan.duration + 1.0, work_dir))]
-        parts.append(f"[{nxt}:a]volume={MUSIC_DB}dB,atrim=0:{plan.duration:.3f}[bed]")
-        parts.append("[ca]asplit=2[vox1][vox2]")
-        parts.append("[bed][vox1]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300[bedduck]")
-        parts.append(f"[vox2][bedduck]amix=inputs=2:duration=first:normalize=0,{loud}")
+        ainputs += ["-i", str(music_bed(music, plan.duration + 1.0, work_dir))]
+        aparts.append(f"[1:a]volume={MUSIC_DB}dB,atrim=0:{plan.duration:.3f}[bed]")
+        aparts.append("[ca]asplit=2[vox1][vox2]")
+        aparts.append("[bed][vox1]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300[bedduck]")
+        aparts.append(f"[vox2][bedduck]amix=inputs=2:duration=first:normalize=0,{loud}")
     else:
-        parts.append(f"[ca]{loud}")
-    cmd = ["ffmpeg", "-hide_banner", "-y", *inputs, "-filter_complex", ";".join(parts), "-map", "[vout]", "-map", "[aout]",
-           "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-           "-t", f"{plan.duration:.3f}", "-movflags", "+faststart", str(out)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+        aparts.append(f"[ca]{loud}")
+    sound = work_dir / "t5_sound.m4a"
+    proc = subprocess.run(["ffmpeg", "-hide_banner", "-y", *ainputs, "-filter_complex", ";".join(aparts), "-map", "[aout]", "-c:a", "aac", "-b:a", "192k",
+                           "-t", f"{plan.duration:.3f}", str(sound)], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError("ffmpeg failed: " + proc.stderr[-1600:])
+    listing = work_dir / "t5_chunks.txt"
+    listing.write_text("".join("file '" + str(path).replace("'", "'\\''") + "'\n" for path in segments))
+    proc = subprocess.run(["ffmpeg", "-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(sound), "-map", "0:v", "-map", "1:a",
+                           "-c", "copy", "-t", f"{plan.duration:.3f}", "-movflags", "+faststart", str(out)], capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError("ffmpeg failed: " + proc.stderr[-1600:])
     return out
