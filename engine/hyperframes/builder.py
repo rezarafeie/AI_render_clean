@@ -358,7 +358,8 @@ def _timeline_script(beats: list[VisualBeat]) -> str:
 
 
 def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], *, duration: float,
-                  enable_registry: bool = True, motion_only: bool = False) -> Path:
+                  enable_registry: bool = True, motion_only: bool = False,
+                  gsap_source: Path | None = None) -> Path:
     """Write a self-contained 1080x1920 HyperFrames composition."""
     project_dir.mkdir(parents=True, exist_ok=True)
     assets = project_dir / "assets"
@@ -381,7 +382,8 @@ def build_project(project_dir: Path, base_video: Path, beats: list[VisualBeat], 
             beat.custom["css"] for beat in beats if beat.custom)
     # Local, integrity-checked GSAP: fail here, before any frame is encoded, if it is unavailable.
     from .assets import ensure_gsap
-    shutil.copy2(ensure_gsap(), assets / "gsap.min.js")
+    # A caller that already holds a verified copy (the cloud worker has no network) passes it in.
+    shutil.copy2(gsap_source if gsap_source is not None and gsap_source.is_file() else ensure_gsap(), assets / "gsap.min.js")
     (project_dir / "hyperframes.json").write_text(json.dumps({
         "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
         "media": {"autoProxy": True},

@@ -183,7 +183,7 @@ def _render_split_panel(project: Path, output: Path, meta: dict, *, timeout, on_
     from .scratch import scratch_dir
     panel = scratch_dir(project, 'hyperframes_panel')
     build_project(panel, source, beats, duration=max(b.end for b in beats),
-                  enable_registry=False, motion_only=True)
+                  enable_registry=False, motion_only=True, gsap_source=project/'assets/gsap.min.js')
     panel_output = panel/'panel.mp4'
     receipt = panel/'render-receipt.json'
     key = audit_key(panel)

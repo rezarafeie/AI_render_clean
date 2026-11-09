@@ -177,3 +177,16 @@ def test_sound_effects_are_synthesised_not_shipped(tmp_path):
     from engine import sfx
     made = sfx.ensure(tmp_path, {"tick", "pop"})
     assert set(made) == {"tick", "pop"} and all(path.stat().st_size > 500 for path in made.values())
+
+
+def test_builder_reuses_a_supplied_gsap_without_touching_the_network(tmp_path, monkeypatch):
+    def forbidden(*a, **k):
+        raise AssertionError("must not download when a verified copy is supplied")
+    monkeypatch.setattr("engine.hyperframes.assets.ensure_gsap", forbidden)
+    shipped = tmp_path / "shipped.js"
+    shipped.write_text("/* GSAP 3.14.2 */" + "x" * 60_000)
+    base = tmp_path / "base.mp4"
+    base.write_bytes(b"\x00" * 16)
+    project = tmp_path / "p"
+    build_project(project, base, [beat()], duration=20, enable_registry=False, gsap_source=shipped)
+    assert (project / "assets" / "gsap.min.js").read_text() == shipped.read_text()
