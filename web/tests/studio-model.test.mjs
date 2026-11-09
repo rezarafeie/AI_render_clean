@@ -278,3 +278,25 @@ test("the creative stages have their own Persian names", () => {
   const a = buildTimeline({ messages: [msg(1, "user", 0)], events: raw, projects: [], processing: false }).find(i => i.kind === "activity");
   assert.deepEqual(a.steps.map(step => step.label), ["نوشتن سناریو", "نقد مستقل سناریو"]);
 });
+
+test("a step shows its request, its answer and the call numbers; the waiting wording is just «working»", () => {
+  const raw = [ev(1, "tool.started", 1, { tool: "creative_script", activity_id: "a", request: "[user]\nبنویس", message: "دارم متن را می‌نویسم." }),
+               ev(2, "tool.progress", 2, { tool: "creative_script", activity_id: "a", elapsed_seconds: 15, message: "در انتظار پاسخ سرویس هوش مصنوعی · 15 ثانیه" }),
+               ev(3, "tool.completed", 3, { tool: "creative_script", activity_id: "a", response: "متن سناریو", actual_model: "m-1", input_tokens: 90, output_tokens: 40, latency_ms: 4200, message: "پاسخ دریافت شد" })];
+  const a = buildTimeline({ messages: [msg(1, "user", 0)], events: raw, projects: [], processing: false }).find(i => i.kind === "activity");
+  const step = a.steps[0], details = stepDetails(step);
+  assert.equal(details.request, "[user]\nبنویس");
+  assert.equal(details.response, "متن سناریو");
+  assert.deepEqual([details.run.model, details.run.inputTokens, details.run.outputTokens, details.run.latencyMs], ["m-1", 90, 40, 4200]);
+  assert.ok(!step.notes.some(note => /سرویس هوش مصنوعی/.test(note)));
+});
+
+test("a step still waiting has a request and no answer yet", () => {
+  const raw = [ev(1, "tool.started", 1, { tool: "creative_script", activity_id: "b", request: "درخواست", message: "دارم می‌نویسم." }),
+               ev(2, "tool.progress", 2, { tool: "creative_script", activity_id: "b", elapsed_seconds: 15, message: "در حال کار" })];
+  const a = buildTimeline({ messages: [msg(1, "user", 0)], events: raw, projects: [], processing: true }).find(i => i.kind === "activity");
+  const details = stepDetails(a.steps[0]);
+  assert.equal(a.steps[0].status, "active");
+  assert.equal(details.response, undefined);
+  assert.equal(details.request, "درخواست");
+});

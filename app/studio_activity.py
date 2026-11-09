@@ -1,4 +1,4 @@
-"""Public operational updates only: no prompts, model reasoning or credentials."""
+"""Operational updates for the person who owns the chat: what each step asked and what it got back (the step's own work log), never credentials."""
 import contextvars
 import functools
 import threading
@@ -24,6 +24,49 @@ LABELS = {
     'hyperframes_design': ('motion_generation', 'در حال طراحی موشن‌گرافیک هستم.'),
     'remotion_design': ('motion_generation', 'در حال طراحی صحنه‌های موشن هستم.'),
 }
+
+
+LOG_LIMIT = 4000
+
+
+def _clip(text: str, limit: int = LOG_LIMIT) -> str:
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    head = int(limit * 0.6)
+    return f"{text[:head]}\n… ({len(text) - limit} نویسه حذف شد) …\n{text[-(limit - head):]}"
+
+
+def request_text(messages) -> str:
+    """What was sent to the model, readable: each message with its role (long ones cut in the middle)."""
+    parts = []
+    for item in messages or []:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if isinstance(content, list):
+            content = "".join(str(piece.get("text", "")) if piece.get("type") == "text" else f"[{piece.get('type', 'file')}]" for piece in content if isinstance(piece, dict))
+        parts.append(f"[{item.get('role', '?')}]\n{_clip(content, 1800)}")
+    return _clip("\n\n".join(parts))
+
+
+def response_text(result) -> tuple[str, dict]:
+    """The model's answer and the numbers about it, from what the gateway returned."""
+    try:
+        response, record = result
+    except (TypeError, ValueError):
+        return "", {}
+    answer = ""
+    try:
+        from brain import lm_adapters as adapters
+        for endpoint in ("chat", "responses", "messages"):
+            answer = adapters.text(endpoint, response) or ""
+            if answer:
+                break
+    except Exception:
+        answer = ""
+    facts = {key: record.get(key) for key in ("actual_model", "input_tokens", "output_tokens", "latency_ms") if isinstance(record, dict) and record.get(key) is not None}
+    return _clip(answer), facts
 
 
 def phase_message(stage):
@@ -76,13 +119,14 @@ def observe_request(function):
         started = time.monotonic()
         activity_id = uuid.uuid4().hex
         data = dict(tool=stage, stage=stage, activity_id=activity_id, message=message, thinking=True)
-        report(cid, 'tool.started', **data)
+        # The step's work log starts here: the exact request that goes out (the answer is added when it comes back).
+        report(cid, 'tool.started', **data, request=request_text(args[0] if args else kwargs.get('messages')), route=route)
         # The activity step already says what is being done; chat narration is reserved for results (see the orchestrator).
         def waiting():
             while not stopped.wait(15):
                 elapsed = int(time.monotonic() - started)
-                report(cid, 'tool.progress', **{**data, 'elapsed_seconds': elapsed,
-                       'message': f'در انتظار پاسخ سرویس هوش مصنوعی · {elapsed} ثانیه'})
+                # The wording is plain; the chat counts the seconds itself, live, beside the step.
+                report(cid, 'tool.progress', **{**data, 'elapsed_seconds': elapsed, 'message': 'در حال کار'})
         worker = threading.Thread(target=waiting, daemon=True, name='studio-ai-status')
         worker.start()
         try:
@@ -90,14 +134,19 @@ def observe_request(function):
         except Exception:
             stopped.set()
             worker.join(timeout=1)
+            import sys
+            failure = sys.exc_info()[1]
             report(cid, 'tool.completed', tool=stage, stage=stage, activity_id=activity_id, thinking=False,
-                   message='این تلاش پاسخ قابل استفاده نداد؛ نتیجه به مسیر مدیریت خطا تحویل شد.')
+                   message='این تلاش پاسخ قابل استفاده نداد؛ نتیجه به مسیر مدیریت خطا تحویل شد.',
+                   error=_clip(f'{type(failure).__name__}: {failure}', 600), elapsed_seconds=int(time.monotonic() - started))
             raise
         else:
             stopped.set()
             worker.join(timeout=1)
+            answer, facts = response_text(result)
             report(cid, 'tool.completed', tool=stage, stage=stage, activity_id=activity_id, thinking=False,
-                   message='پاسخ این مرحله دریافت شد؛ اکنون اعتبارسنجی و ادامهٔ پردازش انجام می‌شود.')
+                   message='پاسخ این مرحله دریافت شد؛ اکنون اعتبارسنجی و ادامهٔ پردازش انجام می‌شود.',
+                   response=answer, elapsed_seconds=int(time.monotonic() - started), **facts)
             return result
         finally:
             stopped.set()

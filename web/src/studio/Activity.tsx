@@ -15,6 +15,30 @@ function Elapsed({ since }: { since: number }) {
   return ms >= 1000 ? <span className="act-elapsed" aria-hidden="true">{formatDuration(ms, fa)}</span> : null;
 }
 
+/** The step's work log, like a tool call in a coding agent: what it asked, and what came back (or that it is still working). */
+function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<ReturnType<typeof stepDetails>> }) {
+  const fa = useFa();
+  const run = details.run;
+  const num = (value: number) => (fa ? faNumber(value) : String(value));
+  const facts = [
+    run?.model ? ["مدل", run.model] : null,
+    typeof run?.inputTokens === "number" ? ["توکن ورودی", num(run.inputTokens)] : null,
+    typeof run?.outputTokens === "number" ? ["توکن خروجی", num(run.outputTokens)] : null,
+    typeof run?.latencyMs === "number" ? ["زمان پاسخ", formatDuration(run.latencyMs, fa)] : typeof run?.elapsedSeconds === "number" ? ["زمان", formatDuration(run.elapsedSeconds * 1000, fa)] : null,
+  ].filter(Boolean) as [string, string][];
+  const waiting = step.status === "active" && !details.response && !run?.error;
+  return <div className="act-work">
+    {details.request ? <section className="act-io"><h5>درخواست</h5><pre dir="auto">{details.request}</pre></section> : null}
+    <section className="act-io"><h5>پاسخ</h5>
+      {details.response ? <pre dir="auto">{details.response}</pre>
+        : run?.error ? <pre dir="ltr" className="act-error">{run.error}</pre>
+        : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار… <Elapsed since={step.startedAt}/></p>
+        : <p className="act-none">برای این مرحله متن پاسخی ثبت نشده است.</p>}
+    </section>
+    {facts.length ? <dl className="act-facts">{facts.map(([name, value]) => <div key={name}><dt>{name}</dt><dd dir="ltr">{value}</dd></div>)}</dl> : null}
+  </div>;
+}
+
 /** The technical log of one step, like the log a coding agent shows when a step is opened: every event the server recorded, its raw payload on demand. */
 function StepLog({ step }: { step: ActivityStep }) {
   const fa = useFa();
@@ -25,15 +49,15 @@ function StepLog({ step }: { step: ActivityStep }) {
   const copy = async () => {
     try { await navigator.clipboard.writeText(everything); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
   };
-  return <div className="act-log">
-    <div className="act-log-head"><span>گزارش فنی</span><button type="button" className="link-btn" onClick={copy}>{copied ? "کپی شد" : "کپی گزارش"}</button></div>
+  return <details className="act-log">
+    <summary className="act-log-head"><span>رویدادهای خام ({fa ? faNumber(lines.length) : lines.length})</span><button type="button" className="link-btn" onClick={event => { event.preventDefault(); void copy(); }}>{copied ? "کپی شد" : "کپی"}</button></summary>
     <ol>{lines.map((line, index) => <li key={index}>
       <details>
         <summary><time dir="ltr">{clock(line.at, fa)}</time><b>{line.kind}</b>{line.text ? <span dir="auto" className="bidi wrap-safe">{line.text}</span> : null}</summary>
         <pre dir="ltr">{line.raw}</pre>
       </details>
     </li>)}</ol>
-  </div>;
+  </details>;
 }
 
 function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryHref?: string; onOpenEditor?: () => void }) {
@@ -61,7 +85,7 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
     </div> : null}
     {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
     {details && open ? <div className="act-details">
-      {details.request ? <div className="act-request"><span>درخواست این مرحله</span><pre dir="auto">{details.request}</pre></div> : null}
+      <WorkLog step={step} details={details}/>
       {details.notes.map((note, index) => <p key={index} dir="auto" className="bidi wrap-safe">{note}</p>)}
       <dl>
         <div><dt>شروع</dt><dd dir="ltr">{clock(step.startedAt, fa)}</dd></div>

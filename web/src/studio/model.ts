@@ -27,6 +27,9 @@ export interface ActivityStep {
   request?: string;
   /** The exact material of the step (its lines, choices, results) when the server wrote it, shown when the step is opened. */
   detail?: string;
+  /** What came back from the step's model call (when it has returned), and the numbers about the call. */
+  response?: string;
+  run?: { model?: string; inputTokens?: number; outputTokens?: number; latencyMs?: number; elapsedSeconds?: number; error?: string };
 }
 export type TimelineItem =
   | { kind: "message"; id: string; role: "user" | "assistant"; content: string; attachments: string[]; createdAt: number; pending?: boolean; failed?: boolean; narration?: boolean }
@@ -356,10 +359,20 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     step.endedAt = entry.t;
     if (typeof event.data.progress === "number") step.progress = Math.round(event.data.progress);
     if (typeof event.data.request === "string" && event.data.request.trim() && event.data.request.trim() !== "{}") step.request = event.data.request;
+    if (typeof event.data.response === "string" && event.data.response.trim()) step.response = event.data.response;
+    if (event.type === "tool.completed" || typeof event.data.elapsed_seconds === "number") {
+      step.run = { ...(step.run || {}), model: event.data.actual_model ? String(event.data.actual_model) : step.run?.model,
+        inputTokens: typeof event.data.input_tokens === "number" ? event.data.input_tokens : step.run?.inputTokens,
+        outputTokens: typeof event.data.output_tokens === "number" ? event.data.output_tokens : step.run?.outputTokens,
+        latencyMs: typeof event.data.latency_ms === "number" ? event.data.latency_ms : step.run?.latencyMs,
+        elapsedSeconds: typeof event.data.elapsed_seconds === "number" ? event.data.elapsed_seconds : step.run?.elapsedSeconds,
+        error: typeof event.data.error === "string" && event.data.error ? event.data.error : step.run?.error };
+    }
     const rawNote = String(event.data.message || "").trim();
-    const note = /^Planning the edit\.?$/i.test(rawNote) ? STAGE_LABELS.planning : (presentable(rawNote) || "");      // the raw text stays in the step's log
+    // «Waiting for the AI service · 15 s» is just «working»: the chat counts the seconds itself, live, next to the step.
+    const note = /^Planning the edit\.?$/i.test(rawNote) ? STAGE_LABELS.planning : /^در انتظار پاسخ سرویس هوش مصنوعی/.test(rawNote) ? WORKING_NOTE : (presentable(rawNote) || "");      // the raw text stays in the step's log
     if (note && !step.notes.includes(note)) {
-      if (/در انتظار پاسخ سرویس هوش مصنوعی/.test(note)) step.notes = step.notes.filter(n => !/در انتظار پاسخ سرویس هوش مصنوعی/.test(n));
+      if (note === WORKING_NOTE) step.notes = step.notes.filter(n => n !== WORKING_NOTE);
       step.notes.push(note);
       step.notes = step.notes.slice(-5);
     }
@@ -509,12 +522,12 @@ export function activeStep(items: TimelineItem[]): ActivityStep | undefined {
 }
 
 /** Details worth expanding. Empty means: show no expand control at all. */
-export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string } | null {
+export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string; response?: string; run?: ActivityStep["run"] } | null {
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
   if (!updates && !notes.length && !step.request) return null;                // a step with recorded events always opens to its log
-  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request };
+  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request, response: step.response, run: step.run };
 }
 
 // ── Persian wording of steps (no English stage names in a Persian chat); the raw text stays in each step's log ──
@@ -564,5 +577,6 @@ export function presentable(raw: unknown): string | null {
 }
 
 /** Generic wording for a step whose own name is unusable. */
+export const WORKING_NOTE = "در حال کار";
 export const GENERIC_STEP = "در حال انجام کار";
 

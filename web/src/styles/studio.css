@@ -821,3 +821,16 @@ a.pe-tool { text-decoration: none; }
 .act-log summary time { color: var(--muted, #8b8b8b); font-variant-numeric: tabular-nums; }
 .act-log summary b { font-weight: 600; }
 .act-log pre { margin: 4px 0 6px; padding: 8px 10px; max-height: 220px; overflow: auto; border-radius: 8px; background: rgba(255,255,255,.04); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+
+/* The work log of a step: its request, its answer, the numbers about the call */
+.act-work { display: grid; gap: 10px; margin-bottom: 8px; }
+.act-io h5 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted, #8b8b8b); }
+.act-io pre { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; border-radius: 8px; background: rgba(255,255,255,.05); font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+.act-io pre.act-error { color: var(--error, #e5484d); font-family: ui-monospace, monospace; }
+.act-waiting, .act-none { margin: 0; display: flex; gap: 8px; align-items: center; color: var(--muted, #8b8b8b); font-size: 12px; }
+.act-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 11px; color: var(--muted, #8b8b8b); }
+.act-facts div { display: flex; gap: 4px; }
+.act-facts dt::after { content: ":"; }
+.act-facts dd { margin: 0; }
+.act-log > summary { list-style: none; cursor: pointer; }
+.act-log > summary::-webkit-details-marker { display: none; }
