@@ -32,3 +32,14 @@ def test_scenario_message_names_graphics_honestly_and_rounds_seconds():
     board = {"scenes": [{"duration_s": 7.73333333, "narration_text": "متن", "media_prompt": "کارت دو ستونی", "visual_type": "comparison", "media_method": "generate"}]}
     text = o._scenario_message(board, 8)
     assert "7.7 ثانیه" in text and "7.73333" not in text and "گرافیک و تایپوگرافی متحرک" in text
+
+
+def test_the_chosen_idea_leads_the_scenario_message():
+    from types import SimpleNamespace
+    from app import studio_orchestrator as o
+    idea = SimpleNamespace(chosen=SimpleNamespace(name="نوبت صدای تو", angle="هدست را با دو نقش معرفی می‌کنیم", hook="بازی رو می‌شنوی؟", visual_language="ذغالی و آبی"))
+    text = o._scenario_message({"scenes": [{"duration_s": 5, "narration_text": "سلام"}]}, 30, idea=idea)
+    assert text.startswith("**ایدهٔ انتخاب‌شده: «نوبت صدای تو»**")
+    assert "شروع: بازی رو می‌شنوی؟" in text and "**سناریوی پیشنهادی**" in text
+    assert text.index("ایدهٔ انتخاب‌شده") < text.index("سناریوی پیشنهادی")
+    assert "ایدهٔ انتخاب‌شده" not in o._scenario_message({"scenes": [{"duration_s": 5}]}, 30)       # without a plan nothing changes

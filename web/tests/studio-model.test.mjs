@@ -300,3 +300,15 @@ test("a step still waiting has a request and no answer yet", () => {
   assert.equal(details.response, undefined);
   assert.equal(details.request, "درخواست");
 });
+
+test("the same stage reported twice is one row; two attempts of one tool stay two rows", () => {
+  const stage = [ev(1, "tool.progress", 1, { project_id: "p1", stage: "storyboard ready" }), ev(2, "storyboard.ready", 2, { project_id: "p1" })];
+  const a = buildTimeline({ messages: [msg(1, "user", 0)], events: stage, projects: [project()], processing: false }).find(i => i.kind === "activity");
+  assert.equal(a.steps.filter(step => step.label === "استوری‌بورد آماده است").length, 1);
+});
+
+test("an approval card is not repeated as raw confirm / edit buttons", () => {
+  const q = ev(1, "question.required", 1, { question: "تأیید می‌کنید؟", choices: ["confirm", "edit"], action_id: "act-1" });
+  const items = buildTimeline({ messages: [msg(1, "user", 0), msg(2, "assistant", 1)], events: [q], projects: [], processing: false });
+  assert.equal(items.filter(i => i.kind === "question").length, 0);
+});

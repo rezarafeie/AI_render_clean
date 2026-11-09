@@ -352,6 +352,12 @@ export default function Studio() {
   const sourceAttachment = current?.state?.attachment_ids?.[0];
   const messages = loadedMessages;
   const lastUserMessage = [...messages].reverse().find(message => message.role === 'user');
+  const [askRetry, setAskRetry] = React.useState(false);
+  // A failure or a user stop after the last request, wherever later narration landed: the retry stays available.
+  const stoppedWithoutProject = React.useMemo(() => {
+    const at = messages.lastIndexOf(lastUserMessage as any);
+    return messages.slice(at + 1).some(message => message.role !== 'user' && /^(عملیات متوقف شد:|شما این کار را متوقف کردید)/.test(message.content || ''));
+  }, [messages, lastUserMessage]);
   const motionActive = useMotionActive(conversation?.state?.motion?.motion_id, events);
   const discoveryActive = useDiscoveryActive(conversation?.state?.discovery?.analysis_id, events);
   const projectRunning = projects.some(project => project.status === "running");
@@ -684,9 +690,13 @@ export default function Studio() {
                 <button className="btn btn-secondary" onClick={() => setAskResume(false)}>انصراف</button>
               </div>
             : <button className="btn btn-secondary" disabled={resuming} onClick={() => setAskResume(true)}><Icon name="play" size={14}/>{resuming ? "در حال ادامه…" : "ادامه از مرحلهٔ متوقف‌شده"}</button>) : null}
-          {!current && !processing && !pending && lastUserMessage && messages[messages.length - 1]?.content.startsWith('عملیات متوقف شد:') ? <button className="btn btn-secondary" disabled={sending} onClick={() => {
-            if (window.confirm('هنوز پروژه‌ای ساخته نشده است. درخواست اصلی با همان فایل‌ها دوباره بررسی شود؟ این کار ممکن است هزینهٔ API داشته باشد؛ تولید نهایی همچنان نیازمند تأیید برنامه است.')) void send(undefined, { text: lastUserMessage.content, ids: lastUserMessage.attachments || [] });
-          }}><Icon name="play" size={14}/>تلاش مجدد درخواست</button> : null}
+          {!current && !processing && !pending && lastUserMessage && stoppedWithoutProject ? (askRetry
+            ? <div className="resume-confirm" role="alertdialog">
+                <p>هنوز پروژه‌ای ساخته نشده است. درخواست اصلی با همان فایل‌ها دوباره بررسی شود؟ این کار ممکن است هزینهٔ API داشته باشد؛ تولید نهایی همچنان نیازمند تأیید برنامه است.</p>
+                <button className="btn" disabled={sending} onClick={() => { setAskRetry(false); void send(undefined, { text: lastUserMessage.content, ids: lastUserMessage.attachments || [] }); }}>بله، دوباره تلاش کن</button>{" "}
+                <button className="btn btn-secondary" onClick={() => setAskRetry(false)}>انصراف</button>
+              </div>
+            : <button className="btn btn-secondary" disabled={sending} onClick={() => setAskRetry(true)}><Icon name="play" size={14}/>تلاش مجدد درخواست</button>) : null}
           {styles.length > 0 && current?.status === "awaiting_input" ? <div className="action-card"><h3>Choose a style</h3><p>How should this video feel?</p><div className="style-options">{styles.map((style: any) => <button key={style.id || style.key} onClick={() => void send(`سبک ${style.id || style.key}`)}><b className="bidi" dir="auto">{style.label || style.title || style.name}</b><small className="bidi" dir="auto">{style.description || "Talking Reel style"}</small></button>)}</div></div> : null}
           {manualQuestion ? <ManualQuestion key={manualQuestion.id} question={manualQuestion} busy={processing || sending} onAnswer={value => void send(value)}/> : null}
           {awaitingPlan && current && !processing ? <section className="action-card plan-gate" dir="rtl" aria-label="تأیید برنامهٔ تدوین">

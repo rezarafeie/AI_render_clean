@@ -834,3 +834,11 @@ a.pe-tool { text-decoration: none; }
 .act-facts dd { margin: 0; }
 .act-log > summary { list-style: none; cursor: pointer; }
 .act-log > summary::-webkit-details-marker { display: none; }
+
+/* simpler step log: a description that opens the work log; request and answer; one line of facts */
+.act-desc { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: start; padding: 2px 0; background: none; border: 0; color: var(--muted, #9b9b9b); font-size: 13px; line-height: 1.7; cursor: pointer; }
+.act-desc:hover { color: inherit; }
+.act-work { display: grid; gap: 8px; margin-top: 6px; }
+.act-io h5 { margin: 0 0 3px; font-size: 11px; font-weight: 600; color: var(--muted, #8b8b8b); }
+.act-io pre { max-height: 170px; font-size: 11.5px; padding: 8px 10px; }
+.act-facts { font-size: 11px; color: var(--muted, #8b8b8b); margin: 0; }

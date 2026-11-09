@@ -1,10 +1,10 @@
 import React from "react";
 import { Icon } from "../components/Icon";
-import { clock, faNumber, formatDuration, parseTime } from "../format";
+import { clock, faNumber, formatDuration } from "../format";
 import { useFa } from "./locale";
-import { stepLog, toolIcon } from "./steps";
+import { toolIcon } from "./steps";
 import { Link } from "react-router-dom";
-import { ActivityStep, friendlyFailure, stepDetails } from "./model";
+import { ActivityStep, WORKING_NOTE, friendlyFailure, stepDetails } from "./model";
 
 /** How long this step has been running, counted live (like a coding agent's status line). */
 function Elapsed({ since }: { since: number }) {
@@ -15,17 +15,18 @@ function Elapsed({ since }: { since: number }) {
   return ms >= 1000 ? <span className="act-elapsed" aria-hidden="true">{formatDuration(ms, fa)}</span> : null;
 }
 
-/** The step's work log, like a tool call in a coding agent: what it asked, and what came back (or that it is still working). */
+/** The step's work log, like a tool call in a coding agent: what it asked and what came back (or that it is still working), and one line of facts. */
 function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<ReturnType<typeof stepDetails>> }) {
   const fa = useFa();
   const run = details.run;
   const num = (value: number) => (fa ? faNumber(value) : String(value));
-  const facts = [
-    run?.model ? ["مدل", run.model] : null,
-    typeof run?.inputTokens === "number" ? ["توکن ورودی", num(run.inputTokens)] : null,
-    typeof run?.outputTokens === "number" ? ["توکن خروجی", num(run.outputTokens)] : null,
-    typeof run?.latencyMs === "number" ? ["زمان پاسخ", formatDuration(run.latencyMs, fa)] : typeof run?.elapsedSeconds === "number" ? ["زمان", formatDuration(run.elapsedSeconds * 1000, fa)] : null,
-  ].filter(Boolean) as [string, string][];
+  const facts: string[] = [`شروع ${clock(step.startedAt, fa)}`];
+  const took = typeof run?.latencyMs === "number" ? run.latencyMs : details.durationMs;
+  if (took >= 1000) facts.push(`مدت ${formatDuration(took, fa)}`);
+  if (details.updates > 1) facts.push(`${num(details.updates)} گزارش`);
+  if (run?.model) facts.push(run.model);
+  if (typeof run?.inputTokens === "number") facts.push(`${num(run.inputTokens)} توکن ورودی`);
+  if (typeof run?.outputTokens === "number") facts.push(`${num(run.outputTokens)} توکن خروجی`);
   const waiting = step.status === "active" && !details.response && !run?.error;
   return <div className="act-work">
     {details.request ? <section className="act-io"><h5>درخواست</h5><pre dir="auto">{details.request}</pre></section> : null}
@@ -33,37 +34,19 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
       {details.response ? <pre dir="auto">{details.response}</pre>
         : run?.error ? <pre dir="ltr" className="act-error">{run.error}</pre>
         : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار… <Elapsed since={step.startedAt}/></p>
-        : <p className="act-none">برای این مرحله متن پاسخی ثبت نشده است.</p>}
+        : <p className="act-none">پاسخ متنی ثبت نشده است.</p>}
     </section>
-    {facts.length ? <dl className="act-facts">{facts.map(([name, value]) => <div key={name}><dt>{name}</dt><dd dir="ltr">{value}</dd></div>)}</dl> : null}
+    <p className="act-facts" dir="auto">{facts.join(" · ")}</p>
   </div>;
-}
-
-/** The technical log of one step, like the log a coding agent shows when a step is opened: every event the server recorded, its raw payload on demand. */
-function StepLog({ step }: { step: ActivityStep }) {
-  const fa = useFa();
-  const lines = React.useMemo(() => stepLog(step.events, parseTime), [step.events]);
-  const [copied, setCopied] = React.useState(false);
-  if (!lines.length) return null;
-  const everything = lines.map(line => `[${clock(line.at)}] ${line.kind}${line.text ? ` — ${line.text}` : ""}\n${line.raw}`).join("\n\n");
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(everything); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
-  };
-  return <details className="act-log">
-    <summary className="act-log-head"><span>رویدادهای خام ({fa ? faNumber(lines.length) : lines.length})</span><button type="button" className="link-btn" onClick={event => { event.preventDefault(); void copy(); }}>{copied ? "کپی شد" : "کپی"}</button></summary>
-    <ol>{lines.map((line, index) => <li key={index}>
-      <details>
-        <summary><time dir="ltr">{clock(line.at, fa)}</time><b>{line.kind}</b>{line.text ? <span dir="auto" className="bidi wrap-safe">{line.text}</span> : null}</summary>
-        <pre dir="ltr">{line.raw}</pre>
-      </details>
-    </li>)}</ol>
-  </details>;
 }
 
 function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryHref?: string; onOpenEditor?: () => void }) {
   const fa = useFa();
   const details = stepDetails(step);
   const [open, setOpen] = React.useState(false);
+  const [logOpen, setLogOpen] = React.useState(false);                    // the log is closed until the description is clicked
+  // What this step is, in a sentence: its own description (the working / done boilerplate is not a description).
+  const description = (details?.notes || []).find(note => note !== WORKING_NOTE && !/^پاسخ این مرحله دریافت شد/.test(note)) || step.label;
   const failed = step.status === "failed";
   const active = step.status === "active";
   const icon = <Icon name={failed ? "alert" : toolIcon(step.tool, step.stage)} size={14}/>;
@@ -85,14 +68,11 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
     </div> : null}
     {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
     {details && open ? <div className="act-details">
-      <WorkLog step={step} details={details}/>
-      {details.notes.map((note, index) => <p key={index} dir="auto" className="bidi wrap-safe">{note}</p>)}
-      <dl>
-        <div><dt>شروع</dt><dd dir="ltr">{clock(step.startedAt, fa)}</dd></div>
-        {details.durationMs >= 1000 ? <div><dt>مدت</dt><dd>{formatDuration(details.durationMs, fa)}</dd></div> : null}
-        {details.updates > 1 ? <div><dt>گزارش‌ها</dt><dd>{fa ? faNumber(details.updates) : details.updates}</dd></div> : null}
-      </dl>
-      <StepLog step={step}/>
+      <button type="button" className="act-desc" onClick={() => setLogOpen(value => !value)} aria-expanded={logOpen}>
+        <span dir="auto" className="bidi wrap-safe">{description}</span>
+        <Icon name="chevronDown" size={13} className={`act-chevron${logOpen ? " is-open" : ""}`}/>
+      </button>
+      {logOpen ? <WorkLog step={step} details={details}/> : null}
     </div> : null}
   </li>;
 }

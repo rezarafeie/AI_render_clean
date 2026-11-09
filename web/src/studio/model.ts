@@ -247,7 +247,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
   let lastUserIndex = -1;
 
   const flush = () => {
-    if (block && block.steps.size) items.push({ kind: "activity", id: block.id, steps: [...block.steps.values()], live: false });
+    if (block && block.steps.size) items.push({ kind: "activity", id: block.id, steps: mergeSameSteps([...block.steps.values()]), live: false });
     block = null;
   };
 
@@ -320,6 +320,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     }
     const projectId = String(event.data.project_id || "");
     if (event.type === "question.required") {
+      if (event.data.action_id) continue;          // an approval the chat shows as its own card: the raw "confirm / edit" words are not repeated as buttons
       flush();
       const kind = String(event.data.kind || "");
       items.push({ kind: "question", id: `q-${event.seq}`, question: String(event.data.question || ""), choices: normalizeChoices(event.data.choices, kind), seq: event.seq, style: kind === "talking_style" });
@@ -580,3 +581,23 @@ export function presentable(raw: unknown): string | null {
 export const WORKING_NOTE = "در حال کار";
 export const GENERIC_STEP = "در حال انجام کار";
 
+/** The same step reported twice (the project's stage and the tool's own event) is one row: its events, notes and outcome are joined. */
+export function mergeSameSteps(steps: ActivityStep[]): ActivityStep[] {
+  const out: ActivityStep[] = [];
+  for (const step of steps) {
+    // Only reports of a project's stage (no tool of their own) are joined: two attempts of the same tool are two real steps and stay two rows.
+    const same = out.find(other => !other.tool && !step.tool && other.label === step.label && other.status !== "failed" && step.status !== "failed");
+    if (!same) { out.push(step); continue; }
+    same.events = [...same.events, ...step.events].sort((a, b) => a.seq - b.seq);
+    for (const note of step.notes) if (!same.notes.includes(note)) same.notes.push(note);
+    same.startedAt = Math.min(same.startedAt, step.startedAt);
+    same.endedAt = Math.max(same.endedAt, step.endedAt);
+    same.status = same.status === "active" || step.status === "active" ? "active" : "done";
+    same.progress = step.progress ?? same.progress;
+    same.request = same.request || step.request;
+    same.response = same.response || step.response;
+    same.run = { ...(step.run || {}), ...(same.run || {}) };
+    same.tool = same.tool || step.tool;
+  }
+  return out;
+}

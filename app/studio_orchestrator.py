@@ -1388,11 +1388,20 @@ def _script_report_text(report) -> str:
     return "\n".join(lines)
 
 
-def _scenario_message(storyboard: dict, duration: int, *, motion_scenes: int = 0, estimate: float | None = None, reference=None) -> str:
-    """The scenario the user is asked to approve: every scene with its narration, on-screen text and picture idea."""
+def _scenario_message(storyboard: dict, duration: int, *, motion_scenes: int = 0, estimate: float | None = None, reference=None, idea=None) -> str:
+    """The scenario the user is asked to approve: the idea it comes from, then every scene with its narration, on-screen text and picture idea."""
     scenes = storyboard.get("scenes", [])
     total = storyboard.get("total_duration_s", duration)
-    blocks = [f"**سناریوی پیشنهادی** — {len(scenes)} صحنه، حدود {total:g} ثانیه"]
+    blocks = []
+    chosen = getattr(idea, "chosen", None)
+    if chosen is not None and getattr(chosen, "name", ""):
+        said = [f"**ایدهٔ انتخاب‌شده: «{chosen.name}»**" + (f" — {_short(chosen.angle, 220)}" if getattr(chosen, "angle", "") else "")]
+        if getattr(chosen, "hook", ""):
+            said.append(f"شروع: {_short(chosen.hook, 200)}")
+        if getattr(chosen, "visual_language", ""):
+            said.append(f"زبان بصری: {_short(chosen.visual_language, 160)}")
+        blocks.append("\n".join(said))
+    blocks.append(f"**سناریوی پیشنهادی** — {len(scenes)} صحنه، حدود {total:g} ثانیه")
     for number, scene in enumerate(scenes, 1):
         rows = [f"**صحنهٔ {number} · {round(float(scene.get('duration_s', 0)), 1):g} ثانیه**"]
         if scene.get("narration_text"):
@@ -1442,9 +1451,7 @@ def _create_motion(conversation_id: str, user_key: str, message_id: int | str,
         _emit(conversation_id,'tool.completed',tool='inspect_visual_assets',message=f'{len(catalog)} تصویر برای طراحی صحنه تأیید شد.')
     from creative.source import article_text
     plan = _creative_direction(conversation_id, text, facts, assets, duration,catalog,reference_profile,article_text(page, 8000) if page else '')
-    if plan:
-        from app import studio_narrator
-        studio_narrator.narrate(conversation_id, user_key, "creative_direction", _idea_facts(plan), fallback=_idea_message(plan))
+    # The chosen idea is said once, at the head of the scenario message below (a separate message arrived late and after the scenario).
     prompt = _motion_prompt(text, page, facts, duration, plan)
     provider = _provider() if not assets else "local_fixture"
     _emit(conversation_id, "tool.started", tool="create_storyboard", message="در حال ساخت سناریو و استوری‌بورد قابل‌ویرایش هستم.")
@@ -1472,7 +1479,7 @@ def _create_motion(conversation_id: str, user_key: str, message_id: int | str,
     run(repo.update_project(project["id"], user_key, status="awaiting_confirmation"))
     _assistant(conversation_id, user_key, _scenario_message(
         result["storyboard"], duration, estimate=estimate,
-        motion_scenes=sum(s.get('motion_engine') == 'motion_so' for s in result['storyboard'].get('scenes', [])), reference=reference_profile))
+        motion_scenes=sum(s.get('motion_engine') == 'motion_so' for s in result['storyboard'].get('scenes', [])), reference=reference_profile, idea=plan))
     if using_motion:
         count=sum(s.get('motion_engine')=='motion_so' for s in result['storyboard'].get('scenes',[]))
         _assistant(conversation_id,user_key,f'کلیپ موشن هوشمند برای {count} صحنه انتخاب شده است؛ هر کلیپ جداگانه اعتبار مصرف می‌کند. تأیید شما اجازه ارسال شرح صحنه و تصاویر مرجع همان صحنه به سرویس موشن را می‌دهد؛ هزینه دقیق از API قابل محاسبه نیست. نریشن و زیرنویس را EditorGPT می‌سازد. هیچ تلاش مجدد خودکاری انجام نمی‌شود.')
