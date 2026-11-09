@@ -4,6 +4,7 @@ import { api, StudioConversation } from "./api";
 import hermesApi from "./services/hermesApi";
 import { chatHomePath } from "./chatHome";
 import { peekCache, writeCache } from "./pages/hermes/hermesCache";
+import { prefetchChat } from "./studio/chatPrefetch";
 import { Icon } from "./components/Icon";
 import { InstaSwitch } from "./components/InstaSwitch";
 import { ConfirmDelete, DeleteTarget } from "./components/ConfirmDelete";
@@ -41,7 +42,7 @@ export default function EditorShell() {
   const [drawer, setDrawer] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [conversations, setConversations] = React.useState<StudioConversation[]>([]);
+  const [conversations, setConversations] = React.useState<StudioConversation[]>(() => (peekCache("studio-chats") as any) || []);   // the last list seen paints first
   const [hermesChats, setHermesChats] = React.useState<{ id: string; title: string; updated_at: string }[]>(() => (peekCache("chats") as any) || []);
   const [pageTitle, setPageTitle] = React.useState("");
   const [topbarAction, setTopbarAction] = React.useState<TopbarAction | null>(null);
@@ -58,9 +59,20 @@ export default function EditorShell() {
   React.useEffect(() => { try { localStorage.setItem("editorgpt.sidebar", collapsed ? "collapsed" : "open"); } catch { /* storage unavailable */ } }, [collapsed]);
 
   const refreshChats = React.useCallback(() => {
-    if (authenticated) void api.listStudioConversations().then(setConversations).catch(() => undefined);
+    if (authenticated) void api.listStudioConversations().then(list => { writeCache("studio-chats", list); setConversations(list); }).catch(() => undefined);
     else setConversations([]);
   }, [authenticated]);
+  // The list is also re-read when the tab or the menu comes back into view and every half minute, so a chat made or renamed elsewhere (another tab, the
+  // studio's own events) is never missing for long.
+  React.useEffect(() => {
+    if (!authenticated) return;
+    const visible = () => { if (document.visibilityState === "visible") refreshChats(); };
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", visible);
+    window.addEventListener("online", visible);
+    const timer = window.setInterval(visible, 30000);
+    return () => { document.removeEventListener("visibilitychange", visible); window.removeEventListener("focus", visible); window.removeEventListener("online", visible); window.clearInterval(timer); };
+  }, [authenticated, refreshChats]);
   const hermesMode = routeKind(location.pathname) === "workspace";
   const refreshHermes = React.useCallback(() => {
     if (!authenticated || !hermesMode) return;
@@ -75,10 +87,16 @@ export default function EditorShell() {
     const id = idle ? idle(run, { timeout: 3000 }) : window.setTimeout(run, 1200);
     return () => { if (idle) (window as any).cancelIdleCallback?.(id); else window.clearTimeout(id); };
   }, [authenticated]);
+  React.useEffect(() => {     // the newest chats are the likeliest next stop: have them ready
+    if (!authenticated || hermesMode || !conversations.length) return;
+    const newest = [...conversations].sort((a, b) => parseTime(b.updated_at) - parseTime(a.updated_at)).slice(0, 3).map(item => item.id);
+    const timer = window.setTimeout(() => { newest.forEach((id, index) => window.setTimeout(() => void prefetchChat(id), index * 700)); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [authenticated, hermesMode, conversations.length]);
   React.useEffect(() => { setDrawer(false); }, [location.pathname]);
   React.useEffect(() => { refreshChats(); }, [refreshChats, location.pathname]);
   React.useEffect(() => {
-    const open = () => setDrawer(true);
+    const open = () => { setDrawer(true); refreshChats(); };
     window.addEventListener("editorgpt:open-nav", open);
     window.addEventListener("editorgpt:conversations-updated", refreshChats);
     return () => { window.removeEventListener("editorgpt:open-nav", open); window.removeEventListener("editorgpt:conversations-updated", refreshChats); };
@@ -155,7 +173,8 @@ export default function EditorShell() {
             {searching ? <div className="sb-search"><input ref={searchRef} className="input" type="search" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} placeholder="Search chats" aria-label="Search chats"/></div> : null}
             <div className="sb-list">
               {(hermesMode ? visibleHermes : visible).map(chat => <div key={chat.id} className="sb-chat-row">
-                <NavLink to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}>{displayTitle(chat.title, 48)}</NavLink>
+                <NavLink to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}
+                  onPointerEnter={hermesMode ? undefined : () => void prefetchChat(chat.id)} onTouchStart={hermesMode ? undefined : () => void prefetchChat(chat.id)} onFocus={hermesMode ? undefined : () => void prefetchChat(chat.id)}>{displayTitle(chat.title, 48)}</NavLink>
                 <button type="button" className="icon-btn trash-btn sb-chat-del" aria-label={`Delete chat: ${displayTitle(chat.title, 48)}`} data-tip="Delete" onClick={() => askDelete(chat)}><Icon name="trash" size={16}/></button>
               </div>)}
               {!(hermesMode ? visibleHermes : visible).length ? <p className="sb-empty">{query ? "No chats match your search." : "Your chats will appear here."}</p> : null}

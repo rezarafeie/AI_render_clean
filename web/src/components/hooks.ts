@@ -81,8 +81,9 @@ export function useFocusTrap(active: boolean, ref: React.RefObject<HTMLElement>)
     const node = ref.current;
     const previous = document.activeElement as HTMLElement | null;
     const focusable = () => Array.from(node.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(el => el.offsetParent !== null);
-    const first = focusable()[0];
-    (first || node).focus({ preventScroll: true });
+    // The drawer itself takes the focus: focusing its first link drew a focus ring around the logo every time the menu was opened by touch or click.
+    // Keyboard users still reach the first control with Tab.
+    node.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       const items = focusable();

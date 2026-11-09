@@ -27,6 +27,7 @@ import { PendingMessage, TimelineItem, activeStep, buildTimeline, isProcessing, 
 import { templatePrompts } from "./templateData";
 import { mergeEvents, mergeMessages, nearTop, keepPosition } from "./studio/windowing";
 import { StudioHomePage } from "./studio/Home";
+import { readChat, writeChat } from "./studio/chatCache";
 
 type MobileView = "chat" | WorkspaceTab;
 const WORKSPACE_BOUNDS = { min: 340, max: 1100 };
@@ -111,6 +112,7 @@ export default function Studio() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const cursorRef = React.useRef(0);
+  const snapshotRef = React.useRef<{ id: string | null; conversation: StudioConversation | null; messages: StudioMessage[]; hasMore: boolean; events: StudioEvent[] }>({ id: null, conversation: null, messages: [], hasMore: false, events: [] });
   const filesRef = React.useRef<PendingFile[]>([]);
   const removedFilesRef = React.useRef(new Set<string>());
   const voiceEnabledRef = React.useRef(false);
@@ -182,11 +184,28 @@ export default function Studio() {
     } catch (e) { if (!quiet) setError(friendlyError(e, "load conversation")); }
   }, [activeId]);
   React.useEffect(() => { void refreshList(); }, [refreshList]);
+  // Switching chats: a chat seen (or hovered) before appears at once from memory and is re-read quietly; one never seen shows the skeleton, never the
+  // previous chat. The chat being left is stored on the way out.
   React.useEffect(() => {
-    setEvents([]); cursorRef.current = 0; setSelectedProject(null);
-    setLoadedMessages([]); setHasMore(false); setWindowFor(null); setHistoryFor(null); eventsFromRef.current = 0; windowRef.current = null;
-    if (authenticated && activeId) void refresh(activeId); else setConversation(null);
+    const hit = authenticated && activeId ? readChat(activeId) : undefined;
+    setSelectedProject(null);
+    if (hit && activeId) {
+      setConversation(hit.conversation); setLoadedMessages(hit.messages); setHasMore(hit.hasMore); setEvents(hit.events);
+      eventsFromRef.current = hit.eventsFrom; cursorRef.current = hit.cursor; windowRef.current = activeId;
+      setWindowFor(activeId); setHistoryFor(activeId);
+    } else {
+      setEvents([]); cursorRef.current = 0; setConversation(null);
+      setLoadedMessages([]); setHasMore(false); setWindowFor(null); setHistoryFor(null); eventsFromRef.current = 0; windowRef.current = null;
+    }
+    if (authenticated && activeId) void refresh(activeId, Boolean(hit));
+    return () => {
+      const last = snapshotRef.current;
+      if (last.id && last.conversation && last.id === activeId) {
+        writeChat(last.id, { conversation: last.conversation, messages: last.messages, hasMore: last.hasMore, eventsFrom: eventsFromRef.current, events: last.events.slice(-400), cursor: cursorRef.current });
+      }
+    };
   }, [authenticated, activeId, refresh]);
+  snapshotRef.current = { id: windowFor, conversation, messages: loadedMessages, hasMore, events };
 
   React.useEffect(() => {
     const legacy = searchParams.get("legacy");
