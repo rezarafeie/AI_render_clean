@@ -313,14 +313,14 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
         push = f"zoompan=z='1.0+{PICTURE_ZOOM * zoom_amount:.4f}*on/{frames}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1"
         if shot.split and id(shot) in plan.full_pictures:
             inputs += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(panel(shot.picture, "full"))]
-            vf.append(f"[{nxt}:v]{push}:s={W}x{H}:fps={fps},setsar=1[v{k}]")
+            vf.append(f"[{nxt}:v]{push}:s={W}x{H}:fps={fps},format=yuv420p,setsar=1[v{k}]")
             vf.append(f"[s{k}]trim=0:0.04,nullsink")
             nxt += 1
         elif shot.split:
             kind = "card" if shot.picture in plan.card_pictures else "bleed"
             top = panel(shot.picture, kind) if shot.picture else plain
             inputs += ["-loop", "1", "-framerate", fps, "-t", f"{shot.length:.3f}", "-i", str(top)]
-            vf.append(f"[{nxt}:v]{push}:s={W}x{SPLIT_Y}:fps={fps},setsar=1[t{k}]")
+            vf.append(f"[{nxt}:v]{push}:s={W}x{SPLIT_Y}:fps={fps},format=yuv420p,setsar=1[t{k}]")
             vf.append(f"{cut},{source_colour},scale={W}:{H - SPLIT_Y}:flags=lanczos,fps={fps},setsar=1,{custom_grade}[b{k}]")
             vf.append(f"[t{k}][b{k}]vstack=inputs=2[v{k}]")
             nxt += 1
