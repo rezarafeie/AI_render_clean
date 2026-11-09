@@ -312,3 +312,11 @@ test("an approval card is not repeated as raw confirm / edit buttons", () => {
   const items = buildTimeline({ messages: [msg(1, "user", 0), msg(2, "assistant", 1)], events: [q], projects: [], processing: false });
   assert.equal(items.filter(i => i.kind === "question").length, 0);
 });
+
+test("a finished render ends the busy state that the last work.state left on", async () => {
+  const { serverBusy } = await import("../src/studio/model.ts");
+  const at = (seq, type, data = {}) => ({ seq, type, data, created_at: new Date(1e12 + seq * 1000).toISOString() });
+  assert.equal(serverBusy([at(1, "work.state", { busy: true }), at(2, "tool.progress")], undefined, 1e12 + 3000), true);
+  assert.equal(serverBusy([at(1, "work.state", { busy: true }), at(2, "render.completed")], undefined, 1e12 + 3000), false);
+  assert.equal(serverBusy([at(1, "render.completed"), at(2, "work.state", { busy: true })], undefined, 1e12 + 3000), true);
+});

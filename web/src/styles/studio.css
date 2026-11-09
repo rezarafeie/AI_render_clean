@@ -842,3 +842,10 @@ a.pe-tool { text-decoration: none; }
 .act-io h5 { margin: 0 0 3px; font-size: 11px; font-weight: 600; color: var(--muted, #8b8b8b); }
 .act-io pre { max-height: 170px; font-size: 11.5px; padding: 8px 10px; }
 .act-facts { font-size: 11px; color: var(--muted, #8b8b8b); margin: 0; }
+
+.act-asset-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--border, rgba(255,255,255,.08)); }
+.act-asset-files { display: flex; flex-wrap: wrap; gap: 8px; }
+.act-asset { margin: 0; display: grid; gap: 3px; font-size: 11px; color: var(--muted, #8b8b8b); }
+.act-asset img, .act-asset video { width: 96px; height: 128px; object-fit: cover; border-radius: 8px; background: rgba(255,255,255,.04); }
+.act-asset audio { width: 190px; height: 32px; }
+.rc-detail { margin: 4px 0 0; font-size: 12px; color: var(--muted, #9b9b9b); }

@@ -474,6 +474,7 @@ export function serverBusy(events: StudioEvent[], fallback?: boolean, now: numbe
     // A ready plan is a human approval boundary, not unfinished analysis.
     // A later work.state (e.g. a new revision request) still takes precedence.
     if (events[i].type === "plan.ready") return false;
+    if (events[i].type === "render.completed") return false;                 // the video is finished: nothing announces "idle" after a render that the status sync completed
     if (events[i].type === "content.discovery.completed") return false;     // a long-video analysis that ended no longer keeps the chat busy
     if (events[i].type === "message.stopped" || events[i].type === "job.failed" || events[i].type === "motion.completed" || events[i].type === "motion.questions") return false;
     if (events[i].type === "motion.progress" && ["failed", "completed"].includes(String(events[i].data.status))) return false;   // the job ended after the last "busy"
@@ -523,12 +524,16 @@ export function activeStep(items: TimelineItem[]): ActivityStep | undefined {
 }
 
 /** Details worth expanding. Empty means: show no expand control at all. */
-export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string; response?: string; run?: ActivityStep["run"] } | null {
+export interface PreparedAsset { kind: "image" | "video" | "motion" | "audio"; scene: number; label: string; file: string; duration_s?: number | null; text?: string }
+export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: number; updates: number; tool?: string; failed: boolean; request?: string; response?: string; run?: ActivityStep["run"]; assets: PreparedAsset[]; projectId?: string } | null {
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
   if (!updates && !notes.length && !step.request) return null;                // a step with recorded events always opens to its log
-  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request, response: step.response, run: step.run };
+  let assets: PreparedAsset[] = [];
+  for (const event of step.events) if (Array.isArray(event.data?.assets)) assets = event.data.assets;      // the newest list wins
+  const projectId = step.events.map(event => event.data?.project_id).find(Boolean);
+  return { notes, durationMs, updates, tool: step.tool, failed: step.status === "failed", request: step.request, response: step.response, run: step.run, assets, projectId };
 }
 
 // ── Persian wording of steps (no English stage names in a Persian chat); the raw text stays in each step's log ──

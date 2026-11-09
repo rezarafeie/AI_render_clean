@@ -4,7 +4,7 @@ import { clock, faNumber, formatDuration } from "../format";
 import { useFa } from "./locale";
 import { toolIcon } from "./steps";
 import { Link } from "react-router-dom";
-import { ActivityStep, WORKING_NOTE, friendlyFailure, stepDetails } from "./model";
+import { ActivityStep, PreparedAsset, WORKING_NOTE, friendlyFailure, stepDetails } from "./model";
 
 /** How long this step has been running, counted live (like a coding agent's status line). */
 function Elapsed({ since }: { since: number }) {
@@ -16,6 +16,12 @@ function Elapsed({ since }: { since: number }) {
 }
 
 /** The step's work log, like a tool call in a coding agent: what it asked and what came back (or that it is still working), and one line of facts. */
+const AssetList = React.lazy(() => import("./AssetList"));
+function Assets({ assets, projectId }: { assets: PreparedAsset[]; projectId?: string }) {
+  if (!assets.length || !projectId) return null;
+  return <React.Suspense fallback={null}><AssetList assets={assets} projectId={projectId}/></React.Suspense>;
+}
+
 function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<ReturnType<typeof stepDetails>> }) {
   const fa = useFa();
   const run = details.run;
@@ -29,13 +35,14 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
   if (typeof run?.outputTokens === "number") facts.push(`${num(run.outputTokens)} توکن خروجی`);
   const waiting = step.status === "active" && !details.response && !run?.error;
   return <div className="act-work">
+    <Assets assets={details.assets} projectId={details.projectId}/>
     {details.request ? <section className="act-io"><h5>درخواست</h5><pre dir="auto">{details.request}</pre></section> : null}
-    <section className="act-io"><h5>پاسخ</h5>
+    {details.assets.length && !details.response && !run?.error ? null : <section className="act-io"><h5>پاسخ</h5>
       {details.response ? <pre dir="auto">{details.response}</pre>
         : run?.error ? <pre dir="ltr" className="act-error">{run.error}</pre>
         : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار… <Elapsed since={step.startedAt}/></p>
         : <p className="act-none">پاسخ متنی ثبت نشده است.</p>}
-    </section>
+    </section>}
     <p className="act-facts" dir="auto">{facts.join(" · ")}</p>
   </div>;
 }

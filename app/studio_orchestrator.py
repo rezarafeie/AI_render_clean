@@ -2367,6 +2367,21 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 progress = job.render.progress if job.render.status in {"queued", "running", "done"} else None
                 output = f"/api/jobs/{ref}/exports/{job.render.output}" if job.render.status == "done" and job.render.output else None
                 status = {"generation": generation, "render": job.render.__dict__}
+                from app import studio_assets
+                prepared = await asyncio.to_thread(studio_assets.from_job, job.dir) if confirmed else []
+                if prepared:
+                    signature = [[a["kind"], a["scene"], a["file"]] for a in prepared]
+                    if signature != project["state"].get("assets_sig"):
+                        project["state"] = {**project["state"], "assets_sig": signature}
+                        await repo.update_project(project["id"], user_key, state=project["state"])
+                        await repo.emit(conversation_id, "tool.progress", {"project_id": project["id"], "engine": engine,
+                            "status": "running", "stage": "generating assets", "progress": None, "assets": prepared,
+                            "message": f"آماده شده تا اینجا: {studio_assets.summary(prepared)}"})
+                        if generation.get("state") == "ready":
+                            note = f"دارایی‌ها آماده شد ({studio_assets.summary(prepared)}). رندر نهایی شروع می‌شود."
+                            await repo.emit(conversation_id, "agent.narration", {"project_id": project["id"],
+                                "narration_id": f"assets-ready:{project['id']}", "message": note},
+                                source_event_id=f"assets-ready:{project['id']}")
             failure_message = ""
             if raw_status == "error" and engine == "motion":
                 failure_message = str((status.get("generation") or {}).get("error") or status.get("message") or "")
@@ -2376,6 +2391,14 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         "message": failure_message}
             if engine == 'talking' and status.get('render_metrics', {}).get('stage') == stage:
                 observed['render_metrics'] = status['render_metrics']
+            if engine == 'motion' and stage == 'rendering' and isinstance(status, dict) and status.get('render'):
+                from app import studio_assets
+                metrics = {'stage': stage, 'detail': studio_assets.render_detail(status['render'].get('message'))}
+                phase = project['state'].get('activity_phase') or {}
+                started = phase.get('started_at') if phase.get('stage') == stage else None
+                if isinstance(progress, (int, float)) and progress >= 5 and started:
+                    metrics['eta_s'] = int(round((time.time() - float(started)) * (100 - progress) / progress / 30.0)) * 30   # rounded: a ticking number would rewrite the state on every poll
+                observed['render_metrics'] = metrics
             activity_changed = False
             if raw_status in {'running', 'analyzing', 'rendering', 'queued'}:
                 from app.studio_activity import phase_message

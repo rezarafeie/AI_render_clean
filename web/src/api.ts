@@ -1424,6 +1424,7 @@ export const api = {
     if (!response.ok) throw new Error(`${response.status} ${(await response.text().catch(() => "")) || response.statusText}`);
     return URL.createObjectURL(await response.blob());
   },
+  studioJobFileUrl(id: string, file: string): string { return `${BASE}/studio/projects/${id}/job-files/${file.split('/').map(encodeURIComponent).join('/')}`; },
   studioSceneAudioUrl(id: string, index: number): string { return `${BASE}/studio/projects/${id}/scenes/${index}/audio`; },
   studioOutputUrl(id: string): string { return `${BASE}/studio/projects/${id}/output`; },
   async prepareMediaPlayback(): Promise<void> {

@@ -828,6 +828,20 @@ async def project_outputs(request: Request, project_id: str):
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]
 
 
+@router.get("/projects/{project_id}/job-files/{name:path}")
+async def project_job_file(request: Request, project_id: str, name: str):
+    """A picture, narration or clip the project's job has prepared (read-only; only listed media types, never hidden files)."""
+    from app.studio_assets import SERVABLE
+    try: project = await repo.get_project(project_id, _user(request))
+    except KeyError: raise HTTPException(404, "project not found")
+    job = jobstore.get(project["external_ref"]) if project["engine"] == "motion" and project.get("external_ref") else None
+    if not job: raise HTTPException(404, "render job not found")
+    path = (job.dir / name).resolve()
+    if job.dir.resolve() not in path.parents or not path.is_file() or path.suffix.lower() not in SERVABLE or path.name.startswith("."):
+        raise HTTPException(404, "file not found")
+    return FileResponse(path)
+
+
 @router.get("/projects/{project_id}/assets/{index}")
 async def project_asset(request: Request, project_id: str, index: int):
     try: project = await repo.get_project(project_id, _user(request))
