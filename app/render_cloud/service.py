@@ -329,6 +329,17 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
             ledger.finish(spec.job_id, spec.user_id, 'cancelled', 'cancelled')
             raise
         except Exception as failure:
+            if (isinstance(failure, Conflict) and str(failure) in {'Budget limit', 'Concurrency limit'}
+                    and config.enable_local_fallback and config.override == 'auto'):
+                # The reservation itself was refused (the daily/monthly budget or the worker limit): nothing was created or billed in the cloud.
+                # The video is rendered on the server instead of failing; the person is told why it is slower.
+                log.warning('cloud render %s not started (%s); rendering on the server', spec.job_id, failure)
+                if on_stage:
+                    try:
+                        on_stage('cloud budget reached', 'سقف مصرف رندر ابری رسیده است؛ این ویدیو روی سرور رندر می‌شود')
+                    except Exception:
+                        pass
+                return False
             ledger.finish(spec.job_id, spec.user_id, 'failed', 'cloud_execution_failed')
             if isinstance(failure, (CloudRenderError, ValueError)):       # our own checks, never a provider response with a URL in it
                 log.warning('cloud render %s failed: %s', spec.job_id, str(failure)[:200])

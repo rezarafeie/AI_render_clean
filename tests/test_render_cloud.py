@@ -911,3 +911,35 @@ def test_mlt_hook_rebases_assets_without_modifying_timeline_or_source(tmp_path,m
         assert hooks.mlt(source,tmp_path/'out.mp4',preview=True,style_override={'render':{'preview_scale':.5}})
     finally: hooks.identity.reset(token)
     assert source.read_text()==markup
+
+
+def test_an_exhausted_budget_or_busy_worker_falls_back_to_the_server_instead_of_failing_the_video(tmp_path, monkeypatch):
+    """The reservation is refused before any Pod exists: nothing is billed, so the video renders locally (and says why)."""
+    import json
+    from app.render_cloud import service
+    from app.render_cloud.ledger import Conflict
+    from app.render_cloud.settings import CloudSettings
+    class Provider:
+        def close(self): pass
+        def list(self): return []
+    monkeypatch.setattr(service, 'object_store', lambda cfg: object())
+    monkeypatch.setattr(service.RunPod, 'from_settings', lambda config: Provider())
+    project = tmp_path/'project'; project.mkdir(); (project/'index.html').write_bytes(b'page')
+    profiles = tmp_path/'benchmarks.json'
+    profiles.write_text(json.dumps([{'engine':'hyperframes_page','backend':'runpod_cpu','width':160,'height':90,'fps':30,'max_duration':30,'end_to_end_seconds':10,
+                                    'estimated_usd':.01,'parity_verified':True,'image_digest':IMAGE,'hourly_usd':.1,'hardware_id':'cpu','min_memory_gb':8}]))
+    config = CloudSettings(enable_cloud_render=True, enable_runpod_cpu=True, sandbox_verified=True, network_namespace_verified=True, admin_user_ids='user', image=IMAGE,
+                           cpu_ids='cpu', max_wall_seconds=60, ledger=tmp_path/'ledger.db', benchmarks=profiles, runpod_api_key='fake-key')
+    stages = []
+    args = dict(user='user', project_id='project', engine='hyperframes_page', duration=1, width=160, height=90, config=config, on_stage=lambda *a: stages.append(a))
+    for reason in ('Budget limit', 'Concurrency limit'):
+        monkeypatch.setattr(service, 'provision', lambda *a, _r=reason, **k: (_ for _ in ()).throw(Conflict(_r)))
+        assert service.render_prepared(project, tmp_path/'out.mp4', **args) is False
+    assert stages and 'سرور' in stages[-1][1]
+    # any other refusal is still a failure; and a fixed 'cloud only' override never silently renders locally
+    monkeypatch.setattr(service, 'provision', lambda *a, **k: (_ for _ in ()).throw(Conflict('Idempotency key reused with different input')))
+    with pytest.raises(service.CloudRenderError):
+        service.render_prepared(project, tmp_path/'out.mp4', **args)
+    monkeypatch.setattr(service, 'provision', lambda *a, **k: (_ for _ in ()).throw(Conflict('Budget limit')))
+    with pytest.raises(service.CloudRenderError):
+        service.render_prepared(project, tmp_path/'out.mp4', **{**args, 'config': config.model_copy(update={'override': 'runpod_cpu'})})
