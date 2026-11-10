@@ -756,7 +756,8 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         forced = "motion_graphic" if marker == "explainer" and not current else (conversation.get('state') or {}).get('forced_intent') if not current else None
         motion_context = _motion_summary(user_key, conversation)
         history = [{"role": m["role"], "text": m["content"][:300]} for m in conversation.get("messages", [])[-5:-1]]
-        intent = completed_manual['engine'] if completed_manual else (forced or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
+        brief = _understand_request(conversation_id, text, attachments, history) if not completed_manual and not forced else {}
+        intent = completed_manual['engine'] if completed_manual else (forced or _brief_intent(brief) or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
         _checkpoint(conversation_id)
         intent = _long_video_intent(intent, attachments)
         if completed_manual and completed_manual['engine'] == 'talking':
@@ -846,8 +847,10 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             # message still wins). Asking is reserved for real ambiguity, not for decisions the system can make.
             _emit(conversation_id, "tool.started", tool="analyze_talking_reel", message="تحلیل ویدیوی صحبتی و طراحی ایدهٔ ادیت شروع شد.")
             selected_style = selected_style or _preferred_style(user_key)       # what this person always picks; the director only suggests alternatives
+            from app import request_brief
             payload = {"source_path": source["path"], "filename": source["filename"], "user_key": user_key,
-                       "style": selected_style, "request": text[:2000]}
+                       "style": selected_style, "request": (text + ("\n\n" + request_brief.guidance(brief) if brief else ""))[:2000],
+                       "captions_only": request_brief.captions_only(brief, text) if brief else None}
             seed = (conversation.get('state') or {}).get('seed_transcript_path')
             if seed and Path(seed).is_file():
                 payload["transcript"] = json.loads(Path(seed).read_text())      # a clip from a long video: its transcript is already known
@@ -880,6 +883,29 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         studio_narrator.wait_idle(conversation_id)                       # what was already being said is posted first: the stop comes last, as it happened
         _emit(conversation_id, "tool.failed", message=message)
         _assistant(conversation_id, user_key, f"عملیات متوقف شد: {message}")
+
+
+def _understand_request(conversation_id: str, text: str, attachments: list[dict], history: list[dict]) -> dict:
+    """A message with a video: look at the footage together with the words and say what was understood (shown in the chat's steps)."""
+    video = next((a for a in attachments if a.get("kind") == "video" and a.get("path")), None)
+    if video is None:
+        return {}
+    from app import request_brief
+    try:
+        seed = Path(video["path"])
+        brief = request_brief.understand(text, seed, history=history)
+    except Exception:
+        log.warning("request understanding failed", exc_info=True)
+        brief = {}
+    _emit(conversation_id, "agent.thinking_summary", message=request_brief.summary(brief))
+    return brief
+
+
+def _brief_intent(brief: dict) -> str | None:
+    """The engine the understood request needs, when the analyst is sure; None leaves the choice to the usual classifier."""
+    if not brief or brief.get("confidence", 0) < 0.6:
+        return None
+    return {"translate": "localize", "find_clips": "discover", "captions_only": "talking", "full_edit": "talking"}.get(brief.get("scope"))
 
 
 def _long_video_intent(intent: str, attachments: list[dict]) -> str:

@@ -396,7 +396,7 @@ def resolve_music(music: Optional[str]) -> Optional[Path]:
 
 
 def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, request: str = "",
-            concept: Optional[dict] = None) -> dict:
+            concept: Optional[dict] = None, captions_only: Optional[bool] = None) -> dict:
     """Transcribe and prepare editable AI decisions without starting a render.
 
     ``concept`` is a concept the user picked from the plan: the director is skipped and only the
@@ -413,7 +413,7 @@ def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, requ
 
     def run() -> None:
         try:
-            _analyze(job_dir, raw_video, style=style, request=request, concept=concept)
+            _analyze(job_dir, raw_video, style=style, request=request, concept=concept, captions_only=captions_only)
         except TaskCanceled:
             current = load(job_dir); current.update(status="canceled", stage="", message="Canceled by user"); save(job_dir, current)
         except QualityReviewRequired as exc:
@@ -457,7 +457,7 @@ def _concept_notes(concept: dict) -> str:
 
 
 def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str = "",
-             concept: Optional[dict] = None) -> None:
+             concept: Optional[dict] = None, captions_only: Optional[bool] = None) -> None:
     from dotenv import load_dotenv
     from importlib import import_module
     from brain import talking_reel as base_brain
@@ -473,7 +473,8 @@ def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str =
     guidance = ""
     creative_error = ""
     picked = None
-    captions_only = wants_captions_only(request) or bool(load(job_dir).get("captions_only"))
+    if captions_only is None:                          # no understanding of the footage available: the words decide
+        captions_only = wants_captions_only(request) or bool(load(job_dir).get("captions_only"))
     if captions_only:                                  # «فقط زیرنویس»: nothing to direct, nothing to cut
         style = "talking_1"
     if concept:

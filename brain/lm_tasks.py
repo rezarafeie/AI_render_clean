@@ -109,6 +109,7 @@ TASKS = {
     # Social-reference analysis (creative/reference.py): frame-by-frame review and the overall style description.
     "reference_frame_review": _task("Social Reference · Frame Review", "vision", VISION, "video_understanding"),
     "reference_style_analysis": _task("Social Reference · Style Analysis", "vision", VISION, "video_understanding"),
+    "request_understanding": _task("Request Understanding (looks at the video and the request)", "vision", VISION, "video_understanding"),
     "font_advisor": _task("Font Advisor (looks at the font specimens)", "vision", VISION, "video_understanding"),
     # Motion graphics from chat (creative/motion_graphic.py): the designer writes the whole clip, the repair route fixes what the checks report.
     "motion_graphic_planner": _task("Motion Graphic · Planner", "chat", STORY, "editing_agent"),
