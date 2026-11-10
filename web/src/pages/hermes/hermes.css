@@ -35,3 +35,17 @@ main:has(.hm-shell){min-width:0}
 .hm-shell .hm-btn { border-radius: var(--radius-pill); }
 .hm-shell .hm-btn:hover:not(:disabled) { transform: none; }
 .hm-shell :where(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* ── Persian (RTL): the InstaGPT pages mirror ─────────────────────────────────── */
+[dir="rtl"] .hm-shell label, [dir="rtl"] .hm-suggestions button, [dir="rtl"] .hm-table-scroll th, [dir="rtl"] .hm-calendar-post { text-align: start; }
+[dir="rtl"] .hm-account-side { margin-left: 0; margin-inline-start: auto; text-align: start; align-items: flex-start; }
+[dir="rtl"] .hm-hero-cta .hm-btn, [dir="rtl"] .hm-connect-banner button, [dir="rtl"] .hm-editor-actions .hm-delete, [dir="rtl"] .hm-ig-head span { margin-left: 0; margin-inline-start: auto; }
+[dir="rtl"] .hm-ig-actions span { float: left; }
+[dir="rtl"] .hm-live i { margin-right: 0; margin-inline-end: 7px; }
+[dir="rtl"] .hm-heading-star { margin-left: 0; margin-inline-start: 11px; }
+[dir="rtl"] .hm-tag-results small, [dir="rtl"] .hm-empty a { margin-left: 0; margin-inline-start: 7px; }
+[dir="rtl"] .hm-chat-bubble.user { align-self: flex-start; }
+[dir="rtl"] .hm-chat-bubble.advisor { align-self: flex-end; }
+[dir="rtl"] .hm-post-arrow { transform: scaleX(-1); }
+@media (max-width: 650px) { [dir="rtl"] .hm-account-side { margin-left: 0; margin-inline-start: 59px; } }
+[dir="rtl"] .hm-shell, [dir="rtl"] .agent-tab, [dir="rtl"] .hermes { direction: rtl; }

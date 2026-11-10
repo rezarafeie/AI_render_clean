@@ -869,3 +869,14 @@ a.pe-tool { text-decoration: none; }
 .design-option small { font-size: 12px; line-height: 1.5; color: var(--text-3, #8b8b8b); }
 .design-own { display: grid; gap: 8px; }
 .design-own textarea { width: 100%; resize: vertical; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: inherit; font: inherit; }
+
+/* ── Persian (RTL): everything reads from the right ───────────────────────────── */
+[dir="rtl"] .chat-inner { direction: rtl; }
+[dir="rtl"] .msg-user { justify-self: start; }                     /* the person's own bubble stays on the right edge */
+[dir="rtl"] .msg-user .bubble { border-radius: 20px 20px 20px 6px; }
+[dir="rtl"] .home-title { direction: rtl; text-align: start; unicode-bidi: plaintext; }
+[dir="rtl"] .home-meta { direction: rtl; justify-content: flex-start; }
+[dir="rtl"] .home-recent-copy { text-align: start; }
+[dir="rtl"] .home-recent li a { direction: rtl; }
+[dir="rtl"] .composer-input { text-align: start; }
+[dir="rtl"] .composer-input::placeholder { text-align: start; }

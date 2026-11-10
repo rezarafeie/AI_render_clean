@@ -72,7 +72,7 @@ export function Composer(props: ComposerProps) {
         {!item.attachmentId && item.progress >= 0 ? <i className="attach-progress" style={{ width: `${item.progress}%` }}/> : null}
       </li>)}</ul> : null}
 
-      <textarea ref={ref} className="composer-input bidi" dir="auto" rows={1} value={text} placeholder={placeholder || "Describe your video or edit…"}
+      <textarea ref={ref} className="composer-input bidi" dir={text ? "auto" : (typeof document !== "undefined" && document.documentElement.dir === "rtl" ? "rtl" : "ltr")} rows={1} value={text} placeholder={placeholder || "Describe your video or edit…"}
         aria-label="Message EditorGPT" enterKeyHint="send"
         onChange={event => setText(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
