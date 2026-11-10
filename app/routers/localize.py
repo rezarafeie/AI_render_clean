@@ -109,6 +109,45 @@ def clone_status(request: Request, job: str):
     return state
 
 
+class VoiceRename(BaseModel):
+    name: str
+
+
+@router.patch("/voices/{voice_id}")
+def rename_voice(request: Request, voice_id: str, body: VoiceRename):
+    from brain import voice_clone
+    user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
+    row = voice_clone.rename(user, voice_id, body.name)
+    if not row:
+        raise HTTPException(404, "voice not found")
+    return {"id": row["id"], "name": row["name"]}
+
+
+class VoicePreview(BaseModel):
+    text: str
+
+
+@router.post("/voices/{voice_id}/preview")
+def preview_voice(request: Request, voice_id: str, body: VoicePreview):
+    """A short reading of the person's own text in their cloned voice, to hear it. The text is limited (it spends ElevenLabs characters)."""
+    from fastapi.responses import Response
+    from brain import localize as speech, voice_clone
+    user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
+    if not voice_clone.owns(user, voice_id):
+        raise HTTPException(404, "voice not found")
+    text = " ".join(body.text.split())
+    if len(text) < 3:
+        raise HTTPException(422, "متنی برای خواندن بنویسید")
+    if len(text) > 400:
+        raise HTTPException(422, "متن آزمایشی حداکثر ۴۰۰ نویسه باشد")
+    try:
+        audio, _ = speech._elevenlabs_with_timestamps(speech.speakable(text), voice_id)
+    except Exception as exc:
+        reason = "اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ElevenLabs پاسخ نداد"
+        raise HTTPException(502, f"ساخت صدای آزمایشی ناموفق بود: {reason} ({str(exc)[:120]})")
+    return Response(content=audio, media_type="audio/mpeg", headers={"cache-control": "private, no-store"})
+
+
 @router.delete("/voices/{voice_id}")
 def delete_voice(request: Request, voice_id: str):
     from brain import voice_clone

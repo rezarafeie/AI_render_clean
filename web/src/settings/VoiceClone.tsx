@@ -8,6 +8,40 @@ const READING = "سلام، من دارم برای ساخت صدای دیجیت�
   + "اگر سؤالی بپرسم، لحنم کمی بالا می‌رود؛ و اگر خبر خوبی بدهم، با انرژی بیشتری می‌خوانم. این متن را تا آخر ادامه می‌دهم تا صدایم به‌خوبی ثبت شود.";
 const MIN_RECORD = 30;
 
+const SAMPLE = "سلام! این یک آزمایش کوتاه است تا ببینم صدای من در ویدیوها چطور شنیده می‌شود.";
+
+/** One cloned voice: its name (editable), a text of the person's own to hear it read, and removal. */
+function VoiceRow({ voice, onChange, onError }: { voice: Voice; onChange: () => void; onError: (message: string) => void }) {
+  const [name, setName] = React.useState(voice.name);
+  const [editing, setEditing] = React.useState(false);
+  const [text, setText] = React.useState(SAMPLE);
+  const [busy, setBusy] = React.useState(false);
+  const [audio, setAudio] = React.useState("");
+  React.useEffect(() => { setName(voice.name); }, [voice.name]);
+  React.useEffect(() => () => { if (audio) URL.revokeObjectURL(audio); }, [audio]);
+  async function save() {
+    if (!name.trim() || name.trim() === voice.name) { setEditing(false); setName(voice.name); return; }
+    try { await api.renameVoice(voice.id, name.trim()); setEditing(false); onChange(); } catch (e) { onError(friendlyError(e, "rename the voice")); }
+  }
+  async function play() {
+    setBusy(true); onError("");
+    try { setAudio(await api.previewVoice(voice.id, text)); } catch (e) { onError(e instanceof Error ? e.message : "ساخت صدای آزمایشی ناموفق بود"); } finally { setBusy(false); }
+  }
+  return <li className="set-voice">
+    <div className="set-row">
+      {editing ? <><input className="input" dir="auto" value={name} maxLength={40} autoFocus onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") { setEditing(false); setName(voice.name); } }}/>
+        <button type="button" className="btn btn-sm" onClick={() => void save()}>ذخیره</button></>
+        : <><b dir="auto">{voice.name}</b><button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>تغییر نام</button></>}
+      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { if (window.confirm(`صدای «${voice.name}» از برنامه حذف شود؟ برای آزادشدن جا در حساب ElevenLabs، همین صدا را در پنل ElevenLabs هم پاک کنید.`)) void api.deleteVoice(voice.id).then(onChange).catch(e => onError(friendlyError(e, "delete the voice"))); }}>حذف</button>
+    </div>
+    <label className="set-field">متن آزمایشی (حداکثر ۴۰۰ نویسه)<textarea className="input" dir="auto" rows={2} maxLength={400} value={text} onChange={e => setText(e.target.value)}/></label>
+    <div className="set-actions">
+      <button type="button" className="btn btn-sm" disabled={busy || text.trim().length < 3} onClick={() => void play()}>{busy ? "در حال ساخت…" : "شنیدن صدا"}</button>
+      {audio ? <audio controls autoPlay src={audio}/> : null}
+    </div>
+  </li>;
+}
+
 export function VoiceCloneSettings() {
   const [voices, setVoices] = React.useState<Voice[]>([]);
   const [mode, setMode] = React.useState<"record" | "file">("record");
@@ -59,8 +93,7 @@ export function VoiceCloneSettings() {
   return <section className="set-section" aria-labelledby="set-clone" dir="rtl">
     <h2 id="set-clone">کلون صدا</h2>
     <p className="set-hint">صدای خودتان را بسازید و در نریشن ویدیوها استفاده کنید. فقط صدایی را کلون کنید که مال خودتان است یا اجازهٔ استفاده از آن را دارید.</p>
-    {voices.length ? <ul className="set-list" aria-label="صداهای کلون‌شدهٔ شما">{voices.map(voice => <li key={voice.id} className="set-row"><b>{voice.name}</b>
-      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { if (window.confirm(`صدای «${voice.name}» از برنامه حذف شود؟ برای آزادشدن جا در حساب ElevenLabs، همین صدا را در پنل ElevenLabs هم پاک کنید.`)) void api.deleteVoice(voice.id).then(reload).catch(e => setError(friendlyError(e, "delete the voice"))); }}>حذف</button></li>)}</ul> : null}
+    {voices.length ? <ul className="set-list" aria-label="صداهای کلون‌شدهٔ شما">{voices.map(voice => <VoiceRow key={voice.id} voice={voice} onChange={reload} onError={setError}/>)}</ul> : null}
     <div className="chip-row" role="tablist">
       <button type="button" role="tab" className="chip" aria-pressed={mode === "record"} onClick={() => setMode("record")}>ضبط با میکروفون</button>
       <button type="button" role="tab" className="chip" aria-pressed={mode === "file"} onClick={() => setMode("file")}>از روی فایل (صدا یا ویدیو)</button>

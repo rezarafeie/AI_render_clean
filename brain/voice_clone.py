@@ -26,11 +26,12 @@ _LOCK = threading.Lock()
 
 
 def root() -> Path:
+    """Where cloned voices are registered: inside the persistent media volume (JOBS_DIR). A folder next to it lives in the container and is lost at every deploy."""
     base = os.environ.get("VOICE_CLONE_DIR")
     if base:
         return Path(base)
     from app.config import settings
-    return Path(settings.JOBS_DIR).expanduser().parent / "voice_clones"
+    return Path(settings.JOBS_DIR).expanduser() / "_voice_clones"
 
 
 def _registry() -> Path:
@@ -203,6 +204,22 @@ def create(user: str, name: str, source: Path, kind: str) -> dict:
         rows.append(row)
         _save(rows)
     return row
+
+
+def rename(user: str, voice_id: str, name: str) -> dict | None:
+    """Give a cloned voice another name (in the app; the person's own voices only)."""
+    with _LOCK:
+        rows = _load()
+        row = next((r for r in rows if r.get("id") == voice_id and str(r.get("user")) == str(user)), None)
+        if not row:
+            return None
+        row["name"] = _clean_name(name)
+        _save(rows)
+        return row
+
+
+def owns(user: str, voice_id: str) -> bool:
+    return any(r.get("id") == voice_id and str(r.get("user")) == str(user) for r in _load())
 
 
 def remove(user: str, voice_id: str, admin: bool = False) -> bool:

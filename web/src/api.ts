@@ -996,6 +996,15 @@ export const api = {
   async cloneVoiceStatus(job: string): Promise<{ status: "working" | "done" | "failed"; message: string; error: string | null; voice: { id: string; name: string } | null }> {
     return j(await authFetch(`${BASE}/localize/voices/clone/${job}`));
   },
+  async renameVoice(id: string, name: string): Promise<{ id: string; name: string }> {
+    return j(await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }));
+  },
+  /** The person's own text read in their cloned voice; returns an object URL of the audio. */
+  async previewVoice(id: string, text: string): Promise<string> {
+    const response = await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!response.ok) { let detail = ""; try { detail = (await response.json()).detail; } catch { /* no body */ } throw new Error(typeof detail === "string" && detail ? detail : `HTTP ${response.status}`); }
+    return URL.createObjectURL(await response.blob());
+  },
   async deleteVoice(id: string): Promise<void> {
     await j(await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}`, { method: "DELETE" }));
   },

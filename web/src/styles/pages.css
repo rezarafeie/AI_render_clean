@@ -271,3 +271,11 @@ a.proj-card:hover { background: var(--surface); border-color: var(--border-subtl
   .adm-user-stats, .adm-user-meta { grid-column: 1 / -1; }
   .adm-user-stats { gap: 14px; }
 }
+
+/* cloned voices in Settings */
+.set-voice { list-style: none; display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.set-voice .set-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.set-voice .set-row .input { flex: 1; min-width: 160px; }
+.set-voice .set-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.set-voice audio { max-width: 100%; }
+.set-reading { margin: 0; padding: 12px 14px; border-radius: var(--radius-md); background: var(--hover); line-height: 2; }
