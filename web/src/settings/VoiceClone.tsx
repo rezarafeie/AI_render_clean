@@ -60,7 +60,7 @@ export function VoiceCloneSettings() {
     <h2 id="set-clone">کلون صدا</h2>
     <p className="set-hint">صدای خودتان را بسازید و در نریشن ویدیوها استفاده کنید. فقط صدایی را کلون کنید که مال خودتان است یا اجازهٔ استفاده از آن را دارید.</p>
     {voices.length ? <ul className="set-list" aria-label="صداهای کلون‌شدهٔ شما">{voices.map(voice => <li key={voice.id} className="set-row"><b>{voice.name}</b>
-      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { if (window.confirm(`صدای «${voice.name}» حذف شود؟ این کار برگشت‌پذیر نیست.`)) void api.deleteVoice(voice.id).then(reload).catch(e => setError(friendlyError(e, "delete the voice"))); }}>حذف</button></li>)}</ul> : null}
+      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { if (window.confirm(`صدای «${voice.name}» از برنامه حذف شود؟ برای آزادشدن جا در حساب ElevenLabs، همین صدا را در پنل ElevenLabs هم پاک کنید.`)) void api.deleteVoice(voice.id).then(reload).catch(e => setError(friendlyError(e, "delete the voice"))); }}>حذف</button></li>)}</ul> : null}
     <div className="chip-row" role="tablist">
       <button type="button" role="tab" className="chip" aria-pressed={mode === "record"} onClick={() => setMode("record")}>ضبط با میکروفون</button>
       <button type="button" role="tab" className="chip" aria-pressed={mode === "file"} onClick={() => setMode("file")}>از روی فایل (صدا یا ویدیو)</button>

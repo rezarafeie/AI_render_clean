@@ -100,3 +100,27 @@ test('upstream error status/body is preserved',async t=>{
   assert.equal(r.code,403);
   assert.equal(JSON.parse(r.body).detail.status,'missing_permissions');
 });
+
+
+test('a voice clone can be created, and no other voice change is allowed', async t=>{
+  const seen=[];
+  t.mock.method(globalThis,'fetch',async (url,options)=>{
+    seen.push([options.method,url.pathname,options.headers['content-type']||'']);
+    return Response.json({voice_id:'abc123'});
+  });
+  t.mock.method(process,'emitWarning',()=>{});
+  const before=process.env.ELEVENLABS_API_KEY;
+  process.env.ELEVENLABS_API_KEY='test-relay-key';
+  try {
+    const added=await request('v1/voices/add',{method:'POST',body:'--b--'});
+    assert.equal(added.code,200);
+    assert.deepEqual(seen.map(x=>x.slice(0,2)),[['POST','/v1/voices/add']]);
+    for (const [method,path] of [['DELETE','v1/voices/abc123'],['DELETE','v1/voices'],['POST','v1/voices/abc123/edit'],['POST','v1/voices/add/extra'],['PATCH','v1/voices/abc123'],['DELETE','v1/voices/abc123/settings']]) {
+      const blocked=await request(path,{method});
+      assert.equal(blocked.code,404,`${method} ${path}`);
+    }
+    assert.equal((await request('v1/voices/add',{method:'POST',key:'wrong'})).code,401);
+  } finally {
+    if (before===undefined) delete process.env.ELEVENLABS_API_KEY; else process.env.ELEVENLABS_API_KEY=before;
+  }
+});

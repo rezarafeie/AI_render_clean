@@ -12,6 +12,8 @@ const ALLOWED = [
   { method: "POST", pattern: /^v1\/speech-to-text$/ },
   { method: "POST", pattern: /^v1\/text-to-speech\/[A-Za-z0-9_-]{3,100}$/ },
   { method: "POST", pattern: /^v1\/text-to-speech\/[A-Za-z0-9_-]{3,100}\/with-timestamps$/ },
+  // Voice cloning: creating an Instant Voice Clone from the person's own recording. Editing or deleting voices stays blocked (the account's voices cannot be removed through the relay).
+  { method: "POST", pattern: /^v1\/voices\/add$/ },
 ];
 
 const VOICE_QUERY = new Set([
@@ -73,7 +75,7 @@ export default async function handler(req, res) {
     }
 
     const options = { method, headers, signal: AbortSignal.timeout(290_000) };
-    if (method !== "GET" && method !== "HEAD") {
+    if (method === "POST") {
       options.body = Readable.toWeb(req);
       options.duplex = "half";
     }

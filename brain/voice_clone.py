@@ -178,7 +178,7 @@ def _create_remote(name: str, sample: Path, description: str) -> str:
     return str(voice_id)
 
 
-def _delete_remote(voice_id: str) -> None:
+def _delete_remote(voice_id: str) -> None:       # not used: the relay does not allow deleting voices; kept for a relay that does
     import httpx
     from brain.elevenlabs_transport import url
     key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
@@ -211,7 +211,6 @@ def remove(user: str, voice_id: str, admin: bool = False) -> bool:
         row = next((r for r in rows if r.get("id") == voice_id), None)
         if not row or (not admin and str(row.get("user")) != str(user)):
             return False
-        _delete_remote(voice_id)
         _save([r for r in rows if r.get("id") != voice_id])
     return True
 
