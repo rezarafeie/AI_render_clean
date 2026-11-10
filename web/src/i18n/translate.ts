@@ -68,13 +68,13 @@ export async function startTranslator() {
     }
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {              // not requestAnimationFrame: it does not run in a hidden tab, and the text must already be Persian when the tab is shown
       scheduled = false;
       observer.disconnect();
       pending.forEach(node => { if (node.isConnected) translateNode(node); });
       pending.clear();
       observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...ATTRIBUTES] });
-    });
+    }, 16);
   });
   translateNode(root);
   observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...ATTRIBUTES] });
