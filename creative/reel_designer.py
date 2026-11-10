@@ -443,7 +443,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         if texts and all(texts):
             # One continuous reading of the whole script; the scenes are fitted to its real word times (never a clip per scene joined with pauses).
             _progress(job.dir, "دارم نریشن را یک‌جا و پیوسته می‌سازم تا صحنه‌ها با زمان واقعی کلمات تنظیم شوند", detail="وضعیت: در حال ساخت")
-            take = narration_take.voice(storyboard, texts, work / "voice")
+            take = narration_take.voice(storyboard, texts, work / "voice", getattr(job, "user_id", None))
             fitted = narration_take.fit(take)
             lengths = [round(end - begin, 3) for begin, end in zip(fitted["starts"], fitted["ends"])]
             _progress(job.dir, f"نریشن آماده شد: یک اجرای پیوسته، {take['total']:.0f} ثانیه صدا، ویدیو {fitted['duration']:.0f} ثانیه", done=True,

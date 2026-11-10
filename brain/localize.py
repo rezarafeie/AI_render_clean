@@ -459,6 +459,24 @@ NARRATOR_ALIASES = {
 }
 
 
+_MY_VOICE = re.compile(r"با\s+صدای\s*(?:من|خودم)(?![\u0600-\u06ff])|صدای\s*(?:من|خودم)(?![\u0600-\u06ff])|با\s+صدام|\bmy\s+(?:own\s+)?voice\b|صدای\s*کلون", re.I)
+
+
+def my_voice_requested(text: str) -> bool:
+    """The request says the film must be voiced by the person themselves («با صدای من», "in my voice")."""
+    return bool(_MY_VOICE.search(str(text or "")))
+
+
+def narrator_for(text: str, user=None) -> str:
+    """The voice a request asks for: a narrator named in it, or - when it says «با صدای من» - the person's most recent cloned voice. '' when none is asked for or none exists."""
+    named = narrator_named_in(text)
+    if named or user is None or not my_voice_requested(text):
+        return named
+    from brain import voice_clone
+    mine = voice_clone.list_clones(str(user))
+    return mine[-1]["id"] if mine else ""
+
+
 def narrator_named_in(text: str) -> str:
     """The voice id of a narrator the person named in plain words next to «گوینده / راوی / narrator / voice», else ''."""
     import re as _re

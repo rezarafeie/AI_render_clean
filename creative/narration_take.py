@@ -37,20 +37,20 @@ def apply(plan, fitted: dict):
     return plan.model_copy(update={"scenes": scenes, "duration": fitted["duration"]})
 
 
-def chosen_voice(storyboard: dict, texts: list[str]) -> tuple[str, str]:
+def chosen_voice(storyboard: dict, texts: list[str], user=None) -> tuple[str, str]:
     """(voice id, style) for a storyboard: the narrator the person picked or named in the request, else the studio's casting for this content, once for the film."""
-    from brain.localize import narrator_ids, narrator_named_in
+    from brain.localize import narrator_for, narrator_ids
     voice = str(storyboard.get("narrator") or "")
     if voice not in narrator_ids():
-        voice = narrator_named_in(str(storyboard.get("prompt") or ""))
+        voice = narrator_for(str(storyboard.get("prompt") or ""), user)
     return voice, str(storyboard.get("voice_style") or "")
 
 
-def voice(storyboard: dict, texts: list[str], folder) -> dict:
+def voice(storyboard: dict, texts: list[str], folder, user=None) -> dict:
     """The take for `texts` (one per scene), cached by its text and voice; raises NarrationFailed with the reason in Persian."""
     from brain import localize
     from creative.audio import persian
-    voice_id, style = chosen_voice(storyboard, texts)
+    voice_id, style = chosen_voice(storyboard, texts, user)
     spoken = [persian.speakable(text, {}) for text in texts]
     try:
         return localize.continuous_narration(spoken, folder, voice_id, style)

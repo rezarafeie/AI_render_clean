@@ -364,7 +364,8 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
         chosen_voice = storyboard.narrator if storyboard.narrator in narrator_ids() else ""
         if not chosen_voice:
             from .localize import narrator_named_in
-            chosen_voice = narrator_named_in(storyboard.prompt or "")          # «گوینده کانری» in the request is the voice that speaks
+            from .localize import narrator_for
+            chosen_voice = narrator_for(storyboard.prompt or "", getattr(job, "user_id", None))          # «گوینده کانری» / «با صدای من» in the request is the voice that speaks
         if not chosen_voice and spoken_script.strip():
             # No voice picked by the person: the studio casts one of the native Persian voices in the ElevenLabs account (My Voices) for this content, once for the whole video.
             try:

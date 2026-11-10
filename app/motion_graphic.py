@@ -583,6 +583,9 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     Returns (plan, clips, notes). A narration that cannot be made leaves the clip silent and says so; it never stops the build."""
     from creative import motion_graphic as mg
     voice_id, voice_style = record.get("voice_id", ""), record.get("voice_style", "")
+    if not voice_id:                                          # «با صدای من» in the request: the person's own cloned voice (also when an older run is retried)
+        from brain import localize as _voices
+        voice_id = _voices.narrator_for(record.get("request", ""), record.get("user_key"))
     pronunciations = record.get("pronunciations") or {}
     fp = f"{fp}|{_fingerprint(json.dumps(pronunciations, sort_keys=True, ensure_ascii=False))}" if pronunciations else fp
     saved = directory / "voice.json"
