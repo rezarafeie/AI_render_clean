@@ -851,7 +851,8 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
              f"THIS SCENE\nheadline (exact words, Persian): {scene.headline}\nidea: {scene.idea}"
              + (f"\nnarration spoken over this scene (the viewer HEARS it; the visuals must illustrate it and the on-screen text must support it, not duplicate it): {scene.narration}" if scene.narration else "")
              + (("\nSPOKEN WORD TIMES from the real voice take (seconds from the scene start): " + " ".join(f"{c['word']}@{c['t']:g}" for c in scene.cues[:70])
-                 + "\nPlan the motion on these times: the entrance of each callout, label, number or picture lands on the word that names it, and the headline is complete when its word is spoken. "
+                 + "\nThe lower part of the frame (from about 69% of the height down to 85%) is reserved for the narration shown as typography; keep every other element out of it. "
+                   "Plan the motion on these times: the entrance of each callout, label, number or picture lands on the word that names it, and the headline is complete when its word is spoken. "
                    "Do not spread entrances evenly or by guess.") if scene.cues else ""),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
@@ -1070,6 +1071,9 @@ def choose_entrance(plan: MotionPlan, n: int, previous: str | None = None) -> st
     return max(ENTRANCE_LIBRARY, key=score)
 
 
+from .captions import layer as captions_layer
+
+
 def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict] | None = None) -> MotionPage:
     """The clip: every scene in its own layer, entrance wipes added here, each scene's code isolated in its own function."""
     width, height = FORMATS[plan.format]
@@ -1097,6 +1101,9 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
             if n < len(plan.scenes):
                 build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
             continue
+        captions = captions_layer(scene, n, palette, width, height)
+        if captions:
+            draft = draft.model_copy(update={"html": draft.html + captions[0], "css": draft.css + "\n" + captions[1], "build_js": draft.build_js + "\n" + captions[2]})
         html.append(f'<section class="hm-scene" id="s{n}">{draft.html}</section>')
         css.append(f"#s{n}{{background:{palette.bg};color:{palette.ink}}}\n{scope_css(n, draft.css)}")
         if n > 1:

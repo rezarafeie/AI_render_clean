@@ -20,6 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import motion_graphic as mg
+from . import narration_take
+from . import visual_gate
 from .schemas import CreativeUnavailable
 
 log = logging.getLogger(__name__)
@@ -255,17 +257,23 @@ def sound_effects(work: Path, plan) -> list[dict]:
     return clips
 
 
-def add_subtitles(video: Path, plan, config: dict, work: Path) -> bool:
+def add_subtitles(video: Path, plan, config: dict, work: Path, take: dict | None = None) -> bool:
     """Word-by-word subtitles of the narration, drawn by Tscaps (the engine of the studio's talking styles) as a transparent layer and composited onto the finished
     reel. Best effort: the reel stays as it was when the layer cannot be made."""
     try:
         from engine import tscaps_overlay as tso
         cues = []
-        for scene, row in zip(plan.scenes, config["scenes"]):
-            text = str(row.get("narration_text") or scene.narration or "").strip()
-            words = tso.words_for(text, scene.start + 0.12, scene.end - 0.2) if text else []
-            if words:
-                cues.append(tso.Cue("caption", words[0].s, words[-1].e + 0.15, words))
+        if take:                                                   # the voice's own word times, not an even spread
+            for line in take["lines"]:
+                words = [tso.Word(w["word"], round(narration_take.PREROLL + w["start"], 3), round(narration_take.PREROLL + w["end"], 3), None) for w in line["words"]]
+                if words:
+                    cues.append(tso.Cue("caption", words[0].s, words[-1].e + 0.15, words))
+        else:
+            for scene, row in zip(plan.scenes, config["scenes"]):
+                text = str(row.get("narration_text") or scene.narration or "").strip()
+                words = tso.words_for(text, scene.start + 0.12, scene.end - 0.2) if text else []
+                if words:
+                    cues.append(tso.Cue("caption", words[0].s, words[-1].e + 0.15, words))
         if not cues or not tso.enabled():
             return False
         work.mkdir(parents=True, exist_ok=True)
@@ -404,6 +412,10 @@ def _skipped(job, reason: str) -> bool:
         job.designer_note = "اجرا نشد و قالب پایه استفاده شد — " + reason
     except Exception:
         pass
+    try:                                           # the failure is a visible line of the log, not only a note kept in the review
+        _progress(job.dir, "طراحی موشن ناموفق بود؛ قالب پایه استفاده می‌شود", detail=reason, done=True)
+    except Exception:
+        pass
     return False
 
 
@@ -426,7 +438,20 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         used: list[str] = []
         (work / "progress.json").unlink(missing_ok=True)
         _progress(job.dir, "دارم صحنه‌های تأییدشده را به طراح موشن می‌دهم: متن‌ها، زمان‌بندی، نریشن و تصویرهای محصول ثابت‌اند؛ طراحی ظاهر و حرکت با طراح است")
-        lengths = scene_lengths(config, float(storyboard.get("total_duration_s") or 0))
+        texts = [str(row.get("narration_text") or "").strip() for row in config["scenes"]]
+        take = fitted = None
+        if texts and all(texts):
+            # One continuous reading of the whole script; the scenes are fitted to its real word times (never a clip per scene joined with pauses).
+            _progress(job.dir, "دارم نریشن را یک‌جا و پیوسته می‌سازم تا صحنه‌ها با زمان واقعی کلمات تنظیم شوند", detail="وضعیت: در حال ساخت")
+            take = narration_take.voice(storyboard, texts, work / "voice")
+            fitted = narration_take.fit(take)
+            lengths = [round(end - begin, 3) for begin, end in zip(fitted["starts"], fitted["ends"])]
+            _progress(job.dir, f"نریشن آماده شد: یک اجرای پیوسته، {take['total']:.0f} ثانیه صدا، ویدیو {fitted['duration']:.0f} ثانیه", done=True,
+                      detail="\n".join(f"{n}. [{begin:.1f}–{end:.1f}s] {text}" for n, (begin, end, text) in enumerate(zip(fitted["starts"], fitted["ends"], texts), 1)))
+        else:
+            if texts and any(texts):
+                _progress(job.dir, "بعضی صحنه‌ها نریشن ندارند؛ برای این فیلم نریشن هر صحنه جدا زمان‌بندی می‌شود", done=True)
+            lengths = scene_lengths(config, float(storyboard.get("total_duration_s") or 0))
         subjects = _subjects(job.dir)
         pictures = {}
         for row in config["scenes"]:
@@ -452,6 +477,8 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             plan, _, _ = build_plan(config, storyboard, creative, design, project, job.dir)
             brief = str(storyboard.get("prompt") or "")[:1500]
         plan = retime(plan, lengths)
+        if fitted:
+            plan = narration_take.apply(plan, fitted)             # every scene knows when each of its words is spoken
         (work / "timeline.json").write_text(json.dumps({"duration": plan.duration, "scenes": [{"start": sc.start, "end": sc.end} for sc in plan.scenes]}))
         picks = [f"صحنهٔ {n}: {(sc.shotcraft_id or (sc.native_component.resource_id if sc.native_component else '') or '').split(':')[-1]}" for n, sc in enumerate(plan.scenes, 1)
                  if sc.shotcraft_id or sc.native_component or sc.shotcraft_component]
@@ -473,9 +500,12 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             on_progress(8)
         total = plan.duration
         audio = []
-        for scene, row in zip(plan.scenes, config["scenes"]):
-            if row.get("narration"):
-                audio.append({"path": str(Path(row["narration"])), "start": scene.start, "duration": round(scene.end - scene.start, 3)})
+        if fitted:
+            audio = list(fitted["audio"])                         # the one unbroken take
+        else:
+            for scene, row in zip(plan.scenes, config["scenes"]):
+                if row.get("narration"):
+                    audio.append({"path": str(Path(row["narration"])), "start": scene.start, "duration": round(scene.end - scene.start, 3)})
         sfx = sound_effects(work / "sfx", plan)
         music = (data.get("music") or {}).get("file")
         if music:
@@ -492,7 +522,23 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             return _skipped(job, "صفحهٔ طراحی‌شده معتبر نبود: " + mg.explain_problem(problems[0]))
         mg.write_project(project, page)
         _progress(job.dir, "دارم صفحهٔ طراحی‌شده را در مرورگر بررسی می‌کنم: چیدمان، خوانایی متن و خطاهای اجرا")
-        check = standalone.check(project, should_cancel=should_cancel)
+        gate = {"overlap": True, "stills": 0}
+
+        def gated(page_now):
+            result = standalone.check(project, should_cancel=should_cancel)
+            if result.ran and not result.blocking and gate["stills"] < 2:
+                gate["stills"] += 1
+                _progress(job.dir, "دارم از هر صحنه عکس بررسی می‌گیرم: خالی‌بودن یا روی‌هم‌افتادن متن‌ها", detail="وضعیت: در حال بررسی")
+                found = visual_gate.problems(project, page_now_plan, work, list(getattr(result, "quality", []) or []), gate["overlap"])
+                gate["overlap"] = False                               # overlaps are sent back once; blank scenes are checked after every repair
+                if found:
+                    result.blocking = list(found)
+                else:
+                    _progress(job.dir, "عکس‌های بررسی همهٔ صحنه‌ها سالم بودند", done=True)
+            return result
+
+        page_now_plan = plan
+        check = gated(page)
         rounds = 0
         while check.blocking and rounds < 3:
             # A scene that breaks the page is repaired once from the browser's own message, then replaced by a plain scene: one bad scene never costs the whole design.
@@ -521,7 +567,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 return _skipped(job, "بررسی مرورگر چند بار صحنه‌ها را رد کرد: " + mg.explain_problem(check.blocking[0]))
             page = mg.assemble_scenes(plan, drafts, audio + sfx)
             mg.write_project(project, page)
-            check = standalone.check(project, should_cancel=should_cancel)
+            check = gated(page)
         if check.blocking:
             log.warning("reel page failed the browser check: %s", check.blocking[:2])
             return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
@@ -537,9 +583,11 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             return False
         _stage(job, "adding subtitles")
         _progress(job.dir, "رندر تمام شد؛ دارم زیرنویس کلمه‌به‌کلمهٔ نریشن را اضافه می‌کنم", stage="adding subtitles")
-        if not add_subtitles(out_path, plan, config, work / "overlay"):
+        if not take and not add_subtitles(out_path, plan, config, work / "overlay", take):         # with a voice take the captions are already typography inside every scene
             job.designer_note = ((getattr(job, "designer_note", "") or "") + " زیرنویس کلمه‌به‌کلمه اضافه نشد.").strip()
         return True
+    except narration_take.NarrationFailed:
+        raise
     except CreativeUnavailable as exc:
         log.warning("reel designer unavailable: %s", exc)
         return _skipped(job, "طراح موشن در دسترس نبود: " + str(exc)[:160])

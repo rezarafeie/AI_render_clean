@@ -51,7 +51,6 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
   const fa = useFa();
   const details = stepDetails(step);
   const [open, setOpen] = React.useState(false);
-  const [logOpen, setLogOpen] = React.useState(false);                    // the log is closed until the description is clicked
   // What this step is, in a sentence: its own description (the working / done boilerplate is not a description).
   const description = (details?.notes || []).find(note => note !== WORKING_NOTE && !/^پاسخ این مرحله دریافت شد/.test(note)) || step.label;
   const failed = step.status === "failed";
@@ -73,13 +72,10 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
       {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{fa ? `${faNumber(step.progress)}٪` : `${step.progress}%`}</span> : null}
       <Elapsed since={step.startedAt}/>
     </div> : null}
-    {active && !open && details?.notes.length ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
+    {active && !open && details?.notes.length && details.notes[details.notes.length - 1] !== step.label ? <div className="act-details"><p dir="auto" className="bidi wrap-safe">{details.notes[details.notes.length - 1]}</p></div> : null}
     {details && open ? <div className="act-details">
-      <button type="button" className="act-desc" onClick={() => setLogOpen(value => !value)} aria-expanded={logOpen}>
-        <span dir="auto" className="bidi wrap-safe">{description}</span>
-        <Icon name="chevronDown" size={13} className={`act-chevron${logOpen ? " is-open" : ""}`}/>
-      </button>
-      {logOpen ? <WorkLog step={step} details={details}/> : null}
+      {description && description !== step.label ? <p className="act-desc-text bidi wrap-safe" dir="auto">{description}</p> : null}
+      <WorkLog step={step} details={details}/>
     </div> : null}
   </li>;
 }

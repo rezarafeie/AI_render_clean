@@ -1266,9 +1266,15 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                         job.render.message = "checking export"
                 except Exception as exc:
                     from app.render_cloud.service import CloudRenderError
-                    if isinstance(exc, CloudRenderError):
+                    from creative.narration_take import NarrationFailed
+                    if isinstance(exc, (CloudRenderError, NarrationFailed)):
                         raise
                     logger.warning("Designed reel failed (%s); the built-in reel page is used", str(exc)[:300])
+                    try:
+                        from creative.reel_designer import _progress as designer_progress
+                        designer_progress(job.dir, "طراحی موشن با خطا متوقف شد؛ قالب پایه استفاده می‌شود", detail=f"{type(exc).__name__}: {str(exc)[:400]}", done=True)
+                    except Exception:
+                        pass
             if os.environ.get("REEL_ENGINE", "hyperframes") == "hyperframes" and not rendered:
                 # The HyperFrames engine renders the cinematic reel; Remotion stays as the fallback when it cannot run.
                 try:

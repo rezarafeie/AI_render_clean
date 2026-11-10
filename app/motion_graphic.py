@@ -656,41 +656,30 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
 
 
 _TAKE = "take2"            # the narration is one continuous reading (a change of method invalidates saved per-line takes)
-_LEAD = 0.35               # a scene's picture changes this long before its first word is heard
-_PREROLL = 0.3             # silence before the voice starts
+_PREROLL = 0.3             # silence before the voice starts (kept for tests; the shared value lives in creative.narration_take)
+_LEAD = 0.35
 
 
 def _fit_to_take(directory: Path, record: dict, plan, texts: list[str], take: dict, fp: str, voice_id: str, voice_style: str):
-    """The scenes follow the voice, not the other way round: the whole script is one unbroken reading, each scene starts where its first word is heard (a beat early)
-    and ends where the next begins, and every scene knows when each of its words is spoken so its motion lands on them."""
+    """The scenes follow the voice, not the other way round (see creative.narration_take)."""
     from creative import motion_graphic as mg
-    lines = take["lines"]
-    starts = [0.0]
-    for line in lines[1:]:
-        starts.append(max(starts[-1] + 0.8, _PREROLL + line["start"] - _LEAD))
-    voice_end = _PREROLL + take["total"]
-    last_end = max(_PREROLL + lines[-1]["end"] + 0.9, voice_end + 0.3)
-    ends = starts[1:] + [last_end]
-    scenes = []
-    for scene, line, begin, end in zip(plan.scenes, lines, starts, ends):
-        cues = [{"word": w["word"], "t": round(max(0.0, _PREROLL + w["start"] - begin), 2)} for w in line["words"]]
-        scenes.append(scene.model_copy(update={"start": round(begin, 2), "end": round(end, 2), "cues": cues}))
-    if last_end > mg.MAX_SECONDS:
-        raise RuntimeError(f"نریشن {last_end:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ نریشن را کوتاه‌تر کنید.")
-    audio = [{"path": str(take["audio"]), "start": _PREROLL, "duration": round(take["total"], 2)}]
-    relative = [[{"word": w["word"], "start": round(w["start"] - line["words"][0]["start"], 3), "end": round(w["end"] - line["words"][0]["start"], 3)} for w in line["words"]] for line in lines]
-    _save_word_timing(directory, texts, voice_id, voice_style, [round(_PREROLL + line["start"], 3) for line in lines], relative)
+    from creative import narration_take
+    fitted = narration_take.fit(take)
+    if fitted["duration"] > mg.MAX_SECONDS:
+        raise RuntimeError(f"نریشن {fitted['duration']:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ نریشن را کوتاه‌تر کنید.")
+    retimed = narration_take.apply(plan, fitted)
+    audio = fitted["audio"]
+    _save_word_timing(directory, texts, voice_id, voice_style, fitted["clip_starts"], fitted["relative"])
     try:
         (directory / "voice_takes.json").unlink()                 # the per-line takes of the old method must not be mixed with this one
     except OSError:
         pass
     _remember_voice_error(directory, record, None)
-    retimed = plan.model_copy(update={"scenes": scenes, "duration": round(last_end, 2)})
     _save_audio_direction(directory, record, retimed, texts)
     notes = ["نریشن یک اجرای پیوسته است؛ صحنه‌ها با زمان واقعی کلمات تنظیم شدند."]
     (directory / "voice.json").write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}|{_TAKE}", "plan": retimed.model_dump(), "audio": audio, "notes": notes}, ensure_ascii=False))
-    _note(directory, "voice", f"نریشن آماده شد: یک اجرای پیوسته، {take['total']:.0f} ثانیه صدا، ویدیو {last_end:.0f} ثانیه", "done",
-          detail=f"راوی: {voice_id or 'پیش‌فرض'} · سبک: {voice_style or 'طبیعی'}\n" + "\n".join(f"{i}. [{b:.1f}–{e:.1f}s] {t}" for i, (b, e, t) in enumerate(zip(starts, ends, texts), 1)))
+    _note(directory, "voice", f"نریشن آماده شد: یک اجرای پیوسته، {take['total']:.0f} ثانیه صدا، ویدیو {fitted['duration']:.0f} ثانیه", "done",
+          detail=f"راوی: {voice_id or 'پیش‌فرض'} · سبک: {voice_style or 'طبیعی'}\n" + "\n".join(f"{i}. [{b:.1f}–{e:.1f}s] {t}" for i, (b, e, t) in enumerate(zip(fitted["starts"], fitted["ends"], texts), 1)))
     return retimed, audio, notes
 
 
@@ -1328,8 +1317,6 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     notes: list[str] = list(getattr(build, "voice_notes", []) or [])
     repairs_left = 2
     isolated = 0
-    blank_checks = 0
-    overlap_tried = False
     shots_of = None
     stats = _stats()
     while True:
@@ -1375,22 +1362,6 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                 page = dropped
                 continue
             raise RuntimeError("کامپوننت اجرایی از بررسی رد شد؛ کد اصلی با طراحی ساده جایگزین نشد: " + problems[0])
-        if not problems and build and result.ran and not skipped_check:
-            # The visual gate: text laid over text, or a scene that shows nothing at its settled moment, is repaired before anything is rendered.
-            if not overlap_tried:
-                overlap_tried = True
-                clashes = [q for q in result.quality if _TEXT_OVERLAP.search(q) and _scenes_in([q], len(build.plan.scenes))]
-                if clashes:
-                    problems = [q[:600] for q in clashes[:6]]
-                    notes.append(f"متن‌های روی‌هم‌افتاده در {len(clashes)} مورد پیدا شد و پیش از رندر اصلاح شد")
-            if not problems and blank_checks < 2:
-                blank_checks += 1
-                _snapshot_scenes(directory, work, build.plan)
-                shots_of = page_fp
-                empty = _blank_scenes(directory)
-                if empty:
-                    problems = [f"#s{n} shows an empty frame at its settled moment (60% of its length): nothing is visible. Every element must be placed and revealed relative to the scene's own start time, and the scene must paint its background and headline." for n in empty]
-                    notes.append("صحنه‌های " + "، ".join(str(n) for n in empty) + " در عکس بررسی خالی بودند و پیش از رندر دوباره طراحی شدند")
         if not problems:
             # Layout and contrast findings are not fatal and do not justify rewriting the page with a slow model: they are reported.
             notes = (notes + ([f"بررسی خودکار چیدمان/خوانایی: {len(result.quality)} مورد"] if result.quality else [])
@@ -1441,6 +1412,58 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             page = mg.repair(page, "\n".join(problems[:10]), brief=brief, used=used)
         except Exception as exc:
             raise RuntimeError("did not pass validation: " + problems[0]) from exc
+    # The visual gate, after the page passed its checks and bounded on purpose: a scene whose still is empty or whose text lies over text is designed once more from
+    # that finding; if the new page does not pass the checks, the earlier design is kept. It can never replace the designed scenes with plain ones.
+    if build and result.ran and not skipped_check:
+        try:
+            count = len(build.plan.scenes)
+            flagged: dict[int, list[str]] = {}
+            for line in result.quality:
+                if _TEXT_OVERLAP.search(line):
+                    for n in _scenes_in([line], count):
+                        flagged.setdefault(n, []).append(line[:500])
+            _snapshot_scenes(directory, work, build.plan)
+            shots_of = page_fp
+            for n in _blank_scenes(directory):
+                flagged.setdefault(n, []).append("this scene shows an empty frame at its settled moment (60% of its length): nothing is visible. Every element must be revealed relative to the scene's own start, and the scene must paint its background and headline.")
+            if flagged:
+                _note(directory, "check", f"بررسی عکس‌ها: صحنه‌های {'، '.join(map(str, sorted(flagged)))} خالی یا با متن روی‌هم‌افتاده‌اند؛ هر کدام یک بار دوباره طراحی می‌شود", "active")
+                before_page, before_drafts = page, dict(build.drafts)
+                changed = []
+                for n, why in sorted(flagged.items()):
+                    scene = build.plan.scenes[n - 1]
+                    if scene.native_component or getattr(scene, "shotcraft_component", None):
+                        continue
+                    try:
+                        draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=why[:4], style=build.style)
+                        if not svg_problems(draft.html):
+                            build.drafts[n] = draft
+                            changed.append(n)
+                    except Exception as exc:
+                        log.warning("scene %d was not redesigned after the still check: %s", n, str(exc)[:160])
+                if changed:
+                    candidate = mg.assemble_scenes(build.plan, [build.drafts[n] for n in range(1, count + 1)], build.audio)
+                    mg.write_project(work, candidate)
+                    again = standalone.check(work, should_cancel=lambda: _cancelled(key))
+                    if again.ran and not again.blocking:
+                        page = candidate
+                        page_fp = hashlib.sha256((work / "index.html").read_bytes()).hexdigest()
+                        _snapshot_scenes(directory, work, build.plan)
+                        shots_of = page_fp
+                        left = _blank_scenes(directory)
+                        notes.append(f"صحنه‌های {'، '.join(map(str, changed))} پس از بررسی عکس دوباره طراحی شدند" + (f"؛ صحنه‌های {'، '.join(map(str, left))} هنوز خالی به نظر می‌رسند" if left else ""))
+                    else:
+                        build.drafts.clear(); build.drafts.update(before_drafts)
+                        mg.write_project(work, before_page)
+                        notes.append("طراحی دوباره در بررسی رد شد؛ طراحی قبلی نگه داشته شد (ممکن است متن روی هم افتاده باشد)")
+                else:
+                    notes.append(f"صحنه‌های {'، '.join(map(str, sorted(flagged)))} در بررسی عکس مشکل داشتند و بازطراحی ممکن نشد")
+                _note(directory, "check", "بررسی عکس صحنه‌ها تمام شد", "done", detail="\n".join(notes[-3:]))
+        except _Cancelled:
+            raise
+        except Exception as exc:
+            log.warning("visual gate failed: %s", str(exc)[:200])
+            notes.append("بررسی عکس صحنه‌ها اجرا نشد: " + str(exc)[:120])
     output = work / "motion.mp4"
     render_started = time.monotonic()
     estimate = stats["render_per_s"] * page.duration

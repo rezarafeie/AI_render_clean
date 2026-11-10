@@ -195,3 +195,19 @@ def test_a_continuous_take_sets_its_tone_once():
     full_each, _ = localize.narration_script(["اول", "دوم"], "calm")
     assert full.startswith("[calm]") and full.count("[calm]") == 1
     assert full_each.count("[calm]") == 2
+
+
+def test_the_narration_becomes_typography_timed_to_its_words():
+    from creative import captions
+    from creative import motion_graphic as mg
+    cues = [{"word": "ثبت", "t": 0.3}, {"word": "شرکت", "t": 0.7}, {"word": "جهانی،", "t": 1.1}, {"word": "بدون", "t": 2.4}, {"word": "مهاجرت", "t": 2.8}]
+    scene = mg.ScenePlan(headline="h", idea="i", start=0, end=5, cues=cues)
+    palette = mg.Palette(bg="#ffffff", surface="#eef3f5", ink="#142830", accent="#007fa3", accent2="#f04432")
+    html, css, js = captions.layer(scene, 1, palette)
+    assert len(captions.phrases(cues)) == 2 and "data-layout-allow-overlap" in html            # broken after the comma, and exempt from the overlap check
+    assert html.count("cap-w") == 5 and "T + 2.40" in js and "T + 0.30" in js                      # every word lands when it is heard
+    assert scene.model_copy(update={"cues": []}) and captions.layer(scene.model_copy(update={"cues": []}), 1, palette) is None
+    draft = mg.SceneDraft(html='<h1 id="s1-h">ثبت</h1>', build_js='tl.set("#s1-h", {opacity:1}, T + 0);', timebase="local")
+    plan = mg.MotionPlan(title="t", duration=5, scenes=[scene], palette=palette)
+    page = mg.assemble_scenes(plan, [draft])
+    assert "s1-cp1" in page.scenes_html and "s1-cw1-1" in page.build_js
