@@ -79,7 +79,7 @@
 .agent-embedded { display: grid; gap: var(--space-3); }
 
 /* home: the Studio's home page with the overview beneath the input */
-.hermes-home .home-inner { width: min(100%, 980px); }
+.hermes-home .home-inner { width: min(100%, 720px); }
 .hs-home-overview { margin-top: var(--space-8); display: grid; gap: var(--space-4); text-align: start; container-type: inline-size; container-name: hs; }
 
 /* phones: the agent takes the whole screen */
@@ -225,3 +225,9 @@
 .hs-home-links .chip { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
 .hs-page-head { display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-4); }
 .hs-page-head h1 { font-size: 22px; margin: 0; text-align: start; }
+
+/* the InstaGPT home is one column, as wide as the editor's: composer, links, recent chats and the page overview line up */
+.hermes-home .home-inner > * { min-width: 0; }
+.hermes-home .home-recent, .hermes-home .hs-home-links, .hermes-home .hs-home-overview { width: 100%; max-width: 100%; margin-inline: auto; }
+.hermes-home .home-recent li a { text-decoration: none; }
+.hermes-home .home-recent-head h2 { text-align: start; }
