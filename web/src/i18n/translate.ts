@@ -10,7 +10,7 @@ const ATTRIBUTES = ["placeholder", "aria-label", "title", "alt"] as const;
 const SKIP = "script,style,textarea,pre,code,[data-no-translate],[contenteditable='true'],svg text";
 const DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 
-let dictionary: Record<string, string> = {};
+let dictionary: Record<string, string> = Object.create(null);
 let rules: Rule[] = [];
 const faDigits = (text: string) => text.replace(/\d/g, digit => DIGITS[Number(digit)]);
 const hasWordLatin = (text: string) => /[A-Za-z]{3,}/.test(text);
@@ -18,7 +18,7 @@ const hasWordLatin = (text: string) => /[A-Za-z]{3,}/.test(text);
 export function translateText(text: string): string {
   const core = text.trim();
   if (!core) return text;
-  let out = dictionary[core];
+  let out = Object.prototype.hasOwnProperty.call(dictionary, core) ? dictionary[core] : undefined;       // a text such as "constructor" must not find Object.prototype's member
   if (out === undefined) {
     for (const [pattern, replace] of rules) {
       const found = core.match(pattern);
@@ -36,6 +36,10 @@ function skipped(node: Node): boolean {
 }
 
 function translateNode(node: Node) {
+  try { translateNodeUnsafe(node); } catch (error) { if (typeof console !== "undefined") console.warn("translation skipped a node", error); }
+}
+
+function translateNodeUnsafe(node: Node) {
   if (node.nodeType === 3) {
     if (skipped(node)) return;
     const value = node.nodeValue || "";
@@ -56,8 +60,9 @@ function translateNode(node: Node) {
 
 export async function startTranslator() {
   if (currentLang() !== "fa") return;
-  const module = await import("./fa");
-  dictionary = module.FA;
+  let module: typeof import("./fa");
+  try { module = await import("./fa"); } catch (error) { console.warn("the Persian dictionary could not be loaded", error); return; }
+  dictionary = Object.assign(Object.create(null), module.FA);
   rules = module.RULES;
   const root = document.body;
   const pending = new Set<Node>();
@@ -72,9 +77,12 @@ export async function startTranslator() {
     window.setTimeout(() => {              // not requestAnimationFrame: it does not run in a hidden tab, and the text must already be Persian when the tab is shown
       scheduled = false;
       observer.disconnect();
-      pending.forEach(node => { if (node.isConnected) translateNode(node); });
-      pending.clear();
-      observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...ATTRIBUTES] });
+      try {
+        pending.forEach(node => { if (node.isConnected) translateNode(node); });
+      } finally {                          // whatever happens, the observer is attached again and the queue is emptied
+        pending.clear();
+        observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...ATTRIBUTES] });
+      }
     }, 16);
   });
   translateNode(root);
