@@ -191,6 +191,29 @@ def shotcraft_resources():
         )
 
 
+def skill_resources():
+    """The vendored craft skills (vendor/motion-skills, MIT) as registry entries: guidance for the existing engines, never an execution API.
+
+    A skill the planner may choose is `existing-pipeline` (creative/skills_library.py hands it to the scene designers); one that needs a runtime the
+    studio does not run by default stays `catalog-only` with the reason in its limitations."""
+    from creative import skills_library
+    sources = {(s["repo"], s["revision"]): s for s in skills_library.notices()}
+    for row in skills_library.index().values():
+        source = sources.get((row["repo"], row["revision"]), {})
+        runnable = skills_library.planner_eligible(row)
+        yield Resource(
+            id=f'{row["namespace"]}:{row["name"]}', name=row["name"].replace("-", " ").title(), description=row["description"],
+            type="skill", category=row["pack"], tags=tuple(dict.fromkeys(row["tags"])),
+            provider=f'skills-{row["namespace"]}', source_url=row["repo"] + ("/tree/main/" + row["subpath"] if row["subpath"] != "SKILL.md" else ""),
+            source_version=row["revision"], engine="skill", integration_status="skill-only",
+            availability="existing-pipeline" if runnable else "catalog-only", contexts=("motion-graphic",) if runnable else (),
+            license=License(type="MIT", attribution_required=True),     # the licence text is kept; approving commercial use stays the owner's decision
+            recommended_for=(row["description"][:160],), legacy_id=row["id"],
+            limitations=((f"Craft guidance only; rendering stays with the existing engines. Copyright {source.get('copyright', '')}; notice kept in vendor/motion-skills.",)
+                         if runnable else (row["runtime_needed"], "Listed for discovery; the planner is not offered this skill.")),
+        )
+
+
 def face_effect_resources():
     """Discover the existing real compositor; do not duplicate its execution API."""
     from engine.face_effects import CATALOG

@@ -39,6 +39,22 @@ def _search_resources(args: ResourceSearchInput) -> dict:
     return search_resources(args.query, engine=args.engine, availability=args.availability, limit=args.limit)
 
 
+class SkillReadInput(ToolInput):
+    skill_id: str = Field(min_length=3, max_length=80)
+    reference: str = Field(default="", max_length=80)       # one of the skill's own reference files, by name (listed in the skill's entry)
+    max_chars: int = Field(default=6000, ge=500, le=12000)
+
+
+def _read_skill(args: SkillReadInput) -> dict:
+    """The text of one craft skill (or one of its listed reference files). Read-only, bounded, no execution: only ids of the vendored index resolve."""
+    from creative import skills_library
+    row = skills_library.get(args.skill_id)
+    if row is None:
+        return {"error": "unknown-skill"}
+    text = skills_library.reference(args.skill_id, args.reference, args.max_chars) if args.reference else skills_library.body(args.skill_id, args.max_chars)
+    return {"id": row["id"], "source": row["repo"], "revision": row["revision"], "license": "MIT", "references": row["references"], "text": text}
+
+
 class LocalizeInput(ToolInput):
     source_path: str
     filename: str
@@ -205,6 +221,7 @@ def _cancel(args: ProjectRefInput) -> dict:
 TOOLS = {
     spec.name: spec for spec in (
         ToolSpec("search_creative_resources", "Search shared creative metadata. Catalog-only entries cannot be rendered. No installation, uploads or project changes.", ResourceSearchInput, "catalog_read", False, True, _search_resources),
+        ToolSpec("read_creative_skill", "Read the instructions of one craft skill found with search_creative_resources (engine=skill), or one of its reference files. Read-only and bounded.", SkillReadInput, "catalog_read", False, True, _read_skill),
         ToolSpec("instagram_content_check", "Check supplied Instagram hooks, script timing, captions or naturalness locally. English: hook, beats, caption, humanize, audit_text, swipe. Persian/mixed Persian: hook, beats, caption, humanize only; preserve ZWNJ. Heuristics are not virality predictions. No research, publishing or media generation.", InstagramContentCheckInput, "supplied_text", False, True, _instagram_content_check),
         ToolSpec("inspect_media", "Read duration, streams and dimensions of an owned upload.", InspectMediaInput, "owned_attachment", False, True, _inspect_media),
         ToolSpec("inspect_url", "Read a public product page and download verified product images.", InspectUrlInput, "public_url", False, True, _inspect_url),

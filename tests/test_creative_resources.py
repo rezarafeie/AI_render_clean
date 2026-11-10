@@ -157,7 +157,8 @@ def test_snapshot_indexes_existing_sources_without_claiming_execution():
     from engine.face_effects import CATALOG
     from creative.native_motion import source_names
     hf_names = {v["name"] for v in load_catalog()["items"]} | set(source_names())
-    assert summary["total"] == len(hf_names) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES) + len(shotcraft_catalog()) + len(CATALOG)
+    from creative import skills_library
+    assert summary["total"] == len(hf_names) + len(EFFECT_CATALOG_V4) + 4 + len(RECIPES) + len(shotcraft_catalog()) + len(CATALOG) + len(skills_library.index())
     rows = registry.search_resources(limit=100)["items"]
     assert len({r["id"] for r in rows}) == len(rows)
     assert all(r["render_time_ms"] is None and r["peak_memory_mb"] is None for r in rows)

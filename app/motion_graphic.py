@@ -716,7 +716,8 @@ def _plan_detail(brief: str, plan) -> str:
     from creative import font_catalog
     title, body = font_catalog.get(plan.title_font), font_catalog.get(plan.body_font)
     fonts = f"\nفونت‌ها: تیتر «{title['label'] if title else '—'}» · متن «{body['label'] if body else '—'}»" + (f" — {plan.font_why}" if plan.font_why else "")
-    return f"درخواست:\n{brief.strip()[:900]}\n\nطرح: «{plan.title}» · {plan.format} · {plan.duration:g} ثانیه{fonts}\n{scenes}"
+    skills = ("\nمهارت‌های طراحی انتخاب‌شده: " + "، ".join(plan.skills)) if getattr(plan, "skills", None) else ""
+    return f"درخواست:\n{brief.strip()[:900]}\n\nطرح: «{plan.title}» · {plan.format} · {plan.duration:g} ثانیه{fonts}{skills}\n{scenes}"
 
 
 def _soft_progress(directory: Path, percent: int, message: str) -> None:

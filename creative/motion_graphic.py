@@ -14,6 +14,7 @@ import subprocess
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
+from functools import lru_cache
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -140,6 +141,21 @@ def _strip_strings(code: str) -> str:
 _KIT_NAMES = frozenset(re.findall(r"\bHM\.(\w+)\s*=", (KIT / "kit.js").read_text(encoding="utf-8")))
 
 
+@lru_cache(maxsize=1)
+def _motion_kit_names() -> frozenset:
+    """What `MotionKit` really exports (read from the vendored file the first time a scene uses it, not at start-up)."""
+    text = (KIT / "motion-kit.js").read_text(encoding="utf-8")
+    match = re.search(r"window\.MotionKit\s*=\s*\{([^}]*)\}", text)
+    return frozenset(re.findall(r"\w+", match.group(1))) if match else frozenset()
+
+
+def unknown_motion_kit(code: str) -> list[str]:
+    """MotionKit.<name> calls the library does not define (the page would die with "MotionKit.x is not a function")."""
+    if "MotionKit" not in code:
+        return []
+    return sorted({name for name in re.findall(r"\bMotionKit\.(\w+)", _strip_strings(code)) if name not in _motion_kit_names()})
+
+
 def unknown_helpers(code: str) -> list[str]:
     """HM.<name> calls that the kit does not define: the page would die with "HM.x is not a function" in the browser."""
     return sorted({name for name in re.findall(r"\bHM\.(\w+)", _strip_strings(code)) if name not in _KIT_NAMES})
@@ -212,6 +228,9 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         missing = unknown_helpers(getattr(page, field))
         if missing:
             problems.append(f"{field}: HM.{', HM.'.join(missing)} does not exist. HM has only: " + ", ".join(sorted(n for n in _KIT_NAMES if not n.startswith("_") and n not in {"width", "height", "duration", "colors"})) + " (anything else: use tl.* with a selector)")
+        missing_kit = unknown_motion_kit(getattr(page, field))
+        if missing_kit:
+            problems.append(f"{field}: MotionKit.{', MotionKit.'.join(missing_kit)} does not exist. MotionKit has only: " + ", ".join(sorted(_motion_kit_names())))
         broken = js_syntax_error(getattr(page, field))
         if broken:
             problems.append(f"{field} has a JavaScript syntax error ({broken}): check brackets, quotes and commas, and write plain valid JS" + (" (T, D and tl already exist in build_js: never declare them; rename your own variable, e.g. const tt = ...)" if re.search(r"Identifier '(?:T|D|tl)' has already", str(broken)) else ""))
@@ -247,7 +266,7 @@ def _fonts_css() -> str:
     return fonts_css()
 
 
-from . import font_catalog
+from . import font_catalog, skills_library
 
 
 def assemble(page: MotionPage) -> str:
@@ -290,6 +309,7 @@ def assemble(page: MotionPage) -> str:
 <title>{escape(page.title or 'Motion graphic')}</title>
 <script src="./assets/gsap.min.js"></script>
 <script src="./assets/kit.js"></script>
+<script src="./assets/motion-kit.js"></script>
 <style>
 {_fonts_css()}{font_catalog.faces_css(font_catalog.used_families(page.css, page.scenes_html))}
 {(KIT / 'kit.css').read_text()}
@@ -325,6 +345,7 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
     (assets / "fonts").mkdir(parents=True, exist_ok=True)
     shutil.copy2(ensure_gsap(), assets / "gsap.min.js")
     shutil.copy2(KIT / "kit.js", assets / "kit.js")
+    shutil.copy2(KIT / "motion-kit.js", assets / "motion-kit.js")
     for target, source in FONT_FILES.items():
         shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
     font_catalog.copy_assets(assets / "fonts", font_catalog.used_families(page.css, page.scenes_html))
@@ -553,6 +574,7 @@ class MotionPlan(BaseModel):
     title_font: str = ""               # a font-library id (headlines, big numbers); empty = the studio default
     body_font: str = ""                # a font-library id (labels, callouts, small text)
     font_why: str = ""                 # one sentence: what in the letter shapes fits this film
+    skills: list[str] = Field(default_factory=list)   # up to two craft-skill ids (creative/skills_library.py) the scene designers read for this film
     design_direction: str = Field(default="", max_length=2500)
     scenes: list[ScenePlan] = Field(default_factory=list)
 
@@ -560,6 +582,12 @@ class MotionPlan(BaseModel):
     @classmethod
     def _few(cls, value):
         return [str(q).strip() for q in value if str(q).strip()][:3]
+
+    @field_validator("skills", mode="before")
+    @classmethod
+    def _skills(cls, value):
+        from . import skills_library
+        return skills_library.normalize_ids(value if isinstance(value, list) else [])
 
     def asks(self) -> bool:
         return bool(self.questions) and not self.scenes
@@ -580,7 +608,7 @@ PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics
 scene designers can build each scene on their own. Return ONE JSON object and nothing else:
 {"questions": [], "title": "...", "summary": "...", "format": "vertical|horizontal|square", "duration": 15,
  "palette": {"bg": "#RRGGBB", "surface": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "accent2": "#RRGGBB"},
- "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
+ "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "skills": [], "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
 
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
@@ -711,6 +739,9 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
     parts.append("NATIVE SHOTCRAFT (shotcraft_component executes original code; shotcraft_id alone remains reference-guided authoring):\n" + json.dumps(shotcraft_native_catalog(),ensure_ascii=False,separators=(",",":"))
                  + "\nWhen a native design fits the actual meaning and constraints, use its typed shotcraft_component, not a model recreation of its code. Keep custom scene design when no native component fits. Never claim that shotcraft_id authoring executed original TSX.")
     parts.append("Card-flip is a brief three-feature overview. Reading holds are per-card, NOT a guarantee of serial reading of all three cards; keep copy terse or use sequential custom scenes for detailed explanation.")
+    from . import skills_library
+    if skills_library.planning_block():
+        parts.append(skills_library.planning_block())
     parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
@@ -886,6 +917,7 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
                    "Plan the motion on these times: the entrance of each callout, label, number or picture lands on the word that names it, and the headline is complete when its word is spoken. "
                    "Do not spread entrances evenly or by guess.") if scene.cues else ""),
              font_catalog.designer_block(font_catalog.resolve(plan.title_font, font_catalog.DEFAULT_TITLE), font_catalog.resolve(plan.body_font, font_catalog.DEFAULT_BODY)),
+             skills_library.designer_block(plan.skills),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
              f"ORIGINAL REQUEST:\n{brief.strip()[:1500]}"]
