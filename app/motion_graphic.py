@@ -588,7 +588,7 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     saved = directory / "voice.json"
     try:
         cached = json.loads(saved.read_text())
-        if cached.get("fp") == f"{fp}|{voice_id}|{voice_style}":
+        if cached.get("fp") == f"{fp}|{voice_id}|{voice_style}|{_TAKE}":
             return mg.MotionPlan.model_validate(cached["plan"]), cached["audio"], cached.get("notes", [])
     except (OSError, ValueError):
         pass
@@ -599,6 +599,15 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         return plan, [], []
     _soft_progress(directory, 7, "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم.")
     _note(directory, "voice", "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم")
+    if all(text.strip() for text in texts):
+        try:
+            from brain import localize
+            take = _with_retries(lambda: localize.continuous_narration(texts, directory / "voice", voice_id, voice_style))
+            return _fit_to_take(directory, record, plan, texts, take, fp, voice_id, voice_style)
+        except _Cancelled:
+            raise
+        except Exception as exc:
+            log.warning("continuous narration not used (%s); the lines are voiced one by one", str(exc)[:160])
     partial = None
     try:
         from brain import localize
@@ -635,10 +644,49 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
     retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
     _save_audio_direction(directory, record, retimed, texts)
-    saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
+    saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}|{_TAKE}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))
     _note(directory, "voice", f"نریشن آماده شد: {sum(c['duration'] for c in audio):.0f} ثانیه صدا، ویدیو {cursor:.0f} ثانیه", "done",
           detail=f"راوی: {voice_id or 'پیش‌فرض'} · سبک: {voice_style or 'طبیعی'}\n" + "\n".join(f"{i}. ({c['duration']:.1f} s) {t}" for i, (c, t) in enumerate(zip(audio, [t for t in texts if t.strip()]), 1)))
     return retimed, audio, gate_notes
+
+
+_TAKE = "take2"            # the narration is one continuous reading (a change of method invalidates saved per-line takes)
+_LEAD = 0.35               # a scene's picture changes this long before its first word is heard
+_PREROLL = 0.3             # silence before the voice starts
+
+
+def _fit_to_take(directory: Path, record: dict, plan, texts: list[str], take: dict, fp: str, voice_id: str, voice_style: str):
+    """The scenes follow the voice, not the other way round: the whole script is one unbroken reading, each scene starts where its first word is heard (a beat early)
+    and ends where the next begins, and every scene knows when each of its words is spoken so its motion lands on them."""
+    from creative import motion_graphic as mg
+    lines = take["lines"]
+    starts = [0.0]
+    for line in lines[1:]:
+        starts.append(max(starts[-1] + 0.8, _PREROLL + line["start"] - _LEAD))
+    voice_end = _PREROLL + take["total"]
+    last_end = max(_PREROLL + lines[-1]["end"] + 0.9, voice_end + 0.3)
+    ends = starts[1:] + [last_end]
+    scenes = []
+    for scene, line, begin, end in zip(plan.scenes, lines, starts, ends):
+        cues = [{"word": w["word"], "t": round(max(0.0, _PREROLL + w["start"] - begin), 2)} for w in line["words"]]
+        scenes.append(scene.model_copy(update={"start": round(begin, 2), "end": round(end, 2), "cues": cues}))
+    if last_end > mg.MAX_SECONDS:
+        raise RuntimeError(f"نریشن {last_end:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ نریشن را کوتاه‌تر کنید.")
+    audio = [{"path": str(take["audio"]), "start": _PREROLL, "duration": round(take["total"], 2)}]
+    relative = [[{"word": w["word"], "start": round(w["start"] - line["words"][0]["start"], 3), "end": round(w["end"] - line["words"][0]["start"], 3)} for w in line["words"]] for line in lines]
+    _save_word_timing(directory, texts, voice_id, voice_style, [round(_PREROLL + line["start"], 3) for line in lines], relative)
+    try:
+        (directory / "voice_takes.json").unlink()                 # the per-line takes of the old method must not be mixed with this one
+    except OSError:
+        pass
+    _remember_voice_error(directory, record, None)
+    retimed = plan.model_copy(update={"scenes": scenes, "duration": round(last_end, 2)})
+    _save_audio_direction(directory, record, retimed, texts)
+    notes = ["نریشن یک اجرای پیوسته است؛ صحنه‌ها با زمان واقعی کلمات تنظیم شدند."]
+    (directory / "voice.json").write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}|{_TAKE}", "plan": retimed.model_dump(), "audio": audio, "notes": notes}, ensure_ascii=False))
+    _note(directory, "voice", f"نریشن آماده شد: یک اجرای پیوسته، {take['total']:.0f} ثانیه صدا، ویدیو {last_end:.0f} ثانیه", "done",
+          detail=f"راوی: {voice_id or 'پیش‌فرض'} · سبک: {voice_style or 'طبیعی'}\n" + "\n".join(f"{i}. [{b:.1f}–{e:.1f}s] {t}" for i, (b, e, t) in enumerate(zip(starts, ends, texts), 1)))
+    return retimed, audio, notes
 
 
 def _plan_detail(brief: str, plan) -> str:

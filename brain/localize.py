@@ -580,7 +580,7 @@ def _synthesize_once(text: str, out_dir: Path, provider: str) -> tuple[Path, flo
 _SENTENCE_END = ".!?؟…"
 
 
-def narration_script(texts: list[str], style: str = "") -> tuple[str, list[tuple[int, int]]]:
+def narration_script(texts: list[str], style: str = "", tag_once: bool = False) -> tuple[str, list[tuple[int, int]]]:
     """Join lines into one speakable text; returns (text, [(start, end) char span per line])."""
     parts: list[str] = []
     spans: list[tuple[int, int]] = []
@@ -590,7 +590,7 @@ def narration_script(texts: list[str], style: str = "") -> tuple[str, list[tuple
         piece = speakable(raw).strip().rstrip("،,")
         if piece and piece[-1] not in _SENTENCE_END:
             piece += "."
-        if piece and tags:
+        if piece and tags and not (tag_once and any(parts)):          # one continuous reading sets its tone once, at the start, instead of re-instructing the voice every line
             piece = tags + piece
         if parts:
             pos += 1  # the joining space
@@ -700,6 +700,45 @@ def synthesize_narration(texts: list[str], out_dir: Path, voice: str = "", style
         _trim_silence(raw, piece)
         clips.append((piece, audio_duration(piece)))
     return clips
+
+
+def _absolute_words(alignment: dict, span: tuple[int, int]) -> list[dict]:
+    """Words of a span with their absolute seconds in the whole take (style tags are not words)."""
+    chars = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    ends = alignment.get("character_end_times_seconds") or []
+    found, current = [], None
+    for k in range(span[0], min(span[1], len(chars), len(starts), len(ends))):
+        if chars[k].strip():
+            if current is None:
+                current = {"word": "", "start": starts[k], "end": ends[k]}
+            current["word"] += chars[k]
+            current["end"] = ends[k]
+        elif current is not None:
+            found.append(current); current = None
+    if current is not None:
+        found.append(current)
+    return [w for w in found if not (w["word"].startswith("[") and w["word"].endswith("]"))]
+
+
+def continuous_narration(texts: list[str], out_dir: Path, voice: str = "", style: str = "") -> dict:
+    """The whole script read in ONE take, kept whole: {"audio": file, "total": seconds, "lines": [{"start", "end", "words": [{word, start, end}]}]} with every time
+    absolute in the take (from the provider's character timestamps). Nothing is cut or re-assembled, so the voice keeps its rhythm and tone; the scenes are fitted to it."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    full, spans = narration_script(texts, style, tag_once=True)
+    audio, timing = _narration_paths(full, out_dir, voice)
+    if not (audio.is_file() and timing.is_file()):
+        data, alignment = _elevenlabs_with_timestamps(full, voice)
+        audio.write_bytes(data)
+        timing.write_text(json.dumps(alignment, ensure_ascii=False))
+    alignment = json.loads(timing.read_text())
+    lines = []
+    for span in spans:
+        words = _absolute_words(alignment, span)
+        if not words:
+            raise RuntimeError("the narration take has no timestamps for a line")
+        lines.append({"start": words[0]["start"], "end": words[-1]["end"], "words": words})
+    return {"audio": audio, "total": audio_duration(audio), "lines": lines}
 
 
 def narration_words(texts: list[str], out_dir: Path, voice: str = "", style: str = "") -> list[list[dict]]:

@@ -156,3 +156,39 @@ def test_text_over_text_findings_name_their_scene():
     from app import motion_graphic as app_mg
     line = "layout: content_overlap: Two text blocks overlap and may render unreadable. [#s1-headline] Fix: Give each block its own zone"
     assert app_mg._TEXT_OVERLAP.search(line) and app_mg._scenes_in([line], 8) == [1]
+
+
+def _fake_take(tmp_path):
+    texts = ["سلام دنیا", "این یک آزمایش است"]
+    audio = tmp_path / "t.mp3"; audio.write_bytes(b"x")
+    def line(words, t0):
+        out, t = [], t0
+        for w in words:
+            out.append({"word": w, "start": t, "end": t + 0.4}); t += 0.5
+        return {"start": out[0]["start"], "end": out[-1]["end"], "words": out}
+    return texts, {"audio": audio, "total": 6.0, "lines": [line(["سلام", "دنیا"], 0.2), line(["این", "یک", "آزمایش", "است"], 2.5)]}
+
+
+def test_scenes_are_fitted_to_one_continuous_take(tmp_path, monkeypatch):
+    from app import motion_graphic as app_mg
+    from creative import motion_graphic as mg
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    texts, take = _fake_take(tmp_path)
+    plan = mg.MotionPlan(title="t", duration=8, scenes=[mg.ScenePlan(headline="a", idea="i", start=0, end=4, narration=texts[0]), mg.ScenePlan(headline="b", idea="i", start=4, end=8, narration=texts[1])])
+    retimed, audio, notes = app_mg._fit_to_take(directory, record, plan, texts, take, "fp", "", "")
+    assert len(audio) == 1 and audio[0]["start"] == app_mg._PREROLL and audio[0]["duration"] == 6.0       # one whole reading, never cut
+    first, second = retimed.scenes
+    assert first.start == 0 and first.end == second.start                                                 # scenes tile with no gap
+    assert abs(second.start - (app_mg._PREROLL + 2.5 - app_mg._LEAD)) < 0.02                              # the second scene starts where its first word is heard (a beat early)
+    assert retimed.duration >= app_mg._PREROLL + 6.0                                                      # the picture outlasts the voice
+    assert [c["word"] for c in second.cues] == ["این", "یک", "آزمایش", "است"] and second.cues[0]["t"] > 0
+
+
+def test_a_continuous_take_sets_its_tone_once():
+    from brain import localize
+    full, spans = localize.narration_script(["اول", "دوم"], "calm", tag_once=True)
+    full_each, _ = localize.narration_script(["اول", "دوم"], "calm")
+    assert full.startswith("[calm]") and full.count("[calm]") == 1
+    assert full_each.count("[calm]") == 2

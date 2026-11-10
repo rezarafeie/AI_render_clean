@@ -517,6 +517,7 @@ class ScenePlan(BaseModel):
     native_component: NativeMotion | None = None
     shotcraft_component: NativeSpec | None = None
     transition: str = ""               # how this scene enters (a key of ENTRANCE_LIBRARY); empty or unknown = chosen from the film's style
+    cues: list[dict] = Field(default_factory=list)     # {"word", "t"}: when each spoken word is heard, in seconds from this scene's start (from the real voice take)
 
     @model_validator(mode="after")
     def one_native_source(self):
@@ -848,7 +849,10 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
              "all tween durations, delays, repeats and staggers must finish before D. HM.pop from is a NUMBER, never a direction string. "
              "Keep the main content readable through the final frame; the assembler owns scene transitions.",
              f"THIS SCENE\nheadline (exact words, Persian): {scene.headline}\nidea: {scene.idea}"
-             + (f"\nnarration spoken over this scene (the viewer HEARS it; the visuals must illustrate it and the on-screen text must support it, not duplicate it): {scene.narration}" if scene.narration else ""),
+             + (f"\nnarration spoken over this scene (the viewer HEARS it; the visuals must illustrate it and the on-screen text must support it, not duplicate it): {scene.narration}" if scene.narration else "")
+             + (("\nSPOKEN WORD TIMES from the real voice take (seconds from the scene start): " + " ".join(f"{c['word']}@{c['t']:g}" for c in scene.cues[:70])
+                 + "\nPlan the motion on these times: the entrance of each callout, label, number or picture lands on the word that names it, and the headline is complete when its word is spoken. "
+                   "Do not spread entrances evenly or by guess.") if scene.cues else ""),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
              f"ORIGINAL REQUEST:\n{brief.strip()[:1500]}"]
