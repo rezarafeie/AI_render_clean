@@ -49,10 +49,77 @@ def create_project(
 
 
 @router.get("/voices")
-def narrator_options():
+def narrator_options(request: Request):
+    from brain import voice_clone
     from brain.localize import NARRATORS, VOICE_STYLES
-    return {"voices": [{"id": i, "name": n, "note": d} for i, n, d in NARRATORS],
+    user = None if is_local_auth_bypass(request) else str(request.state.user.id)
+    mine = [{"id": r["id"], "name": r["name"], "note": "صدای کلون‌شدهٔ شما", "clone": True} for r in voice_clone.list_clones(user)]
+    return {"voices": [{"id": i, "name": n, "note": d} for i, n, d in NARRATORS] + mine,
             "styles": [{"id": k, "label": v[0]} for k, v in VOICE_STYLES.items()]}
+
+
+CLONE_UPLOAD_LIMIT = 1_500_000_000
+CLONE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".webm", ".mp4", ".mov", ".m4v", ".mkv"}
+
+
+@router.post("/voices/clone", status_code=202)
+async def clone_voice(request: Request, file: UploadFile = File(...), name: str = Form(""), kind: str = Form("file"), consent: str = Form("")):
+    """Start cloning a voice from a recording made in the app or from an audio/video file (30 s to 2 h). The person must confirm the voice is theirs or used with permission."""
+    from pathlib import Path
+    import uuid
+    from brain import voice_clone
+    if consent.lower() not in ("1", "true", "yes", "on"):
+        raise HTTPException(422, "باید تأیید کنید که این صدا مال خودتان است یا اجازهٔ استفاده از آن را دارید")
+    suffix = Path(file.filename or "voice.webm").suffix.lower() or ".webm"
+    if suffix not in CLONE_EXTENSIONS:
+        raise HTTPException(422, "فایل باید صدا یا ویدیو باشد (mp3، wav، m4a، mp4، mov، webm…)")
+    folder = voice_clone.root() / "uploads"
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{uuid.uuid4().hex}{suffix}"
+    size = 0
+    with target.open("wb") as handle:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > CLONE_UPLOAD_LIMIT:
+                handle.close(); target.unlink(missing_ok=True)
+                raise HTTPException(413, "حجم فایل از حد مجاز بیشتر است")
+            handle.write(chunk)
+    try:
+        seconds = voice_clone.probe_seconds(target)
+    except ValueError as exc:
+        target.unlink(missing_ok=True)
+        raise HTTPException(422, str(exc))
+    if seconds < voice_clone.MIN_SECONDS:
+        target.unlink(missing_ok=True)
+        raise HTTPException(422, f"نمونه خیلی کوتاه است ({seconds:.0f} ثانیه)؛ دست‌کم {voice_clone.MIN_SECONDS:.0f} ثانیه صحبت لازم است")
+    if seconds > voice_clone.MAX_SOURCE_SECONDS:
+        target.unlink(missing_ok=True)
+        raise HTTPException(422, "فایل از ۲ ساعت بیشتر است")
+    user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
+    return {"job": voice_clone.start(user, name, target, "recording" if kind == "recording" else "file")}
+
+
+@router.get("/voices/clone/{job}")
+def clone_status(request: Request, job: str):
+    from brain import voice_clone
+    user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
+    state = voice_clone.job_state(job, user)
+    if state is None:
+        raise HTTPException(404, "job not found")
+    return state
+
+
+@router.delete("/voices/{voice_id}")
+def delete_voice(request: Request, voice_id: str):
+    from brain import voice_clone
+    user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
+    try:
+        removed = voice_clone.remove(user, voice_id)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    if not removed:
+        raise HTTPException(404, "voice not found")
+    return {"ok": True}
 
 
 @router.get("/{project_id}")

@@ -981,8 +981,23 @@ export const api = {
     return uploadWithProgress(`${BASE}/localize`, fd, onProgress);
   },
   /** Narrators and speaking styles the person can pick for a Persian voice-over. */
-  async localizeVoices(): Promise<{ voices: { id: string; name: string; note: string }[]; styles: { id: string; label: string }[] }> {
+  async localizeVoices(): Promise<{ voices: { id: string; name: string; note: string; clone?: boolean }[]; styles: { id: string; label: string }[] }> {
     return j(await authFetch(`${BASE}/localize/voices`));
+  },
+  /** Clone a voice from a recording made in the app or from an audio/video file; returns the job to poll. */
+  async cloneVoice(file: Blob, filename: string, name: string, kind: "recording" | "file", onProgress?: (percent: number) => void): Promise<{ job: string }> {
+    const fd = new FormData();
+    fd.append("file", file, filename);
+    fd.append("name", name);
+    fd.append("kind", kind);
+    fd.append("consent", "true");
+    return uploadWithProgress(`${BASE}/localize/voices/clone`, fd, onProgress);
+  },
+  async cloneVoiceStatus(job: string): Promise<{ status: "working" | "done" | "failed"; message: string; error: string | null; voice: { id: string; name: string } | null }> {
+    return j(await authFetch(`${BASE}/localize/voices/clone/${job}`));
+  },
+  async deleteVoice(id: string): Promise<void> {
+    await j(await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}`, { method: "DELETE" }));
   },
   async editLocalize(id: string, body: Partial<Pick<LocalizeProject, "title" | "title_emojis" | "cta_number" | "music" | "voice_provider" | "voice_id" | "voice_style" | "caption_box" | "title_box" | "end_card" | "end_card_seconds">>
     & { lines?: { i: number; fa?: string; kind?: LocalizeLine["kind"] }[] }): Promise<LocalizeProject> {

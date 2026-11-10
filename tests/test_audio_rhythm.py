@@ -312,13 +312,14 @@ def test_the_narration_problem_is_remembered_in_the_record_and_cleared_when_it_w
     plan = _saved_plan(directory)
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
     def broken(texts, out, voice="", style=""): raise OSError("[Errno -5] No address associated with hostname")
-    monkeypatch.setattr(localize, "synthesize_narration", broken)
+    monkeypatch.setattr(localize, "continuous_narration", broken)
     monkeypatch.setattr(app_mg.time, "sleep", lambda s: None)
     with pytest.raises(RuntimeError, match="ساخت نریشن انجام نشد"):       # a reel without its voice is not built silently
         app_mg._narrate(directory, record, plan, "abc")
     assert "Errno -5" in app_mg.load(directory)["voice_error"]
-    monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(directory / f"c{i}.wav", 2.0) for i in range(len(texts))])
-    monkeypatch.setattr(app_mg, "_gate_clips", lambda p, c: [])
+    audio = directory / "take.mp3"; audio.write_bytes(b"x")
+    monkeypatch.setattr(localize, "continuous_narration", lambda texts, out, voice="", style="": {"audio": audio, "total": 4.0, "lines": [
+        {"start": 0.2 + 2 * i, "end": 1.0 + 2 * i, "words": [{"word": "w", "start": 0.2 + 2 * i, "end": 1.0 + 2 * i}]} for i in range(len(texts))]})
     app_mg._narrate(directory, record, plan, "abc")
     assert "voice_error" not in app_mg.load(directory)
 

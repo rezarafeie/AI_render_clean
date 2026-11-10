@@ -462,11 +462,17 @@ NARRATOR_ALIASES = {
 def narrator_named_in(text: str) -> str:
     """The voice id of a narrator the person named in plain words next to «گوینده / راوی / narrator / voice», else ''."""
     import re as _re
+    import re
     flat = str(text or "").lower()
     for found in _re.finditer(r"(?:گوینده|راوی|صدای|narrator|voice)\s*(?:ی|ای)?\s*[:：-]?\s*(?:با\s+(?:صدای\s+)?)?([a-z\u0600-\u06ff\u200c]+)", flat):
         word = found.group(1).strip("\u200c")
         if word in NARRATOR_ALIASES:
             return NARRATOR_ALIASES[word]
+    from brain import voice_clone
+    for row in voice_clone.list_clones():                  # a voice the person cloned, named in the request: «با صدای سارا»
+        label = str(row.get("name") or "").strip().lower()
+        if label and re.search(rf"(?:گوینده|راوی|صدای|narrator|voice)\s*(?:ی|ای)?\s*[:：-]?\s*(?:با\s+(?:صدای\s+)?)?{re.escape(label)}(?=$|[\s،.:])", flat):
+            return row["id"]
     for name, voice in NARRATOR_ALIASES.items():          # «با صدای کانری», «کانری رو انتخاب کن»: the name alone, when it is a Persian name of ours
         if _re.search(rf"(?:^|[\s،.:])({_re.escape(name)})(?=$|[\s،.:])", flat) and any("؀" <= c <= "ۿ" for c in name):
             return voice
@@ -484,7 +490,8 @@ VOICE_STYLES = {
 
 
 def narrator_ids() -> set[str]:
-    return {voice for voice, _, _ in NARRATORS}
+    from brain import voice_clone
+    return {voice for voice, _, _ in NARRATORS} | voice_clone.clone_ids()
 
 
 def default_voice_provider() -> str:

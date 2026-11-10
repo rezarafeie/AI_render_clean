@@ -95,12 +95,15 @@ def test_narration_retimes_scenes_to_the_voice(monkeypatch, tmp_path):
     from brain import localize
     from creative import motion_graphic as mg
     plan = mg.MotionPlan(title="t", duration=9, scenes=[mg.ScenePlan(headline=f"h{i}", idea="i", start=3 * i, end=3 * i + 3, narration="x") for i in range(3)])
-    monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(tmp_path / f"c{i}.wav", s) for i, s in enumerate((4.0, 1.0, 2.0))])
+    texts, take = ["x", "x", "x"], None
+    audio = tmp_path / "take.mp3"; audio.write_bytes(b"x")
+    take = {"audio": audio, "total": 9.0, "lines": [{"start": s, "end": s + 1.5, "words": [{"word": "x", "start": s, "end": s + 1.5}]} for s in (0.2, 3.4, 7.0)]}
+    monkeypatch.setattr(localize, "continuous_narration", lambda *a, **k: take)
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
-    monkeypatch.setattr(app_mg, "_gate_clips", lambda plan, clips: [])          # the clips are placeholders here; the checks have their own tests
-    retimed, audio, notes = app_mg._narrate(tmp_path, {"voice_id": "", "voice_style": ""}, plan, "fp")
-    assert [round(s.end - s.start, 2) for s in retimed.scenes] == [5.45, 2.45, 4.25]      # every scene lasts its voice plus a breath (no dead air after a short line); the last holds 0.8 s more
-    assert retimed.duration == 12.15 and audio[0]["start"] == 0.25 and audio[1]["start"] == 5.7 and notes == []
+    retimed, audio_list, notes = app_mg._narrate(tmp_path, {"voice_id": "", "voice_style": ""}, plan, "fp")
+    assert len(audio_list) == 1 and audio_list[0]["duration"] == 9.0                                  # one whole reading
+    assert retimed.scenes[0].start == 0 and retimed.scenes[1].start == pytest.approx(0.3 + 3.4 - 0.35, abs=0.02)   # a scene starts where its first word is heard (a beat early)
+    assert retimed.scenes[0].end == retimed.scenes[1].start and retimed.duration > 9.3
 
 
 def test_narration_failure_stops_the_build_with_the_reason(monkeypatch, tmp_path):
@@ -108,7 +111,7 @@ def test_narration_failure_stops_the_build_with_the_reason(monkeypatch, tmp_path
     from brain import localize
     from creative import motion_graphic as mg
     plan = mg.MotionPlan(title="t", duration=6, scenes=[mg.ScenePlan(headline="a", idea="i", start=0, end=3, narration="x"), mg.ScenePlan(headline="b", idea="i", start=3, end=6, narration="y")])
-    monkeypatch.setattr(localize, "synthesize_narration", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("quota")))
+    monkeypatch.setattr(localize, "continuous_narration", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("quota")))
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
     with pytest.raises(RuntimeError, match="اعتبار ElevenLabs"):
         app_mg._narrate(tmp_path, {}, plan, "fp")

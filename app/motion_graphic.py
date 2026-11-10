@@ -607,7 +607,12 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         except _Cancelled:
             raise
         except Exception as exc:
-            log.warning("continuous narration not used (%s); the lines are voiced one by one", str(exc)[:160])
+            # No quiet return to the old line-by-line voicing (that is what sounded cut up): the failure is shown in the log and stops the build.
+            log.warning("continuous narration failed: %s", str(exc)[:200])
+            reason = ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "نریشن پیوسته ساخته نشد") + f" ({str(exc)[:140]})"
+            _note(directory, "voice", "ساخت نریشن پیوسته ناموفق بود؛ ساخت متوقف شد", "done", detail=reason)
+            _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
+            raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}. دوباره امتحان کنید.") from exc
     partial = None
     try:
         from brain import localize

@@ -123,8 +123,9 @@ def test_narration_speaks_normalised_text_and_keeps_the_script(monkeypatch, tmp_
     spoken = {}
     def fake(texts, out, voice="", style=""):
         spoken["texts"] = list(texts)
-        return [(tmp_path / f"c{i}.wav", 2.0) for i in range(len(texts))]
-    monkeypatch.setattr(localize, "synthesize_narration", fake)
+        audio = tmp_path / "take.mp3"; audio.write_bytes(b"x")
+        return {"audio": audio, "total": 6.0, "lines": [{"start": 0.2 + 3 * i, "end": 1.2 + 3 * i, "words": [{"word": "w", "start": 0.2 + 3 * i, "end": 1.2 + 3 * i}]} for i in range(len(texts))]}
+    monkeypatch.setattr(localize, "continuous_narration", fake)
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
     monkeypatch.setattr(app_mg, "_gate_clips", lambda plan, clips: [])
     retimed, _, _ = app_mg._narrate(tmp_path, {"pronunciations": {"EditorGPT": "ادیتور جی‌پی‌تی"}}, plan, "fp")

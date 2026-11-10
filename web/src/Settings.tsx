@@ -10,6 +10,7 @@ import { AgentSettings } from "./studio/AgentMode";
 import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
 import { currentLang, setLang } from "./i18n/lang";
+const VoiceCloneSettings = React.lazy(() => import("./settings/VoiceClone").then(module => ({ default: module.VoiceCloneSettings })));
 const CloudRenderSettings = React.lazy(() => import("./settings/CloudRender").then(module => ({ default: module.CloudRenderSettings })));
 
 type Tool = { label: string; description: string; to: string; icon: IconName };
@@ -95,6 +96,7 @@ export default function Settings() {
         {tab === "assistant" ? <>
           {authenticated ? <AgentSettings/> : null}
           {authenticated ? <TranscriptionSettings/> : null}
+          {authenticated ? <React.Suspense fallback={null}><VoiceCloneSettings/></React.Suspense> : null}
           <DeviceSettings/>
         </> : null}
 

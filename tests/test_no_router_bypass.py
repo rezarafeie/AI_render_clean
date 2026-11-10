@@ -7,6 +7,7 @@ Sanctioned places (each is part of the router or a call the router has no route 
   app/config.py               settings (hostnames for the DNS cache, keys handed to the fallbacks)
   brain/elevenlabs_transport.py + brain/transcribe_elevenlabs.py   ElevenLabs speech-to-text, called only as the router's fallback
   brain/localize.py, brain/speech_policy.py                        ElevenLabs voice catalogue / subscription lookups (the router has no route for them)
+  brain/voice_clone.py                                             creating and deleting a cloned voice (the router has no route for voice management)
 """
 import re
 from pathlib import Path
@@ -14,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ("app", "brain", "creative", "engine", "hermes")
 SANCTIONED = {"brain/lm_direct.py", "brain/lm_gateway.py", "app/config.py", "brain/elevenlabs_transport.py", "brain/transcribe_elevenlabs.py",
-              "brain/localize.py", "brain/speech_policy.py"}
+              "brain/localize.py", "brain/speech_policy.py", "brain/voice_clone.py"}
 ORIGINS = re.compile(r"api\.openai\.com|generativelanguage\.googleapis\.com|api\.elevenlabs\.io|aiapi\.rafiei\.co|ai-gateway\.vercel\.sh|"
                      r"api\.anthropic\.com|api\.jarvis\.you|api\.sarovi\.ir", re.I)
 SDKS = re.compile(r"^\s*(?:import|from)\s+(?:openai|anthropic|google\.genai|google\.generativeai|elevenlabs|litellm|langchain_openai|langchain_anthropic)\b", re.M)
