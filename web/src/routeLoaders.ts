@@ -7,6 +7,7 @@ export const loaders = {
   hermesHome: () => import("./pages/hermes/HermesHome.jsx"),
   hermesChat: () => import("./pages/hermes/HermesChat.jsx"),
   hermesFrame: () => import("./pages/hermes/HermesFrame.jsx"),
+  hermesOverview: () => import("./pages/hermes/HermesOverviewPage.jsx"),
   hermesSkills: () => import("./pages/hermes/HermesSkillsPage.jsx"),
   hermesInsights: () => import("./pages/hermes/HermesInsightsPage.jsx"),
   hermesContent: () => import("./pages/hermes/HermesContent.jsx"),

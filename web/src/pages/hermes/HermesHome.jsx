@@ -8,7 +8,6 @@ import { Composer } from '../../studio/Composer';
 import { message } from './hermesUtils';
 import { useHermes } from './HermesContext';
 import HermesOnboarding from './HermesOnboarding';
-import HermesOverview from './HermesOverview';
 import { ScrollRow } from '../../components/ScrollRow';
 
 const SUGGESTIONS = ['پیجم را تحلیل کن', 'یک ایده‌ی ریلز بده', 'برنامه‌ی این هفته را بچین', 'بهترین زمان انتشار چیست؟'];
@@ -40,20 +39,22 @@ export default function HermesHome() {
       <Composer variant="home" text={text} setText={setText} files={[]} onRemoveFile={() => {}} onFiles={() => {}} processing={busy} onSend={() => void start()}
         error={error} onDismissError={() => setError('')} hasSpeech={false} listening={false} onListen={() => {}} autoFocus textareaRef={textareaRef}
         placeholder="Ask about your page, content, ideas, or schedule…" textOnly />
-      <ScrollRow>{SUGGESTIONS.map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}</ScrollRow>
-      <div className="hs-home-links">
-        <NavLink to="/hermes/skills" className="chip home-chip"><Icon name="wand" size={15}/><span>مهارت‌ها</span></NavLink>
-        <NavLink to="/hermes/insights" className="chip home-chip"><Icon name="spark" size={15}/><span>بینش‌ها</span></NavLink>
-      </div>
-      {array(chats.data?.chats).length ? <section className="home-recent" aria-label="آخرین گفتگوها" dir="rtl">
+      <section className="home-suggest" aria-label="پیشنهادها">
+        <ScrollRow>
+          {SUGGESTIONS.slice(0, 3).map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}
+          <NavLink to="/hermes/skills" className="chip home-chip"><Icon name="wand" size={15}/><span>مهارت‌ها</span></NavLink>
+          <NavLink to="/hermes/insights" className="chip home-chip"><Icon name="spark" size={15}/><span>بینش‌ها</span></NavLink>
+          <NavLink to="/hermes/overview" className="chip home-chip"><Icon name="user" size={15}/><span>پیج من</span></NavLink>
+        </ScrollRow>
+      </section>
+      {array(chats.data?.chats).length ? <section className="home-recent" aria-label="آخرین گفتگوها">
         <div className="home-recent-head"><h2>آخرین گفتگوها</h2></div>
         <ul>{array(chats.data.chats).slice(0, 3).map((item) => <li key={item.id}><Link to={`/hermes/chat/${item.id}`} title={item.title}>
           <span className="home-thumb" aria-hidden="true"><Icon name="spark" size={18}/></span>
           <span className="home-recent-copy"><span className="home-title" dir="auto">{item.title || 'گفتگوی جدید'}</span>
-            <span className="home-meta"><span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString('fa-IR', { month: 'long', day: 'numeric' }) : ''}</span></span></span>
+            <span className="home-meta"><span>گفتگو</span><span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString('fa-IR', { month: 'long', day: 'numeric' }) : ''}</span></span></span>
         </Link></li>)}</ul>
       </section> : null}
-      <div className="hs-home-overview" data-hermes-main><HermesOverview /></div>
     </div>
   </div>;
 }
