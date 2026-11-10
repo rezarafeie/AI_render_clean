@@ -1017,6 +1017,8 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
         draft.build_js, draft.update_js = repair_js(draft.build_js, plan.duration), repair_js(draft.update_js, plan.duration)
         problems = validate_page(_scene_page(n, draft, plan))
         problems += [f"every id must start with s{n}-: {i}" for i in dict.fromkeys(re.findall(r'\bid="(?!s%d-)([^"]+)"' % n, draft.html))][:3]
+        from .reel_designer import svg_problems
+        problems += svg_problems(draft.html)                  # an invalid path d would only surface later as a browser error that names no scene
         if not problems:
             return draft
         log.warning("scene %d rejected (attempt %d): %s", n, attempt + 1, problems[:3])

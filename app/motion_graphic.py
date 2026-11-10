@@ -1375,6 +1375,15 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             break
         reasons = "؛ ".join(dict.fromkeys(mg.explain_problem(p) for p in problems[:3]))
         hit = _scenes_in(problems, len(build.plan.scenes)) if build else []
+        if build and not hit:
+            # A browser error such as "<path> attribute d: Expected number" names no scene: the scenes' own markup is read for it (instant), so the scene is found
+            # without trying them one by one in the browser.
+            from creative.reel_designer import svg_problems as _svg
+            broken = {n: _svg(build.drafts[n].html) for n in range(1, len(build.plan.scenes) + 1) if build.drafts.get(n) is not None}
+            broken = {n: found for n, found in broken.items() if found}
+            if broken and any(re.search(r"attribute d|<path>|\bpath\b", item) for item in problems):
+                hit = sorted(broken)
+                problems = problems + [f"#s{n} {broken[n][0]}" for n in hit]
         if build and (repairs_left <= 0 or not hit):
             # The findings do not name a scene (or the targeted fixes ran out): find the scene that breaks the page by swapping them for plain ones one at a
             # time. The clip is always finished; only the scene that cannot be made to work loses its design.

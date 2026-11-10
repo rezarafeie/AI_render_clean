@@ -236,3 +236,10 @@ def test_the_narration_take_is_served_for_playing_in_the_step_log(tmp_path):
     (directory / "voice.json").write_text(json.dumps({"audio": [{"path": "/etc/hosts", "start": 0, "duration": 1}]}))
     with pytest.raises(KeyError):
         app_mg.media_path(directory, "voice")                              # only files inside this clip's own folder
+
+
+def test_a_scene_with_an_invalid_svg_path_is_rejected_when_it_is_authored():
+    from creative import motion_graphic as mg
+    from creative.reel_designer import svg_problems
+    assert svg_problems('<svg><path d="M ninety 0 L 10 10"/></svg>')
+    assert not svg_problems('<svg><path d="M 10 10 L 90 90"/></svg>')
