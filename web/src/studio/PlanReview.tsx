@@ -88,7 +88,8 @@ export function PlanReview({ project, onChanged, superseding = false, footerSlot
       gradeAuto: baseLook.grade_auto ?? true, framingAuto: baseLook.framing?.auto ?? true, shiftX: baseLook.framing?.shift_x ?? 0, shiftY: baseLook.framing?.shift_y ?? 0,
       zoomEnabled: baseLook.zoom_enabled ?? true, zoomBase: baseLook.zoom_base ?? 100, zoomClose: baseLook.zoom_close ?? 125, zoomAmount: baseLook.zoom ?? 100 } as LookValues,
   } : { src: api.rawUrl(project.external_ref || ""), base: null as LookValues | null };
-  const visibleTools: [Tool, string, IconName, boolean][] = [...TOOLS.filter(([, , , only]) => t1 || !only), ...(t1 ? extras.map(item => [item.id, item.label, item.icon, true] as [Tool, string, IconName, boolean]) : [])];
+  const plainCaptions = Boolean(plan.captions_only);                 // «فقط زیرنویس»: nothing but the subtitles is drawn
+  const visibleTools: [Tool, string, IconName, boolean][] = [...TOOLS.filter(([id, , , only]) => (t1 || !only) && !(plainCaptions && ["zoom", "hook", "brand", "frame", "light"].includes(id))), ...(t1 && !plainCaptions ? extras.map(item => [item.id, item.label, item.icon, true] as [Tool, string, IconName, boolean]) : [])];
   const extra = extras.find(item => item.id === sheet);
   const activeTool: Tool = visibleTools.some(([id]) => id === tool) ? tool : "style";
   const SLIDERS: Tool[] = ["light", "frame", "zoom"];

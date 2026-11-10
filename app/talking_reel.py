@@ -45,6 +45,28 @@ DEFAULTS = {
         "style_pack": "ref-ai-news", "auto_effects": True,
     },
 }
+_CAPTIONS_ONLY = re.compile(
+    r"(?:فقط|صرفا|صرفاً|تنها)\s*(?:یه\s*|یک\s*)?(?:زیر\s*[-‌ ]?نویس|کپشن|ساب\s*تایتل)"
+    r"|(?:زیر\s*[-‌ ]?نویس|کپشن)\s*(?:رو\s*|را\s*)?(?:بذار|بزار|بزن|بده|اضافه\s*کن)?\s*(?:و\s*)?(?:فقط|همین|بس)(?![\w])"
+    r"|\b(?:only|just)\s+(?:the\s+|add\s+)?(?:subtitles?|captions?)\b|\b(?:subtitles?|captions?)\s+only\b", re.I)
+
+
+def wants_captions_only(request: str) -> bool:
+    """The person asks for subtitles and nothing else: the video itself is not edited (no cuts, zoom, hook, key moments or outro)."""
+    return bool(request and _CAPTIONS_ONLY.search(request))
+
+
+def captions_only_settings(settings: dict | None) -> dict:
+    """Render settings of a captions-only job: the picture stays as shot, only the subtitles are drawn."""
+    out = json.loads(json.dumps(settings or DEFAULTS["render_settings"]))
+    out["captions_only"] = out["subtitles_only"] = True
+    out["key_moments_enabled"] = out["first_key_moment_enabled"] = False
+    out["zoom"] = {**(out.get("zoom") or {}), "enabled": False, "amount": 0, "base_scale": 100, "close_scale": 100}
+    out["outro_logo"] = {"enabled": False, "motion": "none"}
+    out["effects"], out["auto_effects"] = [], False
+    return out
+
+
 EDITABLE = {"hook", "hook2", "hook_highlight", "name", "title", "music", "music_chosen", "cta", "style", "captions", "storyboard", "render_settings",
             "timeline_edits", "broll_edits", "key_moments"}
 _lock = threading.Lock()
@@ -232,6 +254,11 @@ def _clean_render_settings(value: object) -> dict:
     current["subtitles_only"] = bool(value.get("subtitles_only", current.get("subtitles_only", False)))
     if current["subtitles_only"]:                      # captions only: no pinned title, no key frames
         current["key_moments_enabled"] = current["first_key_moment_enabled"] = False
+    current["captions_only"] = bool(value.get("captions_only", False))
+    if current["captions_only"]:                       # the picture stays as shot: no zoom, no logo/outro, no effects
+        current["subtitles_only"] = True
+        current["zoom"].update(enabled=False, amount=0, base_scale=100, close_scale=100)
+        current["outro_logo"]["enabled"] = False
     try:
         selected = value.get("first_key_moment_sentence")
         current["first_key_moment_sentence"] = None if selected in (None, "") else max(0, int(selected))
@@ -446,10 +473,13 @@ def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str =
     guidance = ""
     creative_error = ""
     picked = None
+    captions_only = wants_captions_only(request) or bool(load(job_dir).get("captions_only"))
+    if captions_only:                                  # «فقط زیرنویس»: nothing to direct, nothing to cut
+        style = "talking_1"
     if concept:
         picked = _concept_plan(load(job_dir).get("creative_plan"), concept, style)
         guidance = _concept_notes(concept)
-    elif creative.enabled():
+    elif creative.enabled() and not captions_only:
         _stage(job_dir, "directing the edit", progress=12)
         try:
             plan = creative.direct_talk(transcript["sentences"], request, style=style)
@@ -481,6 +511,11 @@ def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str =
     state = load(job_dir)
     if selected in ("talking_1", "talking_5"):
         decisions = base_brain.decide(transcript["sentences"], guidance)
+        if captions_only:                              # only the corrected subtitle text of the model is kept
+            decisions = {**decisions, "drop": [], "bw": [], "notes": [], "cold_open": None, "hook": "", "hook_highlight": []}
+            state["render_settings"] = captions_only_settings(state.get("render_settings"))
+            state["captions_only"] = True
+            state["cta"] = state["name"] = state["title"] = ""
         state["decisions"] = decisions
         state["hook"] = decisions["hook"]
         state["hook_highlight"] = decisions["hook_highlight"]
@@ -788,10 +823,11 @@ def _run_talking_1(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     def render_talking1(*args,**kwargs):
         if not cloud_talking1(*args,**kwargs):
             media.render(*args,**kwargs)
-    render_talking1(video, plan, out, hook=state["hook"], highlight=state.get("hook_highlight") or [],
-                 name=state.get("name") or "", title=state.get("title") or "",
-                 work_dir=job_dir / "talking_reel_work", music=resolve_music(state.get("music")),
-                 cta=state.get("cta") or "",
+    plain_captions = bool(settings.get("captions_only"))
+    render_talking1(video, plan, out, hook="" if plain_captions else state["hook"], highlight=[] if plain_captions else state.get("hook_highlight") or [],
+                 name="" if plain_captions else state.get("name") or "", title="" if plain_captions else state.get("title") or "",
+                 work_dir=job_dir / "talking_reel_work", music=None if plain_captions else resolve_music(state.get("music")),
+                 cta="" if plain_captions else state.get("cta") or "",
                  render_settings=settings,
                  logo_path=custom_logo(job_dir),
                  on_progress=progress, on_stage=render_stage)
@@ -1101,11 +1137,12 @@ def _plan_talking_1(job_dir: Path, video: Path, *, prepare_media: bool) -> Plann
     decisions = _apply_timeline_choices(decisions, "talking_1", settings)
     from engine.revision_timing import prepare_transcript
     transcript, decisions = prepare_transcript(transcript, decisions)
-    if prepare_media:
+    keep_all = bool(settings.get("captions_only"))
+    if prepare_media and not keep_all:
         _stage(job_dir, "tracking the face", progress=35)
-    faces = _faces(job_dir, video, media) if prepare_media else _cached_faces(job_dir)
+    faces = [] if keep_all else _faces(job_dir, video, media) if prepare_media else _cached_faces(job_dir)
     plan = media.plan_reel(transcript, decisions, faces, float(transcript.get("duration") or 0)
-                           or media.probe_video(video)[2])
+                           or media.probe_video(video)[2], keep_all=keep_all)
     return PlannedReel("talking_1", media, transcript, decisions, settings, plan)
 
 

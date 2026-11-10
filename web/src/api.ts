@@ -249,7 +249,7 @@ export interface DiscoveryAnalysis {
 /** Plain-language Creative Plan built by the backend from the real analysis (app/creative_plan.py). */
 export interface PlanConcept { id: string; name: string; angle: string; hook: string; style: string; selected: boolean; why: string }
 export interface PlanContent {
-  kind: "talking"; goal: string; audience: string; message: string; tone: string;
+  kind: "talking"; captions_only?: boolean; goal: string; audience: string; message: string; tone: string;
   concept: { name: string; angle: string };
   hook: { text: string; highlight: string[] };
   structure: { role: string; intent: string; visual: string; sentence: number | null; at: string; text: string }[];

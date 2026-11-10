@@ -303,9 +303,20 @@ def caption_events(sentences: list[dict], words: list[dict], decisions: dict, sh
     return [e for e in events if e["end"] - e["start"] > 0.05]
 
 
+def _whole_video_plan(transcript: dict, decisions: dict, duration: float) -> ReelPlan:
+    """Captions only: one untouched shot over the whole video (no cut pauses, no punch-ins, no cold open), the subtitles timed on it."""
+    sentences, words = transcript["sentences"], transcript["words"]
+    shot = Shot(0.0, float(duration), close=False, push=False, face=(0.5, 0.35))
+    shot.out_start = 0.0
+    keep = {**decisions, "drop": []}
+    return ReelPlan(shots=[shot], captions=caption_events(sentences, words, keep, [shot]), notes=[], flashes=[], duration=float(duration), cold_open=0.0)
+
+
 def plan_reel(transcript: dict, decisions: dict, faces: list[tuple[float, float, float]],
-              duration: float) -> ReelPlan:
+              duration: float, keep_all: bool = False) -> ReelPlan:
     from brain.talking_reel import is_filler
+    if keep_all:
+        return _whole_video_plan(transcript, decisions, duration)
 
     sentences = transcript["sentences"]
     words = transcript["words"]

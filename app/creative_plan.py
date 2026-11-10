@@ -119,7 +119,9 @@ def build_talking(status: dict, *, sentences: list[dict], video_seconds: float, 
     logo = settings.get("outro_logo") or {}
     return {
         "kind": "talking",
-        "goal": brief.get("goal") or "ریلز حرفه‌ای اینستاگرام از ویدیوی صحبتی",
+        "captions_only": bool(settings.get("captions_only")),
+        "goal": ("فقط زیرنویس دقیق روی همین ویدیو؛ تصویر و صدا بدون هیچ برش، زوم یا افکتی دست‌نخورده می‌ماند." if settings.get("captions_only")
+                 else brief.get("goal") or "ریلز حرفه‌ای اینستاگرام از ویدیوی صحبتی"),
         "audience": brief.get("audience", ""),
         "message": brief.get("core_message") or brief.get("topic", ""),
         "tone": brief.get("tone", ""),
@@ -127,7 +129,8 @@ def build_talking(status: dict, *, sentences: list[dict], video_seconds: float, 
         "hook": {"text": _hook(status), "highlight": list(status.get("hook_highlight") or [])},
         "structure": beats,
         "duration_s": round(video_seconds, 1),
-        "style": {"id": style, "label": info["label"], "summary": info["summary"], "complexity": info["complexity"]},
+        "style": ({"id": style, "label": "فقط زیرنویس", "summary": "ویدیوی شما همان‌طور که هست می‌ماند و فقط زیرنویس هم‌زمان با گفتار روی آن می‌آید؛ بدون برش، زوم، هوک یا لوگو.", "complexity": "ساده"}
+                  if settings.get("captions_only") else {"id": style, "label": info["label"], "summary": info["summary"], "complexity": info["complexity"]}),
         "look": {"preset": look_of(grade), "grade": grade, "accent_color": settings.get("title_color") or "#F5B800",
                  "caption_font": settings.get("caption_font") or "default",
                  "zoom": (settings.get("zoom") or {}).get("amount", 100),

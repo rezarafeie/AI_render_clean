@@ -1540,7 +1540,7 @@ def _revise_talking(conversation_id: str, user_key: str, project: dict, job, tex
         faces = [tuple(f) for f in json.loads(faces_file.read_text())] if faces_file.is_file() else []
         decisions = talking_reel._apply_timeline_choices(state['decisions'], 'talking_1', settings)
         transcript, decisions = prepare_transcript(transcript, decisions)
-        plan = plan_reel(transcript, decisions, faces, float(transcript.get('duration') or 0))
+        plan = plan_reel(transcript, decisions, [] if settings.get('captions_only') else faces, float(transcript.get('duration') or 0), keep_all=bool(settings.get('captions_only')))
         output_plan = plan
         context['output_sentence_ranges'] = sentence_ranges(plan, sentences)
         context['output_words'] = [{'start':round(sh.out_start+w['start']-sh.src_in,3),
@@ -1733,8 +1733,9 @@ def _apply_brand_defaults(user_key: str, job) -> None:
     profile = brand_profile.load(user_key)
     state = talking_reel.load(job.dir)
     changes: dict[str, Any] = {}
+    plain = bool(state.get("captions_only"))          # subtitles only: no name card, call to action or logo outro
     for field, key in (("name", "name"), ("tagline", "title"), ("cta", "cta")):
-        if not state.get(key) and profile.get(field):
+        if not plain and not state.get(key) and profile.get(field):
             changes[key] = profile[field]
     settings = dict(state.get("render_settings") or {})
     touched = False
@@ -1742,7 +1743,7 @@ def _apply_brand_defaults(user_key: str, job) -> None:
         settings["title_color"] = profile["accent_color"]; touched = True
     if profile.get("caption_font") and settings.get("caption_font", "default") == "default":
         settings["caption_font"] = profile["caption_font"]; touched = True
-    if profile.get("logo_motion"):
+    if profile.get("logo_motion") and not plain:
         motion = profile["logo_motion"]
         settings["outro_logo"] = {"enabled": motion != "none", "motion": motion}; touched = True
     if touched:

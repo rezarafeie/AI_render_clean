@@ -28,7 +28,8 @@ def inspect_export(path: Path, *, width: int, height: int, fps: int,
     if actual_duration <= 0 or abs(actual_duration - duration) > max(0.25, 2 / fps):
         raise RuntimeError(f"export duration {actual_duration:.2f}s differs from plan {duration:.2f}s")
     actual_fps = float(Fraction(video.get("avg_frame_rate") or "0/1"))
-    if abs(actual_fps - fps) > 0.02:
+    # Phones record 29.96/59.94 and the average rate of a finished file drifts by a few hundredths; only a real mismatch fails the export.
+    if abs(actual_fps - fps) > max(0.05, fps * 0.01):
         raise RuntimeError(f"export frame rate {actual_fps:.2f} differs from plan {fps}")
 
     warnings: list[str] = []
