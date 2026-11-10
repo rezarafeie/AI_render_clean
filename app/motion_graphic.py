@@ -648,8 +648,8 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     found = _save_word_timing(directory, texts, voice_id, voice_style, clip_starts, partial["words"] if partial else None)
     _save_takes(directory, texts, voice_id, voice_style, clips, found if found is not None else [[] for _ in texts])
     if cursor > mg.MAX_SECONDS:
-        _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
-        return plan, [], [f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ ویدیو بی‌صدا ساخته شد. نریشن را کوتاه‌تر کنید."]
+        _note(directory, "voice", "نریشن از حد مجاز طولانی‌تر شد؛ ساخت متوقف شد", "done", detail=f"{cursor:.0f} ثانیه از سقف {mg.MAX_SECONDS:.0f} ثانیه")
+        raise RuntimeError(f"نریشن {cursor:.0f} ثانیه شد و از سقف {mg.MAX_SECONDS:.0f} ثانیه گذشت؛ نریشن را کوتاه‌تر کنید.")
     retimed = plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
     _save_audio_direction(directory, record, retimed, texts)
     saved.write_text(json.dumps({"fp": f"{fp}|{voice_id}|{voice_style}|{_TAKE}", "plan": retimed.model_dump(), "audio": audio, "notes": gate_notes}, ensure_ascii=False))

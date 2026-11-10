@@ -31,7 +31,8 @@ REPAIR_ROUTE = "motion_graphic_repair"
 ROOT = Path(__file__).resolve().parents[1]
 KIT = Path(__file__).resolve().parent / "motion_kit"       # inside the code layer: /app/presets is a host mount on the server
 FORMATS = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080)}
-MIN_SECONDS, MAX_SECONDS = 4.0, 60.0
+MIN_SECONDS, MAX_SECONDS = 4.0, 90.0
+MAX_PAGE_SCENES = 12          # a long script needs more scenes than the usual six; the plan's own cap (plan_cap) decides how many a brief gets
 LIMITS = {"scenes_html": 40_000, "css": 24_000, "build_js": 20_000, "update_js": 8_000}
 COMPOSITION_ID = "main"
 
@@ -181,7 +182,7 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         problems.append("every scene needs its own unique id")
     if len(scan.ids) != len(set(scan.ids)):
         problems.append("duplicate element ids: " + ", ".join(sorted({i for i in scan.ids if scan.ids.count(i) > 1})[:5]))
-    if not min_scenes <= len(scan.scenes) <= 8:
+    if not min_scenes <= len(scan.scenes) <= MAX_PAGE_SCENES:
         problems.append(f"use 2-6 scenes (got {len(scan.scenes)})")
     css = re.sub(r"/\*.*?\*/", " ", page.css, flags=re.S)
     for pattern, label in _FORBIDDEN_CSS:
@@ -580,7 +581,7 @@ in the request or in the page content provided. Defaults: vertical, 15-20 second
 
 PLAN
 - 2-6 scenes that tile the whole duration without gaps (the first starts at 0, each starts where the previous ends, the last ends at duration), each
-  at least 2.5 s; the last scene holds still for 1.5 s+ (name, call to action). 4-60 seconds in total.
+  at least 2.5 s; the last scene holds still for 1.5 s+ (name, call to action). 4-90 seconds in total.
 - headline: the exact Persian words shown as that scene's main line (short: 2-7 words; whole words only). idea: what moves and how, concretely
   (a counter climbing, a diagram drawing itself, cards stacking...), specific to this content and different from the neighbours.
 - palette: 3-5 colours chosen from the subject; ink must read clearly on bg (contrast 4.5:1+), accent must be vivid. signature: ONE memorable
@@ -590,7 +591,7 @@ PLAN
 - Do not add branding for any company that is not the subject of the request.
 - narration: the sentence a human narrator speaks over that scene, in natural spoken Persian (conversational, complete sentences, no list syntax). The clip is
   voiced: one or two sentences per scene, about 2.6 spoken words per second of the scene's length minus half a second. It must not repeat the headline word
-  for word: the headline is the short on-screen punch, the narration is the explanation. The first scene's narration is the hook. Up to 60 seconds in total;
+  for word: the headline is the short on-screen punch, the narration is the explanation. The first scene's narration is the hook. Up to 90 seconds in total;
   20-40 seconds is typical when the request carries a script.
 - When the request contains an approved script (scene lines with "متن روی صفحه" and "روایت"), keep its on-screen text and narration exactly as written.
 - A SUPPLIED NARRATION SCRIPT in the request is final: use its lines exactly, one scene per line, and never regenerate it. With no script supplied, write the narration yourself. If a supplied script really needs improvement, ask in `questions` and wait; do not edit it.
@@ -796,7 +797,10 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         request = ("APPROVED SCRIPT: the person already approved this idea in Instagram GPT, so do not ask any question. The numbered scene lines are final: "
                    "where the brief also holds a whole-narration text, a caption, a call to action or notes that differ from them, the scene lines win and the rest is context. "
                    "Never merge, drop or retime scenes to fit a rule; choose palette, device and title yourself.\n\n") + request
-    cap = max(8, len(supplied)) if supplied else 8 if approved else 6          # a script's own line count is not a scene limit
+    cap = plan_cap(brief, len(supplied), bool(approved))
+    if cap > 6 and not supplied and not approved:
+        request += (f"\n\nTHIS BRIEF IS LONG ({len(brief.split())} words): use up to {cap} scenes, about one per 3-6 seconds of narration, so every scene's narration fits its length; "
+                    "the usual 2-6 scene limit does not apply to it.")
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -817,6 +821,15 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
     raise CreativeUnavailable("motion plan did not pass validation: " + "; ".join(problems[:3]))
+
+
+def plan_cap(brief: str, supplied: int = 0, approved: bool = False) -> int:
+    """How many scenes a plan may have: six for a short brief, more when the text to be voiced is long (a script's own line count is not a scene limit)."""
+    cap = max(8, supplied) if supplied else 8 if approved else 6
+    words = len(str(brief or "").split())
+    if words >= 60:
+        cap = max(cap, min(MAX_PAGE_SCENES, 6 + words // 20))
+    return min(cap, MAX_PAGE_SCENES) if not supplied else cap
 
 
 def scope_css(n: int, css: str) -> str:

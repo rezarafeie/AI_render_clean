@@ -170,7 +170,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
       {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
-      {motion.status === "failed" ? <div className="notice" data-tone="error" role="alert">{motion.error === "stopped" ? "ساخت متوقف شد." : motion.error || "ساخت کامل نشد."}</div> : null}
+      {motion.status === "failed" && motion.error === "stopped" ? <div className="notice" data-tone="info" role="status">ساخت متوقف شد.</div> : null}
       {motion.status === "failed" ? <div className="mg-actions"><button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.motionRetry(motionId))}>تلاش دوباره</button></div> : null}
     </div> : null}
 

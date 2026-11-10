@@ -211,3 +211,11 @@ def test_the_narration_becomes_typography_timed_to_its_words():
     plan = mg.MotionPlan(title="t", duration=5, scenes=[scene], palette=palette)
     page = mg.assemble_scenes(plan, [draft])
     assert "s1-cp1" in page.scenes_html and "s1-cw1-1" in page.build_js
+
+
+def test_a_long_brief_may_have_more_than_six_scenes():
+    from creative import motion_graphic as mg
+    short = "یه ویدیو درباره چای"
+    long_brief = " ".join(["کلمه"] * 144)
+    assert mg.plan_cap(short) == 6 and mg.plan_cap(long_brief) == 12 and mg.plan_cap("x " * 80) == 10
+    assert mg.plan_cap(short, supplied=14) == 14 and mg.MAX_SECONDS == 90.0

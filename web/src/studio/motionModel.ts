@@ -2,7 +2,7 @@ import type { ActivityStep } from "./model";
 
 /** The motion graphic's live log as the same activity steps every other chat shows, so its narration looks and behaves like theirs
  * (a shimmering current step with a live timer and a collapsed history). */
-export function motionSteps(motion: { log?: { key: string; text: string; state: string; at: number; done_at?: number; detail?: string; request?: string }[]; active: boolean; status: string; progress: number; message: string }, nowMs: number): ActivityStep[] {
+export function motionSteps(motion: { log?: { key: string; text: string; state: string; at: number; done_at?: number; detail?: string; request?: string }[]; active: boolean; status: string; progress: number; message: string; error?: string | null }, nowMs: number): ActivityStep[] {
   const lines = motion.log || [];
   const failed = motion.status === "failed";
   const steps: ActivityStep[] = lines.map((line, index) => {
@@ -13,7 +13,7 @@ export function motionSteps(motion: { log?: { key: string; text: string; state: 
       key: line.key, label: line.text, startedAt: started, detail: line.detail,
       endedAt: live ? nowMs : Math.max(started, line.done_at ? Math.round(line.done_at * 1000) : next ? Math.round(next.at * 1000) : nowMs),
       status: live ? "active" : line.state === "active" ? (failed ? "failed" : "done") : "done",
-      stage: line.key, events: [], notes: line.detail || line.request ? [line.text] : [], request: line.request, response: line.detail || undefined, progress: live && motion.progress > 0 ? motion.progress : undefined,
+      stage: line.key, events: [], notes: failed && line.state === "active" && motion.error && motion.error !== "stopped" ? [motion.error] : line.detail || line.request ? [line.text] : [], request: line.request, response: line.detail || undefined, progress: live && motion.progress > 0 ? motion.progress : undefined,
     };
   });
   if (!steps.length) steps.push({ key: "start", label: motion.message || "در حال شروع…", startedAt: nowMs, endedAt: nowMs, status: motion.active ? "active" : "done", events: [], notes: [] });
