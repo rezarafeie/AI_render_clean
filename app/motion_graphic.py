@@ -601,9 +601,11 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         clips = partial["clips"] if partial else _with_retries(lambda: localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style))
     except Exception as exc:
         log.warning("motion narration could not be made: %s", str(exc)[:200])
-        _note(directory, "voice", "ساخت نریشن انجام نشد؛ ویدیو بی‌صدا ساخته می‌شود", "done")
+        reason = ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ارائه‌دهندهٔ صدا پاسخ نداد") + f" ({str(exc)[:120]})"
+        _note(directory, "voice", "ساخت نریشن انجام نشد؛ ساخت متوقف شد", "done", detail=reason)
         _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
-        return plan, [], ["نریشن ساخته نشد و ویدیو بی‌صدا است: " + str(exc)[:160]]
+        # a reel without its voice is not what was asked for: the build stops with the reason (the plan is kept, so retrying starts from the voice)
+        raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}. دوباره امتحان کنید؛ ویدیو بی‌صدا ساخته نمی‌شود.")
     _remember_voice_error(directory, record, None)
     if partial:
         verified = ["نریشن فقط برای صحنه‌های " + "، ".join(str(i + 1) for i in partial["changed"]) + " دوباره ساخته شد؛ بقیهٔ صحنه‌ها همان صدای قبلی را نگه داشتند."]

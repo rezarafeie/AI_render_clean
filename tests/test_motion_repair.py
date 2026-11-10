@@ -1,3 +1,4 @@
+import pytest
 from creative.motion_graphic import repair_js
 
 
@@ -102,15 +103,15 @@ def test_narration_retimes_scenes_to_the_voice(monkeypatch, tmp_path):
     assert retimed.duration == 12.15 and audio[0]["start"] == 0.25 and audio[1]["start"] == 5.7 and notes == []
 
 
-def test_narration_failure_keeps_the_clip_silent_but_alive(monkeypatch, tmp_path):
+def test_narration_failure_stops_the_build_with_the_reason(monkeypatch, tmp_path):
     from app import motion_graphic as app_mg
     from brain import localize
     from creative import motion_graphic as mg
     plan = mg.MotionPlan(title="t", duration=6, scenes=[mg.ScenePlan(headline="a", idea="i", start=0, end=3, narration="x"), mg.ScenePlan(headline="b", idea="i", start=3, end=6, narration="y")])
     monkeypatch.setattr(localize, "synthesize_narration", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("quota")))
     monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
-    same, audio, notes = app_mg._narrate(tmp_path, {}, plan, "fp")
-    assert same is plan and audio == [] and "بی‌صدا" in notes[0]
+    with pytest.raises(RuntimeError, match="اعتبار ElevenLabs"):
+        app_mg._narrate(tmp_path, {}, plan, "fp")
 
 
 def test_approved_script_fixes_the_scenes_of_the_plan():

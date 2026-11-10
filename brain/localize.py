@@ -643,7 +643,8 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     )
     if response.status_code == 403:
         raise RuntimeError("ElevenLabs refused the request (HTTP 403); check the network/VPN")
-    if response.status_code == 402 or "quota" in response.text.lower():
+    # only an error response can mean "quota": a successful body is base64 audio, which can contain the letters q-u-o-t-a by chance
+    if response.status_code == 402 or (response.status_code >= 400 and "quota" in response.text.lower()):
         raise RuntimeError(f"ElevenLabs quota exceeded (HTTP {response.status_code})")
     response.raise_for_status()
     data = response.json()

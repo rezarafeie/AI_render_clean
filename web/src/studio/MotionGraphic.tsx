@@ -3,6 +3,7 @@ import { api, MotionGraphic, StudioEvent } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { friendlyError } from "../ui";
 import { etaText, motionSteps } from "./motionModel";
+import { ActivityBlock } from "./Activity";
 import { Icon } from "../components/Icon";
 import { formatDuration } from "../format";
 import type { ActivityStep } from "./model";
@@ -150,7 +151,8 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length)) ? <div className="mg-progress">
-      <MotionSteps steps={motionSteps(motion, now * 1000)} live={motion.active} now={now * 1000} summaries={summaries}/>
+      <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
+      {summaries?.ready && !motion.active ? <p className="mg-step-summary" dir="auto">{summaries.ready}</p> : null}
       {motion.snapshots?.length ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}

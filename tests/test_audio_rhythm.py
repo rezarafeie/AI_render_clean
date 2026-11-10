@@ -314,7 +314,8 @@ def test_the_narration_problem_is_remembered_in_the_record_and_cleared_when_it_w
     def broken(texts, out, voice="", style=""): raise OSError("[Errno -5] No address associated with hostname")
     monkeypatch.setattr(localize, "synthesize_narration", broken)
     monkeypatch.setattr(app_mg.time, "sleep", lambda s: None)
-    app_mg._narrate(directory, record, plan, "abc")
+    with pytest.raises(RuntimeError, match="ساخت نریشن انجام نشد"):       # a reel without its voice is not built silently
+        app_mg._narrate(directory, record, plan, "abc")
     assert "Errno -5" in app_mg.load(directory)["voice_error"]
     monkeypatch.setattr(localize, "synthesize_narration", lambda texts, out, voice="", style="": [(directory / f"c{i}.wav", 2.0) for i in range(len(texts))])
     monkeypatch.setattr(app_mg, "_gate_clips", lambda p, c: [])
@@ -447,3 +448,19 @@ def test_the_loudness_directive():
     assert directives.parse("Loudness: reels")[1].loudness == "instagram_reels"
     assert directives.parse("Loudness: off")[1].loudness == "off"
     assert directives.parse("Loudness: loud")[1].notes
+
+
+def test_a_successful_elevenlabs_body_is_never_mistaken_for_a_quota_error(monkeypatch):
+    import base64
+    from brain import localize
+    class Response:
+        status_code = 200
+        text = '{"audio_base64": "xxQUOTAxx"}'
+        def raise_for_status(self): pass
+        def json(self): return {"audio_base64": base64.b64encode(b"audio").decode(), "alignment": {}}
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "k")
+    monkeypatch.setattr("httpx.post", lambda *a, **k: Response())
+    monkeypatch.setattr("brain.elevenlabs_transport.url", lambda path: "https://relay.example/" + path)
+    monkeypatch.setattr(localize, "_cast", lambda text, voice: ("v", "m"))
+    audio, _ = localize._elevenlabs_with_timestamps("سلام")
+    assert audio == b"audio"

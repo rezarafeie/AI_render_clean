@@ -13,7 +13,7 @@ export function motionSteps(motion: { log?: { key: string; text: string; state: 
       key: line.key, label: line.text, startedAt: started, detail: line.detail,
       endedAt: live ? nowMs : Math.max(started, line.done_at ? Math.round(line.done_at * 1000) : next ? Math.round(next.at * 1000) : nowMs),
       status: live ? "active" : line.state === "active" ? (failed ? "failed" : "done") : "done",
-      stage: line.key, events: [], notes: [], progress: live && motion.progress > 0 ? motion.progress : undefined,
+      stage: line.key, events: [], notes: line.detail ? [line.text] : [], response: line.detail || undefined, progress: live && motion.progress > 0 ? motion.progress : undefined,
     };
   });
   if (!steps.length) steps.push({ key: "start", label: motion.message || "در حال شروع…", startedAt: nowMs, endedAt: nowMs, status: motion.active ? "active" : "done", events: [], notes: [] });
