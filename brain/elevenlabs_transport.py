@@ -16,3 +16,10 @@ def base_url() -> str:
 
 def url(path: str) -> str:
     return f"{base_url()}/{path.lstrip('/')}"
+
+
+def clone_url() -> str:
+    """The relay's separate voice-cloning function (a sibling of the shared speech route): <relay origin>/api/elevenlabs-clone."""
+    base = base_url()
+    root = base[: -len("/api/elevenlabs")] if base.endswith("/api/elevenlabs") else base.rsplit("/api/", 1)[0] if "/api/" in base else base
+    return f"{root}/api/elevenlabs-clone"

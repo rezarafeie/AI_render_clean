@@ -27,3 +27,14 @@ deployment available for rollback. Do not delete or change other project routes.
 - Five offline regression tests pass; no synthesis or transcription was submitted.
 - This is a CLI source patch, not a newly committed Git release. All files except
   `api/elevenlabs.js` match the preceding deployment's source hashes exactly.
+
+## Voice cloning route (2026-11-10)
+
+`api/elevenlabs-clone.js` is a separate function: one authenticated multipart POST (<= 4 MB) forwarded to ElevenLabs `v1/voices/add`. The shared
+`api/elevenlabs.js` allow-list is unchanged, so editing or deleting voices stays unreachable. The production project had moved on since the first
+recovery (it now also has `api/telegram-download.js`, `lib/file-location.js`, a lock file and dependencies), so the new deployment keeps every existing file
+by its content hash and adds only the new function plus one `functions` entry in `vercel.json`.
+
+- Deployment: `dpl_B6BefEpCbpLtspM73e8Ku4JyDsLR` (production). Rollback target: `dpl_5Tt2e7uMQ2Lqh7hWZRmnSFgPBqMX` (the production deployment before it).
+- Verified on the public domain: every route returns 401 without the key; the authenticated speech/voice route still returns 200.
+- Offline tests: `node --test elevenlabs.test.mjs elevenlabs-clone.test.mjs`.

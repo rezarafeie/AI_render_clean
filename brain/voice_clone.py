@@ -156,12 +156,12 @@ def prepare_sample(source: Path, out: Path) -> dict:
 # ── ElevenLabs ──────────────────────────────────────────────────────────────────────────────────────────────────
 def _create_remote(name: str, sample: Path, description: str) -> str:
     import httpx
-    from brain.elevenlabs_transport import url
+    from brain.elevenlabs_transport import clone_url
     key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not key:
         raise RuntimeError("کلید ElevenLabs تنظیم نشده است")
     with sample.open("rb") as handle:
-        response = httpx.post(url("v1/voices/add"), headers={"xi-api-key": key},
+        response = httpx.post(clone_url(), headers={"xi-api-key": key},
                               data={"name": name, "description": description[:400], "remove_background_noise": "true"},
                               files=[("files", (sample.name, handle, "audio/mpeg"))], timeout=httpx.Timeout(300.0, connect=20.0))
     if response.status_code == 403:
