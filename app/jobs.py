@@ -1243,6 +1243,7 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
         job.render.message = "rendering"
         if CELERY_AVAILABLE:
             _write_status(job)
+        designed = None                         # the timeline of a reel the motion designer made (scenes last as long as their narration, not as the plan estimated)
         motion_config = (data.get("generation_meta") or {}).get("remotion")
         if motion_config:
             from engine.remotion_renderer import render as render_motion
@@ -1261,7 +1262,8 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
                     _write_status(job)
                     rendered = reel_designer.render(job, data, prepare_reel_config(motion_config, job.dir), out_path, on_progress=report)
                     if rendered:
-                        job.render.message = "rendering"
+                        designed = reel_designer.read_timeline(job.dir)
+                        job.render.message = "checking export"
                 except Exception as exc:
                     from app.render_cloud.service import CloudRenderError
                     if isinstance(exc, CloudRenderError):
@@ -1323,7 +1325,7 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
         job.render.message = "checking export"
         job.render.technical_qc = inspect_export(
             out_path, width=expected_width, height=expected_height,
-            fps=plan.canvas.fps, duration=plan.output_duration,
+            fps=plan.canvas.fps, duration=(designed or {}).get("duration") or plan.output_duration,
             target_lufs=float(render_cfg.get("loudness_lufs", -14)) if loudnorm and not motion_config else None,
         )
 
@@ -1339,11 +1341,14 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             board_path=job.dir/'storyboard.json'
             board=json.loads(board_path.read_text()) if board_path.is_file() else {}
             cursor=0.; moments=[]
-            for scene in board.get('scenes',[]):
-                length=float(scene['duration_s'])
-                moments.append(cursor+length/2);cursor+=length
+            if designed:
+                moments=[(row['start']+row['end'])/2 for row in designed['scenes']]
+            else:
+                for scene in board.get('scenes',[]):
+                    length=float(scene['duration_s'])
+                    moments.append(cursor+length/2);cursor+=length
             report=review_export(out_path,{'direction':creative_direction,'storyboard':board},
-                job.dir/'creative_review',duration=plan.output_duration,moments=moments)
+                job.dir/'creative_review',duration=(designed or {}).get('duration') or plan.output_duration,moments=moments)
             reference=(creative_direction or {}).get('reference')
             if reference and reference.get('status')=='analyzed':
                 # The output file itself is compared with the reference it claims to follow (cuts, colours, look).

@@ -1341,6 +1341,9 @@ export const api = {
   async updateStudioStoryboard(id: string, scenes: any[], voice?: { narrator?: string; voice_style?: string }): Promise<StudioProject> {
     return j(await authFetch(`${BASE}/studio/projects/${id}/storyboard`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenes, ...voice }) }));
   },
+  async chooseStudioDesign(id: string, body: { choice?: string; text?: string }): Promise<{ ok: boolean }> {
+    return j(await authFetch(`${BASE}/studio/projects/${id}/design-choice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+  },
   async approveStudioPlan(id: string, versionId: string): Promise<StudioProject> {
     return j(await authFetch(`${BASE}/studio/projects/${id}/plan/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version_id: versionId }) }));
   },

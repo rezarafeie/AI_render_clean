@@ -67,7 +67,7 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
     {details
       ? <button type="button" className="act-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{label}</button>
       : <div className="act-row">{label}</div>}
-    {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p>{retryHref ? (onOpenEditor ? <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenEditor}><Icon name="refresh" size={14}/>Open editor to retry</button> : <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={14}/>Open editor to retry</Link>) : null}</div> : null}
+    {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p></div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
     {active ? <div className="act-timing">
       {typeof step.progress === "number" ? <span className="act-pct" dir="ltr">{fa ? `${faNumber(step.progress)}٪` : `${step.progress}%`}</span> : null}

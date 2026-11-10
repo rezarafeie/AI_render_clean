@@ -79,7 +79,7 @@ if CELERY_AVAILABLE:
         temporary.write_text(json.dumps(record))
         temporary.replace(target)
 
-    @celery.task(bind=True, name="airender.run_render", max_retries=2, default_retry_delay=30)
+    @celery.task(bind=True, name="airender.run_render", max_retries=0)       # a render that failed is reported, never silently started again from the beginning (it costs designing, cloud time and credits)
     def task_run_render(self, job_id: str, preview: bool, loudnorm: bool) -> None:
         from app.jobs import _run_job
 

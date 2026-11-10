@@ -861,3 +861,11 @@ a.pe-tool { text-decoration: none; }
 .msg-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 96px)); gap: 6px; }
 .msg-gallery .attach-preview { border-radius: 10px; }
 .msg-gallery .attach-preview img { width: 96px; height: 96px; max-height: none; object-fit: cover; display: block; }
+
+.design-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.design-option { display: grid; gap: 4px; padding: 8px; text-align: start; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: inherit; cursor: pointer; }
+.design-option:hover:not(:disabled) { border-color: var(--text-2, #aaa); }
+.design-option img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 8px; background: #222; }
+.design-option small { font-size: 12px; line-height: 1.5; color: var(--text-3, #8b8b8b); }
+.design-own { display: grid; gap: 8px; }
+.design-own textarea { width: 100%; resize: vertical; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: inherit; font: inherit; }

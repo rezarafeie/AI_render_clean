@@ -63,6 +63,5 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
       <button className="btn btn-sm btn-secondary" onClick={onOpenPreview}><Icon name="eye" size={15}/>Open in Preview</button>
       <button className="btn btn-sm btn-ghost" onClick={onEditAgain}><Icon name="edit" size={15}/>Edit again</button>
     </div> : null}
-    {view.phase === "failed" && retryHref ? <div className="rc-actions">{onOpenEditor ? <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenEditor}><Icon name="refresh" size={15}/>Open editor to retry</button> : <Link className="btn btn-sm btn-secondary" to={retryHref}><Icon name="refresh" size={15}/>Open editor to retry</Link>}</div> : null}
   </article>;
 }

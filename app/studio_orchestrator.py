@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import asyncio
+import uuid
 import logging
 import re
 import threading
@@ -1401,13 +1402,6 @@ def _scenario_message(storyboard: dict, duration: int, *, motion_scenes: int = 0
         if getattr(chosen, "visual_language", ""):
             said.append(f"زبان بصری: {_short(chosen.visual_language, 160)}")
         blocks.append("\n".join(said))
-        try:
-            from creative import design_choice
-            decision = design_choice.note(design_choice.assess(idea), _short)
-            if decision:
-                blocks.append(decision)
-        except Exception:
-            log.debug("design decision note skipped", exc_info=True)
     blocks.append(f"**سناریوی پیشنهادی** — {len(scenes)} صحنه، حدود {total:g} ثانیه")
     for number, scene in enumerate(scenes, 1):
         rows = [f"**صحنهٔ {number} · {round(float(scene.get('duration_s', 0)), 1):g} ثانیه**"]
@@ -2243,6 +2237,60 @@ async def _sync_motion_messages(conversation_id,project,job,user_key):
         await repo.update_project(project['id'],user_key,state=project['state'])
 
 
+async def _resolve_design(conversation_id: str, user_key: str, project: dict, job) -> bool:
+    """The look of the video is settled before its scenes are designed. A reference (or a clear favourite) settles it; otherwise the person sees a picture of each
+    candidate look and chooses, describes the look, or gives a reference. True while the person's answer is awaited."""
+    from creative import design_styles as styles
+    state = project["state"]
+    if state.get("design_resolved"):
+        return False
+    if state.get("design_question"):
+        return True
+    creative = state.get("creative_plan") or {}
+    reference = creative.get("reference") or None
+    chosen = creative.get("chosen") or {}
+    brief = creative.get("brief") or {}
+    storyboard = state.get("storyboard") or {}
+    note = styles.reference_text(reference)
+    try:
+        proposal = await asyncio.to_thread(styles.propose,
+            f"topic: {brief.get('topic', '')}; message: {brief.get('core_message', '')}; audience: {brief.get('audience', '')}; tone: {brief.get('tone', '')}",
+            f"{chosen.get('name', '')}: {chosen.get('angle', '')}. Visual language: {chosen.get('visual_language', '')}", note=note)
+    except Exception as exc:
+        log.warning("design styles could not be proposed (%s); the planner chooses the look alone", str(exc)[:160])
+        await repo.update_project(project["id"], user_key, state={**state, "design_resolved": True})
+        project["state"] = {**state, "design_resolved": True}
+        return False
+    mode, key = styles.decide(proposal, reference_usable=bool(reference and reference.get("status") == "analyzed"), note=note)
+    option = next(o for o in proposal.options if o.key == key)
+    if mode == "auto":
+        choice = {"key": option.key, "name": option.name, "direction": styles.direction_text(option), "palette": option.palette.model_dump(), "text": ""}
+        (job.dir / "design_choice.json").write_text(json.dumps(choice, ensure_ascii=False))
+        new_state = {**state, "design_resolved": True, "design_choice": {"key": key, "name": option.name}}
+        await repo.update_project(project["id"], user_key, state=new_state)
+        project["state"] = new_state
+        why = "از رفرنس شما پیروی می‌کند" if note else f"با اطمینان {round(proposal.confidence * 100)}٪ مناسب‌ترین است"
+        await repo.emit(conversation_id, "tool.progress", {"project_id": project["id"], "engine": "motion", "status": "running", "stage": "choosing design style", "progress": None,
+            "message": f"سبک طراحی «{option.name}» انتخاب شد ({why}): {option.description}",
+            "response": "\n\n".join(f"{o.key}) {o.name}\n{o.description}\nتایپوگرافی: {o.type_voice}\nحرکت: {o.motion}" for o in proposal.options) + f"\n\n{proposal.reason}"})
+        return False
+    picture = next((Path(p) for p in (state.get("source_assets") or []) if Path(p).is_file()), None)
+    headline = str((storyboard.get("scenes") or [{}])[0].get("text_overlay") or chosen.get("name") or "")
+    options = []
+    for item in proposal.options:
+        shot = await asyncio.to_thread(styles.preview, item, picture, headline, job.dir / "design_preview" / f"{item.key}.png")
+        ids = _attach_files(conversation_id, user_key, [shot], "design_preview", f"سبک-{item.key}")
+        options.append({"key": item.key, "name": item.name, "description": item.description, "type_voice": item.type_voice, "motion": item.motion,
+                        "palette": item.palette.model_dump(), "attachment_id": ids[0] if ids else None})
+    question = {"id": uuid.uuid4().hex, "title": "ظاهر ویدیو چه سبکی داشته باشد؟", "description": proposal.reason or "در انتخاب بین این سبک‌ها مطمئن نیستم؛ حدود هر کدام را ببین.",
+                "recommended": key, "options": options}
+    new_state = {**state, "design_question": question, "design_proposal": proposal.model_dump()}
+    await repo.update_project(project["id"], user_key, status="awaiting_input", state=new_state)
+    project["state"] = new_state
+    await repo.emit(conversation_id, "question.required", {"kind": "design", "project_id": project["id"], "question": question["title"]})
+    return True
+
+
 def _project_status(raw_status: str, output) -> str:
     """The project's status from what its engine reports. A job the person stopped is "canceled": anything not listed would read as still running,
     and the chat would show "working" for ever."""
@@ -2360,18 +2408,22 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         {'next': 'دارایی‌ها و نریشن آماده‌اند؛ رندر فایل نهایی شروع شود؟',
                          'scenes': project['state'].get('storyboard', {}).get('scenes', [])}):
                         continue
+                design_wait = False
                 if generation.get("state") == "ready" and job.render.status not in {"queued", "running", "done", "error"} and confirmed and not browser_target:
+                    design_wait = await _resolve_design(conversation_id, user_key, project, job)
+                if generation.get("state") == "ready" and job.render.status not in {"queued", "running", "done", "error"} and confirmed and not browser_target and not design_wait:
                     jobstore.start_render(job, preview=False, loudnorm=True)
                 raw_status = ("awaiting_confirmation" if not confirmed else
                               "done" if job.render.status == "done" else
                               "error" if generation.get("state") == "failed" or job.render.status == "error" else
-                              "awaiting_input" if browser_target and generation.get('state') == 'ready' else "running")
+                              "awaiting_input" if (browser_target and generation.get('state') == 'ready') or design_wait else "running")
+                from app import studio_assets
                 stage = ("storyboard ready" if not confirmed else
-                         "rendering" if job.render.status in {"queued", "running"} else
+                         studio_assets.render_stage(job.render.message) if job.render.status in {"queued", "running"} else
                          f"کلیپ موشن: {generation['motion_so']['status']}" if generation.get('state')=='generating' and generation.get('motion_so') else
                          "ready for browser render" if browser_target and generation.get('state') == 'ready' else
                          "generating assets" if generation.get("state") == "generating" else generation.get("state", "planning"))
-                progress = job.render.progress if job.render.status in {"queued", "running", "done"} else None
+                progress = job.render.progress if job.render.status in {"queued", "running", "done"} and (stage == "rendering" or job.render.status == "done") else None
                 output = f"/api/jobs/{ref}/exports/{job.render.output}" if job.render.status == "done" and job.render.output else None
                 status = {"generation": generation, "render": job.render.__dict__}
                 from app import studio_assets
@@ -2391,13 +2443,27 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                                 source_event_id=f"assets-ready:{project['id']}")
             failure_message = ""
             if raw_status == "error" and engine == "motion":
-                failure_message = str((status.get("generation") or {}).get("error") or status.get("message") or "")
+                failure_message = str((status.get("generation") or {}).get("error") or (status.get("render") or {}).get("message") or status.get("message") or "")
             elif isinstance(status, dict):
                 failure_message = str(status.get("message") or "")
             observed = {"status": raw_status, "stage": stage, "progress": progress, "output": output,
                         "message": failure_message}
             if engine == 'talking' and status.get('render_metrics', {}).get('stage') == stage:
                 observed['render_metrics'] = status['render_metrics']
+            if engine == 'motion' and confirmed and raw_status == 'running':
+                try:
+                    designed_notes = await asyncio.to_thread(studio_assets.design_notes, job.dir)
+                    seen = int(project['state'].get('design_notes_seen') or 0)
+                    if len(designed_notes) < seen:
+                        seen = 0                                           # a new attempt writes its notes from the start
+                    for note in designed_notes[seen:]:
+                        await repo.emit(conversation_id, 'tool.progress', {'project_id': project['id'], 'engine': engine, 'status': 'running', 'stage': note.get('stage') or 'designing motion scenes',
+                                        'progress': None, 'message': note['text'], **({'response': note['detail']} if note.get('detail') else {})})
+                    if len(designed_notes) != seen:
+                        project['state'] = {**project['state'], 'design_notes_seen': len(designed_notes)}
+                        await repo.update_project(project['id'], user_key, state=project['state'])
+                except Exception:
+                    log.debug('design notes could not be announced', exc_info=True)
             if engine == 'motion' and stage == 'rendering' and isinstance(status, dict) and status.get('render'):
                 from app import studio_assets
                 metrics = {'stage': stage, 'detail': studio_assets.render_detail(status['render'].get('message'))}

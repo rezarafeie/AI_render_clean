@@ -43,11 +43,17 @@ def choose_voice(voices: list[dict], context: str = "", preferred: str = "") -> 
     if not eligible:
         raise ValueError("هیچ صدای فارسیِ تأییدشده‌ای موجود نیست؛ یک گویندهٔ فارسی در تنظیمات صدا ثبت کنید.")
     context = context.casefold()
+    raw_context = context                                  # the brief's own words (the tags added below must not decide the gender)
     for pattern, tags in ((r"product|commercial|تبلیغ|محصول|فروش", " advertisement commercial energetic"),
                           (r"explain|localiz|document|آموزش|توضیح|مستند", " narration educational informative calm"),
                           (r"female|زن|خانم", " female"), (r"male|مرد|آقا", " male")):
         if re.search(pattern, context):
             context += tags
+    female_cues = ("female", "woman", "زن", "خانم", "بانو", "آرایش", "زیبایی", "پوست", "نوزاد", "بانوان", "مد ", "عطر")
+    male_cues = ("مرد", "آقا", "صنعتی", "ابزار", "موتور", "خودرو", "فرز", "دریل", "مکانیک", "ماشین", "کارگاه")
+    # A product of a workshop is not sold in a woman's voice by default: the narrator is male unless the brief says female or is plainly a woman's product.
+    wanted_gender = "female" if (any(c in raw_context for c in female_cues) and not any(c in raw_context for c in male_cues)) else "male"
+
     def score(v):
         labels = v.get("labels") or {}
         tags = " ".join(str(labels.get(k, "")) for k in ("use_case", "description", "accent", "gender")).casefold()
@@ -55,6 +61,7 @@ def choose_voice(voices: list[dict], context: str = "", preferred: str = "") -> 
         # the creative brief without guessing the speaker's gender from a name.
         tokens = set(re.findall(r"\w+", context))
         return (int((v.get("voice_id") or v.get("id")) == preferred),
+                int(str(labels.get("gender", "")).lower() == wanted_gender),
                 sum(token in tags for token in tokens if len(token) > 2),
                 int(any(str(x.get("language", "")).lower() in FA for x in v.get("verified_languages", []) if isinstance(x, dict))))
     selected = max(eligible, key=score)

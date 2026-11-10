@@ -445,6 +445,34 @@ NARRATORS = (
     ("XrExE9yKIg1WjnnlVkGX", "Matilda", "زن، دوستانه و بانشاط"),
 )
 
+# Names a person may write for a narrator (Latin or Persian spelling) -> the voice id: «گوینده کانری», "narrator Connery".
+NARRATOR_ALIASES = {
+    "connery": "4D8rX5FMrycxXbF6iW0I", "کانری": "4D8rX5FMrycxXbF6iW0I", "کانه‌ری": "4D8rX5FMrycxXbF6iW0I",
+    "aran": "PEdcOLzbXYhL8IKOswXB", "آران": "PEdcOLzbXYhL8IKOswXB",
+    "meisam": "btWlswzMAoBbSI0PWhbz", "maysam": "btWlswzMAoBbSI0PWhbz", "میثم": "btWlswzMAoBbSI0PWhbz",
+    "aylin": "zagI4JNTfBvHyoNxaZWj", "آیلین": "zagI4JNTfBvHyoNxaZWj",
+    "mitra": "01Hje9fLgarTAqnLKNEK", "میترا": "01Hje9fLgarTAqnLKNEK",
+    "leili": "erDXAXYfyESLe4hXMyU3", "laili": "erDXAXYfyESLe4hXMyU3", "لیلی": "erDXAXYfyESLe4hXMyU3",
+    "najib": "kPvNckaRrVKKOdG48z3b", "نجیب": "kPvNckaRrVKKOdG48z3b",
+    "aramofen": "QMSZ0tTD0GwA4wrqCGak", "آرامفن": "QMSZ0tTD0GwA4wrqCGak",
+    "liam": "TX3LPaxmHKxFdv7VOQHJ", "لیام": "TX3LPaxmHKxFdv7VOQHJ",
+}
+
+
+def narrator_named_in(text: str) -> str:
+    """The voice id of a narrator the person named in plain words next to «گوینده / راوی / narrator / voice», else ''."""
+    import re as _re
+    flat = str(text or "").lower()
+    for found in _re.finditer(r"(?:گوینده|راوی|صدای|narrator|voice)\s*(?:ی|ای)?\s*[:：-]?\s*(?:با\s+(?:صدای\s+)?)?([a-z\u0600-\u06ff\u200c]+)", flat):
+        word = found.group(1).strip("\u200c")
+        if word in NARRATOR_ALIASES:
+            return NARRATOR_ALIASES[word]
+    for name, voice in NARRATOR_ALIASES.items():          # «با صدای کانری», «کانری رو انتخاب کن»: the name alone, when it is a Persian name of ours
+        if _re.search(rf"(?:^|[\s،.:])({_re.escape(name)})(?=$|[\s،.:])", flat) and any("؀" <= c <= "ۿ" for c in name):
+            return voice
+    return ""
+
+
 # How the narrator should sound. eleven_v3 reads bracketed audio tags as direction, not as words.
 VOICE_STYLES = {
     "": ("طبیعی", ""),

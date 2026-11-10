@@ -137,7 +137,12 @@ def library_plan(config, storyboard, creative, pictures, subjects, lengths, cont
     """The planner designs the film from the approved script: palette, signature device, design bible, entrances and the ready-made components (Shotcraft recipes,
     executable library components) where they fit; then the library scout looks at pictures of the components next to the scenes. Cached beside the job."""
     brief = handoff_brief(config, storyboard, creative, pictures, subjects, lengths)
-    key = hashlib.sha256((brief + context).encode()).hexdigest()[:20]
+    chosen_look = read_design_choice(cache.parent if cache.name == "scenes" else cache)
+    if chosen_look:
+        brief = re.sub(r"^سبک بصری:.*$", "سبک بصری: " + _clean(chosen_look["direction"]), brief, count=1, flags=re.M)
+    from .design_styles import reference_text
+    style = reference_text(creative.get("reference"))
+    key = hashlib.sha256((brief + context + style).encode()).hexdigest()[:20]
     path = cache / "plan.json"
     try:
         saved = json.loads(path.read_text())
@@ -145,7 +150,9 @@ def library_plan(config, storyboard, creative, pictures, subjects, lengths, cont
             return mg.MotionPlan.model_validate(saved["plan"]), brief
     except (OSError, ValueError):
         pass
-    plan = mg.plan(brief, context=context, used=used)
+    plan = mg.plan(brief, context=context, style=style, used=used)
+    if chosen_look:                                   # the look the person (or the studio, sure of itself) settled is the look: palette and design bible are fixed, the designers build on them
+        plan = plan.model_copy(update={"palette": mg.Palette(**chosen_look["palette"]), "design_direction": chosen_look["direction"][:2400]})
     if plan.asks() or len(plan.scenes) != len(config["scenes"]):
         raise CreativeUnavailable("the planner did not keep the approved scenes")
     try:
@@ -156,6 +163,15 @@ def library_plan(config, storyboard, creative, pictures, subjects, lengths, cont
         log.warning("reel library scout failed: %s", str(exc)[:160])
     path.write_text(json.dumps({"fp": key, "plan": plan.model_dump()}, ensure_ascii=False))
     return plan, brief
+
+
+def read_design_choice(work: Path) -> dict | None:
+    """The look chosen before the scenes were designed (see the studio's design question): {name, direction, palette, text} or None."""
+    try:
+        data = json.loads((work.parent / "design_choice.json").read_text()) if work.name == "reel_design" else json.loads((work / "design_choice.json").read_text())
+        return data if data.get("direction") and data.get("palette") else None
+    except (OSError, ValueError):
+        return None
 
 
 def retime(plan, lengths: list[float]):
@@ -229,7 +245,7 @@ def add_subtitles(video: Path, plan, config: dict, work: Path) -> bool:
         if not cues or not tso.enabled():
             return False
         work.mkdir(parents=True, exist_ok=True)
-        overlay = tso.render_overlay(tso._tidy(cues), work / "subtitles.webm", width=1080, height=1920, fps=30, duration=plan.duration + 0.1, work_dir=work)
+        overlay = tso.render_overlay(tso._tidy(cues), work / "subtitles.webm", width=1080, height=1920, fps=30, duration=plan.duration + 0.1, work_dir=work, timeout=300)
         target = work / "with_subtitles.mp4"
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video), "-i", str(overlay), "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto[v]", "-map", "[v]", "-map", "0:a?",
                         "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "copy", str(target)], check=True, capture_output=True, timeout=900)
@@ -277,6 +293,41 @@ def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]
         return mg.fallback_scene(plan, n), "plain"
 
 
+def read_timeline(job_dir: Path) -> dict | None:
+    """The timeline the designed reel was built on: {duration, scenes:[{start, end}]} (None when this job has no designed reel)."""
+    try:
+        data = json.loads((job_dir / "reel_design" / "timeline.json").read_text())
+        return data if data.get("duration") and data.get("scenes") else None
+    except (OSError, ValueError):
+        return None
+
+
+def _progress(job_dir: Path, note: str, *, stage: str = "designing motion scenes", detail: str = "") -> None:
+    """Notes the chat shows as this stage's log (the status sync of the web process reads them; this runs in the render worker)."""
+    path = job_dir / "reel_design" / "progress.json"
+    try:
+        data = json.loads(path.read_text()) if path.is_file() else {"notes": []}
+    except (OSError, ValueError):
+        data = {"notes": []}
+    data["stage"] = stage
+    data["notes"].append({"text": note, "detail": detail[:1500], "stage": stage})
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False))
+    except OSError:
+        pass
+
+
+def _stage(job, message: str) -> None:
+    """The job's own stage name (the chat turns it into a step of the timeline; only 'rendering' is a render card)."""
+    try:
+        from app.jobs import _write_status
+        job.render.message = message
+        _write_status(job)
+    except Exception:
+        pass
+
+
 def _skipped(job, reason: str) -> bool:
     """The caller falls back to the built-in page; the reason is kept so the review can tell the person the designer was not used."""
     try:
@@ -303,6 +354,8 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         project.mkdir(parents=True, exist_ok=True)
         storyboard = json.loads((job.dir / "storyboard.json").read_text())
         used: list[str] = []
+        (work / "progress.json").unlink(missing_ok=True)
+        _progress(job.dir, "دارم صحنه‌های تأییدشده را به طراح موشن می‌دهم: متن‌ها، زمان‌بندی، نریشن و تصویرهای محصول ثابت‌اند؛ طراحی ظاهر و حرکت با طراح است")
         lengths = scene_lengths(config, float(storyboard.get("total_duration_s") or 0))
         subjects = _subjects(job.dir)
         pictures = {}
@@ -329,6 +382,11 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             plan, _, _ = build_plan(config, storyboard, creative, design, project, job.dir)
             brief = str(storyboard.get("prompt") or "")[:1500]
         plan = retime(plan, lengths)
+        (work / "timeline.json").write_text(json.dumps({"duration": plan.duration, "scenes": [{"start": sc.start, "end": sc.end} for sc in plan.scenes]}))
+        picks = [f"صحنهٔ {n}: {(sc.shotcraft_id or (sc.native_component.resource_id if sc.native_component else '') or '').split(':')[-1]}" for n, sc in enumerate(plan.scenes, 1)
+                 if sc.shotcraft_id or sc.native_component or sc.shotcraft_component]
+        _progress(job.dir, f"طرح کلی طراحی آماده شد: {len(plan.scenes)} صحنه، {plan.duration:g} ثانیه" + (f"، از کتابخانه: {'، '.join(picks[:4])}" if picks else "، همهٔ صحنه‌ها اختصاصی طراحی می‌شوند"),
+                  detail=f"امضای بصری: {plan.signature}\n{plan.design_direction}\n\n" + "\n".join(f"صحنهٔ {n} · {sc.headline}\n{sc.idea}" for n, sc in enumerate(plan.scenes, 1)))
         if on_progress:
             on_progress(2)
         count = len(plan.scenes)
@@ -338,6 +396,9 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         drafts = [draft for draft, _ in results]
         how = [kind for _, kind in results]
         log.info("reel designer: %s", how)
+        for n, kind in enumerate(how, 1):
+            _progress(job.dir, f"صحنهٔ {n} («{plan.scenes[n - 1].headline}»): " + {"designed": "طراحی شد", "reused": "از قبل طراحی شده بود", "plain": "طراحی اختصاصی تأیید نشد؛ با صحنهٔ ساده جایگزین شد"}[kind],
+                      detail=drafts[n - 1].html[:900])
         if how.count("plain") * 2 > count:
             log.warning("reel designer: most scenes fell back to plain scenes; the built-in reel page is used instead")
             return _skipped(job, "طراحی بیشتر صحنه‌ها پس از چند بار تلاش از اعتبارسنجی رد شد")
@@ -362,6 +423,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             log.warning("reel page invalid: %s", problems[:3])
             return _skipped(job, "صفحهٔ طراحی‌شده معتبر نبود: " + mg.explain_problem(problems[0]))
         mg.write_project(project, page)
+        _progress(job.dir, "دارم صفحهٔ طراحی‌شده را در مرورگر بررسی می‌کنم: چیدمان، خوانایی متن و خطاهای اجرا")
         check = standalone.check(project, should_cancel=should_cancel)
         rounds = 0
         while check.blocking and rounds < 3:
@@ -373,6 +435,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             if not hit:
                 hit = [n for n, kind in enumerate(how, 1) if kind != "plain"][:1]      # the page names no scene: the first designed scene is swapped out and the page is checked again
             log.warning("reel check round %d blocked on scenes %s: %s", rounds, hit, check.blocking[:2])
+            _progress(job.dir, f"بررسی مرورگر مشکل پیدا کرد (صحنهٔ {'، '.join(map(str, hit))}): " + mg.explain_problem(check.blocking[0]) + (" — دوباره طراحی می‌شود" if rounds == 1 else " — با صحنهٔ ساده جایگزین می‌شود"), detail="\n".join(check.blocking[:4]))
             for n in hit:
                 reason = [t for t in check.blocking if re.search(rf"\bs{n}\b|\bs{n}-", t)] or check.blocking
                 try:
@@ -396,12 +459,16 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
         if "plain" in how:
             job.designer_note = f"{how.count('plain')} صحنه پس از ردشدن در بررسی با صحنهٔ ساده جایگزین شد"
+        _progress(job.dir, "طراحی تمام شد و بررسی مرورگر پاک بود؛ رندر ویدیو شروع می‌شود")
         if on_progress:
             on_progress(12)
+        _stage(job, "rendering")
         product_reel._run_cli(project, out_path, timeout=timeout,
                               on_progress=(lambda pct: on_progress(12 + int(pct * 0.83))) if on_progress else None, should_cancel=should_cancel)
         if not out_path.is_file():
             return False
+        _stage(job, "adding subtitles")
+        _progress(job.dir, "رندر تمام شد؛ دارم زیرنویس کلمه‌به‌کلمهٔ نریشن را اضافه می‌کنم", stage="adding subtitles")
         if not add_subtitles(out_path, plan, config, work / "overlay"):
             job.designer_note = ((getattr(job, "designer_note", "") or "") + " زیرنویس کلمه‌به‌کلمه اضافه نشد.").strip()
         return True

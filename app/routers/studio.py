@@ -831,6 +831,39 @@ async def project_outputs(request: Request, project_id: str):
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]
 
 
+class DesignChoiceBody(BaseModel):
+    choice: str = ""
+    text: str = Field("", max_length=1500)
+
+
+@router.post("/projects/{project_id}/design-choice")
+async def choose_design(request: Request, project_id: str, body: DesignChoiceBody):
+    """The person's answer to «which look?»: one of the pictured looks, and/or their own words about the look. The video's scenes are designed from it."""
+    from creative import design_styles as styles
+    user = _user(request)
+    try: project = await repo.get_project(project_id, user)
+    except KeyError: raise HTTPException(404, "project not found")
+    state = project.get("state") or {}
+    question = state.get("design_question")
+    if not question:
+        raise HTTPException(409, "no design question is waiting for an answer")
+    options = {item["key"]: item for item in (state.get("design_proposal") or {}).get("options", [])}
+    text = body.text.strip()
+    if body.choice not in options and not text:
+        raise HTTPException(400, "choose one of the looks or describe the look you want")
+    option = styles.StyleOption.model_validate(options[body.choice if body.choice in options else question.get("recommended")])
+    job = jobstore.get(project["external_ref"]) if project.get("external_ref") else None
+    if not job: raise HTTPException(404, "render job not found")
+    choice = {"key": option.key, "name": option.name, "direction": styles.direction_text(option, text), "palette": option.palette.model_dump(), "text": text}
+    (job.dir / "design_choice.json").write_text(json.dumps(choice, ensure_ascii=False))
+    new_state = {k: v for k, v in state.items() if k != "design_question"}
+    new_state.update(design_resolved=True, design_choice={"key": option.key, "name": option.name, "text": text})
+    await repo.update_project(project_id, user, status="running", state=new_state)
+    said = (f"سبک «{option.name}» انتخاب شد" if body.choice in options else "طراحی با توضیح شما انجام می‌شود") + (f"؛ توضیح شما: {text}" if text else "")
+    await repo.emit(project["conversation_id"], "tool.progress", {"project_id": project_id, "engine": "motion", "status": "running", "stage": "choosing design style", "progress": None, "message": said})
+    return {"ok": True}
+
+
 @router.get("/projects/{project_id}/job-files/{name:path}")
 async def project_job_file(request: Request, project_id: str, name: str):
     """A picture, narration or clip the project's job has prepared (read-only; only listed media types, never hidden files)."""

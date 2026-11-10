@@ -551,7 +551,7 @@ export const STAGE_FA: Record<string, string> = {
   "planning render": "آماده‌سازی برنامهٔ رندر", "planning visual beats": "طراحی بخش‌های تصویری", "planning caption phrases": "آماده‌سازی عبارت‌های زیرنویس",
   "finding captions": "شناسایی زیرنویس روی تصویر", "finding english text": "شناسایی متن انگلیسی روی تصویر", "tracking caption frames": "ردیابی قاب‌های زیرنویس", "tracking the face": "ردیابی چهرهٔ گوینده",
   "generating voice": "ساخت گویندگی", "generating": "آماده‌سازی دارایی‌ها", "generating assets": "آماده‌سازی دارایی‌ها", "finding pictures": "انتخاب تصاویر مکمل",
-  "reusing prepared cut": "استفاده از برش آمادهٔ قبلی", "designing motion scenes": "طراحی صحنه‌های موشن", "repairing motion scenes": "اصلاح صحنه‌های موشن",
+  "reusing prepared cut": "استفاده از برش آمادهٔ قبلی", "designing motion scenes": "طراحی صحنه‌های موشن", "adding subtitles": "افزودن زیرنویس کلمه‌به‌کلمه", "choosing design style": "انتخاب سبک طراحی", "repairing motion scenes": "اصلاح صحنه‌های موشن",
   "building motion graphics": "ساخت موشن‌گرافیک", "reviewing motion graphics": "بازبینی موشن‌گرافیک", "improving motion graphics": "اصلاح موشن‌گرافیک",
   "reviewing creative output": "بازبینی خلاقانهٔ خروجی", "reviewing localized output": "بازبینی خروجی دوبله",
   rendering: "رندر ویدیو", "rendering source preparation": "تبدیل فرمت و آماده‌سازی ویدیو", "rendering captions": "آماده‌سازی زیرنویس و تیتر", "rendering outro": "ساخت صفحهٔ پایانی و لوگو",

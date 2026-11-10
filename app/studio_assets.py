@@ -84,3 +84,23 @@ def review_frames(job_dir: Path, report: dict | None) -> list[dict]:
             at = frame.get("time")
             out.append({"kind": "image", "scene": i, "group": "فریم‌های نمونهٔ بازبینی", "label": f"فریم {i}" + (f" · ثانیهٔ {at:g}" if isinstance(at, (int, float)) else ""), "src": src})
     return out
+
+
+def render_stage(message) -> str:
+    """The stage a running render job is really in, from the job's own message: only frame rendering is a render card; designing, subtitles and the checks are steps of the chat."""
+    text = str(message or "").strip().lower()
+    if text.startswith("designing"):
+        return "designing motion scenes"
+    if text.startswith("adding subtitles"):
+        return "adding subtitles"
+    if text in {"checking export", "reviewing creative output", "checking reference fidelity", "reviewing motion scenes", "adding poster to video"}:
+        return "reviewing creative output"
+    return "rendering"
+
+
+def design_notes(job_dir: Path) -> list[dict]:
+    """The notes the motion designer wrote while it worked (see creative.reel_designer._progress)."""
+    try:
+        return list(json.loads((job_dir / "reel_design" / "progress.json").read_text()).get("notes") or [])
+    except (OSError, ValueError):
+        return []

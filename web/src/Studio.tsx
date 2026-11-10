@@ -19,6 +19,7 @@ import { Composer, PendingFile } from "./studio/Composer";
 import { CloudPicker } from "./studio/CloudPicker";
 import { FilesPicker } from "./studio/FilesPicker";
 import { ManualQuestion } from "./studio/ManualQuestion";
+import { DesignChoice } from "./studio/DesignChoice";
 import { Thread, LocalFileInfo } from "./studio/Thread";
 import { Workspace, WorkspaceTab, advancedEditorUrl } from "./studio/Workspace";
 import { currentVersion, planPhase } from "./studio/plan";
@@ -705,6 +706,8 @@ export default function Studio() {
               <button className="btn btn-secondary" onClick={() => openWorkspace("edit", current.id)}>بررسی و تغییر برنامه</button>
             </div>
           </section> : null}
+          {current?.state?.design_question && conversation?.id ? <DesignChoice key={current.state.design_question.id} question={current.state.design_question} conversationId={conversation.id} busy={resuming}
+            onAnswer={(choice, text) => { setResuming(true); void api.chooseStudioDesign(current.id, { choice, text }).then(() => refresh()).catch(e => setError(friendlyError(e, 'choose the design'))).finally(() => setResuming(false)); }}/> : null}
           {pendingAction ? <div className="action-card"><h3 dir="rtl">این سناریو تأیید شود؟</h3>
             {Array.isArray(current?.state.storyboard?.scenes) ? <details open dir="rtl"><summary>سناریوی همین نسخه</summary>{current.state.storyboard.scenes.map((scene: {index?: number; duration_s?: number; narration_text?: string; text_overlay?: string; description?: string}, index: number) => <section key={index}><h4>صحنهٔ {index + 1} · {scene.duration_s} ثانیه</h4><p>نریشن: {scene.narration_text || 'بدون نریشن'}</p>{scene.text_overlay ? <p>متن روی تصویر: {scene.text_overlay}</p> : null}<p>تصویر: {scene.description}</p></section>)}</details> : null}
             <p dir="rtl">با تأیید، تصویرها، نریشن و رندر نهایی طبق این سناریو ساخته می‌شود.</p>{pendingAction.estimated_cost_usd != null ? <small className="muted-text" dir="rtl">برآورد ثبت‌شده: ${pendingAction.estimated_cost_usd.toFixed(4)}</small> : null}
