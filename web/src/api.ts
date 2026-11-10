@@ -1405,7 +1405,7 @@ export const api = {
     await j(await authFetch(`${BASE}/studio/motion/${id}/revise`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ change }) }));
   },
   motionSnapshotUrl(id: string, n: number): string { return `${BASE}/studio/motion/${id}/snapshot/${n}`; },
-  motionMediaUrl(id: string, kind: "video" | "thumb" | "source", version?: number): string { return `${BASE}/studio/motion/${id}/${kind}${version ? `?v=${version}` : ""}`; },
+  motionMediaUrl(id: string, kind: "video" | "thumb" | "source" | "voice", version?: number): string { return `${BASE}/studio/motion/${id}/${kind}${version ? `?v=${version}` : ""}`; },
   async conversationDiscovery(conversationId: string): Promise<{ analysis: DiscoveryAnalysis | null }> {
     return j(await authFetch(`${BASE}/studio/conversations/${conversationId}/discovery`));
   },

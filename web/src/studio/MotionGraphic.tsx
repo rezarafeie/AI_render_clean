@@ -152,7 +152,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || motion.log?.length) ? <div className="mg-progress">
       {(() => {
-        const all = motionSteps(motion, now * 1000);
+        const all = motionSteps(motion, now * 1000).map(step => step.key === "voice" && step.status === "done" && /آماده شد/.test(step.label) ? { ...step, audioSrc: api.motionMediaUrl(motionId, "voice") } : step);
         const last = all[all.length - 1];
         const rendering = motion.active && last?.key === "render" && !shown;
         const renderPercent = rendering ? Math.max(0, Math.min(100, Math.round((motion.progress - 40) / 0.55))) : undefined;

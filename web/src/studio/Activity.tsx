@@ -17,6 +17,7 @@ function Elapsed({ since }: { since: number }) {
 
 /** The step's work log, like a tool call in a coding agent: what it asked and what came back (or that it is still working), and one line of facts. */
 const AssetList = React.lazy(() => import("./AssetList"));
+const NarrationAudio = React.lazy(() => import("./NarrationAudio"));
 function Assets({ assets, projectId }: { assets: PreparedAsset[]; projectId?: string }) {
   if (!assets.length || !projectId) return null;
   return <React.Suspense fallback={null}><AssetList assets={assets} projectId={projectId}/></React.Suspense>;
@@ -28,7 +29,7 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
   const num = (value: number) => (fa ? faNumber(value) : String(value));
   const facts: string[] = [`شروع ${clock(step.startedAt, fa)}`];
   const took = typeof run?.latencyMs === "number" ? run.latencyMs : details.durationMs;
-  if (took >= 1000) facts.push(`مدت ${formatDuration(took, fa)}`);
+  if (took >= 1000 && step.status !== "active") facts.push(`مدت ${formatDuration(took, fa)}`);        // while it runs, the one live timer sits under the progress bar
   if (details.updates > 1) facts.push(`${num(details.updates)} گزارش`);
   if (run?.model) facts.push(run.model);
   if (typeof run?.inputTokens === "number") facts.push(`${num(run.inputTokens)} توکن ورودی`);
@@ -40,9 +41,10 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
     {details.assets.length && !details.response && !run?.error ? null : <section className="act-io"><h5>پاسخ</h5>
       {details.response ? <pre dir="auto">{details.response}</pre>
         : run?.error ? <pre dir="ltr" className="act-error">{run.error}</pre>
-        : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار… <Elapsed since={step.startedAt}/></p>
+        : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار…</p>
         : <p className="act-none">پاسخ متنی ثبت نشده است.</p>}
     </section>}
+    {step.audioSrc ? <section className="act-io"><h5>شنیدن نریشن</h5><React.Suspense fallback={null}><NarrationAudio src={step.audioSrc}/></React.Suspense></section> : null}
     <p className="act-facts" dir="auto">{facts.join(" · ")}</p>
   </div>;
 }

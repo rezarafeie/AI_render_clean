@@ -27,6 +27,8 @@ export interface ActivityStep {
   request?: string;
   /** The exact material of the step (its lines, choices, results) when the server wrote it, shown when the step is opened. */
   detail?: string;
+  /** A playable file of this step (the narration take), shown in its log. */
+  audioSrc?: string;
   /** What came back from the step's model call (when it has returned), and the numbers about the call. */
   response?: string;
   run?: { model?: string; inputTokens?: number; outputTokens?: number; latencyMs?: number; elapsedSeconds?: number; error?: string };
@@ -530,7 +532,7 @@ export function stepDetails(step: ActivityStep): { notes: string[]; durationMs: 
   const notes = step.notes.filter(note => note.length > 0);
   const durationMs = Math.max(0, step.endedAt - step.startedAt);
   const updates = step.events.length;
-  if (!updates && !notes.length && !step.request) return null;                // a step with recorded events always opens to its log
+  if (!updates && !notes.length && !step.request && !step.audioSrc) return null;                // a step with recorded events always opens to its log
   let assets: PreparedAsset[] = [];
   for (const event of step.events) if (Array.isArray(event.data?.assets)) assets = event.data.assets.filter((asset: any) => asset && typeof asset.src === "string" && asset.src);      // the newest list wins; the server hides keys named file/path, so the file is `src`
   const projectId = step.events.map(event => event.data?.project_id).find(Boolean);

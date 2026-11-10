@@ -219,3 +219,20 @@ def test_a_long_brief_may_have_more_than_six_scenes():
     long_brief = " ".join(["کلمه"] * 144)
     assert mg.plan_cap(short) == 6 and mg.plan_cap(long_brief) == 12 and mg.plan_cap("x " * 80) == 10
     assert mg.plan_cap(short, supplied=14) == 14 and mg.MAX_SECONDS == 90.0
+
+
+def test_the_narration_take_is_served_for_playing_in_the_step_log(tmp_path):
+    import json
+    import pytest
+    from app import motion_graphic as app_mg
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    with pytest.raises(KeyError):
+        app_mg.media_path(directory, "voice")                              # nothing voiced yet
+    take = directory / "voice" / "take.mp3"
+    take.parent.mkdir(parents=True); take.write_bytes(b"mp3")
+    (directory / "voice.json").write_text(json.dumps({"audio": [{"path": str(take), "start": 0.3, "duration": 4.0}]}))
+    assert app_mg.media_path(directory, "voice") == take
+    (directory / "voice.json").write_text(json.dumps({"audio": [{"path": "/etc/hosts", "start": 0, "duration": 1}]}))
+    with pytest.raises(KeyError):
+        app_mg.media_path(directory, "voice")                              # only files inside this clip's own folder

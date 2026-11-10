@@ -1485,13 +1485,13 @@ async def motion_editable(request: Request, motion_id: str):
 @router.get("/motion/{motion_id}/{kind}")
 async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[int] = None):
     from app import motion_graphic
-    if kind not in {"video", "thumb", "source"}:
+    if kind not in {"video", "thumb", "source", "voice"}:
         raise HTTPException(404, "unknown file")
     try:
         path = await asyncio.to_thread(motion_graphic.media_path, _motion_dir(request, motion_id), kind, v)
     except KeyError:
         raise HTTPException(404, "file not ready")
-    media_type = {"video": "video/mp4", "thumb": "image/jpeg", "source": "text/html"}[kind]
+    media_type = {"video": "video/mp4", "thumb": "image/jpeg", "source": "text/html", "voice": "audio/mpeg"}[kind]
     headers = {"Cache-Control": "private, max-age=3600"}
     if kind in {"video", "source"}:
         headers["Content-Disposition"] = f'inline; filename="motion-graphic.{"mp4" if kind == "video" else "html"}"'

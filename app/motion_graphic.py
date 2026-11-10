@@ -1528,6 +1528,15 @@ def make_thumb(video: Path, thumb: Path, duration: float) -> None:
 
 
 def media_path(directory: Path, kind: str, version: Optional[int] = None) -> Path:
+    if kind == "voice":                                    # the narration take of the latest run, playable from the step's log
+        try:
+            audio = json.loads((directory / "voice.json").read_text())["audio"][0]["path"]
+        except (OSError, ValueError, KeyError, IndexError):
+            raise KeyError("voice")
+        path = Path(audio)
+        if not path.is_file() or directory.resolve() not in path.resolve().parents:
+            raise KeyError("voice")
+        return path
     record = load(directory)
     number = version or record.get("current")
     item = _version(record, number)
