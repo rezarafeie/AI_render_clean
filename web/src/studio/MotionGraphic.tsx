@@ -5,7 +5,7 @@ import { friendlyError } from "../ui";
 import { etaText, motionSteps } from "./motionModel";
 import { ActivityBlock } from "./Activity";
 import { Icon } from "../components/Icon";
-import { formatDuration } from "../format";
+import { faNumber, formatDuration } from "../format";
 import type { ActivityStep } from "./model";
 
 const FORMAT_LABEL = { vertical: "عمودی ۹:۱۶", horizontal: "افقی ۱۶:۹", square: "مربعی ۱:۱" } as const;
@@ -42,7 +42,7 @@ function ShotStrip({ motionId, shots, stamp }: { motionId: string; shots: { n: n
   const current = open === null ? null : shots[open];
   return <>
     <ul className="mg-album" aria-label="صحنه‌ها">
-      {shots.map((shot, index) => <li key={`${shot.n}-${stamp}`}>
+      {shots.map((shot, index) => <li key={shot.n}>
         <button type="button" className="mg-thumb" onClick={() => setOpen(index)} aria-label={`صحنهٔ ${shot.n}: ${shot.headline}`} title={`${shot.n}. ${shot.headline}`}>
           <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt="" loading="lazy" draggable={false}/>
           <span className="mg-thumb-n" aria-hidden="true">{shot.n}</span>
@@ -155,14 +155,21 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
         const all = motionSteps(motion, now * 1000).map(step => step.key === "voice" && step.status === "done" && /آماده شد/.test(step.label) ? { ...step, audioSrc: api.motionMediaUrl(motionId, "voice") } : step);
         const last = all[all.length - 1];
         const rendering = motion.active && last?.key === "render" && !shown;
-        const renderPercent = rendering ? Math.max(0, Math.min(100, Math.round((motion.progress - 40) / 0.55))) : undefined;
+        // The cloud's own percentage when it reports one; otherwise an estimate from the measured render speed (shown with ≈), never a made-up number.
+        const cloudPercent = rendering && motion.progress > 40 ? Math.max(1, Math.min(99, Math.round((motion.progress - 40) / 0.55))) : undefined;
+        const spent = rendering ? Math.max(0, now - last.startedAt / 1000) : 0;
+        const left = rendering && motion.eta_s !== null && motion.eta_at !== null ? Math.max(0, motion.eta_at + motion.eta_s - now) : undefined;
+        const estimated = cloudPercent === undefined && left !== undefined && spent > 5 ? Math.max(1, Math.min(95, Math.round(100 * spent / (spent + left)))) : undefined;
+        const renderPercent = cloudPercent ?? estimated;
+        const renderEstimated = cloudPercent === undefined && estimated !== undefined;
         return <>
           {summaries?.plan ? <p className="mg-say bidi wrap-safe" dir="auto">{summaries.plan}</p> : null}
           <ActivityBlock steps={rendering ? all.filter(step => step.key !== "render") : all} live={motion.active}/>
-          {rendering ? <article className="render-card" data-phase="rendering" data-compact={compact || undefined} aria-label="Rendering your video">
-            <header className="rc-head"><h3>Rendering your video</h3>{formatDuration(Math.max(0, now * 1000 - last.startedAt)) ? <span className="rc-elapsed">{formatDuration(Math.max(0, now * 1000 - last.startedAt))}</span> : null}</header>
-            <div className="rc-meta"><span dir="auto">{last.label}</span>{renderPercent ? <span dir="ltr">{renderPercent}%</span> : null}</div>
-            {renderPercent ? <div className="meter" style={{ ["--value" as string]: `${renderPercent}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={renderPercent} aria-label="Rendering"><span/></div> : null}
+          {rendering ? <article className="render-card" data-phase="rendering" data-compact={compact || undefined} aria-label="Rendering your video" aria-busy="true">
+            <header className="rc-head"><h3><span className="spinner rc-live" aria-hidden="true"/>Rendering your video</h3><span className="rc-elapsed" dir="ltr">{formatDuration(Math.max(0, now * 1000 - last.startedAt), true)}</span></header>
+            <div className="rc-meta"><span dir="auto">{last.label}</span>{renderPercent !== undefined ? <span dir="ltr">{renderEstimated ? "≈ " : ""}{faNumber(renderPercent)}٪</span> : null}</div>
+            <div className="meter rc-meter" data-estimate={renderEstimated || renderPercent === undefined || undefined} style={{ ["--value" as string]: `${renderPercent ?? 8}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={renderPercent} aria-label="Rendering"><span/></div>
+            {motion.eta_s !== null && motion.eta_at !== null ? <p className="rc-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
           </article> : null}
         </>;
       })()}

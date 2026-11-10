@@ -1260,7 +1260,7 @@ def _scenes_in(problems: list[str], count: int) -> list[int]:
     return found
 
 
-def _isolate(directory: Path, work: Path, build, page, problems: list[str], notes: list[str]):
+def _isolate(directory: Path, work: Path, build, page, problems: list[str], notes: list[str], brief: str = "", used: list[str] | None = None):
     """The page fails and no finding names a scene: swap one scene at a time for its plain version until the check passes; if no single swap does,
     every scene becomes plain. Returns the page to check again."""
     from creative import motion_graphic as mg
@@ -1273,6 +1273,7 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
     # Test every designed scene on its own page (the others plain) so only the scenes that really fail lose their design.
     plain = {i: mg.fallback_scene(build.plan, i) for i in range(1, count + 1)}
     failing: list[int] = []
+    errors: dict[int, list[str]] = {}
     for n in range(1, count + 1):
         trial = dict(plain)
         trial[n] = build.drafts[n]
@@ -1282,6 +1283,44 @@ def _isolate(directory: Path, work: Path, build, page, problems: list[str], note
             raise _Cancelled()
         if result.blocking:
             failing.append(n)
+            errors[n] = list(result.blocking)
+    # A scene that fails is designed again from its own error (up to three times) before it may lose its design; the motion is fixed, not removed.
+    had_failing = bool(failing)
+    for attempt in (1, 2, 3):
+        if not failing or not brief:
+            break
+        still: list[int] = []
+        for n in failing:
+            scene = build.plan.scenes[n - 1]
+            if scene.native_component or getattr(scene, "shotcraft_component", None):
+                still.append(n)
+                continue
+            _note(directory, f"scene{n}", f"صحنهٔ {n} در اجرا خطا می‌داد؛ دوباره طراحی می‌شود (تلاش {attempt} از ۳)", "active",
+                  detail="\n".join(f"{mg.explain_problem(p)} — {p[:300]}" for p in errors.get(n, [])[:3]))
+            try:
+                draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=[mg.explain_problem(p) + " — " + p[:300] for p in errors.get(n, [])[:4]], style=build.style)
+            except Exception as exc:
+                log.warning("scene %d could not be designed again from its error: %s", n, str(exc)[:160])
+                still.append(n)
+                continue
+            trial = dict(plain)
+            trial[n] = draft
+            mg.write_project(work, mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)], build.audio))
+            result = standalone.check(work, should_cancel=lambda: _cancelled(key))
+            if _cancelled(key):
+                raise _Cancelled()
+            if result.blocking:
+                errors[n] = list(result.blocking)
+                still.append(n)
+            else:
+                build.drafts[n] = draft
+                notes.append(f"صحنهٔ {n} («{scene.headline}») پس از خطا دوباره طراحی و درست شد")
+                _note(directory, f"scene{n}", f"صحنهٔ {n} پس از اصلاح خطا آماده شد: «{scene.headline}»", "done")
+        failing = still
+    if had_failing and not failing:                    # every failing scene was fixed: the page keeps all its designs
+        repaired = mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, count + 1)], build.audio)
+        mg.write_project(work, repaired)
+        return repaired
     if failing and len(failing) < count:
         trial = {i: (plain[i] if i in failing else build.drafts[i]) for i in range(1, count + 1)}
         candidate = mg.assemble_scenes(build.plan, [trial[i] for i in range(1, count + 1)], build.audio)
@@ -1318,7 +1357,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         from creative.shotcraft_compare import restore_inputs
         restore_inputs(directory,work,image_inputs)
     notes: list[str] = list(getattr(build, "voice_notes", []) or [])
-    repairs_left = 2
+    repairs_left = 3
     isolated = 0
     shots_of = None
     stats = _stats()
@@ -1390,7 +1429,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             if isolated >= 2:
                 raise RuntimeError("did not pass validation: " + problems[0])
             isolated += 1
-            page = _isolate(directory, work, build, page, problems, notes)
+            page = _isolate(directory, work, build, page, problems, notes, brief, used)
             continue
         if repairs_left <= 0:
             raise RuntimeError("did not pass validation: " + problems[0])

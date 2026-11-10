@@ -243,3 +243,35 @@ def test_a_scene_with_an_invalid_svg_path_is_rejected_when_it_is_authored():
     from creative.reel_designer import svg_problems
     assert svg_problems('<svg><path d="M ninety 0 L 10 10"/></svg>')
     assert not svg_problems('<svg><path d="M 10 10 L 90 90"/></svg>')
+
+
+def test_bare_scenes_are_sent_back_but_never_fail():
+    from creative import motion_graphic as mg
+    bare = mg.SceneDraft(html='<h1 id="s1-h">عنوان</h1>', build_js='tl.set("#s1-h", {opacity:1}, T + 0);')
+    rich = mg.SceneDraft(html="<div id='s1-a'><svg><path/><circle/><rect/></svg><p>x</p><p>y</p><span>z</span></div>", build_js="\n".join(f'tl.to("#s1-a", {{x:{i}}}, T + {i * 0.1});' for i in range(9)))
+    assert mg.plainness_problems(bare) and not mg.plainness_problems(rich)
+
+
+def test_a_scene_that_errors_is_designed_again_from_its_error_not_replaced_by_a_plain_one(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app import motion_graphic as app_mg
+    from creative import motion_graphic as mg
+    from engine.hyperframes import standalone
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    work = tmp_path / "work"; work.mkdir()
+    plan = mg.MotionPlan(title="t", duration=8, scenes=[mg.ScenePlan(headline="a", idea="i", start=0, end=4), mg.ScenePlan(headline="b", idea="i", start=4, end=8)])
+    bad = mg.SceneDraft(html="BAD", build_js="x"); good = mg.SceneDraft(html="GOOD", build_js="x"); plain = mg.SceneDraft(html="PLAIN", build_js="x")
+    build = SimpleNamespace(plan=plan, drafts={1: good, 2: bad}, audio=[], context="", style=None)
+    monkeypatch.setattr(app_mg, "_note", lambda *a, **k: None)
+    monkeypatch.setattr(mg, "fallback_scene", lambda plan, n: plain)
+    monkeypatch.setattr(mg, "assemble_scenes", lambda plan, drafts, audio=None: SimpleNamespace(html="|".join(d.html for d in drafts)))
+    monkeypatch.setattr(mg, "write_project", lambda directory, page, **k: (directory / "page.txt").write_text(page.html))
+    monkeypatch.setattr(standalone, "check", lambda directory, **k: standalone.CheckResult(ran=True, blocking=["runtime: console_error: <path> attribute d: bad"] if "BAD" in (directory / "page.txt").read_text() else []))
+    asked = []
+    monkeypatch.setattr(mg, "author_scene", lambda plan, n, brief, **k: asked.append((n, k.get("feedback"))) or good)
+    notes = []
+    page = app_mg._isolate(directory, work, build, SimpleNamespace(), ["runtime: console_error: bad"], notes, "brief", [])
+    assert asked and asked[0][0] == 2 and "attribute d" in asked[0][1][0]           # designed again from its own error
+    assert "PLAIN" not in page.html and build.drafts[2] is good                       # nothing was replaced by a plain scene
+    assert any("دوباره طراحی و درست شد" in note for note in notes)

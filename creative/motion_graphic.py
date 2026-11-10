@@ -980,6 +980,18 @@ def explain_problem(text: str) -> str:
     return text.strip()[:90]
 
 
+def plainness_problems(draft) -> list[str]:
+    """A scene that is valid but bare: few animation calls, few elements. These are sent back with the reasons (they never make a scene fail)."""
+    moves = len(re.findall(r"\b(?:tl|HM)\s*\.", draft.build_js)) + len(re.findall(r"\bHM\.", draft.update_js))
+    tags = len(re.findall(r"<(?:div|p|span|svg|path|rect|circle|line|g|img|polygon|ellipse|h1|h2)\b", draft.html))
+    out = []
+    if moves < 8:
+        out.append(f"only {moves} animation calls: write at least 8 (an entrance for every layer, something that keeps moving, callouts one after another)")
+    if tags < 7:
+        out.append(f"only {tags} elements: build at least three layers (a background treatment, an illustration or diagram that explains the point, the headline and small details)")
+    return out
+
+
 def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", used: list[str] | None = None, repairs: int = SCENE_ATTEMPTS - 1,
                  feedback: list[str] | None = None, on_retry=None, style: str = "") -> SceneDraft:
     """One validated scene. Rejections are fed back to the model (``on_retry(next_attempt, problems)`` tells the caller); ``feedback`` starts the
@@ -1020,7 +1032,10 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
         from .reel_designer import svg_problems
         problems += svg_problems(draft.html)                  # an invalid path d would only surface later as a browser error that names no scene
         if not problems:
-            return draft
+            thin = plainness_problems(draft)                  # valid, but only a title with little around it: sent back while a correction is left, accepted on the last attempt
+            if not thin or attempt >= repairs:
+                return draft
+            problems = thin
         log.warning("scene %d rejected (attempt %d): %s", n, attempt + 1, problems[:3])
         if on_retry and attempt < repairs:
             on_retry(attempt + 2, problems)

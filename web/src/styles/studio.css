@@ -881,3 +881,12 @@ a.pe-tool { text-decoration: none; }
 [dir="rtl"] .composer-input { text-align: start; }
 [dir="rtl"] .composer-input::placeholder { text-align: start; }
 .mg-say { margin: 6px 0 10px; line-height: 1.9; color: var(--text); }
+
+/* a render that is visibly working: live spinner, a bar that moves even before a percentage exists */
+.rc-head h3 { display: inline-flex; align-items: center; gap: 8px; }
+.rc-live { width: 14px; height: 14px; }
+.rc-meter { height: 6px; }
+.meter[data-estimate] > span { background-image: linear-gradient(90deg, var(--ink) 0%, var(--ink) 40%, color-mix(in srgb, var(--ink) 55%, transparent) 50%, var(--ink) 60%, var(--ink) 100%); background-size: 200% 100%; animation: rc-sweep 1.4s linear infinite; }
+@keyframes rc-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.rc-eta { margin: 0; font-size: 12px; color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .meter[data-estimate] > span { animation: none; } }
