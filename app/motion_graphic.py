@@ -173,7 +173,33 @@ def _version(record: dict, number: int | None = None) -> dict | None:
     return next((v for v in record["versions"] if v["n"] == number), None)
 
 
+STALE_AFTER = 600          # seconds without any progress save, with no worker thread alive here: nobody is building this clip any more
+
+
+def heal_if_dead(directory: Path) -> bool:
+    """A record that says "working" but whose worker is gone (the server restarted a few seconds after its last save, so the start-up recovery, which only
+    takes records silent for 45 s, skipped it) is turned into a retryable failure instead of spinning forever. A worker alive in this process is never touched;
+    10 minutes without a single progress save is far longer than any step of the pipeline stays silent."""
+    key = directory.name
+    with _lock(key):
+        try:
+            record = load(directory)
+        except (OSError, ValueError):
+            return False
+        thread = _RUNNING.get(key)
+        if (record.get("status") not in ACTIVE or (thread is not None and thread.is_alive())
+                or time.time() - float(record.get("updated_at") or 0) <= STALE_AFTER):
+            return False
+        record.update(status="failed", stage="failed", message="ساخت با راه‌اندازی دوبارهٔ سرور قطع شد؛ با «تلاش دوباره» از همان طرح و صحنه‌های آماده ادامه می‌دهد.", error="interrupted")
+        save(directory, record)
+    _emit(record["conversation_id"], "motion.progress", motion_id=key, status="failed", stage="failed", progress=record.get("progress", 0), message=record["message"])
+    _emit(record["conversation_id"], "job.failed", motion_id=key, message=record["message"], resumable=True)
+    _emit(record["conversation_id"], "work.state", busy=False)
+    return True
+
+
 def view(directory: Path) -> dict:
+    heal_if_dead(directory)
     record = load(directory)
     versions = [{k: v for k, v in item.items() if k != "page"} for item in record["versions"]]
     return {"id": record["id"], "conversation_id": record["conversation_id"], "status": record["status"], "stage": record["stage"],

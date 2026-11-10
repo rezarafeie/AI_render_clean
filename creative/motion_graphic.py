@@ -149,6 +149,25 @@ def _motion_kit_names() -> frozenset:
     return frozenset(re.findall(r"\w+", match.group(1))) if match else frozenset()
 
 
+@lru_cache(maxsize=1)
+def _motion_kit_curves() -> frozenset:
+    """Every curve name `MotionKit.curve()` knows: the named library plus `kit.<name>` for its own curves."""
+    text = (KIT / "motion-kit.js").read_text(encoding="utf-8")
+    own = re.search(r"const C = \{(.*?)\n  \};", text, re.S)
+    names = {f"kit.{k}" for k in re.findall(r"^\s+(\w+):\s*bez\(", own.group(1), re.M)} if own else set()
+    lib = re.search(r"const LIB = \{(.*?)\n  \};", text, re.S)
+    names |= set(re.findall(r"'([A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+)'\s*:", lib.group(1))) if lib else set()
+    return frozenset(names)
+
+
+def unknown_motion_curves(code: str) -> list[str]:
+    """Curve names written as strings that the library does not have ("kit.pop"): the page would die with `MotionKit: no curve "kit.pop"`."""
+    if "curve" not in code:
+        return []
+    known = _motion_kit_curves()
+    return sorted({name for name in re.findall(r"\bcurve\(\s*(?:'([^']*)'|\"([^\"]*)\")", re.sub(r"/\*.*?\*/|//[^\n]*", " ", code, flags=re.S)) for name in name if name and name not in known})
+
+
 def unknown_motion_kit(code: str) -> list[str]:
     """MotionKit.<name> calls the library does not define (the page would die with "MotionKit.x is not a function")."""
     if "MotionKit" not in code:
@@ -228,6 +247,9 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         missing = unknown_helpers(getattr(page, field))
         if missing:
             problems.append(f"{field}: HM.{', HM.'.join(missing)} does not exist. HM has only: " + ", ".join(sorted(n for n in _KIT_NAMES if not n.startswith("_") and n not in {"width", "height", "duration", "colors"})) + " (anything else: use tl.* with a selector)")
+        wrong_curves = unknown_motion_curves(getattr(page, field))
+        if wrong_curves:
+            problems.append(f"{field}: no curve named {', '.join(repr(c) for c in wrong_curves)}. Use one of: " + ", ".join(sorted(_motion_kit_curves())))
         missing_kit = unknown_motion_kit(getattr(page, field))
         if missing_kit:
             problems.append(f"{field}: MotionKit.{', MotionKit.'.join(missing_kit)} does not exist. MotionKit has only: " + ", ".join(sorted(_motion_kit_names())))
