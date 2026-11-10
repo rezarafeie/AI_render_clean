@@ -197,7 +197,7 @@ def _progress(directory: Path, status: str, progress: int, message: str, *, stag
     return record
 
 
-def _note(directory: Path, key: str, text: str, state: str = "active", detail: str | None = None) -> None:
+def _note(directory: Path, key: str, text: str, state: str = "active", detail: str | None = None, request: str | None = None) -> None:
     """One line of what is really happening (about this clip's own content). A line with the same key is updated, not repeated.
     `detail` is the exact material of that step (the request, the lines, the choices), shown when the person opens the step."""
     if _cancelled(directory.name):
@@ -213,6 +213,8 @@ def _note(directory: Path, key: str, text: str, state: str = "active", detail: s
             line = lines[-1]
         if detail is not None:
             line["detail"] = str(detail)[:3500]
+        if request is not None:
+            line["request"] = str(request)[:3000]                  # what this step was asked (shown as its request in the chat's step log)
         if state == "done":
             line["done_at"] = time.time()
         else:
@@ -1051,7 +1053,7 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     stats = _stats()
     if plan is None:
         _progress(directory, "writing", 6, "دارم از روی درخواست شما طرح کلی و صحنه‌ها را می‌نویسم.", stage="writing", eta=stats["plan_s"] + _remaining(4, 15))
-        _note(directory, "plan", "دارم طرح کلی را می‌نویسم: صحنه‌ها، متن‌ها و رنگ‌ها")
+        _note(directory, "plan", "دارم طرح کلی را می‌نویسم: صحنه‌ها، متن‌ها و رنگ‌ها", request=brief)
         started = time.monotonic()
         plan = mg.plan(brief, context=context, style=style, used=used)
         if _cancelled(key):
@@ -1128,7 +1130,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     def author(n: int):
         _local.run = run_id
         scene = plan.scenes[n - 1]
-        _note(directory, f"scene{n}", f"دارم صحنهٔ {n} را طراحی می‌کنم: «{scene.headline}»")
+        _note(directory, f"scene{n}", f"دارم صحنهٔ {n} را طراحی می‌کنم: «{scene.headline}»",
+              request=f"عنوان: {scene.headline}\nنریشن: {scene.narration or '—'}\nمدت: {scene.end - scene.start:.1f} ثانیه\nایدهٔ تصویری و حرکتی:\n{scene.idea}")
         started = time.monotonic()
         tries = [1]
 

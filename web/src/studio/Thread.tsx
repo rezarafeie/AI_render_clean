@@ -80,7 +80,7 @@ export function Thread({ items, conversation, projects, localFiles, thinking, co
   return <ol className="thread" aria-label="Conversation">
     {items.map(item => {
       if (item.kind === "message") return <MessageRow key={item.id} item={item} conversationId={conversation?.id} localFiles={localFiles} linkTitles={linkTitles} onRetryMessage={onRetryMessage}/>;
-      if (item.kind === "motion") return <li key={item.id} className="thread-aux"><MotionGraphicCard motionId={item.motionId} events={events} version={item.version} latest={item === lastMotion} summaries={item.summaries}/></li>;
+      if (item.kind === "motion") return <li key={item.id} className="thread-aux"><MotionGraphicCard motionId={item.motionId} events={events} version={item.version} latest={item === lastMotion} summaries={item.summaries} compact={compactRender} onOpenPreview={() => onOpenPreview("")} onEditAgain={() => onEditAgain("")}/></li>;
       if (item.kind === "discovery") return <li key={item.id} className="thread-aux thread-wide"><DiscoveryPanel analysisId={item.analysisId} events={events}/></li>;
       if (item.kind === "activity") return <li key={item.id} className="thread-aux"><ActivityBlock steps={item.steps} live={item.live} retryHref={retryHref} onOpenEditor={onOpenEditor && projects.length ? () => onOpenEditor(projects[projects.length - 1].id) : undefined}/></li>;
       if (item.kind === "render") {

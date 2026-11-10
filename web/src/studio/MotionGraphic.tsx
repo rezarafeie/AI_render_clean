@@ -109,7 +109,7 @@ export function MotionSteps({ steps, live, now, summaries }: { steps: ActivitySt
 }
 
 /** The clip made from the chat request: live stages while it is made, then the player, downloads and versions. Part of the conversation, not a panel. */
-export function MotionGraphicCard({ motionId, events, version: fixedVersion, latest = true, summaries }: { motionId: string; events: StudioEvent[]; version?: number; latest?: boolean; summaries?: { plan?: string; ready?: string } }) {
+export function MotionGraphicCard({ motionId, events, version: fixedVersion, latest = true, summaries, compact, onOpenPreview, onEditAgain }: { motionId: string; events: StudioEvent[]; version?: number; latest?: boolean; summaries?: { plan?: string; ready?: string }; compact?: boolean; onOpenPreview?: () => void; onEditAgain?: () => void }) {
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
   const [error, setError] = React.useState("");
   const [version, setVersion] = React.useState<number | null>(null);
@@ -150,35 +150,35 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
   const ratio = shown ? `${shown.width} / ${shown.height}` : "9 / 16";
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
-    {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || (!shown && motion.log?.length)) ? <div className="mg-progress">
+    {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || motion.log?.length) ? <div className="mg-progress">
       <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
       {summaries?.ready && !motion.active ? <p className="mg-step-summary" dir="auto">{summaries.ready}</p> : null}
-      {motion.snapshots?.length ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
+      {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" ? <div className="notice" data-tone="error" role="alert">{motion.error === "stopped" ? "ساخت متوقف شد." : motion.error || "ساخت کامل نشد."}</div> : null}
       {motion.status === "failed" ? <div className="mg-actions"><button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.motionRetry(motionId))}>تلاش دوباره</button></div> : null}
     </div> : null}
 
-    {shown ? <div className="mg-result">
-      <div className="mg-player" style={{ aspectRatio: ratio }} data-format={shown.format}>
-        <AuthenticatedMedia as="video" key={`v-${motionId}-${shown.n}`} src={api.motionMediaUrl(motionId, "video", shown.n)} posterSrc={api.motionMediaUrl(motionId, "thumb", shown.n)} controls playsInline preload="metadata"/>
+    {shown ? <article className="render-card" data-phase="done" data-compact={compact || undefined} aria-label="Your video is ready">
+      <header className="rc-head">
+        <h3>Your video is ready</h3>
+        <span className="badge" data-tone="success"><i/>Version {shown.n}</span>
+      </header>
+      {compact ? null : <div className="rc-frame" style={{ aspectRatio: ratio }}>
+        <AuthenticatedMedia as="video" key={`v-${motionId}-${shown.n}`} src={api.motionMediaUrl(motionId, "video", shown.n)} posterSrc={api.motionMediaUrl(motionId, "thumb", shown.n)} controls playsInline preload="metadata" className="rc-video"/>
+      </div>}
+      <div className="rc-actions">
+        <button className="btn btn-sm" onClick={() => void api.authenticatedObjectUrl(api.motionMediaUrl(motionId, "video", shown.n)).then(url => { const a = document.createElement("a"); a.href = url; a.download = "motion-graphic.mp4"; a.click(); })}><Icon name="download" size={15}/>Download</button>
+        {onOpenPreview ? <button className="btn btn-sm btn-secondary" onClick={onOpenPreview}><Icon name="eye" size={15}/>Open in Preview</button> : null}
+        {onEditAgain ? <button className="btn btn-sm btn-ghost" onClick={onEditAgain}><Icon name="edit" size={15}/>Edit again</button> : null}
       </div>
-      <div className="mg-info">
-        <h3 className="bidi" dir="auto">{shown.title || "موشن‌گرافیک"}</h3>
-        <p className="mg-meta">{secondsText(shown.duration)} · {FORMAT_LABEL[shown.format]} · نسخهٔ {new Intl.NumberFormat("fa-IR").format(shown.n)}</p>
-        {shown.change ? <p className="mg-change bidi" dir="auto">تغییر: {shown.change}</p> : null}
-        {fixedVersion === undefined && motion.versions.length > 1 ? <label className="mg-versions">نسخه‌ها
-          <select value={shown.n} onChange={e => setVersion(Number(e.target.value))}>{motion.versions.map(v => <option key={v.n} value={v.n}>نسخهٔ {new Intl.NumberFormat("fa-IR").format(v.n)}{v.n === motion.current ? " (آخرین)" : ""}</option>)}</select>
-        </label> : null}
-        <div className="mg-actions">
-          <a className="btn btn-sm" href={api.motionMediaUrl(motionId, "video", shown.n)} download="motion-graphic.mp4" onClick={e => { e.preventDefault(); void api.authenticatedObjectUrl(api.motionMediaUrl(motionId, "video", shown.n)).then(url => { const a = document.createElement("a"); a.href = url; a.download = "motion-graphic.mp4"; a.click(); }); }}>دانلود MP4</a>
-          <a className="btn btn-sm btn-secondary" href={api.motionMediaUrl(motionId, "source", shown.n)} onClick={e => { e.preventDefault(); void api.authenticatedObjectUrl(api.motionMediaUrl(motionId, "source", shown.n)).then(url => { const a = document.createElement("a"); a.href = url; a.download = "motion-graphic.html"; a.click(); }); }}>فایل HTML</a>
-        </div>
-        {shown.notes?.length ? <details className="mg-notes"><summary>نکات بررسی خودکار ({new Intl.NumberFormat("fa-IR").format(shown.notes.length)})</summary><ul>{shown.notes.map(n => <li key={n} dir="ltr">{n}</li>)}</ul></details> : null}
-        {latest && motion.status === "completed" ? <p className="field-hint">برای تغییر، همین‌جا بنویسید: متن، رنگ، زمان‌بندی، اندازه…</p> : null}
-      </div>
-    </div> : null}
+      {fixedVersion === undefined && motion.versions.length > 1 ? <label className="mg-versions">نسخه‌ها
+        <select value={shown.n} onChange={e => setVersion(Number(e.target.value))}>{motion.versions.map(v => <option key={v.n} value={v.n}>نسخهٔ {new Intl.NumberFormat("fa-IR").format(v.n)}{v.n === motion.current ? " (آخرین)" : ""}</option>)}</select>
+      </label> : null}
+      {shown.change ? <p className="mg-change bidi" dir="auto">تغییر: {shown.change}</p> : null}
+      {shown.notes?.length ? <details className="mg-notes"><summary>نکات بررسی خودکار ({new Intl.NumberFormat("fa-IR").format(shown.notes.length)})</summary><ul>{shown.notes.map(n => <li key={n} dir="ltr">{n}</li>)}</ul></details> : null}
+    </article> : null}
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
   </section>;
 }
