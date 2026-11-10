@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Icon } from '../../components/Icon';
+import { useHermesData } from './hermesCache';
+import { array } from './hermesUtils';
 import hermesApi from '../../services/hermesApi';
 import { Composer } from '../../studio/Composer';
 import { message } from './hermesUtils';
@@ -18,6 +21,7 @@ export default function HermesHome() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const textareaRef = useRef(null);
+  const chats = useHermesData('chats', () => hermesApi.listChats());
   async function start(raw) {
     const value = (raw ?? text).trim();
     if (!value || busy) return;
@@ -37,6 +41,18 @@ export default function HermesHome() {
         error={error} onDismissError={() => setError('')} hasSpeech={false} listening={false} onListen={() => {}} autoFocus textareaRef={textareaRef}
         placeholder="Ask about your page, content, ideas, or schedule…" textOnly />
       <ScrollRow>{SUGGESTIONS.map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}</ScrollRow>
+      <div className="hs-home-links">
+        <NavLink to="/hermes/skills" className="chip home-chip"><Icon name="wand" size={15}/><span>مهارت‌ها</span></NavLink>
+        <NavLink to="/hermes/insights" className="chip home-chip"><Icon name="spark" size={15}/><span>بینش‌ها</span></NavLink>
+      </div>
+      {array(chats.data?.chats).length ? <section className="home-recent" aria-label="آخرین گفتگوها" dir="rtl">
+        <div className="home-recent-head"><h2>آخرین گفتگوها</h2></div>
+        <ul>{array(chats.data.chats).slice(0, 3).map((item) => <li key={item.id}><Link to={`/hermes/chat/${item.id}`} title={item.title}>
+          <span className="home-thumb" aria-hidden="true"><Icon name="spark" size={18}/></span>
+          <span className="home-recent-copy"><span className="home-title" dir="auto">{item.title || 'گفتگوی جدید'}</span>
+            <span className="home-meta"><span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString('fa-IR', { month: 'long', day: 'numeric' }) : ''}</span></span></span>
+        </Link></li>)}</ul>
+      </section> : null}
       <div className="hs-home-overview" data-hermes-main><HermesOverview /></div>
     </div>
   </div>;

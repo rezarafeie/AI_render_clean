@@ -148,7 +148,7 @@ def test_each_kind_of_idea_is_saved_as_soon_as_it_is_written(store, monkeypatch)
     monkeypatch.setattr(agent, "_propose_batch", batch)
     real_save = agent.save
 
-    async def spy(user_id, state):
+    async def spy(user_id, state, **kw):
         seen.append(len(state["proposals"]))
         await real_save(user_id, state)
     monkeypatch.setattr(agent, "save", spy)

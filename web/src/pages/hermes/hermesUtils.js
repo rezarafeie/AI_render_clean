@@ -12,3 +12,6 @@ export const toInputDateTime = (value) => {
 export const fromInputDateTime = (value) => value ? new Date(value).toISOString() : null;
 export const tags = (value) => value.split(',').map((tag) => tag.trim().replace(/^#/, '')).filter(Boolean);
 export const initial = (name) => (name || 'I').slice(0, 1).toUpperCase();
+
+/** The server's own Persian sentence when it sent one (a specific reason the person can act on), else the generic friendly message. */
+export const reason = (error) => (error instanceof Error && /[\u0600-\u06ff]/.test(error.message) ? error.message : message(error));

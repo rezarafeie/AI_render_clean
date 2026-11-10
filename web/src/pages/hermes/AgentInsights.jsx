@@ -1,21 +1,31 @@
 import { useState } from 'react';
 import hermesApi from '../../services/hermesApi';
 import { Icon } from '../../components/Icon';
-import { array } from './hermesUtils';
+import { array, reason } from './hermesUtils';
 import { useHermes } from './HermesContext';
 
 /** What the agent understood about the page, and the questions it still has. */
 export default function AgentInsights({ embedded = false }) {
-  const { agent, reloadAgent } = useHermes();
+  const { agent, reloadAgent, runAgent, running } = useHermes();
   const [values, setValues] = useState({});
   const a = agent?.analysis;
   const open = array(agent?.questions).filter((q) => q.kind !== 'info');
-  async function answer(key) { await hermesApi.answerAgent(key, values[key]).catch(() => {}); await hermesApi.runAgent(['analyze', 'propose']).catch(() => {}); void reloadAgent(); }
+  const [saved, setSaved] = useState({});
+  const [problem, setProblem] = useState('');
+  // An answer is only saved (instantly); the new analysis that uses the answers is one separate button, so answering several questions never starts several long runs.
+  async function answer(key) {
+    setProblem('');
+    try { await hermesApi.answerAgent(key, values[key]); setSaved((prev) => ({ ...prev, [key]: true })); await reloadAgent(); } catch (e) { setProblem(reason(e)); }
+  }
+  const stored = Object.keys(agent?.answers || {}).length;
   return <div className={embedded ? 'agent-embedded' : 'agent-tab'} dir="rtl">
     {array(agent?.questions).filter((q) => q.kind === 'info').map((q) => <div key={q.id} className="notice" data-tone="info">{q.text}</div>)}
     {open.map((q) => <section key={q.id} className="action-card"><h3>{q.text}</h3>
       <div className="agent-ask"><input className="input" dir="rtl" value={values[q.id] || ''} onChange={(e) => setValues({ ...values, [q.id]: e.target.value })} placeholder={q.kind === 'handles' ? '@نام‌کاربری‌ها با ویرگول' : ''} />
-        <button className="btn btn-sm" type="button" disabled={!(values[q.id] || '').trim()} onClick={() => answer(q.id)}>ثبت</button></div></section>)}
+        <button className="btn btn-sm" type="button" disabled={!(values[q.id] || '').trim()} onClick={() => answer(q.id)}>{saved[q.id] ? 'ذخیره شد ✓' : 'ثبت'}</button></div></section>)}
+    {stored || Object.keys(saved).length ? <section className="action-card"><p className="muted-text">{`${stored} پاسخ ذخیره شده است.`} برای اینکه تحلیل و ایده‌ها با پاسخ‌هایتان به‌روز شود، دکمهٔ زیر را بزنید.</p>
+      <div className="agent-ask"><button className="btn btn-sm" type="button" disabled={running} onClick={() => void runAgent(['analyze', 'propose'])}>{running ? 'در حال تحلیل…' : 'به‌روزرسانی تحلیل با پاسخ‌ها'}</button></div></section> : null}
+    {problem ? <div className="notice" data-tone="error">{problem}</div> : null}
     {!a && !open.length ? <div className="ws-empty"><span className="empty-icon"><Icon name="eye" size={24}/></span><h2>تحلیل آماده نیست</h2><p>ایجنت در حال خواندن پروفایل و پست‌های شماست.</p></div> : null}
     {a ? <>
       <section className="action-card"><h3>امتیاز پروفایل {a.profile?.score != null ? `${a.profile.score}/۱۰۰` : ''}</h3>

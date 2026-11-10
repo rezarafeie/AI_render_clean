@@ -140,6 +140,10 @@ async def run(user_id: str, skill: str, text: str, language: str = "fa", options
     if skill not in SKILLS:
         raise HTTPException(404, detail={"code": "SKILL_NOT_FOUND"})
     spec = SKILLS[skill]
+    ranked = await asyncio.to_thread(swipe_from_text, text) if skill == "viral" else None
+    if skill == "viral" and not ranked:
+        # Without the competitors' reels there is nothing to benchmark; a generic answer from the person's own page would pass for one. Say what is needed.
+        raise HTTPException(422, detail="برای بنچمارک رقبا جدول ریل‌های رقبا لازم است. آن را در کادر بچسبانید (ستون‌ها با تب جدا: پیج، فالوور، میانه، بازدید، هوک). اتصال اینستاگرام از طریق Composio فقط پیج خودتان را می‌خواند، پس هرمس خودش ریل رقبا را پیدا نمی‌کند.")
     context = await _account_context(user_id, spec["account"])
     if spec["account"] and not text.strip() and not context:
         raise HTTPException(422, detail={"code": "SKILL_NEEDS_INPUT_OR_ACCOUNT"})
@@ -147,7 +151,6 @@ async def run(user_id: str, skill: str, text: str, language: str = "fa", options
     system = (f"You are Hermes, an Instagram strategist and writer. Follow this skill definition exactly.\n\n{_skill_text(skill)}\n\n"
               f"Write for the person in {voice}. Use only the facts given; never invent metrics, quotes or results. If account data is absent, say what is missing. "
               f"Return ONLY JSON in this shape: {SCHEMA}. For this skill fill ONLY these keys: {KEYS[skill]} (leave every other key out).")
-    ranked = await asyncio.to_thread(swipe_from_text, text) if skill == "viral" else None
     payload = {"request": text[:12_000], "options": options or {}, "account": context}
     if ranked:
         payload["ranked_by_the_skills_own_script"] = ranked           # computed, not guessed: the findings must rest on these numbers and say how big the sample is

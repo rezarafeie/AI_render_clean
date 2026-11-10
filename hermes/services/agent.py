@@ -65,10 +65,30 @@ async def load(user_id: str) -> dict:
     return state
 
 
-async def save(user_id: str, state: dict) -> None:
+USER_FIELDS = ("answers", "competitors", "benchmark_input", "prefs")      # what the person writes; a running analysis never owns these
+_RUN_KNOWN: dict[str, set[str]] = {}                                      # the proposals a running pass started with (anything else in the row was changed by the person)
+
+
+def _overlay(fresh: dict, state: dict, started_ids: set[str] | None) -> None:
+    """A long pass keeps its whole state in memory for minutes. Before it writes, what the person changed meanwhile (answers, competitors, a pasted benchmark, idea
+    statuses and deletions) is taken from the stored row, so the pass can never undo it."""
+    for key in USER_FIELDS:
+        if key in fresh:
+            state[key] = fresh[key]
+    answered = set((fresh.get("answers") or {}).keys())
+    state["questions"] = [q for q in state.get("questions", []) if q.get("id") not in answered]
+    if started_ids is not None:
+        latest = list(fresh.get("proposals") or [])
+        seen = {p.get("id") for p in latest}
+        state["proposals"] = latest + [p for p in state.get("proposals", []) if p.get("id") not in seen and p.get("id") not in started_ids]
+
+
+async def save(user_id: str, state: dict, *, merge: bool = False) -> None:
     row_id = settings_row_id(user_id, PROVIDER)
     row = await get_row("settings", row_id)
     now = utcnow()
+    if merge and row:
+        _overlay(row.get("encrypted_credentials") or {}, state, _RUN_KNOWN.get(str(user_id)))
     if (state.get("run") or {}).get("status") == "running":
         state["run"]["updated_at"] = now
     await save_row("settings", {"id": row_id, "user_id": int(user_id) if str(user_id).isdigit() else user_id, "provider": PROVIDER,
@@ -247,7 +267,7 @@ async def _write_batch(user_id: str, state: dict, engine: str, count: int) -> No
         state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks, "engine": engine, **{k: item.get(k) for k in keys}})
         state["run"]["ideas"] = state["run"].get("ideas", 0) + 1
     state["proposals"] = state["proposals"][-MAX_PROPOSALS:]
-    await save(user_id, state)
+    await save(user_id, state, merge=True)
 
 
 async def propose(user_id: str, state: dict, count: int = 4) -> None:
@@ -263,12 +283,13 @@ async def propose(user_id: str, state: dict, count: int = 4) -> None:
 async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> None:
     """One agent pass; progress and the failing step are written to the state after every step so the page can show them."""
     state = await load(user_id)
+    _RUN_KNOWN[str(user_id)] = {p.get("id") for p in state.get("proposals", [])}
     state["run"] = {"status": "running", "step": next((x for x in STEPS if x in steps), steps[0]), "error": None, "started_at": utcnow(), "finished_at": None, "ideas": 0, "ideas_total": count if "propose" in steps else 0}
-    await save(user_id, state)
+    await save(user_id, state, merge=True)
     try:
         for step in [x for x in STEPS if x in steps]:
             state["run"]["step"] = step
-            await save(user_id, state)
+            await save(user_id, state, merge=True)
             if step == "sync":
                 await sync(user_id, state)
                 state["run"]["posts"] = len(state.get("media") or [])
@@ -278,7 +299,7 @@ async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> N
                 await analyze(user_id, state)
             elif step == "propose":
                 await propose(user_id, state, count)
-            await save(user_id, state)                 # whatever this step produced is on the page before the next one starts
+            await save(user_id, state, merge=True)                 # whatever this step produced is on the page before the next one starts
         state["run"].update(status="done", step=None, finished_at=utcnow())
         state["history"] = (state.get("history") or [])[-19:] + [{"at": utcnow(), "steps": list(steps)}]
     except HTTPException as exc:
@@ -286,7 +307,8 @@ async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> N
     except Exception as exc:
         log.warning("agent run failed at %s: %s", state["run"].get("step"), type(exc).__name__)
         state["run"].update(status="error", error=f"{type(exc).__name__}", finished_at=utcnow())
-    await save(user_id, state)
+    await save(user_id, state, merge=True)
+    _RUN_KNOWN.pop(str(user_id), None)
 
 
 async def set_status(user_id: str, proposal_id: str, status: str, **extra) -> dict:

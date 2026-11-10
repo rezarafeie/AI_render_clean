@@ -217,3 +217,11 @@
 .agent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 6px; }
 .agent-chips .chip[aria-pressed='true'] { background: var(--accent-soft, var(--hover)); color: var(--text); font-weight: 600; }
 .agent-pre { white-space: pre-wrap; background: var(--hover); padding: 10px; border-radius: 8px; line-height: 1.8; }
+
+/* Persian: the page name sits on the right, next to its avatar */
+[dir="rtl"] .ov-who { text-align: right; align-items: flex-start; }
+[dir="rtl"] .ov-who strong { display: block; text-align: right; unicode-bidi: isolate; }
+.hs-home-links { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: var(--space-3); }
+.hs-home-links .chip { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.hs-page-head { display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-4); }
+.hs-page-head h1 { font-size: 22px; margin: 0; text-align: start; }

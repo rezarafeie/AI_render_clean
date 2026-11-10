@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import hermesApi from '../../services/hermesApi';
 import { Icon } from '../../components/Icon';
-import { array, message } from './hermesUtils';
+import { array, message, reason } from './hermesUtils';
 import { useHermesData } from './hermesCache';
 import { useHermes } from './HermesContext';
 
@@ -39,10 +39,10 @@ export default function AgentSkills() {
   const list = array(catalog.data?.skills);
   const spec = list.find((s) => s.id === skill);
   const competitors = array(agent?.competitors);
-  async function saveCompetitors(next) { await hermesApi.answerAgent('competitors', next.join(',')).catch((e) => setError(message(e))); void reloadAgent(); }
+  async function saveCompetitors(next) { await hermesApi.answerAgent('competitors', next.join(',')).catch((e) => setError(reason(e))); void reloadAgent(); }
   async function run() {
     setBusy(true); setError(''); setOut(null);
-    try { setOut(await hermesApi.runSkill(skill, text, 'fa')); if (skill === 'viral') void reloadAgent(); } catch (e) { setError(message(e)); } finally { setBusy(false); }
+    try { setOut(await hermesApi.runSkill(skill, text, 'fa')); if (skill === 'viral') void reloadAgent(); } catch (e) { setError(reason(e)); } finally { setBusy(false); }
   }
   return <div className="agent-tab" dir="rtl">
     <section className="action-card"><h3>رقبا</h3>
@@ -57,7 +57,7 @@ export default function AgentSkills() {
       {Object.entries(GROUPS).map(([g, label]) => { const items = list.filter((s) => s.group === g); return items.length ? <div key={g}><strong>{label}</strong>
         <div className="agent-chips">{items.map((s) => <button key={s.id} type="button" className="chip" aria-pressed={skill === s.id} onClick={() => { setSkill(s.id); setOut(null); }}>{s.label}</button>)}</div></div> : null; })}
       {spec ? <><p className="muted-text" dir="auto">{spec.hint}</p>
-        <textarea className="input" rows={skill === 'viral' ? 8 : 4} dir="auto" value={text} onChange={(e) => setText(e.target.value)} placeholder={spec.account ? 'اختیاری؛ خالی بگذارید تا از پیج وصل‌شده استفاده شود' : ''} />
+        <textarea className="input" rows={skill === 'viral' ? 8 : 4} dir="auto" value={text} onChange={(e) => setText(e.target.value)} placeholder={skill === 'viral' ? 'نام‌پیج⇥فالوور⇥میانهٔ بازدید⇥بازدید ریل⇥هوک (هر ریل در یک خط)' : spec.account ? 'اختیاری؛ خالی بگذارید تا از پیج وصل‌شده استفاده شود' : ''} />
         <div className="agent-ask"><button className="btn btn-sm" type="button" disabled={busy} onClick={run}>{busy ? 'در حال اجرا…' : 'اجرا'}</button></div></> : null}
       {error ? <div className="notice" data-tone="error">{error}</div> : null}
     </section>
