@@ -880,3 +880,4 @@ a.pe-tool { text-decoration: none; }
 [dir="rtl"] .home-recent li a { direction: rtl; }
 [dir="rtl"] .composer-input { text-align: start; }
 [dir="rtl"] .composer-input::placeholder { text-align: start; }
+.mg-say { margin: 6px 0 10px; line-height: 1.9; color: var(--text); }

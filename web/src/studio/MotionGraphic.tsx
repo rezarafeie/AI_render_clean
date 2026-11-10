@@ -145,7 +145,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
   const wanted = fixedVersion ?? version ?? motion.current;
   const found = motion.versions.find(v => v.n === wanted) ?? (fixedVersion === undefined ? motion.versions[motion.versions.length - 1] : undefined);
   const shown = found && (fixedVersion !== undefined || (!motion.active && motion.status === "completed")) ? found : undefined;
-  const ownsProgress = fixedVersion === undefined;
+  const ownsProgress = fixedVersion === undefined || (latest && fixedVersion === motion.current);        // the newest run keeps its steps and the agent's words after it finishes
   const act = async (task: () => Promise<unknown>) => { setBusy(true); try { await task(); setWatching(true); await refresh(); } catch (e) { setError(friendlyError(e, "update the motion graphic")); } finally { setBusy(false); } };
   const ratio = shown ? `${shown.width} / ${shown.height}` : "9 / 16";
 
@@ -157,6 +157,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
         const rendering = motion.active && last?.key === "render" && !shown;
         const renderPercent = rendering ? Math.max(0, Math.min(100, Math.round((motion.progress - 40) / 0.55))) : undefined;
         return <>
+          {summaries?.plan ? <p className="mg-say bidi wrap-safe" dir="auto">{summaries.plan}</p> : null}
           <ActivityBlock steps={rendering ? all.filter(step => step.key !== "render") : all} live={motion.active}/>
           {rendering ? <article className="render-card" data-phase="rendering" data-compact={compact || undefined} aria-label="Rendering your video">
             <header className="rc-head"><h3>Rendering your video</h3>{formatDuration(Math.max(0, now * 1000 - last.startedAt)) ? <span className="rc-elapsed">{formatDuration(Math.max(0, now * 1000 - last.startedAt))}</span> : null}</header>
@@ -165,7 +166,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
           </article> : null}
         </>;
       })()}
-      {summaries?.ready && !motion.active ? <p className="mg-step-summary" dir="auto">{summaries.ready}</p> : null}
+      {summaries?.ready && !motion.active ? <p className="mg-say bidi wrap-safe" dir="auto">{summaries.ready}</p> : null}
       {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
