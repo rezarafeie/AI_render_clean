@@ -58,10 +58,10 @@ def validate_output(spec, path):
 
 _STAGE_TEXT = {
     'queued': 'در صف رندر ابری…',
-    'provisioning': 'در حال راه‌اندازی سرور ابری RunPod…',
-    'preparing': 'آماده‌سازی محیط رندر روی RunPod…',
-    'downloading': 'دریافت فایل‌ها روی RunPod…',
-    'uploading': 'ارسال ویدیوی آماده از RunPod…',
+    'provisioning': 'در حال راه‌اندازی سرور رندر ابری…',
+    'preparing': 'آماده‌سازی محیط رندر ابری…',
+    'downloading': 'دریافت فایل‌ها برای رندر ابری…',
+    'uploading': 'دریافت ویدیوی آمادهٔ رندر ابری…',
     'delivering': 'دریافت ویدیو از ابر و بررسی نهایی…',
 }
 
@@ -73,19 +73,19 @@ def _duration_text(seconds: float) -> str:
 
 
 def cloud_detail(state: str, progress=None, rendering_seconds: float = 0.0) -> str:
-    """What the person sees under the progress bar while a render runs on RunPod: the stage, and while rendering the exact percentage and time left
+    """What the person sees under the progress bar while a render runs in the cloud: the stage, and while rendering the exact percentage and time left
     (estimated from the pace so far, shown once there is enough of it to mean something)."""
     if state == 'rendering' and progress is not None:
         percent = max(0.0, min(100.0, float(progress)))
-        text = f'رندر روی RunPod: {percent:.0f}٪'
+        text = f'رندر ابری: {percent:.0f}٪'
         if percent >= 3 and rendering_seconds >= 5:
             text += f' · حدود {_duration_text(rendering_seconds * (100 - percent) / percent)} باقی مانده'
         else:
             text += ' · در حال محاسبهٔ زمان باقی‌مانده…'
         return text
     if state == 'rendering':
-        return 'رندر روی RunPod شروع شد…'
-    return _STAGE_TEXT.get(state, 'در حال انجام روی RunPod…')
+        return 'رندر ابری شروع شد…'
+    return _STAGE_TEXT.get(state, 'در حال انجام در رندر ابری…')
 
 
 

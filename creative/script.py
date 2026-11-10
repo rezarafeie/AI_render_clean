@@ -130,7 +130,7 @@ def measure(draft: ScriptDraft, duration_s: float, *, outro_s: float = 0.0, must
         problems.append(f"تعداد صحنه‌ها {len(draft.lines)} است؛ باید بین {MIN_LINES} و {MAX_LINES} باشد.")
     if total > limit:
         problems.append(f"نریشن حدود {total:.1f} ثانیه طول می‌کشد و بیشتر از ظرفیت {limit:.1f} ثانیهٔ این ویدیو است.")
-    elif total < limit * 0.45 and duration_s >= 12:
+    elif total < limit * 0.7 and duration_s >= 12:
         problems.append(f"نریشن فقط حدود {total:.1f} ثانیه از {limit:.1f} ثانیهٔ ممکن را پر می‌کند؛ ویدیو خالی و کشدار می‌شود.")
     spoken = _plain(" ".join(narrations))
     spoken_words = {_plain(word) for word in re.split(r"[\s،؛.!؟?:؛\-]+", " ".join(narrations)) if _plain(word)}

@@ -14,7 +14,7 @@ def test_rendering_shows_exact_percent_and_time_left():
 def test_the_time_left_waits_for_enough_pace_to_mean_something():
     assert 'در حال محاسبه' in service.cloud_detail('rendering', 1.0, 30.0)
     assert 'در حال محاسبه' in service.cloud_detail('rendering', 50.0, 2.0)
-    assert service.cloud_detail('rendering', None) == 'رندر روی RunPod شروع شد…'
+    assert service.cloud_detail('rendering', None) == 'رندر ابری شروع شد…'
 
 
 @pytest.mark.parametrize('state', ['provisioning', 'preparing', 'downloading', 'uploading', 'delivering'])

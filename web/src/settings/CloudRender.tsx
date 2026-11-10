@@ -51,7 +51,7 @@ export function CloudRenderSettings() {
         <label className="set-control set-control-compact"><span><b>Execution environment</b></span><select className="input" value={data.override} disabled={busy}
           onChange={event => void controls({ override: event.target.value })}>
           <option value="auto">Measured automatic selection</option><option value="local">Local only</option>
-          <option value="runpod_cpu" disabled={!data.cpu}>RunPod CPU</option><option value="runpod_gpu" disabled={!data.gpu}>RunPod GPU</option>
+          <option value="runpod_cpu" disabled={!data.cpu}>Cloud CPU</option><option value="runpod_gpu" disabled={!data.gpu}>Cloud GPU</option>
         </select></label>
       </div>
       <div className="set-actions">
@@ -63,7 +63,7 @@ export function CloudRenderSettings() {
     </form> : <div className="set-actions"><button className="btn btn-sm btn-secondary" type="button" disabled={busy} onClick={() => void request("/status")}>Refresh</button></div>}
     {error ? <p className="notice" data-tone="error" role="alert">{error}</p> : null}
     {data ? <><p className="set-hint">{data.cost_note}</p><ul className="set-runs">{data.executions.slice(0, 10).map(row => <li key={row.id}>
-      <span>{row.id.slice(0, 10)} · {row.backend} · {row.state} · reserved ${row.reservation.toFixed(3)} · provider {row.provider_charge_usd == null ? "not reported" : `$${row.provider_charge_usd.toFixed(3)}`}{row.cleanup_pending ? " · cleanup pending" : ""}</span>
+      <span>{row.id.slice(0, 10)} · {row.backend.replace(/runpod/i, "cloud")} · {row.state} · reserved ${row.reservation.toFixed(3)} · provider {row.provider_charge_usd == null ? "not reported" : `$${row.provider_charge_usd.toFixed(3)}`}{row.cleanup_pending ? " · cleanup pending" : ""}</span>
       {!['completed','failed','cancelled'].includes(row.state) ? <button className="btn btn-sm btn-secondary" type="button" disabled={busy || !!row.cancel_requested}
         aria-label={`Cancel render ${row.id}`} onClick={() => void request("/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: row.id }) })}>{row.cancel_requested ? "Stopping…" : "Cancel"}</button> : null}
     </li>)}</ul></> : null}

@@ -150,7 +150,25 @@ test("renderView is truthful about each phase", () => {
   assert.equal(renderView(project({ last_observed: { output: "/api/x" } }, "done")).phase, "done");
   assert.equal(renderView(project({}, "done")).phase, "finalizing");
   assert.equal(renderView(project({ last_observed: { message: "bad" } }, "error")).phase, "failed");
-  assert.equal(renderView(project({ last_observed: { stage: "transcribing" } })).phase, "queued");
+  assert.equal(renderView({ ...project({ last_observed: { stage: "transcribing" } }), engine: "talking" }).phase, "queued");
+  // a storyboard video shows the render card only while frames are really rendered: designing the scenes is a step of the chat
+  assert.equal(renderView(project({ last_observed: { stage: "designing motion scenes" } })).phase, "idle");
+  assert.equal(renderView(project({ last_observed: { stage: "adding subtitles" } })).phase, "idle");
+});
+
+test("each designed scene is its own step with its request and response", () => {
+  const at = n => ({ created_at: new Date(1e12 + n * 1000).toISOString() });
+  const events = [
+    { seq: 1, type: "tool.progress", data: { project_id: "p1", stage: "designing scene 2", message: "صحنهٔ ۲: طراحی شروع شد", request: "عنوان: ا" }, ...at(1) },
+    { seq: 2, type: "tool.completed", data: { project_id: "p1", stage: "designing scene 2", message: "صحنهٔ ۲: طراحی تأیید شد", request: "عنوان: ا", response: "وضعیت: تأییدشده" }, ...at(2) },
+    { seq: 3, type: "tool.progress", data: { project_id: "p1", stage: "designing scene 3", message: "صحنهٔ ۳: طراحی شروع شد", request: "عنوان: ب" }, ...at(3) },
+  ];
+  const items = buildTimeline({ messages: [], events, projects: [project({}, "running")], processing: true });
+  const steps = items.filter(item => item.kind === "activity").flatMap(item => item.steps);
+  assert.equal(steps.length, 2);
+  assert.match(steps[0].label, /صحنهٔ 2/);
+  assert.equal(steps[0].response, "وضعیت: تأییدشده");
+  assert.equal(steps[0].request, "عنوان: ا");
 });
 
 test('a rendered candidate needing QC review is not a render failure', () => {

@@ -15,6 +15,7 @@ import logging
 import re
 import shutil
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -128,7 +129,8 @@ def handoff_brief(config: dict, storyboard: dict, creative: dict, pictures: dict
         src = pictures[Path(row["asset"]).name][0]
         what = subjects.get(Path(row["asset"]).name) or "a product picture"
         see = _clean(f"{board.get('description') or row.get('role') or ''}. Motion: {board.get('motion_style') or ''}. Picture to use: <img src=\"{src}\"> ({what}). "
-                     f"Call-outs: {', '.join(row.get('items') or []) or 'none'}. Why: {board.get('why_visual') or ''}")
+                     f"Call-outs: {', '.join(row.get('items') or []) or 'none'}. Why: {board.get('why_visual') or ''}. "
+                     "The picture is always shown whole in its frame: any crop mentioned above is done by a camera move (zoom and drift toward the part), never by cutting the picture.")
         lines.append(f"{i + 1}. ({lengths[i]:.1f}s) تصویر: {see} | متن روی صفحه: {_clean(row.get('title') or board.get('text_overlay'))} | روایت: {_clean(row.get('narration_text'))}")
     return "\n".join([*head, "", *lines])
 
@@ -189,6 +191,7 @@ def _context(facts: dict, pictures: dict, subjects: dict) -> str:
         lines.append(f'- <img src="{src}"> ({width}x{height} px, aspect {width / height:.2f}): {subjects.get(name) or "a product picture"}')
     lines.append("SUBTITLES: after rendering the studio lays the narration's word-by-word subtitles (Tscaps) over the lower part of the frame, y = 1330 to 1580. Keep every "
                  "headline, picture and label of your scene out of that band (a background or glow may continue behind it); never draw your own subtitles.")
+    lines.append(QUALITY_BAR)
     lines.append("USE OF PICTURES: the product is the hero. Show it large with width and height in px, object-fit: contain (or cover inside an overflow:hidden box), "
                  "never stretched; frame it with shapes drawn in the film's palette, give it depth (layers, shadow, parallax), crop to the part the scene talks about, "
                  "and never leave the same layout twice.")
@@ -231,6 +234,27 @@ def svg_problems(html: str) -> list[str]:
     return found[:3]
 
 
+def sound_effects(work: Path, plan) -> list[dict]:
+    """Synthesised sound design for the motion (the studio has no sound-effect library): a soft whoosh into every scene after the first and a low hit on the closing scene.
+    Quiet by construction, so the voice stays clear."""
+    work.mkdir(parents=True, exist_ok=True)
+    whoosh, hit = work / "whoosh.wav", work / "hit.wav"
+    try:
+        if not whoosh.is_file():
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anoisesrc=d=0.7:c=pink:r=48000:a=0.9", "-af",
+                            "highpass=f=250,lowpass=f=5200,afade=t=in:d=0.3,afade=t=out:st=0.28:d=0.42,volume=0.30", str(whoosh)], check=True, capture_output=True, timeout=60)
+        if not hit.is_file():
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=62:d=0.6:r=48000", "-af", "afade=t=in:d=0.01,afade=t=out:st=0.05:d=0.55,volume=0.55", str(hit)],
+                           check=True, capture_output=True, timeout=60)
+    except Exception as exc:
+        log.warning("reel sound effects were not made: %s", str(exc)[:200])
+        return []
+    clips = [{"path": str(whoosh), "start": round(max(0.0, scene.start - 0.35), 3), "duration": 0.7} for scene in plan.scenes[1:]]
+    if len(plan.scenes) > 1:
+        clips.append({"path": str(hit), "start": round(plan.scenes[-1].start + 0.05, 3), "duration": 0.6})
+    return clips
+
+
 def add_subtitles(video: Path, plan, config: dict, work: Path) -> bool:
     """Word-by-word subtitles of the narration, drawn by Tscaps (the engine of the studio's talking styles) as a transparent layer and composited onto the finished
     reel. Best effort: the reel stays as it was when the layer cannot be made."""
@@ -257,28 +281,67 @@ def add_subtitles(video: Path, plan, config: dict, work: Path) -> bool:
     return False
 
 
-def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]):
+def richness_problems(draft) -> list[str]:
+    """A scene too plain to be worth rendering: few moving parts, no layers, the product picture missing or never moved."""
+    moves = len(re.findall(r"\b(?:tl|HM)\s*\.", draft.build_js)) + len(re.findall(r"\bHM\.", draft.update_js))
+    tags = len(re.findall(r"<(?:div|p|span|svg|path|rect|circle|line|g|img|polygon|ellipse)\b", draft.html))
+    problems = []
+    if moves < 9:
+        problems.append(f"only {moves} animation calls: write at least 9 (entrance of every layer, a camera move on the picture, callouts one after another, a breathing ambient motion)")
+    if tags < 8:
+        problems.append(f"only {tags} elements: build at least three layers (a background treatment, the product picture with its frame, the headline and foreground details such as rules, labels and marks)")
+    if "<img" not in draft.html:
+        problems.append("the product picture is missing: this scene must show it (its exact src from the facts)")
+    elif not re.search(r"scale|clipPath|\bx\s*:|\by\s*:", draft.build_js):
+        problems.append("the product picture never moves: give it a camera move (scale and x/y over the whole scene)")
+    return problems
+
+
+QUALITY_BAR = ("QUALITY BAR (a scene below it is rejected and sent back): at least three layers; at least nine animation calls; the product picture is shown WHOLE in its frame "
+               "(object-fit: contain; never guess a crop of a picture you cannot see) and gets a camera move (slow scale and drift) for the whole scene; callouts or labels appear one "
+               "after another; something keeps breathing until the end; a different composition and entrance from the neighbouring scenes.")
+
+
+def _scene_request(scene) -> str:
+    return (f"عنوان: {scene.headline}\nنریشن: {scene.narration}\nمدت: {scene.end - scene.start:.1f} ثانیه\nایدهٔ تصویری و حرکتی:\n{scene.idea}"
+            + (f"\nکامپوننت آمادهٔ کتابخانه: {scene.shotcraft_id}" if scene.shotcraft_id else ""))
+
+
+def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str], job_dir: Path | None = None):
     scene = plan.scenes[n - 1]
+    stage = f"designing scene {n}"
+    say = (lambda text, **kw: _progress(job_dir, text, stage=stage, **kw)) if job_dir else (lambda text, **kw: None)
     key = hashlib.sha256(json.dumps([scene.headline, scene.idea, scene.narration, round(scene.end - scene.start, 2), plan.design_direction, plan.palette.model_dump()],
                                     ensure_ascii=False).encode()).hexdigest()[:20]
     path = cache / f"s{n}.json"
+    request = _scene_request(scene)
     try:
         saved = json.loads(path.read_text())
         if saved.get("fp") == key:
-            return mg.SceneDraft.model_validate(saved["draft"]), "reused"
+            draft = mg.SceneDraft.model_validate(saved["draft"])
+            say(f"صحنهٔ {n} («{scene.headline}»): از قبل طراحی و تأیید شده بود", request=request, detail=f"وضعیت: تأییدشده (استفاده از طراحی ذخیره‌شده)\n\n{draft.html[:1200]}", done=True)
+            return draft, "reused"
     except (OSError, ValueError):
         pass
+    say(f"صحنهٔ {n} («{scene.headline}»): طراحی شروع شد", request=request, detail="وضعیت: در حال طراحی")
     try:
         draft = mg.author_scene(plan, n, brief, context=context, used=used)
-        bad = svg_problems(draft.html)
-        if bad:                                              # one correction with the exact reason; a scene that is still wrong is replaced, never rendered broken
-            draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=bad)
+        problems = svg_problems(draft.html)
+        said = ""
+        if not problems:
+            problems = richness_problems(draft)
+            said = "طراحی ساده بود"
+        if problems:                                         # one correction with the exact reasons; a scene that is still wrong is replaced, never rendered broken
+            say(f"صحنهٔ {n}: بازبینی — {said or 'مشکل در طراحی'}؛ دوباره طراحی می‌شود", detail="وضعیت: بازبینی\n" + "\n".join(problems))
+            draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=problems)
             if svg_problems(draft.html):
                 raise CreativeUnavailable("the scene's SVG paths are still invalid")
         path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
+        left = richness_problems(draft)
+        say(f"صحنهٔ {n} («{scene.headline}»): طراحی تأیید شد", request=request,
+            detail=f"وضعیت: تأییدشده{' (با نکتهٔ باقی‌مانده: ' + '؛ '.join(left) + ')' if left else ''}\n\nHTML:\n{draft.html[:1500]}\n\nانیمیشن:\n{draft.build_js[:1200]}", done=True)
         return draft, "designed"
     except Exception as exc:
-        scene = plan.scenes[n - 1]
         if scene.native_component or scene.shotcraft_component:
             # a ready-made component that does not fit this length or text: the scene is designed by hand instead
             plan.scenes[n - 1] = scene.model_copy(update={"native_component": None, "shotcraft_component": None})
@@ -286,10 +349,12 @@ def _author(plan, n: int, brief: str, context: str, cache: Path, used: list[str]
                 draft = mg.author_scene(plan, n, brief, context=context, used=used)
                 if not svg_problems(draft.html):
                     path.write_text(json.dumps({"fp": key, "draft": draft.model_dump()}, ensure_ascii=False))
+                    say(f"صحنهٔ {n}: کامپوننت آماده جا نیفتاد؛ با طراحی دستی تأیید شد", request=request, detail=f"وضعیت: تأییدشده\n\n{draft.html[:1200]}", done=True)
                     return draft, "designed"
             except Exception:
                 pass
         log.warning("reel scene %d could not be designed (%s); a plain scene is used", n, str(exc)[:200])
+        say(f"صحنهٔ {n} («{scene.headline}»): طراحی اختصاصی تأیید نشد؛ با صحنهٔ ساده جایگزین شد", request=request, detail=f"وضعیت: ردشده\nعلت: {str(exc)[:600]}", done=True)
         return mg.fallback_scene(plan, n), "plain"
 
 
@@ -302,20 +367,25 @@ def read_timeline(job_dir: Path) -> dict | None:
         return None
 
 
-def _progress(job_dir: Path, note: str, *, stage: str = "designing motion scenes", detail: str = "") -> None:
-    """Notes the chat shows as this stage's log (the status sync of the web process reads them; this runs in the render worker)."""
+_NOTES = threading.Lock()
+
+
+def _progress(job_dir: Path, note: str, *, stage: str = "designing motion scenes", detail: str = "", request: str = "", done: bool = False) -> None:
+    """Notes the chat shows as this stage's log (the status sync of the web process reads them; this runs in the render worker). Each scene is its own stage
+    (`designing scene N`), so it is its own row with its status, request and response; `done` closes the row."""
     path = job_dir / "reel_design" / "progress.json"
-    try:
-        data = json.loads(path.read_text()) if path.is_file() else {"notes": []}
-    except (OSError, ValueError):
-        data = {"notes": []}
-    data["stage"] = stage
-    data["notes"].append({"text": note, "detail": detail[:1500], "stage": stage})
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False))
-    except OSError:
-        pass
+    with _NOTES:
+        try:
+            data = json.loads(path.read_text()) if path.is_file() else {"notes": []}
+        except (OSError, ValueError):
+            data = {"notes": []}
+        data["stage"] = stage
+        data["notes"].append({"text": note, "detail": detail[:3000], "request": request[:3000], "stage": stage, "done": done})
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, ensure_ascii=False))
+        except OSError:
+            pass
 
 
 def _stage(job, message: str) -> None:
@@ -392,13 +462,10 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         count = len(plan.scenes)
         contexts = [contextvars.copy_context() for _ in range(count)]
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
-            results = list(pool.map(lambda n: contexts[n - 1].run(_author, plan, n, brief, context, cache, used), range(1, count + 1)))
+            results = list(pool.map(lambda n: contexts[n - 1].run(_author, plan, n, brief, context, cache, used, job.dir), range(1, count + 1)))
         drafts = [draft for draft, _ in results]
         how = [kind for _, kind in results]
         log.info("reel designer: %s", how)
-        for n, kind in enumerate(how, 1):
-            _progress(job.dir, f"صحنهٔ {n} («{plan.scenes[n - 1].headline}»): " + {"designed": "طراحی شد", "reused": "از قبل طراحی شده بود", "plain": "طراحی اختصاصی تأیید نشد؛ با صحنهٔ ساده جایگزین شد"}[kind],
-                      detail=drafts[n - 1].html[:900])
         if how.count("plain") * 2 > count:
             log.warning("reel designer: most scenes fell back to plain scenes; the built-in reel page is used instead")
             return _skipped(job, "طراحی بیشتر صحنه‌ها پس از چند بار تلاش از اعتبارسنجی رد شد")
@@ -409,6 +476,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         for scene, row in zip(plan.scenes, config["scenes"]):
             if row.get("narration"):
                 audio.append({"path": str(Path(row["narration"])), "start": scene.start, "duration": round(scene.end - scene.start, 3)})
+        sfx = sound_effects(work / "sfx", plan)
         music = (data.get("music") or {}).get("file")
         if music:
             try:
@@ -417,7 +485,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 audio.append({"path": str(bed), "start": 0, "duration": round(total, 3), "role": "music"})
             except Exception as exc:
                 log.warning("reel music bed failed (%s); the reel is made without music", str(exc)[:200])
-        page = mg.assemble_scenes(plan, drafts, audio)
+        page = mg.assemble_scenes(plan, drafts, audio + sfx)
         problems = [p for p in mg.validate_page(page, min_scenes=1) if not p.startswith("use 2-6 scenes")]      # a storyboard may have up to ten scenes
         if problems:
             log.warning("reel page invalid: %s", problems[:3])
@@ -451,7 +519,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 drafts[n - 1] = draft
             if how.count("plain") * 2 > count:
                 return _skipped(job, "بررسی مرورگر چند بار صحنه‌ها را رد کرد: " + mg.explain_problem(check.blocking[0]))
-            page = mg.assemble_scenes(plan, drafts, audio)
+            page = mg.assemble_scenes(plan, drafts, audio + sfx)
             mg.write_project(project, page)
             check = standalone.check(project, should_cancel=should_cancel)
         if check.blocking:

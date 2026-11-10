@@ -199,7 +199,8 @@ export function renderView(project: StudioProject | undefined): RenderView {
     if (progress != null && progress >= 100) return { phase: "finalizing", progress, stageLabel: "Finalizing your video" };
     return { phase: "rendering", progress, stageLabel: RENDER_STAGE_LABELS[stage] || "Rendering your video" };
   }
-  if (project.status === "running") return { phase: "queued", progress, stageLabel: STAGE_LABELS[stage] || "Preparing to render" };
+  // A storyboard video shows the render card only while frames are really being rendered; designing the scenes, preparing assets, subtitles and review are steps of the chat.
+  if (project.status === "running" && project.engine !== "motion") return { phase: "queued", progress, stageLabel: STAGE_LABELS[stage] || "Preparing to render" };
   return { phase: "idle", stageLabel: "" };
 }
 
@@ -566,6 +567,8 @@ export const STAGE_FA: Record<string, string> = {
 /** Persian wording for a stage or short status text; undefined when there is none. */
 export function stageText(raw: unknown): string | undefined {
   const key = normalize(raw);
+  const scene = key.match(/^designing scene (\d+)$/);
+  if (scene) return `طراحی صحنهٔ ${scene[1]}`;
   return key ? STAGE_FA[key] : undefined;
 }
 

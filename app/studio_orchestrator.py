@@ -2457,8 +2457,10 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                     if len(designed_notes) < seen:
                         seen = 0                                           # a new attempt writes its notes from the start
                     for note in designed_notes[seen:]:
-                        await repo.emit(conversation_id, 'tool.progress', {'project_id': project['id'], 'engine': engine, 'status': 'running', 'stage': note.get('stage') or 'designing motion scenes',
-                                        'progress': None, 'message': note['text'], **({'response': note['detail']} if note.get('detail') else {})})
+                        await repo.emit(conversation_id, 'tool.completed' if note.get('done') else 'tool.progress',
+                                        {'project_id': project['id'], 'engine': engine, 'status': 'done' if note.get('done') else 'running', 'stage': note.get('stage') or 'designing motion scenes',
+                                         'progress': None, 'message': note['text'], **({'request': note['request']} if note.get('request') else {}),
+                                         **({'response': note['detail']} if note.get('detail') else {})})
                     if len(designed_notes) != seen:
                         project['state'] = {**project['state'], 'design_notes_seen': len(designed_notes)}
                         await repo.update_project(project['id'], user_key, state=project['state'])
