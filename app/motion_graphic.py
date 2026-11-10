@@ -1149,6 +1149,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         _progress(directory, "writing", 6, "دارم از روی درخواست شما طرح کلی و صحنه‌ها را می‌نویسم.", stage="writing", eta=stats["plan_s"] + _remaining(4, 15))
         _note(directory, "plan", "دارم طرح کلی را می‌نویسم: صحنه‌ها، متن‌ها و رنگ‌ها", request=brief)
         started = time.monotonic()
+        if style.startswith("THE PERSON'S OWN HABITS"):
+            _note(directory, "style", "سبک و قانون‌هایی که قبلاً به استودیو یاد داده‌اید در طراحی اعمال می‌شود", "done", detail=style)
         advice = _font_advice(directory, brief)
         plan = mg.plan(brief, context=context, style=style, used=used, fonts=_advice_text(advice), advice=advice)
         if _cancelled(key):

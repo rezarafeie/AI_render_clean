@@ -171,6 +171,7 @@ export default function StyleLearner() {
         Upload your own edited reels to teach the AI your editing style.
         The system learns your cut rhythm, pacing, caption density, and more.
       </p>
+      <p className="muted" dir="auto">آنچه اینجا آموخته می‌شود دو جا اثر می‌گذارد: در طرح ویرایش ویدیوها، و در ریتم و طول صحنه‌های موشن و اکسپلینر (به‌شرط اینکه در چت ریفرنس مستقیمی نداده باشید؛ ریفرنس چت همیشه مقدم است). اثرش در لاگ مرحلهٔ «سبک شما» دیده می‌شود.</p>
       <p className="muted">Style Learner analyzes video references. To build a reusable look from still images, use the <Link to="/style-library">Styles &amp; Fonts Library</Link>.</p>
       {loading && <LoadingState label="Loading style learner…" />}
       {error && <div className="errors" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error} <button type="button" className="secondary" onClick={() => void reload()}>Retry</button></div>}

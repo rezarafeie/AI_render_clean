@@ -159,7 +159,7 @@ def font_advice(job_dir: Path, brief: str) -> dict:
     return advice
 
 
-def library_plan(config, storyboard, creative, pictures, subjects, lengths, context, cache: Path, used: list[str], advice: dict | None = None):
+def library_plan(config, storyboard, creative, pictures, subjects, lengths, context, cache: Path, used: list[str], advice: dict | None = None, owner=None):
     """The planner designs the film from the approved script: palette, signature device, design bible, entrances and the ready-made components (Shotcraft recipes,
     executable library components) where they fit; then the library scout looks at pictures of the components next to the scenes. Cached beside the job."""
     brief = handoff_brief(config, storyboard, creative, pictures, subjects, lengths)
@@ -168,6 +168,9 @@ def library_plan(config, storyboard, creative, pictures, subjects, lengths, cont
         brief = re.sub(r"^سبک بصری:.*$", "سبک بصری: " + _clean(chosen_look["direction"]), brief, count=1, flags=re.M)
     from .design_styles import reference_text
     style = reference_text(creative.get("reference"))
+    if not style and owner is not None:                 # what the person taught the studio (pace, written rules) when no reference was given
+        from app import style_bridge
+        style = style_bridge.motion_notes(owner)
     key = hashlib.sha256((brief + context + style).encode()).hexdigest()[:20]
     path = cache / "plan.json"
     try:
@@ -484,7 +487,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         context = _context(facts, pictures, subjects)
         try:
             advice = font_advice(job.dir, str(storyboard.get('prompt') or '') + '\n' + str((creative.get('chosen') or {}).get('visual_language') or ''))
-            plan, brief = library_plan(config, storyboard, creative, pictures, subjects, lengths, context, work, used, advice)
+            plan, brief = library_plan(config, storyboard, creative, pictures, subjects, lengths, context, work, used, advice, getattr(job, "user_id", None))
         except Exception as exc:
             # The planner could not take the approved scenes: the designer's own identity step plans them instead (still designed per scene, without library picks).
             log.warning("reel planner unavailable (%s); the scenes are planned from the creative direction", str(exc)[:200])

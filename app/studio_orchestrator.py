@@ -1143,7 +1143,9 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
         _assistant(conversation_id, user_key, "نوشته‌اید «با صدای من»، ولی هنوز صدایی از شما کلون نشده است. از تنظیمات ← «کلون صدا»، صدای خودتان را بسازید (ضبط ۳۰ ثانیه یا فایل صدا/ویدیو) و دوباره همین درخواست را بفرستید.")
         return
     image_args={'attachments':attachments} if any(item.get('kind') in ('image','audio') for item in attachments or []) else {}
-    record = motion_graphic.create(conversation_id, user_key, text, sources.context, sources.style, voice_id, state.get("voice_style", ""),**image_args)
+    from app import style_bridge
+    own_style = sources.style or style_bridge.motion_notes(user_key)                     # a reference video in the chat wins; else what the person taught the studio
+    record = motion_graphic.create(conversation_id, user_key, text, sources.context, own_style, voice_id, state.get("voice_style", ""),**image_args)
     run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "motion": {"motion_id": record["id"]}}))
     basis = " و ".join(part for part in ("سبک رفرنس" if sources.style else "", "محتوای صفحه" if sources.pages else "") if part)
     _assistant(conversation_id, user_key, "شروع کردم: اول طرح و صحنه‌ها را از روی درخواست" + (f" و {basis}" if basis else "")

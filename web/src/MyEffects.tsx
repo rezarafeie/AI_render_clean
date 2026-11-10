@@ -544,6 +544,7 @@ export default function MyEffects() {
 
       <section>
         <h2>My Rules</h2>
+        <p className="muted" dir="auto" style={{ marginBottom: 10 }}>قانون‌هایی که اینجا می‌نویسید هم در ویرایش ویدیو و هم برای طراح موشن و اکسپلینر اعمال می‌شوند (مثلاً «قبل از دعوت به اقدام آرام شو»). علامت «سخت» یعنی حتماً رعایت شود.</p>
         <div className="card">
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <input
