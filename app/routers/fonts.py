@@ -19,7 +19,63 @@ def list_fonts():
              if directory.is_dir() else set())
     from engine.font_library import list_library
     names.update(e["family"] for e in list_library()["approved"] if e.get("kind") == "font_file")
+    from creative import font_catalog
+    names.update(c for f in font_catalog.load() for c in f["css_families"])
     return {"fonts": sorted(names)}
+
+
+def _pro_files() -> dict[str, "Path"]:
+    """(font id, file name) -> file, for every face in the catalog and the studio's own caption fonts."""
+    from pathlib import Path
+    from creative import font_catalog
+    files: dict[str, Path] = {}
+    kit = PROJECT_ROOT / "presets" / "fonts"
+    builtin = {"ray": ["RAY-LIGHT.TTF", "RAY.TTF", "RAY-MEDIUM.TTF", "RAY-BOLD.TTF", "RAY-EXTRABOLD.TTF", "RAY-BLACK.TTF"], "vazir": ["Vazirmatn-Regular.ttf"], "kharazmi": ["IRAN_Kharazmi/IRAN Kharazmi.ttf"]}
+    for font in font_catalog.load():
+        if font.get("builtin"):
+            for rel in builtin.get(font["id"], []):
+                files[f"{font['id']}/{Path(rel).name}"] = kit / rel
+        for face in font["faces"]:
+            files[f"{font['id']}/{Path(face['file']).name}"] = font_catalog.DIR / face["file"]
+    return files
+
+
+@router.get("/pro")
+def pro_fonts():
+    """The font library: every family with what it is for, its faces (for live previews in the browser) and the specimen image."""
+    from pathlib import Path
+    from creative import font_catalog
+    files = _pro_files()
+    out = []
+    for font in font_catalog.load():
+        faces = [{"css_family": f["css_family"], "weight": f["weight"], "variable": f["variable"], "axes": f["axes"], "url": f"/api/fonts/pro/file/{font['id']}/{Path(f['file']).name}"}
+                 for f in font["faces"]]
+        if font.get("builtin"):
+            weights = {"RAY-LIGHT.TTF": "300", "RAY.TTF": "400", "RAY-MEDIUM.TTF": "500", "RAY-BOLD.TTF": "700", "RAY-EXTRABOLD.TTF": "800", "RAY-BLACK.TTF": "900"}
+            for key, path in files.items():
+                if key.startswith(font["id"] + "/"):
+                    faces.append({"css_family": font["family"], "weight": weights.get(path.name, "400"), "variable": False, "axes": {}, "url": f"/api/fonts/pro/file/{key}"})
+        out.append({k: font.get(k) for k in ("id", "label", "family", "css_families", "vendor", "designer", "category", "mood", "best_for", "avoid_for", "pairs_with", "note", "weights", "axes", "latin",
+                                            "persian_digits", "builtin", "license")} | {"faces": faces, "specimen_url": f"/api/fonts/pro/specimen/{font['id']}"})
+    return {"fonts": out}
+
+
+@router.get("/pro/file/{font_id}/{name}")
+def pro_font_file(font_id: str, name: str):
+    path = _pro_files().get(f"{font_id}/{name}")
+    if not path or not path.is_file():
+        raise HTTPException(404, "font file not found")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/pro/specimen/{font_id}")
+def pro_font_specimen(font_id: str):
+    from creative import font_catalog
+    font = font_catalog.get(font_id)
+    path = font_catalog.DIR / font["specimen"] if font else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "specimen not found")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @legacy_router.get("/font-library")

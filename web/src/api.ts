@@ -205,8 +205,13 @@ export interface StudioConversation {
 }
 /** What a motion graphic lets the person change, as the server reads it from the project: every field, its current value and the options it accepts. */
 export interface MotionField {
-  key: string; group: string; label: string; type: "text" | "textarea" | "select" | "color" | "number"; value: string | number; impact: string;
-  maxlength?: number; min?: number; max?: number; step?: number; help?: string; disabled?: boolean; scene?: number; options?: { value: string; label: string }[];
+  key: string; group: string; label: string; type: "text" | "textarea" | "select" | "color" | "number" | "font"; value: string | number; impact: string;
+  maxlength?: number; min?: number; max?: number; step?: number; help?: string; disabled?: boolean; scene?: number; options?: { value: string; label: string; latin?: boolean }[];
+}
+export interface ProFont {
+  id: string; label: string; family: string; css_families: string[]; vendor: string; designer: string; category: string; mood: string[]; best_for: string[]; avoid_for: string[];
+  pairs_with: string[]; note: string; weights: number[]; axes: Record<string, [number, number]>; latin: boolean; persian_digits: boolean; builtin: boolean; license: string;
+  faces: { css_family: string; weight: string; variable: boolean; axes: Record<string, [number, number]>; url: string }[]; specimen_url: string;
 }
 export interface MotionEditable { groups: { id: string; title: string; fields: MotionField[] }[]; busy: boolean; version: number | null; reason?: string }
 export type HomeStatus = "running" | "needs_input" | "failed" | "ready" | "draft";
@@ -1007,6 +1012,10 @@ export const api = {
   },
   async deleteVoice(id: string): Promise<void> {
     await j(await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}`, { method: "DELETE" }));
+  },
+  fontSpecimenUrl(id: string): string { return `${BASE}/fonts/pro/specimen/${encodeURIComponent(id)}`; },
+  async proFonts(): Promise<{ fonts: ProFont[] }> {
+    return j(await authFetch(`${BASE}/fonts/pro`));
   },
   async editLocalize(id: string, body: Partial<Pick<LocalizeProject, "title" | "title_emojis" | "cta_number" | "music" | "voice_provider" | "voice_id" | "voice_style" | "caption_box" | "title_box" | "end_card" | "end_card_seconds">>
     & { lines?: { i: number; fa?: string; kind?: LocalizeLine["kind"] }[] }): Promise<LocalizeProject> {

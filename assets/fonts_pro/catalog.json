@@ -1,0 +1,1207 @@
+{
+ "version": 1,
+ "fonts": [
+  {
+   "id": "ray",
+   "label": "ری",
+   "family": "Ray",
+   "vendor": "رایگان‌فونت",
+   "designer": "",
+   "category": "sans",
+   "builtin": true,
+   "mood": [
+    "مدرن",
+    "پرقدرت",
+    "تمیز"
+   ],
+   "best_for": [
+    "تیتر عمومی",
+    "شبکه‌های اجتماعی",
+    "فناوری"
+   ],
+   "avoid_for": [],
+   "pairs_with": [
+    "aramesh"
+   ],
+   "note": "فونت پیش‌فرض استودیو؛ سنس مدرن در وزن‌های ۳۰۰ تا ۹۰۰.",
+   "weights": [
+    300,
+    400,
+    500,
+    700,
+    800,
+    900
+   ],
+   "css_families": [
+    "Ray"
+   ],
+   "latin": true,
+   "faces": [],
+   "axes": {},
+   "persian_digits": true,
+   "license": "",
+   "specimen": "specimens/ray.jpg"
+  },
+  {
+   "id": "vazir",
+   "label": "وزیرمتن",
+   "family": "Vazir",
+   "vendor": "صابر راستی‌کردار",
+   "designer": "صابر راستی‌کردار",
+   "category": "sans",
+   "builtin": true,
+   "mood": [
+    "خنثی",
+    "خوانا"
+   ],
+   "best_for": [
+    "متن بدنه"
+   ],
+   "avoid_for": [],
+   "pairs_with": [
+    "ray"
+   ],
+   "note": "سنس خنثی برای متن (وزن معمولی).",
+   "weights": [
+    400
+   ],
+   "css_families": [
+    "Vazir"
+   ],
+   "latin": true,
+   "faces": [],
+   "axes": {},
+   "persian_digits": true,
+   "license": "",
+   "specimen": "specimens/vazir.jpg"
+  },
+  {
+   "id": "kharazmi",
+   "label": "خوارزمی",
+   "family": "Kharazmi",
+   "vendor": "ایران",
+   "designer": "",
+   "category": "traditional",
+   "builtin": true,
+   "mood": [
+    "سنتی",
+    "ادبی",
+    "رسمی"
+   ],
+   "best_for": [
+    "شعر",
+    "تاریخ",
+    "مذهبی",
+    "حس کلاسیک"
+   ],
+   "avoid_for": [
+    "فناوری"
+   ],
+   "pairs_with": [
+    "vazir"
+   ],
+   "note": "نسخ سنتی و کلاسیک (وزن معمولی).",
+   "weights": [
+    400
+   ],
+   "css_families": [
+    "Kharazmi"
+   ],
+   "latin": false,
+   "faces": [],
+   "axes": {},
+   "persian_digits": true,
+   "license": "",
+   "specimen": "specimens/kharazmi.jpg"
+  },
+  {
+   "id": "doran",
+   "label": "دوران",
+   "vendor": "فونت‌ایران",
+   "designer": "فرشته ایران‌شاهی، رضا بختیاری‌فرد",
+   "category": "editorial",
+   "mood": [
+    "شیک",
+    "ادبی",
+    "گرم",
+    "کتابی"
+   ],
+   "best_for": [
+    "روایت و داستان",
+    "برند لوکس",
+    "مستند",
+    "عنوان‌های بلند",
+    "نقل‌قول"
+   ],
+   "avoid_for": [
+    "هوک تند و فریادی"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "mahoor"
+   ],
+   "note": "سنس‌سریف ادبی با کنتراست ملایم و لاتین کتابی؛ برای وقتی که فیلم باید باوقار و خوش‌خوان باشد. وزن ۱۰۰ تا ۹۰۰.",
+   "family": "Doran",
+   "css_families": [
+    "Doran"
+   ],
+   "faces": [
+    {
+     "css_family": "Doran",
+     "file": "files/doran/doran-doran-vf.ttf",
+     "weight": "100 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       100,
+       900
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     100,
+     900
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/doran.jpg"
+  },
+  {
+   "id": "quarantine",
+   "label": "قرنطینه",
+   "vendor": "فونت‌ایران",
+   "designer": "محمدرضا چیت‌ساز",
+   "category": "display-elegant",
+   "mood": [
+    "مد و استایل",
+    "ظریف",
+    "مجله‌ای",
+    "هنری"
+   ],
+   "best_for": [
+    "مد و زیبایی",
+    "سبک زندگی",
+    "عنوان بزرگ",
+    "کاور و تیتر مجله‌ای"
+   ],
+   "avoid_for": [
+    "متن کوچک و پرحجم"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "paykan"
+   ],
+   "note": "دیسپلی ظریف با اندازهٔ نوری؛ در وزن‌های بالا تیتر شیک و در وزن‌های پایین ظریف است. وزن ۱۰۰ تا ۹۵۰.",
+   "family": "Quarantine",
+   "css_families": [
+    "Quarantine"
+   ],
+   "faces": [
+    {
+     "css_family": "Quarantine",
+     "file": "files/quarantine/quarantine-quarantine-vf.ttf",
+     "weight": "100 950",
+     "variable": true,
+     "axes": {
+      "wght": [
+       100,
+       950
+      ],
+      "opsz": [
+       8,
+       72
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     100,
+     950
+    ],
+    "opsz": [
+     8,
+     72
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/quarantine.jpg"
+  },
+  {
+   "id": "rokh",
+   "label": "رخ",
+   "vendor": "فونت‌ایران",
+   "designer": "کامیاب جعفری",
+   "category": "tech-sans",
+   "mood": [
+    "فنی",
+    "هندسی",
+    "مدرن",
+    "پرانرژی"
+   ],
+   "best_for": [
+    "استارتاپ و فناوری",
+    "مالی و آمار",
+    "گیم",
+    "عدد و نمودار",
+    "عنوان‌های سنگین"
+   ],
+   "avoid_for": [
+    "متن ادبی و احساسی"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "doran"
+   ],
+   "note": "سنس هندسی با گوشه‌های گرد؛ از بسیار نازک تا بسیار ضخیم (۵۰ تا ۹۰۰). برای هر چیز دیجیتالی و عددی.",
+   "family": "Rokh",
+   "css_families": [
+    "Rokh"
+   ],
+   "faces": [
+    {
+     "css_family": "Rokh",
+     "file": "files/rokh/rokh-rokhvfgx.ttf",
+     "weight": "50 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       50,
+       900
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     50,
+     900
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/rokh.jpg"
+  },
+  {
+   "id": "paykan",
+   "label": "پیکان",
+   "vendor": "رضا بختیاری‌فرد",
+   "designer": "رضا بختیاری‌فرد",
+   "category": "sans",
+   "mood": [
+    "خنثی",
+    "دوستانه",
+    "تمیز",
+    "همه‌منظوره"
+   ],
+   "best_for": [
+    "متن بدنه",
+    "توضیحات",
+    "فروش و محصول",
+    "هر موضوعی که فونت خاصی نمی‌خواهد"
+   ],
+   "avoid_for": [
+    "حس خاص و هنری"
+   ],
+   "pairs_with": [
+    "quarantine",
+    "morabba"
+   ],
+   "note": "سنس خنثی و خوانا با وزن ۰ تا ۹۵۰؛ انتخاب امن وقتی طراحی باید از متن جلو نزند.",
+   "family": "Paykan",
+   "css_families": [
+    "Paykan"
+   ],
+   "faces": [
+    {
+     "css_family": "Paykan",
+     "file": "files/paykan/paykan-paykan-vf.ttf",
+     "weight": "0 950",
+     "variable": true,
+     "axes": {
+      "wght": [
+       0,
+       950
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     0,
+     950
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/paykan.jpg"
+  },
+  {
+   "id": "mahoor",
+   "label": "ماهور",
+   "vendor": "فونت‌امین",
+   "designer": "امیر عابدی",
+   "category": "humanist-sans",
+   "mood": [
+    "روشن",
+    "خبری",
+    "آموزشی",
+    "قابل‌اعتماد"
+   ],
+   "best_for": [
+    "اکسپلینر",
+    "خبر و تحلیل",
+    "آموزش",
+    "متن بدنه و تیتر"
+   ],
+   "avoid_for": [
+    "حس شیطنت و هیجان"
+   ],
+   "pairs_with": [
+    "morabba",
+    "doran"
+   ],
+   "note": "سنس انسانی با محور کنتراست (CNTR) برای کنترل ضخامت‌های ظریف؛ وزن ۴۰۰ تا ۸۰۰.",
+   "family": "Mahoor",
+   "css_families": [
+    "Mahoor"
+   ],
+   "faces": [
+    {
+     "css_family": "Mahoor",
+     "file": "files/mahoor/mahoor-mahoor-cntr-wght.ttf",
+     "weight": "400 800",
+     "variable": true,
+     "axes": {
+      "wght": [
+       400,
+       800
+      ],
+      "CNTR": [
+       0,
+       100
+      ]
+     }
+    }
+   ],
+   "weights": [
+    400,
+    500,
+    600,
+    700,
+    800
+   ],
+   "axes": {
+    "wght": [
+     400,
+     800
+    ],
+    "CNTR": [
+     0,
+     100
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/mahoor.jpg"
+  },
+  {
+   "id": "aramesh",
+   "label": "آرامش",
+   "vendor": "صابر راستی‌کردار",
+   "designer": "صابر راستی‌کردار",
+   "category": "humanist-sans",
+   "mood": [
+    "آرام",
+    "خوانا",
+    "ساده"
+   ],
+   "best_for": [
+    "متن بدنه",
+    "زیرنویس و توضیح",
+    "فهرست و مراحل",
+    "برچسب‌های کوچک"
+   ],
+   "avoid_for": [
+    "عنوان‌های بسیار بزرگ و پرشور"
+   ],
+   "pairs_with": [
+    "doran",
+    "rokh",
+    "hasti"
+   ],
+   "note": "سنس آرام و بسیار خوانا در چهار وزن؛ بهترین جفت برای فونت‌های دیسپلی.",
+   "family": "Aramesh",
+   "css_families": [
+    "Aramesh"
+   ],
+   "faces": [
+    {
+     "css_family": "Aramesh",
+     "file": "files/aramesh/aramesh-w-aramesh-regular.ttf",
+     "weight": "500",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Aramesh",
+     "file": "files/aramesh/aramesh-w-aramesh-bold.otf",
+     "weight": "700",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Aramesh",
+     "file": "files/aramesh/aramesh-w-aramesh-extra-bold.otf",
+     "weight": "800",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Aramesh",
+     "file": "files/aramesh/aramesh-w-aramesh-black.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    500,
+    700,
+    800,
+    900
+   ],
+   "axes": {},
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/aramesh.jpg"
+  },
+  {
+   "id": "kahroba",
+   "label": "کهربا",
+   "vendor": "فونت‌ایران",
+   "designer": "امین عابدی",
+   "category": "display-sans",
+   "mood": [
+    "جدی",
+    "مجله‌ای",
+    "قدرتمند",
+    "خبری"
+   ],
+   "best_for": [
+    "تیتر خبری",
+    "تحلیل و دیدگاه",
+    "عدد و آمار بزرگ",
+    "مستند"
+   ],
+   "avoid_for": [
+    "حس بازیگوش"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "mahoor"
+   ],
+   "note": "فارسی سنس قوی و خوانا با لاتین سریف؛ تیترهایی با وزن و اعتبار مجله. وزن ۱۰۰ تا ۹۰۰.",
+   "family": "Kahroba",
+   "css_families": [
+    "Kahroba"
+   ],
+   "faces": [
+    {
+     "css_family": "Kahroba",
+     "file": "files/kahroba/kahroba-kahroba-vf-wght-wght-100-50.ttf",
+     "weight": "100 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       100,
+       900
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     100,
+     900
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/kahroba.jpg"
+  },
+  {
+   "id": "kahroba-pro",
+   "label": "کهربا پرو (متغیر)",
+   "vendor": "فونت‌ایران",
+   "designer": "امین عابدی",
+   "category": "display-sans",
+   "mood": [
+    "جدی",
+    "پویا",
+    "قدرتمند",
+    "تایپوگرافی متحرک"
+   ],
+   "best_for": [
+    "تایپوگرافی متحرک",
+    "تیتر با تغییر ضخامت و عرض",
+    "هوک"
+   ],
+   "avoid_for": [
+    "متن کوچک"
+   ],
+   "pairs_with": [
+    "aramesh"
+   ],
+   "note": "همان کهربا با سه محور: وزن، عرض (wdth ۸۷ تا ۱۲۵) و کنتراست (CNTR ۰ تا ۱۰۰). برای انیمیشنِ تغییر شکل حروف با font-variation-settings.",
+   "family": "Kahroba Pro",
+   "css_families": [
+    "Kahroba Pro"
+   ],
+   "faces": [
+    {
+     "css_family": "Kahroba Pro",
+     "file": "files/kahroba-pro/kahroba-pro-kahroba-vf-wght-wdth-cntr.ttf",
+     "weight": "100 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       100,
+       900
+      ],
+      "CNTR": [
+       0,
+       100
+      ],
+      "wdth": [
+       87,
+       125
+      ]
+     }
+    }
+   ],
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     100,
+     900
+    ],
+    "CNTR": [
+     0,
+     100
+    ],
+    "wdth": [
+     87,
+     125
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/kahroba-pro.jpg"
+  },
+  {
+   "id": "morabba",
+   "label": "مربع",
+   "vendor": "فونت‌ایران",
+   "designer": "حسن منظوری",
+   "category": "square-display",
+   "mood": [
+    "قوی",
+    "هندسی",
+    "تبلیغاتی",
+    "ورزشی"
+   ],
+   "best_for": [
+    "هوک و تیتر تبلیغاتی",
+    "ورزش و انگیزشی",
+    "حراج و تخفیف",
+    "تیتر کشیده با کشیده (kash)"
+   ],
+   "avoid_for": [
+    "متن ادبی",
+    "متن پرحجم"
+   ],
+   "pairs_with": [
+    "paykan",
+    "mahoor"
+   ],
+   "note": "کوفی مربع با وزن ۲۵۰ تا ۹۰۰ و محور کشیده (kash ۰ تا ۱۰۰) برای کشیدن حروف.",
+   "family": "Morabba",
+   "css_families": [
+    "Morabba"
+   ],
+   "faces": [
+    {
+     "css_family": "Morabba",
+     "file": "files/morabba/morabba-morabbavf.ttf",
+     "weight": "250 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       250,
+       900
+      ],
+      "kash": [
+       0,
+       100
+      ]
+     }
+    }
+   ],
+   "weights": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     250,
+     900
+    ],
+    "kash": [
+     0,
+     100
+    ]
+   },
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/morabba.jpg"
+  },
+  {
+   "id": "manshoor",
+   "label": "منشور",
+   "vendor": "فونت‌امین",
+   "designer": "امین عابدی",
+   "category": "heavy-display",
+   "mood": [
+    "سنگین",
+    "فشرده",
+    "شوک",
+    "جسور"
+   ],
+   "best_for": [
+    "هوک ثانیهٔ اول",
+    "تیتر یک‌کلمه‌ای",
+    "حراج",
+    "اعداد بزرگ"
+   ],
+   "avoid_for": [
+    "متن چندخطی",
+    "هر متنی که حروف لاتین دارد (این فونت لاتین ندارد)"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "paykan"
+   ],
+   "note": "دیسپلی فشردهٔ بسیار سنگین (۵۰۰ تا ۹۰۰). فقط حروف فارسی و ارقام؛ لاتین ندارد.",
+   "family": "Manshoor",
+   "css_families": [
+    "Manshoor"
+   ],
+   "faces": [
+    {
+     "css_family": "Manshoor",
+     "file": "files/manshoor/manshoor-manshoor-vf-wght.ttf",
+     "weight": "500 900",
+     "variable": true,
+     "axes": {
+      "wght": [
+       500,
+       900
+      ]
+     }
+    }
+   ],
+   "weights": [
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "axes": {
+    "wght": [
+     500,
+     900
+    ]
+   },
+   "latin": false,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/manshoor.jpg"
+  },
+  {
+   "id": "gofteh",
+   "label": "گفته",
+   "vendor": "فونت‌ایران",
+   "designer": "علیرضا نعمت‌اللهی",
+   "category": "heavy-display",
+   "mood": [
+    "شوخ",
+    "پرصدا",
+    "جوان",
+    "محاوره‌ای"
+   ],
+   "best_for": [
+    "هوک جوان‌پسند",
+    "میم و طنز",
+    "نقل‌قول محاوره‌ای",
+    "تیتر کوتاه"
+   ],
+   "avoid_for": [
+    "حس رسمی و لوکس"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "paykan"
+   ],
+   "note": "دیسپلی بسیار ضخیم و خودمانی با شخصیت «گفتگو» (یک وزن، ۹۰۰).",
+   "family": "Gofteh",
+   "css_families": [
+    "Gofteh"
+   ],
+   "faces": [
+    {
+     "css_family": "Gofteh",
+     "file": "files/gofteh/gofteh-gofteh-heavy.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    900
+   ],
+   "axes": {},
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/gofteh.jpg"
+  },
+  {
+   "id": "kaghaz",
+   "label": "کاغذ",
+   "vendor": "مرتضی آخوندپور",
+   "designer": "مرتضی آخوندپور",
+   "category": "poster-display",
+   "mood": [
+    "پوستری",
+    "چاپی",
+    "جسور",
+    "مستقیم"
+   ],
+   "best_for": [
+    "پوستر و بنر",
+    "جملهٔ قصار",
+    "تیتر کوتاه و بزرگ"
+   ],
+   "avoid_for": [
+    "متن بلند"
+   ],
+   "pairs_with": [
+    "aramesh"
+   ],
+   "note": "دیسپلی سنگین با حس برش کاغذ و پوستر چاپی؛ دو شکل: «Kaghaz Alef» و «Kaghaz».",
+   "family": "Kaghaz Alef",
+   "css_families": [
+    "Kaghaz Alef",
+    "Kaghaz"
+   ],
+   "faces": [
+    {
+     "css_family": "Kaghaz Alef",
+     "file": "files/kaghaz/kaghaz-alef-kaghazalef-bold.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Kaghaz",
+     "file": "files/kaghaz/kaghaz-kaghaz.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    900
+   ],
+   "axes": {},
+   "latin": true,
+   "persian_digits": false,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/kaghaz.jpg"
+  },
+  {
+   "id": "hasti",
+   "label": "هستی",
+   "vendor": "فونت‌ایران",
+   "designer": "مسلم ابراهیمی",
+   "category": "brush-display",
+   "mood": [
+    "پرانرژی",
+    "مورب",
+    "تبلیغاتی",
+    "قلم‌گیری"
+   ],
+   "best_for": [
+    "فروش و تخفیف",
+    "ریل پرهیجان",
+    "تیتر مورب",
+    "هشتگ و برچسب"
+   ],
+   "avoid_for": [
+    "متن آرام و رسمی"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "paykan"
+   ],
+   "note": "دیسپلی مورب سنگین با حس قلم؛ چهار شکل: R (گرد)، RRD (گرد با تزیین)، S (تیز)، SRD (تیز با تزیین).",
+   "family": "Hasti R",
+   "css_families": [
+    "Hasti R",
+    "Hasti RRD",
+    "Hasti S",
+    "Hasti SRD"
+   ],
+   "faces": [
+    {
+     "css_family": "Hasti R",
+     "file": "files/hasti/hasti-r-hasti-heavyr.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Hasti RRD",
+     "file": "files/hasti/hasti-rrd-hasti-heavyrrd.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Hasti S",
+     "file": "files/hasti/hasti-s-hasti-heavys.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Hasti SRD",
+     "file": "files/hasti/hasti-srd-hasti-heavysrd.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    900
+   ],
+   "axes": {},
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/hasti.jpg"
+  },
+  {
+   "id": "typokar",
+   "label": "تایپوکار",
+   "vendor": "رایگان‌فونت",
+   "designer": "علی درستکار",
+   "category": "script-display",
+   "mood": [
+    "دست‌نویس",
+    "خودمانی",
+    "خلاق",
+    "امضایی"
+   ],
+   "best_for": [
+    "برند شخصی",
+    "امضا و اسم",
+    "تیتر خلاق",
+    "جملهٔ تأکیدی"
+   ],
+   "avoid_for": [
+    "متن بدنه"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "paykan"
+   ],
+   "note": "چهار شکل قلمی مورب با حس دست‌نویس سریع: Typokar 1 تا 4.",
+   "family": "Typokar 1",
+   "css_families": [
+    "Typokar 1",
+    "Typokar 2",
+    "Typokar 3",
+    "Typokar 4"
+   ],
+   "faces": [
+    {
+     "css_family": "Typokar 1",
+     "file": "files/typokar/typokar-1-typokar-1-fontrayegan.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Typokar 2",
+     "file": "files/typokar/typokar-2-typokar-2-fontrayegan.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Typokar 3",
+     "file": "files/typokar/typokar-3-typokar-3-fontrayegan.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Typokar 4",
+     "file": "files/typokar/typokar-4-typokar-4-fontrayegan.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    400
+   ],
+   "axes": {},
+   "latin": false,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/typokar.jpg"
+  },
+  {
+   "id": "leila",
+   "label": "لیلا",
+   "vendor": "مریم‌سافت",
+   "designer": "مریم‌سافت",
+   "category": "calligraphic",
+   "mood": [
+    "عاشقانه",
+    "شاعرانه",
+    "نستعلیق‌گونه",
+    "نرم"
+   ],
+   "best_for": [
+    "شعر و نقل‌قول",
+    "عاشقانه و احساسی",
+    "امضا",
+    "تیتر ظریف"
+   ],
+   "avoid_for": [
+    "اعداد و اطلاعات",
+    "متن کوچک"
+   ],
+   "pairs_with": [
+    "aramesh",
+    "doran"
+   ],
+   "note": "دست‌نویس نستعلیق‌گونه در پنج وزن؛ فقط برای کلمات کم و بزرگ.",
+   "family": "Leila",
+   "css_families": [
+    "Leila"
+   ],
+   "faces": [
+    {
+     "css_family": "Leila",
+     "file": "files/leila/leila-leila-light-fontrayegan.ttf",
+     "weight": "300",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Leila",
+     "file": "files/leila/leila-leila-regular-fontrayegan.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Leila",
+     "file": "files/leila/leila-leila-bold-fontrayegan.ttf",
+     "weight": "700",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Leila",
+     "file": "files/leila/leila-leila-extrabold-fontrayegan.ttf",
+     "weight": "800",
+     "variable": false,
+     "axes": {}
+    },
+    {
+     "css_family": "Leila",
+     "file": "files/leila/leila-leila-black-fontrayegan.ttf",
+     "weight": "900",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    300,
+    400,
+    700,
+    800,
+    900
+   ],
+   "axes": {},
+   "latin": false,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/leila.jpg"
+  },
+  {
+   "id": "daftar",
+   "label": "دفتر",
+   "vendor": "استودیو دفتر",
+   "designer": "Studio Daftar",
+   "category": "handwriting",
+   "mood": [
+    "دفترچه‌ای",
+    "خودمانی",
+    "ساده",
+    "آموزشی"
+   ],
+   "best_for": [
+    "یادداشت و دفترچه",
+    "مراحل دست‌نویس",
+    "حس مدرسه و آموزش",
+    "برچسب‌های خودمانی"
+   ],
+   "avoid_for": [
+    "تیتر رسمی"
+   ],
+   "pairs_with": [
+    "morabba",
+    "aramesh"
+   ],
+   "note": "دست‌نویس تک‌خطی نازک با حس نوشتن در دفتر (یک وزن).",
+   "family": "Daftar",
+   "css_families": [
+    "Daftar"
+   ],
+   "faces": [
+    {
+     "css_family": "Daftar",
+     "file": "files/daftar/daftar-sd-daftar-regular.ttf",
+     "weight": "400",
+     "variable": false,
+     "axes": {}
+    }
+   ],
+   "weights": [
+    400
+   ],
+   "axes": {},
+   "latin": true,
+   "persian_digits": true,
+   "builtin": false,
+   "license": "نرم‌افزار مالکیتی فروشنده؛ برای هر پروژه‌ای که همراه محصول عرضه می‌شود، مجوز فروشنده لازم است.",
+   "specimen": "specimens/daftar.jpg"
+  }
+ ]
+}

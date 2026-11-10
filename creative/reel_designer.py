@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import motion_graphic as mg
+from . import font_catalog
 from . import narration_take
 from . import visual_gate
 from .schemas import CreativeUnavailable
@@ -137,7 +138,28 @@ def handoff_brief(config: dict, storyboard: dict, creative: dict, pictures: dict
     return "\n".join([*head, "", *lines])
 
 
-def library_plan(config, storyboard, creative, pictures, subjects, lengths, context, cache: Path, used: list[str]):
+def _advice_line(advice: dict | None) -> str:
+    if not advice or advice.get("error"):
+        return ""
+    return f"title_font={advice.get('title_font') or '-'}; body_font={advice.get('body_font') or '-'}; accent={advice.get('accent_font') or '-'}; because {advice.get('why', '')}"
+
+
+def font_advice(job_dir: Path, brief: str) -> dict:
+    """The vision model looks at the specimen sheets and recommends the reel's fonts: a visible step; a failure is shown and the planner chooses from the list."""
+    _progress(job_dir, "دارم نمونهٔ فونت‌های کتابخانه را می‌بینم و فونت مناسب این ریل را انتخاب می‌کنم", request=brief[:600], detail="وضعیت: در حال بررسی")
+    advice = font_catalog.advise(brief)
+    if not advice or advice.get("error"):
+        _progress(job_dir, "انتخاب فونت با مدل بینایی انجام نشد؛ طراح برنامه از روی فهرست فونت‌ها انتخاب می‌کند", detail=str((advice or {}).get("error") or "پاسخی نیامد")[:400], done=True)
+        return {}
+    def label(font_id: str) -> str:
+        font = font_catalog.get(font_id)
+        return f"{font['label']} ({font['family']})" if font else "—"
+    _progress(job_dir, f"فونت پیشنهادی: تیتر «{label(advice.get('title_font', ''))}» و متن «{label(advice.get('body_font', ''))}»", done=True,
+              detail=f"تیتر: {label(advice.get('title_font', ''))}\nمتن: {label(advice.get('body_font', ''))}\nتأکیدی: {label(advice.get('accent_font', ''))}\n\n{advice.get('why', '')}")
+    return advice
+
+
+def library_plan(config, storyboard, creative, pictures, subjects, lengths, context, cache: Path, used: list[str], advice: dict | None = None):
     """The planner designs the film from the approved script: palette, signature device, design bible, entrances and the ready-made components (Shotcraft recipes,
     executable library components) where they fit; then the library scout looks at pictures of the components next to the scenes. Cached beside the job."""
     brief = handoff_brief(config, storyboard, creative, pictures, subjects, lengths)
@@ -154,7 +176,7 @@ def library_plan(config, storyboard, creative, pictures, subjects, lengths, cont
             return mg.MotionPlan.model_validate(saved["plan"]), brief
     except (OSError, ValueError):
         pass
-    plan = mg.plan(brief, context=context, style=style, used=used)
+    plan = mg.plan(brief, context=context, style=style, used=used, fonts=_advice_line(advice), advice=advice)
     if chosen_look:                                   # the look the person (or the studio, sure of itself) settled is the look: palette and design bible are fixed, the designers build on them
         plan = plan.model_copy(update={"palette": mg.Palette(**chosen_look["palette"]), "design_direction": chosen_look["direction"][:2400]})
     if plan.asks() or len(plan.scenes) != len(config["scenes"]):
@@ -461,7 +483,8 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         facts = {k: v for k, v in (creative.get("facts") or {}).items()} if isinstance(creative.get("facts"), dict) else (creative.get("brief") or {})
         context = _context(facts, pictures, subjects)
         try:
-            plan, brief = library_plan(config, storyboard, creative, pictures, subjects, lengths, context, work, used)
+            advice = font_advice(job.dir, str(storyboard.get('prompt') or '') + '\n' + str((creative.get('chosen') or {}).get('visual_language') or ''))
+            plan, brief = library_plan(config, storyboard, creative, pictures, subjects, lengths, context, work, used, advice)
         except Exception as exc:
             # The planner could not take the approved scenes: the designer's own identity step plans them instead (still designed per scene, without library picks).
             log.warning("reel planner unavailable (%s); the scenes are planned from the creative direction", str(exc)[:200])
@@ -476,6 +499,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 design_file.write_text(json.dumps(design.model_dump(), ensure_ascii=False))
             plan, _, _ = build_plan(config, storyboard, creative, design, project, job.dir)
             brief = str(storyboard.get("prompt") or "")[:1500]
+        plan = mg.fix_fonts(plan, locals().get('advice'))
         plan = retime(plan, lengths)
         if fitted:
             plan = narration_take.apply(plan, fitted)             # every scene knows when each of its words is spoken

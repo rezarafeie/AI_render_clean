@@ -106,7 +106,7 @@ def test_planner_and_resource_metadata_expose_typed_card_constraints():
     from creative.resources.providers import shotcraft_resources
     request=mg.plan_request("نمونه")
     assert 'shotcraft:card-flip-reveal' in request and 'evidence' in request
-    assert len(request)<50_000
+    assert len(request)<54_000
     row=next(r for r in shotcraft_resources() if r.id=='shotcraft:card-flip-reveal')
     assert row.integration_status=='native' and not row.capabilities.supports_vertical
     assert next(p for p in row.parameters if p.name=='cards').required

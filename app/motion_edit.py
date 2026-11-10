@@ -55,6 +55,14 @@ def editable(directory: Path, record: dict) -> dict:
     fields = [f for f in fields if f]
     colours = plan.get("palette") or {}
     fields += [_field(f"palette.{key}", "colours", label, "color", colours.get(key, "#000000"), "colours") for key, label in COLOURS.items()]
+    from creative import font_catalog
+    font_options = [{"value": f["id"], "label": f"{f['label']} · {f['family']} — {'، '.join(f['mood'][:3])}", "latin": bool(f.get("latin"))} for f in font_catalog.load()]
+    fields += [
+        _field("font.title", "fonts", "Title font", "font", plan.get("title_font") or font_catalog.DEFAULT_TITLE, "fonts", options=font_options,
+               help="Headlines and big numbers. The whole film is rebuilt with the new letters; the scenes keep their design."),
+        _field("font.body", "fonts", "Body font", "font", plan.get("body_font") or font_catalog.DEFAULT_BODY, "fonts", options=font_options,
+               help="Labels, callouts and small text. Choosing the same font for both is fine."),
+    ]
     fields += [
         _field("voice.narrator", "voice", "Narrator", "select", record.get("voice_id", "") or "", "audio",
                options=[{"value": vid, "label": f"{name} — {about}"} for vid, name, about in localize.NARRATORS]),
@@ -74,8 +82,8 @@ def editable(directory: Path, record: dict) -> dict:
                options=[{"value": key, "label": f"{key.replace('_', ' ')} · {lufs:g} LUFS"} for key, (lufs, _tp, _lra) in loudness.PRESETS.items()] + [{"value": "off", "label": "No loudness processing"}]),
         _field("mix.rhythm", "audio", "Scene timing follows", "select", record.get("rhythm") or "speech_first", "audio", options=[{"value": key, "label": label} for key, label in RHYTHMS.items()]),
     ]
-    titles = {"scenes": "Scenes", "colours": "Colours", "voice": "Voice", "audio": "Music & sound"}
-    return {"groups": [{"id": gid, "title": titles[gid], "fields": [f for f in fields if f["group"] == gid]} for gid in ("scenes", "colours", "voice", "audio")],
+    titles = {"scenes": "Scenes", "colours": "Colours", "fonts": "Fonts", "voice": "Voice", "audio": "Music & sound"}
+    return {"groups": [{"id": gid, "title": titles[gid], "fields": [f for f in fields if f["group"] == gid]} for gid in ("scenes", "colours", "fonts", "voice", "audio")],
             "busy": record.get("status") in ("queued", "writing", "checking", "rendering"), "version": record.get("current")}
 
 
@@ -90,7 +98,7 @@ def _clean(field: dict, value: Any) -> Any:
         if field.get("disabled"):
             raise EditError(f"{field['label']}: {field.get('help', 'not editable')}")
         return text
-    if kind == "select":
+    if kind in ("select", "font"):
         if str(value) not in {o["value"] for o in field["options"]}:
             raise EditError(f"{field['label']}: not an available option")
         return str(value)
@@ -155,6 +163,7 @@ def apply(directory: Path, record: dict, changes: dict[str, Any]) -> dict:
             return None
 
     palette_changes: dict[str, tuple[str, str]] = {}
+    font_changes: list[tuple[str, str]] = []
     for key, value in clean.items():
         group, _, rest = key.partition(".")
         if group == "scene":
@@ -174,6 +183,16 @@ def apply(directory: Path, record: dict, changes: dict[str, Any]) -> dict:
                 draft_file(int(n)).unlink(missing_ok=True); redo["scenes"].add(int(n))
             elif attr == "transition":
                 redo["reassemble"] = True
+        elif group == "font":
+            from creative import font_catalog
+            old_id = plan.get("title_font" if rest == "title" else "body_font") or font_catalog.DEFAULT_TITLE
+            other_id = plan.get("body_font" if rest == "title" else "title_font") or font_catalog.DEFAULT_BODY
+            targets = ["title_font", "body_font"] if old_id == other_id else ["title_font" if rest == "title" else "body_font"]    # one family used for both cannot be told apart in the saved designs
+            old_family, new_family = font_catalog.family_of(old_id), font_catalog.family_of(value)
+            for target in targets:
+                plan[target] = value
+            font_changes.append((old_family, new_family))
+            redo["reassemble"] = True
         elif group == "palette":
             old = (plan.get("palette") or {}).get(rest, "")
             plan.setdefault("palette", {})[rest] = value
@@ -182,6 +201,15 @@ def apply(directory: Path, record: dict, changes: dict[str, Any]) -> dict:
             redo["reassemble"] = True
         else:
             redo["audio"] = True
+    if font_changes:                                                           # the family names are inside the saved designs too
+        from creative import font_catalog
+        for n in range(1, len(scenes) + 1):
+            if cached := load_draft(n):
+                for old_family, new_family in font_changes:
+                    for name in ("html", "css", "build_js", "update_js"):
+                        if cached["draft"].get(name):
+                            cached["draft"][name] = font_catalog.swap_family(cached["draft"][name], old_family, new_family)
+                draft_file(n).write_text(json.dumps(cached, ensure_ascii=False))
     for n in range(1, len(scenes) + 1):                                        # colours are inside the saved designs: swap them there
         if palette_changes and (cached := load_draft(n)):
             for old, new in palette_changes.values():
@@ -212,7 +240,8 @@ def apply(directory: Path, record: dict, changes: dict[str, Any]) -> dict:
     if redo["voice_lines"]: parts.append("narration of scene " + ", ".join(map(str, sorted(redo["voice_lines"]))))
     if redo["scenes"]: parts.append("design of scene " + ", ".join(map(str, sorted(redo["scenes"]))))
     if palette_changes: parts.append("colours")
-    if redo["reassemble"] and not palette_changes: parts.append("scene entrances")
+    if font_changes: parts.append("fonts")
+    if redo["reassemble"] and not palette_changes and not font_changes: parts.append("scene entrances")
     if redo["audio"]: parts.append("voice and sound settings")
     record["edit_pending"] = {"label": "Edit · " + "; ".join(parts), "fields": sorted(clean)}
     return {"changed": sorted(clean), "redo": {"scenes": sorted(redo["scenes"]), "voice_lines": sorted(redo["voice_lines"]), "audio": redo["audio"], "reassemble": redo["reassemble"]},

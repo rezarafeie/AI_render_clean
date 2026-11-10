@@ -74,7 +74,7 @@ def test_planner_discovers_native_code_separately_from_references():
     from creative.native_motion import CATALOG_CONTRACT, SUPPORTED
     assert request.count(CATALOG_CONTRACT) == 1
     assert all(resource in request for resource in SUPPORTED)
-    assert len(request) < 50_000  # Shared instructions must not be duplicated 45 times.
+    assert len(request) < 54_000  # Shared instructions must not be duplicated 45 times.
 
 
 def test_planner_shared_metadata_compaction_is_lossless():

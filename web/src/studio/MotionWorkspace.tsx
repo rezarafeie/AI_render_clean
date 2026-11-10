@@ -1,4 +1,5 @@
 import React from "react";
+import { FontPicker } from "./FontPicker";
 import { api, MotionEditable, MotionField, MotionGraphic, StudioEvent } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
@@ -60,9 +61,10 @@ export function MotionPreviewPane({ motionId, events, onCancel }: { motionId: st
 function FieldInput({ field, value, disabled, onChange }: { field: MotionField; value: string | number; disabled: boolean; onChange: (next: string | number) => void }) {
   const id = `mf-${field.key}`;
   const common = { id, disabled: disabled || field.disabled, "aria-describedby": field.help ? `${id}-h` : undefined };
-  return <div className="field" data-wide={field.type === "textarea" || undefined}>
+  return <div className="field" data-wide={field.type === "textarea" || field.type === "font" || undefined}>
     <label htmlFor={id}>{field.label}</label>
-    {field.type === "textarea" ? <textarea {...common} className="input bidi" dir="auto" rows={3} maxLength={field.maxlength} value={String(value)} onChange={e => onChange(e.target.value)}/>
+    {field.type === "font" ? <FontPicker value={String(value)} disabled={disabled || field.disabled} onPick={next => onChange(next)} allowed={(field.options || []).map(o => o.value)}/>
+      : field.type === "textarea" ? <textarea {...common} className="input bidi" dir="auto" rows={3} maxLength={field.maxlength} value={String(value)} onChange={e => onChange(e.target.value)}/>
       : field.type === "select" ? <select {...common} className="input" value={String(value)} onChange={e => onChange(e.target.value)}>{(field.options || []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
       : field.type === "color" ? <input {...common} className="input" style={{ padding: 4, height: 40 }} type="color" value={String(value)} onChange={e => onChange(e.target.value.toUpperCase())}/>
       : field.type === "number" ? <input {...common} className="input" type="number" min={field.min} max={field.max} step={field.step} value={String(value)} onChange={e => onChange(e.target.value === "" ? "" : Number(e.target.value))}/>
@@ -72,13 +74,13 @@ function FieldInput({ field, value, disabled, onChange }: { field: MotionField; 
 }
 
 /** What a field's change costs, in words (the server names the kind of impact for each field). */
-const IMPACT: Record<string, string> = { text: "بازسازی متن همین صحنه", voice: "صدای همین خط دوباره ساخته می‌شود", scene: "همین صحنه دوباره طراحی می‌شود", assemble: "فقط رندر دوباره", colours: "رنگ‌ها در همهٔ صحنه‌ها عوض می‌شود", audio: "صدا و میکس دوباره ساخته می‌شود" };
+const IMPACT: Record<string, string> = { fonts: "فونت همهٔ صحنه‌ها عوض می‌شود (طراحی‌ها حفظ می‌شوند)", text: "بازسازی متن همین صحنه", voice: "صدای همین خط دوباره ساخته می‌شود", scene: "همین صحنه دوباره طراحی می‌شود", assemble: "فقط رندر دوباره", colours: "رنگ‌ها در همهٔ صحنه‌ها عوض می‌شود", audio: "صدا و میکس دوباره ساخته می‌شود" };
 
 /** The groups of settings (one card per group) with every field the server listed; nothing here is decided by the browser. */
 export function MotionEditForm({ schema, draft, disabled, onChange }: { schema: MotionEditable; draft: Record<string, string | number>; disabled: boolean; onChange: (field: MotionField, next: string | number) => void }) {
   return <>{schema.groups.map(group => {
     const edited = group.fields.filter(f => f.key in draft).length;
-    return <EditCard key={group.id} title={group.title} icon={group.id === "scenes" ? "film" : group.id === "colours" ? "image" : group.id === "voice" ? "mic2" : "music"}
+    return <EditCard key={group.id} title={group.title} icon={group.id === "scenes" ? "film" : group.id === "colours" ? "image" : group.id === "fonts" ? "captions" : group.id === "voice" ? "mic2" : "music"}
       summary={edited ? `${edited} تغییر اعمال‌نشده` : `${group.fields.length} مورد`}>
       <EditGrid>{group.fields.map(field => <FieldInput key={field.key} field={field} value={field.key in draft ? draft[field.key] : field.value} disabled={disabled} onChange={next => onChange(field, next)}/>)}</EditGrid>
     </EditCard>;

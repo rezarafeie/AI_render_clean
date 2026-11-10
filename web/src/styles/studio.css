@@ -890,3 +890,19 @@ a.pe-tool { text-decoration: none; }
 @keyframes rc-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .rc-eta { margin: 0; font-size: 12px; color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) { .meter[data-estimate] > span { animation: none; } }
+
+/* font picker (Edit tab and the font library) */
+.fp { display: grid; gap: 10px; min-width: 0; }
+.fp-current { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; max-height: 520px; overflow-y: auto; padding: 2px; }
+.fp-card { display: grid; gap: 6px; text-align: start; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); color: inherit; cursor: default; min-width: 0; }
+.fp-card[data-pickable] { cursor: pointer; }
+.fp-card[data-pickable]:hover { background: var(--hover); }
+.fp-card[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+.fp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.fp-head small { color: var(--text-3); }
+.fp-live { font-size: 26px; line-height: 1.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .55; transition: opacity .2s; }
+.fp-live[data-ready] { opacity: 1; }
+.fp-specimen { width: 100%; height: 54px; object-fit: cover; object-position: top; border-radius: 6px; background: #fff; }
+.fp-tags { font-size: 12px; color: var(--text-2); }
+.fp-note { font-size: 12px; color: var(--text-3); }

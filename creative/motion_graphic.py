@@ -189,9 +189,11 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
         for match in re.finditer(pattern, css, re.I):
             if label is None:
                 families = {f.strip(" '\"").lower() for f in match.group(0).split(":", 1)[1].split(",")}
-                other = sorted(f for f in families if f and f not in _FONTS and f not in {"sans-serif", "serif", "monospace", "inherit"})
+                from . import font_catalog
+                allowed = font_catalog.allowed_families() | _FONTS
+                other = sorted(f for f in families if f and f not in allowed and f not in {"sans-serif", "serif", "monospace", "inherit"})
                 if other:
-                    problems.append("fonts other than Ray, Vazir, Kharazmi and Inter are not available: " + ", ".join(other[:3]))
+                    problems.append("fonts other than the studio's font library are not available: " + ", ".join(other[:3]))
             else:
                 problems.append(f"CSS: {label} is not allowed")
                 break
@@ -245,6 +247,9 @@ def _fonts_css() -> str:
     return fonts_css()
 
 
+from . import font_catalog
+
+
 def assemble(page: MotionPage) -> str:
     """The complete HyperFrames page. The only file the renderer opens."""
     width, height = page.size
@@ -286,7 +291,7 @@ def assemble(page: MotionPage) -> str:
 <script src="./assets/gsap.min.js"></script>
 <script src="./assets/kit.js"></script>
 <style>
-{_fonts_css()}
+{_fonts_css()}{font_catalog.faces_css(font_catalog.used_families(page.css, page.scenes_html))}
 {(KIT / 'kit.css').read_text()}
 {_LTR_CSS if page.direction == "ltr" else ""}
 {page.css}
@@ -322,6 +327,7 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
     shutil.copy2(KIT / "kit.js", assets / "kit.js")
     for target, source in FONT_FILES.items():
         shutil.copy2(ROOT / "presets" / "fonts" / source, assets / "fonts" / target)
+    font_catalog.copy_assets(assets / "fonts", font_catalog.used_families(page.css, page.scenes_html))
     inter = ROOT / "presets" / "fonts" / "Inter.ttf"
     if page.direction == "ltr" and inter.is_file():
         shutil.copy2(inter, assets / "fonts" / "inter.ttf")
@@ -378,8 +384,8 @@ THE PARTS
 - scenes_html: 2-6 full-frame layers, in order: <section class="hm-scene" id="s1">...</section>. Later layers sit on top. The first is visible from
   the start; reveal the others with HM.wipe or your own tween. Position everything absolutely in PIXELS inside the frame (never vw/vh/%-of-window).
   Unique ids everywhere. Inline SVG for any drawing (icons, charts, diagrams, logos you invent); no <video>, <br>, <script>, <style>, forms; <img> only for an ATTACHED PICTURE listed in the facts, with its exact src.
-- css: plain CSS for your markup. Fonts: ONLY "Ray" (Persian + Latin, weights 300/400/500/700/800/900: use extreme weight contrast),
-  "Kharazmi" (Persian editorial serif, 400, one accent voice) and "Vazir" (400). Do not set transform in CSS on anything you animate; no
+- css: plain CSS for your markup. Fonts: ONLY the families named in the FONTS OF THIS FILM block of the request (use extreme weight contrast
+  between title and body); "Ray" (300-900) is the safe fallback. Do not set transform in CSS on anything you animate; no
   @keyframes, animation, transition, @import, position:fixed, remote url().
 - build_js: the BODY of function build(tl). Add EVERY animation to the paused timeline with an absolute start time as the last argument, for
   example tl.from("#title", {opacity: 0, y: 60, duration: .7}, 1.2) or HM.rise(".t1", 1.2). Do not use gsap.* directly, timers, Date,
@@ -544,6 +550,9 @@ class MotionPlan(BaseModel):
     duration: float = 15.0
     palette: Palette = Field(default_factory=Palette)
     signature: str = ""                # the one memorable device that repeats through the clip
+    title_font: str = ""               # a font-library id (headlines, big numbers); empty = the studio default
+    body_font: str = ""                # a font-library id (labels, callouts, small text)
+    font_why: str = ""                 # one sentence: what in the letter shapes fits this film
     design_direction: str = Field(default="", max_length=2500)
     scenes: list[ScenePlan] = Field(default_factory=list)
 
@@ -571,7 +580,7 @@ PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics
 scene designers can build each scene on their own. Return ONE JSON object and nothing else:
 {"questions": [], "title": "...", "summary": "...", "format": "vertical|horizontal|square", "duration": 15,
  "palette": {"bg": "#RRGGBB", "surface": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "accent2": "#RRGGBB"},
- "signature": "...", "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
+ "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
 
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
@@ -614,8 +623,7 @@ THE CONTRACT
 - html: the INNER markup of your scene (the platform wraps it in <section class="hm-scene" id="sN"> that already has the palette background and ink colour).
   Position everything absolutely in PIXELS inside the frame. Every id you create must start with "sN-". Inline SVG for any drawing; <img> only for an ATTACHED PICTURE listed in the facts (its exact src); no <video>,
   <br>, <script>, <style>, forms, remote URLs.
-- css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY "Ray" (weights 300-900), "Kharazmi" (400) and
-  "Vazir" (400). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
+- css: plain CSS for your markup. EVERY selector must start with #sN (for example `#sN .hero{...}`). Fonts: ONLY the families named in FONTS OF THIS FILM (below). No transform on elements you animate, no @keyframes, animation, transition, @import, position:fixed, remote url(). No text under 36 px.
 - build_js: the BODY of build(tl). The scene is on screen from time T to T+D (given below; T and D are also defined as numeric variables in your code, so T + 0.4 works; NEVER tween left/top/right/bottom/margin*/fontSize/letterSpacing (animate x, y, scale, rotation, opacity or clipPath instead; set layout once in CSS). NEVER declare const/let/var named T, D or tl: they already exist and redeclaring them is a syntax error, so give your own values other names); its entrance transition (varied per scene) is added by the
   platform, so start your content tweens at T+0.15 or later, using ABSOLUTE times (T + offset) as the last argument, and finish them by T+D-0.3. Use
   tl.fromTo/tl.from/tl.to/tl.set or the HM helpers; never gsap.* directly, timers, Date, Math.random, window, fetch. Anything that appears later must start
@@ -677,7 +685,7 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     return problems
 
 
-def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "") -> str:
+def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "", fonts: str = "") -> str:
     from .shotcraft import catalog
     parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False,separators=(",",":"))]
     from .native_motion import catalog as native_catalog, CATALOG_CONTRACT
@@ -703,6 +711,7 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
     parts.append("NATIVE SHOTCRAFT (shotcraft_component executes original code; shotcraft_id alone remains reference-guided authoring):\n" + json.dumps(shotcraft_native_catalog(),ensure_ascii=False,separators=(",",":"))
                  + "\nWhen a native design fits the actual meaning and constraints, use its typed shotcraft_component, not a model recreation of its code. Keep custom scene design when no native component fits. Never claim that shotcraft_id authoring executed original TSX.")
     parts.append("Card-flip is a brief three-feature overview. Reading holds are per-card, NOT a guarantee of serial reading of all three cards; keep copy terse or use sequential custom scenes for detailed explanation.")
+    parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
     if brand:
@@ -773,7 +782,7 @@ def film_language(brief: str) -> str:
     return "fa" if is_persian(brief or "") else "en"
 
 
-def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2) -> MotionPlan:
+def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2, fonts: str = "", advice: dict | None = None) -> MotionPlan:
     """The plan (or the questions to ask first). A plan that does not tile the duration is sent back with the reasons."""
     from . import handoff
     approved = handoff.parse(brief)
@@ -781,7 +790,7 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
     # approved words and speech-safe timing BEFORE judging a model's proposal.
     if approved:
         apply_handoff(MotionPlan(), brief)
-    request = plan_request(brief, context=context, brand=brand, style=style)
+    request = plan_request(brief, context=context, brand=brand, style=style, fonts=fonts)
     guide = PLAN_GUIDE
     if film_language(brief) == "en":
         guide = PLAN_GUIDE.replace("Persian-first", "English-language").replace("natural spoken Persian", "natural spoken English").replace("the exact Persian words", "the exact English words").replace("Persian", "English")
@@ -811,6 +820,7 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             result = apply_handoff(result, brief)
         if supplied and len(result.scenes) == len(supplied):
             result = script_given.apply(result, supplied)
+        result = fix_fonts(result, advice)
         problems = validate_plan(result, max_scenes=cap)
         if supplied and len(result.scenes) != len(supplied):
             problems.insert(0, f"the person's narration script has {len(supplied)} lines: make exactly {len(supplied)} scenes, one per line, narration word for word")
@@ -821,6 +831,14 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
     raise CreativeUnavailable("motion plan did not pass validation: " + "; ".join(problems[:3]))
+
+
+def fix_fonts(plan_: MotionPlan, advice: dict | None = None) -> MotionPlan:
+    """The two fonts of a plan are always real library ids: the planner's own choice when valid, else the vision advice, else the studio default."""
+    advice = advice or {}
+    title = font_catalog.resolve(plan_.title_font, font_catalog.resolve(advice.get("title_font", ""), font_catalog.DEFAULT_TITLE))
+    body = font_catalog.resolve(plan_.body_font, font_catalog.resolve(advice.get("body_font", ""), title if not (font_catalog.get(title) or {}).get("display_only") else font_catalog.DEFAULT_BODY))
+    return plan_.model_copy(update={"title_font": title, "body_font": body, "font_why": plan_.font_why or str(advice.get("why") or "")})
 
 
 def plan_cap(brief: str, supplied: int = 0, approved: bool = False) -> int:
@@ -867,6 +885,7 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
                  + "\nThe lower part of the frame (from about 69% of the height down to 85%) is reserved for the narration shown as typography; keep every other element out of it. "
                    "Plan the motion on these times: the entrance of each callout, label, number or picture lands on the word that names it, and the headline is complete when its word is spoken. "
                    "Do not spread entrances evenly or by guess.") if scene.cues else ""),
+             font_catalog.designer_block(font_catalog.resolve(plan.title_font, font_catalog.DEFAULT_TITLE), font_catalog.resolve(plan.body_font, font_catalog.DEFAULT_BODY)),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
              f"ORIGINAL REQUEST:\n{brief.strip()[:1500]}"]
@@ -1052,6 +1071,10 @@ def fallback_scene(plan: MotionPlan, n: int) -> SceneDraft:
         side, align, face, weight = "left", "left", "Inter", 300
     else:
         side, align, face, weight = "right", "right", "Ray", 900
+        font = font_catalog.get(font_catalog.resolve(plan.title_font, font_catalog.DEFAULT_TITLE))
+        if font and font["id"] != "ray":
+            face = f"'{font['family']}'"
+            weight = max(font["weights"]) if font["weights"] else 400
     return SceneDraft(
         html=f'<div class="s{n}-bar"></div><p class="s{n}-head"><span class="hm-mask"><span class="hm-rise">{escape(scene.headline)}</span></span></p>',
         css=(f"#s{n} .s{n}-bar{{position:absolute;{side}:{int(width*.08)}px;top:{int(height*.4)}px;width:160px;height:14px;background:{accent}}}"

@@ -686,11 +686,37 @@ def _fit_to_take(directory: Path, record: dict, plan, texts: list[str], take: di
     return retimed, audio, notes
 
 
+def _advice_text(advice: dict) -> str:
+    if not advice or advice.get("error"):
+        return ""
+    return f"title_font={advice.get('title_font') or '-'}; body_font={advice.get('body_font') or '-'}; accent={advice.get('accent_font') or '-'}; because {advice.get('why', '')}"
+
+
+def _font_advice(directory: Path, brief: str) -> dict:
+    """The vision model looks at the specimen sheets of the font library and recommends the film's fonts: one visible step with what it saw (a failure is shown, the planner then chooses from the list)."""
+    from creative import font_catalog
+    _note(directory, "fonts", "دارم نمونهٔ فونت‌های کتابخانه را می‌بینم و فونت مناسب این فیلم را انتخاب می‌کنم", request=brief[:600])
+    advice = font_catalog.advise(brief)
+    if advice.get("error") or not advice:
+        reason = advice.get("error") or "پاسخی نیامد"
+        _note(directory, "fonts", "انتخاب فونت با مدل بینایی انجام نشد؛ طراح برنامه از روی فهرست فونت‌ها انتخاب می‌کند", "done", detail=str(reason)[:400])
+        return {}
+    def label(font_id: str) -> str:
+        font = font_catalog.get(font_id)
+        return f"{font['label']} ({font['family']})" if font else "—"
+    _note(directory, "fonts", f"فونت پیشنهادی: تیتر «{label(advice.get('title_font', ''))}» و متن «{label(advice.get('body_font', ''))}»", "done",
+          detail=f"تیتر: {label(advice.get('title_font', ''))}\nمتن: {label(advice.get('body_font', ''))}\nتأکیدی: {label(advice.get('accent_font', ''))}\n\n{advice.get('why', '')}")
+    return advice
+
+
 def _plan_detail(brief: str, plan) -> str:
     """The request the planner was given (start of the brief) and what it decided, scene by scene."""
     scenes = "\n".join(f"{i}. {sc.headline}  [{sc.start:g}–{sc.end:g} s]\n   {sc.idea}\n   «{sc.narration}»" if sc.narration else f"{i}. {sc.headline}  [{sc.start:g}–{sc.end:g} s]\n   {sc.idea}"
                         for i, sc in enumerate(plan.scenes, 1))
-    return f"درخواست:\n{brief.strip()[:900]}\n\nطرح: «{plan.title}» · {plan.format} · {plan.duration:g} ثانیه\n{scenes}"
+    from creative import font_catalog
+    title, body = font_catalog.get(plan.title_font), font_catalog.get(plan.body_font)
+    fonts = f"\nفونت‌ها: تیتر «{title['label'] if title else '—'}» · متن «{body['label'] if body else '—'}»" + (f" — {plan.font_why}" if plan.font_why else "")
+    return f"درخواست:\n{brief.strip()[:900]}\n\nطرح: «{plan.title}» · {plan.format} · {plan.duration:g} ثانیه{fonts}\n{scenes}"
 
 
 def _soft_progress(directory: Path, percent: int, message: str) -> None:
@@ -1123,7 +1149,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         _progress(directory, "writing", 6, "دارم از روی درخواست شما طرح کلی و صحنه‌ها را می‌نویسم.", stage="writing", eta=stats["plan_s"] + _remaining(4, 15))
         _note(directory, "plan", "دارم طرح کلی را می‌نویسم: صحنه‌ها، متن‌ها و رنگ‌ها", request=brief)
         started = time.monotonic()
-        plan = mg.plan(brief, context=context, style=style, used=used)
+        advice = _font_advice(directory, brief)
+        plan = mg.plan(brief, context=context, style=style, used=used, fonts=_advice_text(advice), advice=advice)
         if _cancelled(key):
             raise _Cancelled()
         if not plan.asks():

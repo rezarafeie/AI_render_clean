@@ -2,6 +2,7 @@ import React from "react";
 import { api, StyleDraft, StyleLibraryData, StyleProfile } from "./api";
 import { useSearchParams } from "react-router-dom";
 import { FontLibrary } from "./FontLibrary";
+import { FontPicker } from "./studio/FontPicker";
 import { AuthenticatedMedia } from "./AuthenticatedMedia";
 import { EmptyState, LoadingState, friendlyError } from "./ui";
 
@@ -189,6 +190,10 @@ export default function StyleLibrary() {
     </section>
 
     <section id="fonts" className="card">
+      <h2 dir="auto">فونت‌های استودیو</h2>
+      <p className="muted" dir="auto" style={{ marginBottom: 12 }}>این فونت‌ها در طراحی صحنه‌ها برای همهٔ موتورها استفاده می‌شوند: برنامه‌ریز و مدل بینایی از میان آن‌ها بهترین را برای هر فیلم پیشنهاد می‌دهند، و فونت هر فیلم را از تب ویرایش می‌توانید عوض کنید. متن خودتان را بنویسید تا با هر فونت دیده شود.</p>
+      <FontPicker />
+      <h2 dir="auto" style={{ marginTop: 24 }}>فونت‌های واردشدهٔ شما</h2>
       <FontLibrary selectable={false} manage />
     </section>
 
