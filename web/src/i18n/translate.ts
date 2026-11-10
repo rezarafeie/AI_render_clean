@@ -45,11 +45,12 @@ function translateNode(node: Node) {
   }
   if (node.nodeType !== 1) return;
   const element = node as Element;
-  if (element.closest(SKIP)) return;
-  for (const name of ATTRIBUTES) {
+  if (element.closest("script,style,[data-no-translate]")) return;
+  for (const name of ATTRIBUTES) {                         // a textarea's placeholder is interface text even though its content is not
     const value = element.getAttribute(name);
     if (value) { const next = translateText(value); if (next !== value) element.setAttribute(name, next); }
   }
+  if (element.closest(SKIP)) return;
   element.childNodes.forEach(translateNode);
 }
 
