@@ -40,29 +40,29 @@ export function CloudRenderSettings() {
     finally { if (mounted.current) setBusy(false); }
   }
   function controls(value: object) { return request("/controls", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) }); }
-  return <section className="set-section" aria-labelledby="cloud-render-heading">
-    <h2 id="cloud-render-heading">Cloud rendering · administration</h2>
-    <p className="set-hint">{data ? `${data.enabled ? "Administrator canary enabled" : "Cloud rendering disabled"} · ${data.sandbox_verified ? "MLT isolation verified" : "MLT isolation check required"}` : "Loading infrastructure status…"}</p>
-    {data && <p className="set-hint">{(data.browser_isolation_verified ?? data.network_namespace_verified)
-      ? "Browser isolation verified. Each engine still requires a matching render profile."
-      : "HyperFrames, Remotion, and Talking require a separate browser isolation check."}</p>}
-    <p className="set-hint">Server credentials and worker images are configured securely on the server. These controls cannot exceed its safety ceilings.</p>
+  const state = data ? `${data.enabled ? "Administrator canary enabled" : "Cloud rendering disabled"} · ${data.sandbox_verified ? "MLT isolation verified" : "MLT isolation check required"}` : "Loading infrastructure status…";
+  return <section className="set-cloud" aria-label="Cloud rendering · administration">
+    <p className="set-hint"><b>{state}</b>{data ? ((data.browser_isolation_verified ?? data.network_namespace_verified) ? " · Browser isolation verified; each engine still requires a matching render profile." : " · HyperFrames, Remotion and Talking require a separate browser isolation check.") : ""}</p>
     {draft && data ? <form onSubmit={event => { event.preventDefault(); void controls(draft); }}>
-      {FIELDS.map(field => <label className="set-row" key={field.key}><span>{field.label}</span>
-        <input className="input" type="number" min={field.min} max={data.ceilings[field.key]} step={field.step} required disabled={busy}
-          value={Number.isFinite(draft[field.key]) ? draft[field.key] : ""} onChange={event => setDraft(current => current ? { ...current, [field.key]: event.target.valueAsNumber } : current)}/></label>)}
-      <button className="btn btn-sm" type="submit" disabled={busy}>{busy ? "Working…" : "Save limits"}</button>
-      <label className="set-row"><span>Execution environment</span><select className="input" value={data.override} disabled={busy}
-        onChange={event => void controls({ override: event.target.value })}>
-        <option value="auto">Measured automatic selection</option><option value="local">Local only</option>
-        <option value="runpod_cpu" disabled={!data.cpu}>RunPod CPU</option><option value="runpod_gpu" disabled={!data.gpu}>RunPod GPU</option>
-      </select></label>
-      <button className="btn btn-sm btn-secondary" type="button" disabled={busy || (!data.enabled && !data.sandbox_verified)}
-        onClick={() => void controls({ enable_cloud_render: !data.enabled })}>{data.enabled ? "Pause new cloud jobs" : "Enable administrator canary"}</button>
-    </form> : null}
-    <button className="btn btn-sm btn-secondary" type="button" disabled={busy} onClick={() => void request("/status")}>Refresh</button>
+      <div className="set-controls">
+        {FIELDS.map(field => <label className="set-control set-control-compact" key={field.key}><span><b>{field.label}</b></span>
+          <input className="input" type="number" min={field.min} max={data.ceilings[field.key]} step={field.step} required disabled={busy}
+            value={Number.isFinite(draft[field.key]) ? draft[field.key] : ""} onChange={event => setDraft(current => current ? { ...current, [field.key]: event.target.valueAsNumber } : current)}/></label>)}
+        <label className="set-control set-control-compact"><span><b>Execution environment</b></span><select className="input" value={data.override} disabled={busy}
+          onChange={event => void controls({ override: event.target.value })}>
+          <option value="auto">Measured automatic selection</option><option value="local">Local only</option>
+          <option value="runpod_cpu" disabled={!data.cpu}>RunPod CPU</option><option value="runpod_gpu" disabled={!data.gpu}>RunPod GPU</option>
+        </select></label>
+      </div>
+      <div className="set-actions">
+        <button className="btn btn-sm" type="submit" disabled={busy}>{busy ? "Working…" : "Save limits"}</button>
+        <button className="btn btn-sm btn-secondary" type="button" disabled={busy || (!data.enabled && !data.sandbox_verified)}
+          onClick={() => void controls({ enable_cloud_render: !data.enabled })}>{data.enabled ? "Pause new cloud jobs" : "Enable administrator canary"}</button>
+        <button className="btn btn-sm btn-secondary" type="button" disabled={busy} onClick={() => void request("/status")}>Refresh</button>
+      </div>
+    </form> : <div className="set-actions"><button className="btn btn-sm btn-secondary" type="button" disabled={busy} onClick={() => void request("/status")}>Refresh</button></div>}
     {error ? <p className="notice" data-tone="error" role="alert">{error}</p> : null}
-    {data ? <><p className="set-hint">{data.cost_note}</p><ul>{data.executions.slice(0, 10).map(row => <li key={row.id}>
+    {data ? <><p className="set-hint">{data.cost_note}</p><ul className="set-runs">{data.executions.slice(0, 10).map(row => <li key={row.id}>
       <span>{row.id.slice(0, 10)} · {row.backend} · {row.state} · reserved ${row.reservation.toFixed(3)} · provider {row.provider_charge_usd == null ? "not reported" : `$${row.provider_charge_usd.toFixed(3)}`}{row.cleanup_pending ? " · cleanup pending" : ""}</span>
       {!['completed','failed','cancelled'].includes(row.state) ? <button className="btn btn-sm btn-secondary" type="button" disabled={busy || !!row.cancel_requested}
         aria-label={`Cancel render ${row.id}`} onClick={() => void request("/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: row.id }) })}>{row.cancel_requested ? "Stopping…" : "Cancel"}</button> : null}

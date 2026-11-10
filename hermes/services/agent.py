@@ -76,7 +76,7 @@ async def save(user_id: str, state: dict) -> None:
 
 def public(state: dict) -> dict:
     """What the page needs; the raw media snapshot is trimmed."""
-    return {**{k: state.get(k) for k in ("answers", "competitors", "profile", "analysis", "questions", "proposals", "run", "history", "prefs")},
+    return {**{k: state.get(k) for k in ("answers", "competitors", "profile", "analysis", "questions", "proposals", "run", "history", "prefs", "benchmark")},
             "media": (state.get("media") or [])[:12], "engines": ENGINES}
 
 
@@ -108,9 +108,16 @@ def _json(system: str, payload: dict, tokens: int = 6000) -> dict:
     return skills._complete(system, json.dumps(payload, ensure_ascii=False)[:60_000], None)
 
 
+BENCHMARK_RULES = ("\n\n=== ig-viral (how competitors are benchmarked) ===\nRaw views are not evidence: a reel counts only by its outlier multiple over ITS OWN account's recent median (above 3x is a signal, "
+                   "below 1.5x is that account's normal day). Compare only with accounts within about 10x of this account's size; copy the FORMULA (hook shape, structure, length, cuts), "
+                   "never the video. Name the formula each benchmark hook uses. You cannot browse Instagram: use ONLY the competitor handles, the pasted benchmark data and the "
+                   "stored benchmark given; where none exists, say so in data_gaps and ask for 6-12 handles (4 direct, 4 adjacent, 2-4 much bigger) or a pasted table. Never invent "
+                   "metrics. State the sample size and the confidence in plain words.\n" + "{viral}")
+
 ANALYZE_SCHEMA = ('{"profile": {"score": int 0-100, "parts": [{"part": str, "score": int, "note": str, "rewrite": str}]}, '
                   '"content": {"top": [{"post": str, "why": str}], "weak": [{"post": str, "why": str}], "patterns": [str], "do_more": [str], "stop": [str]}, '
                   '"strategy": {"niche": str, "audience": str, "pillars": [str], "format_mix": str}, '
+                  '"benchmark": {"basis": str, "formulas_that_over_index": [str], "what_top_reels_share": [str], "ideas_to_borrow": [str], "sample_note": str}, '
                   '"questions": [{"id": str, "kind": "text|handles|choice", "text": str}], "data_gaps": [str]}')
 
 
@@ -118,20 +125,21 @@ async def analyze(user_id: str, state: dict) -> None:
     system = ("You are Hermes, an Instagram strategist. Study the account with the two skills below, using ONLY the data given (profile counts, recent posts with likes/"
               "comments, the person's answers). When the data is thin say so in data_gaps and ask the questions you need (niche, goal, audience, competitors as "
               "@handles) in questions; never invent metrics or posts. Persian output.\n\n=== ig-profile ===\n" + skills._skill_text("profile")[:6000]
-              + "\n\n=== ig-audit ===\n" + skills._skill_text("audit")[:6000] + f"\n\nReturn ONLY JSON: {ANALYZE_SCHEMA}")
+              + "\n\n=== ig-audit ===\n" + skills._skill_text("audit")[:6000]
+              + BENCHMARK_RULES.replace("{viral}", skills._skill_text("viral")[:4500]) + f"\n\nReturn ONLY JSON: {ANALYZE_SCHEMA}")
     result = await asyncio.to_thread(_json, system, {"profile": state.get("profile"), "recent_posts": state.get("media"), "answers": state.get("answers"),
-                                                    "competitors": state.get("competitors")})
-    state["analysis"] = {k: result.get(k) for k in ("profile", "content", "strategy", "data_gaps")} | {"at": utcnow()}
+                                                    "competitors": state.get("competitors"), "stored_benchmark": state.get("benchmark")})
+    state["analysis"] = {k: result.get(k) for k in ("profile", "content", "strategy", "benchmark", "data_gaps")} | {"at": utcnow()}
     keep = [q for q in state.get("questions", []) if q.get("kind") == "info"]
     answered = set(state.get("answers", {}))
     state["questions"] = keep + [q for q in (result.get("questions") or []) if isinstance(q, dict) and q.get("id") and q["id"] not in answered][:5]
 
 
 TALKING_SCHEMA = ('{"proposals": [{"title": str, "why": str, "hook": str, "script": str, "on_screen": [str], "shooting_tips": [str], "caption": str, "hashtags": [str], '
-                  '"length_seconds": int}]}')
+                  '"length_seconds": int, "benchmark_basis": str}]}')
 EXPLAINER_SCHEMA = ('{"proposals": [{"title": str, "concept": str, "why": str, "hook": str, "style": str, "mood": str, "music": str, '
                     '"scenes": [{"seconds": number, "visual": str, "on_screen_text": str, "narration": str}], "script": str, "cta": str, "caption": str, '
-                    '"hashtags": [str], "editor_brief": str, "length_seconds": int}]}')
+                    '"hashtags": [str], "editor_brief": str, "length_seconds": int, "benchmark_basis": str}]}')
 
 
 def _share(state: dict) -> int:
@@ -149,7 +157,7 @@ def _split(count: int, share: int) -> tuple[int, int]:
 def _context(state: dict, count: int) -> dict:
     earlier = [{"title": p["title"], "status": p["status"]} for p in state.get("proposals", [])][-12:]
     return {"profile": state.get("profile"), "analysis": state.get("analysis"), "answers": state.get("answers"), "earlier": earlier,
-            "recent_posts": (state.get("media") or [])[:15], "count": count}
+            "recent_posts": (state.get("media") or [])[:15], "benchmark": state.get("benchmark"), "competitors": state.get("competitors"), "count": count}
 
 
 TALKING_SYSTEM = ("You are Hermes writing TALKING reels for an Instagram creator who will film themselves. Base every idea on the analysis and the person's answers (niche, "
@@ -173,6 +181,9 @@ async def _propose_batch(state: dict, engine: str, count: int) -> list[dict]:
     if count <= 0:
         return []
     system = (TALKING_SYSTEM if engine == "talking" else EXPLAINER_SYSTEM) + skills._skill_text("reel")[:9000] \
+        + BENCHMARK_RULES.replace("{viral}", skills._skill_text("viral")[:3500]) \
+        + "\nGround each idea in the benchmark when one exists (`analysis.benchmark`, `benchmark`): put in `benchmark_basis` the formula it uses and why that formula over-indexes " \
+          "for accounts like this (or 'no benchmark data yet' when none) - never an invented number." \
         + f"\n\nReturn ONLY JSON: {TALKING_SCHEMA if engine == 'talking' else EXPLAINER_SCHEMA} with exactly {count} proposals."
     result = await asyncio.to_thread(_json, system, _context(state, count))
     return [item for item in (result.get("proposals") or [])[:count] if isinstance(item, dict) and item.get("title") and (item.get("script") or item.get("editor_brief"))]
@@ -190,7 +201,7 @@ async def _write_batch(user_id: str, state: dict, engine: str, count: int) -> No
                 checks["beats"] = evaluate("beats", str(item["script"]), "fa", wpm=150)
         except Exception:
             pass
-        keys = ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds", "on_screen", "shooting_tips", "concept", "style", "mood", "music", "scenes", "cta")
+        keys = ("title", "why", "hook", "script", "caption", "hashtags", "editor_brief", "length_seconds", "on_screen", "shooting_tips", "concept", "style", "mood", "music", "scenes", "cta", "benchmark_basis")
         state["proposals"].append({"id": uuid4().hex[:12], "status": "proposed", "created_at": utcnow(), "checks": checks, "engine": engine, **{k: item.get(k) for k in keys}})
         state["run"]["ideas"] = state["run"].get("ideas", 0) + 1
     state["proposals"] = state["proposals"][-MAX_PROPOSALS:]

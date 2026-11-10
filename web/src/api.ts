@@ -321,6 +321,10 @@ export async function aiAdminRequest<T>(path: string, init?: RequestInit): Promi
   return j<T>(await authFetch(`${BASE}/admin/ai${path}`, init));
 }
 
+export async function adminManageRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return j<T>(await authFetch(`${BASE}/admin/manage${path}`, init));
+}
+
 export async function renderCloudAdminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return j<T>(await authFetch(`${BASE}/admin/render-cloud${path}`, init));
 }

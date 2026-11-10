@@ -27,6 +27,14 @@ export default function AgentInsights({ embedded = false }) {
         {array(a.content.weak).length ? <><strong>ضعیف‌ها</strong><ul className="agent-list">{array(a.content.weak).map((t, i) => <li key={i}>{t.post} — {t.why}</li>)}</ul></> : null}
         {array(a.content.do_more).length ? <p><strong>بیشتر بساز:</strong> {array(a.content.do_more).join('، ')}</p> : null}
         {array(a.content.stop).length ? <p><strong>دیگر نساز:</strong> {array(a.content.stop).join('، ')}</p> : null}</details> : null}
+      {a.benchmark?.basis || array(a.benchmark?.formulas_that_over_index).length || agent?.benchmark ? <details className="action-card" open><summary>بنچمارک رقبا (ig-viral)</summary>
+        {a.benchmark?.basis ? <p dir="auto">{a.benchmark.basis}</p> : null}
+        {array(a.benchmark?.formulas_that_over_index).length ? <p><strong>فرمول‌هایی که بیشتر از میانه می‌ترکانند:</strong> {array(a.benchmark.formulas_that_over_index).join('، ')}</p> : null}
+        {array(a.benchmark?.what_top_reels_share).length ? <><strong>مشترک ریلزهای برتر</strong><ul className="agent-list">{array(a.benchmark.what_top_reels_share).map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul></> : null}
+        {array(a.benchmark?.ideas_to_borrow).length ? <><strong>فرمول‌هایی که می‌شود قرض گرفت</strong><ul className="agent-list">{array(a.benchmark.ideas_to_borrow).map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul></> : null}
+        {a.benchmark?.sample_note ? <p className="muted-text" dir="auto">{a.benchmark.sample_note}</p> : null}
+        {agent?.benchmark?.sample?.reels ? <p className="muted-text">بنچمارک ذخیره‌شده: {agent.benchmark.sample.reels} ریلز از {agent.benchmark.sample.accounts} پیج · {agent.benchmark.sample.confidence}</p> : <p className="muted-text">برای بنچمارک واقعی، در «مهارت‌ها ← بنچمارک رقبا» جدول ریلزهای رقبا را بچسبانید؛ بدون داده، چیزی حدس زده نمی‌شود.</p>}
+      </details> : null}
       {array(a.data_gaps).length ? <p className="muted-text">داده‌ی ناقص: {array(a.data_gaps).join('؛ ')}</p> : null}</> : null}
   </div>;
 }

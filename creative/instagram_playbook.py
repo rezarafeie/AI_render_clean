@@ -36,7 +36,10 @@ def playbook() -> str:
     parts = ["INSTAGRAM PLAYBOOK (apply to this video; adapt every formula to natural Persian, never translate it word by word):",
              "Hook formulas:\n" + formulas if formulas else "",
              "Reel skill (rules and structure):\n" + _body("ig-reel", 4200),
-             "Caption skill:\n" + _body("ig-caption", 1800)]
+             "Caption skill:\n" + _body("ig-caption", 1800),
+             "Benchmark rule (ig-viral): a hook or format is evidence only through its OUTLIER MULTIPLE over its own account's median views (3x+ is a signal), taken from accounts "
+             "within ~10x of this one's size; copy the formula, never the video; say how big the sample is. When the brief carries benchmark findings, build the idea on the "
+             "formulas that over-index there; when it carries none, do not pretend to have competitor data."]
     return "\n\n".join(p for p in parts if p)
 
 

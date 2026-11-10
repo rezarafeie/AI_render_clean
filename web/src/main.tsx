@@ -1,5 +1,7 @@
 import React from "react";
 import { initializeTheme } from "./theme";
+import { applyLang } from "./i18n/lang";
+import { startTranslator } from "./i18n/translate";
 import { AppFeatures } from "./local/AppFeatures";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
@@ -24,6 +26,8 @@ const Projects = React.lazy(loaders.projects);
 const Templates = React.lazy(loaders.templates);
 const Settings = React.lazy(() => import("./Settings"));
 const AIModels = React.lazy(() => import("./AIModels"));
+const AdminUsers = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUsers })));
+const AdminUserDetail = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUserDetail })));
 const Render = React.lazy(() => import("./Render"));
 const MyEffects = React.lazy(() => import("./MyEffects"));
 const StyleLibrary = React.lazy(() => import("./StyleLibrary"));
@@ -88,6 +92,8 @@ function App() {
       <Route index element={<Navigate to="/studio" replace/>}/><Route path="studio/:conversationId?" element={<Studio/>}/>
       <Route path="projects" element={<RequireAuth><Projects/></RequireAuth>}/><Route path="templates" element={<Templates/>}/><Route path="settings" element={<RequireAuth><Settings/></RequireAuth>}/>
       <Route path="settings/ai" element={<RequireAuth><AIModels/></RequireAuth>}/>
+      <Route path="settings/users" element={<RequireAuth><AdminUsers/></RequireAuth>}/>
+      <Route path="settings/users/:id" element={<RequireAuth><AdminUserDetail/></RequireAuth>}/>
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
       <Route path="motion-library" element={<MotionLibrary/>}/><Route path="my-effects" element={<RequireAuth><MyEffects/></RequireAuth>}/><Route path="library" element={<RequireAuth><Library/></RequireAuth>}/><Route path="style-library" element={<RequireAuth><StyleLibrary/></RequireAuth>}/><Route path="style-learner" element={<RequireAuth><StyleLearner/></RequireAuth>}/><Route path="fonts" element={<Navigate to="/style-library#fonts" replace/>}/>
@@ -98,4 +104,6 @@ function App() {
 }
 
 initializeTheme();
+applyLang();
 createRoot(document.getElementById("root")!).render(<App/>);
+void startTranslator();

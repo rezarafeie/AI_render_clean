@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 test('cloud infrastructure controls are lazy loaded and administrator-only',()=>{
   const settings=readFileSync(new URL('../src/Settings.tsx',import.meta.url),'utf8');
   assert.match(settings,/React\.lazy\(\(\) => import\("\.\/settings\/CloudRender"\)/);
-  assert.match(settings,/admin \? <React\.Suspense[\s\S]*?<CloudRenderSettings\/>/);
+  assert.match(settings,/tab === "admin" && admin[\s\S]*?<React\.Suspense[\s\S]*?<CloudRenderSettings\/>/);
 });
 
 test('cloud controls use authenticated requests and distinguish unknown provider bills',()=>{

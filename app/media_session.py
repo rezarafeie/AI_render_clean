@@ -8,6 +8,7 @@ def allowed(method: str, path: str) -> bool:
         r'/studio/(?:projects/[^/]+/output|projects/[^/]+/job-files/(?!.*\.\.)[\w./-]+|conversations/[^/]+/attachments/[^/]+|motion/[^/]+/video|discovery/[^/]+/candidates/[^/]+/preview)',
         r'/jobs/[^/]+/(?:raw|exports/[^/]+|talking-reel/output|motion-scenes/[^/]+/video)',
         r'/localize/[^/]+/output',
+        r'/admin/manage/(?:files/[^/]+|projects/[^/]+/exports/[^/]+)',
         r'/library/[^/]+/[^/]+/preview',
     )
     return method in {'GET', 'HEAD'} and any(re.fullmatch(pattern, path) for pattern in routes)

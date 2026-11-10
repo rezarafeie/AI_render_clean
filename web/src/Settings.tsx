@@ -9,6 +9,7 @@ import { isLocalDevelopment } from "./auth";
 import { AgentSettings } from "./studio/AgentMode";
 import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
+import { currentLang, setLang } from "./i18n/lang";
 const CloudRenderSettings = React.lazy(() => import("./settings/CloudRender").then(module => ({ default: module.CloudRenderSettings })));
 
 type Tool = { label: string; description: string; to: string; icon: IconName };
@@ -31,12 +32,13 @@ const groups: { title: string; hint: string; tools: Tool[] }[] = [
   ] },
 ];
 
-type TabId = "general" | "editing" | "connections" | "tools";
-const TABS: { id: TabId; label: string; hint: string; icon: IconName }[] = [
-  { id: "general", label: "General", hint: "Appearance, account and the app on this device.", icon: "user" },
-  { id: "editing", label: "Editing & processing", hint: "How the assistant works, where media is processed, storage and notifications.", icon: "wand" },
+type TabId = "general" | "assistant" | "connections" | "tools" | "admin";
+const TABS: { id: TabId; label: string; hint: string; icon: IconName; admin?: boolean }[] = [
+  { id: "general", label: "General", hint: "Language, appearance, your account and the app on this device.", icon: "user" },
+  { id: "assistant", label: "Assistant & processing", hint: "How the assistant works, where speech and media are processed, storage and notifications.", icon: "wand" },
   { id: "connections", label: "Connections", hint: "Instagram, Google Drive and other connected services.", icon: "link" },
-  { id: "tools", label: "Tools & libraries", hint: "Specialist editors, reusable assets and administration.", icon: "library" },
+  { id: "tools", label: "Tools & libraries", hint: "Specialist editors and reusable assets.", icon: "library" },
+  { id: "admin", label: "Administration", hint: "People, projects, AI models and cloud rendering.", icon: "settings", admin: true },
 ];
 const isTab = (value: string): value is TabId => TABS.some(tab => tab.id === value);
 
@@ -48,8 +50,8 @@ export default function Settings() {
   React.useEffect(() => { aiAdminRequest<{ allowed: boolean }>("/access").then(r => setAdmin(r.allowed)).catch(() => setAdmin(false)); }, []);
   // The tab lives in the URL hash (#editing, #connections …) so a link such as /settings#integrations opens the right place and Back works.
   const wanted = location.hash.replace(/^#/, "");
-  const tab: TabId = wanted === "integrations" ? "connections" : isTab(wanted) ? wanted : "general";
-  const visible = TABS.filter(item => authenticated || item.id === "general" || item.id === "editing" || item.id === "tools");
+  const tab: TabId = wanted === "integrations" ? "connections" : wanted === "editing" ? "assistant" : isTab(wanted) && (admin || wanted !== "admin") ? wanted : "general";
+  const visible = TABS.filter(item => (!item.admin || admin) && (authenticated || item.id === "general" || item.id === "assistant" || item.id === "tools"));
   const current = TABS.find(item => item.id === tab) || TABS[0];
   const paneRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => { paneRef.current?.scrollIntoView({ block: "start", behavior: "auto" }); if (wanted === "integrations") document.getElementById("integrations")?.scrollIntoView({ block: "start" }); }, [tab, wanted]);
@@ -65,24 +67,32 @@ export default function Settings() {
         <div className="set-pane-head"><h2>{current.label}</h2><p>{current.hint}</p></div>
 
         {tab === "general" ? <>
+          <section className="set-section" aria-labelledby="set-language">
+            <h2 id="set-language">Language</h2>
+            <div className="set-controls"><div className="set-control"><span><b>Interface language</b><small>Persian also switches the whole app to right-to-left.</small></span>
+              <div className="segmented" role="group" aria-label="Language">
+                <button aria-pressed={currentLang() === "en"} onClick={() => setLang("en")}>English</button>
+                <button aria-pressed={currentLang() === "fa"} onClick={() => setLang("fa")} data-no-translate>فارسی</button>
+              </div></div></div>
+          </section>
           <section className="set-section" aria-labelledby="set-appearance">
             <h2 id="set-appearance">Appearance</h2>
-            <div className="set-row"><span><b>Theme</b><small>System follows your device automatically.</small></span>
+            <div className="set-controls"><div className="set-control"><span><b>Theme</b><small>System follows your device automatically.</small></span>
               <div className="segmented" role="group" aria-label="Theme">
                 <button aria-pressed={theme === "system"} onClick={() => setTheme("system")}>System</button>
                 <button aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}><Icon name="moon" size={14}/> Dark</button>
                 <button aria-pressed={theme === "light"} onClick={() => setTheme("light")}><Icon name="sun" size={14}/> Light</button>
-              </div></div>
+              </div></div></div>
           </section>
           {authenticated ? <section className="set-section" aria-labelledby="set-account">
             <h2 id="set-account">Account</h2>
-            <div className="set-row"><span><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
-              {!isLocalDevelopment ? <button className="btn btn-sm btn-secondary" onClick={() => void logout()}><Icon name="logout" size={15}/>Log out</button> : null}</div>
+            <div className="set-controls"><div className="set-control"><span><b data-no-translate>{user?.name || "Editor"}</b><small data-no-translate>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
+              {!isLocalDevelopment ? <button className="btn btn-sm btn-secondary" onClick={() => void logout()}><Icon name="logout" size={15}/>Log out</button> : null}</div></div>
           </section> : null}
           <InstallationSettings/>
         </> : null}
 
-        {tab === "editing" ? <>
+        {tab === "assistant" ? <>
           {authenticated ? <AgentSettings/> : null}
           {authenticated ? <TranscriptionSettings/> : null}
           <DeviceSettings/>
@@ -91,13 +101,22 @@ export default function Settings() {
         {tab === "connections" && authenticated ? <IntegrationsSettings/> : null}
 
         {tab === "tools" ? <>
-          {admin ? <React.Suspense fallback={<p className="set-hint">Loading render administration…</p>}><CloudRenderSettings/></React.Suspense> : null}
-          {admin ? <section className="set-section" aria-labelledby="set-admin"><h2 id="set-admin">Administration</h2>
-            <NavLink className="set-link" to="/settings/ai"><Icon name="settings" size={20}/><span><b>AI models &amp; logs</b><small>Routing, priorities and request history.</small></span><Icon name="chevron" size={16}/></NavLink></section> : null}
           {groups.map((group, index) => <section className="set-section" key={group.title} aria-labelledby={`set-g${index}`}>
             <h2 id={`set-g${index}`}>{group.title}</h2><p className="set-hint">{group.hint}</p>
-            <div className="set-links">{group.tools.map(tool => <NavLink key={tool.to} className="set-link" to={tool.to}><Icon name={tool.icon} size={20}/><span><b>{tool.label}</b><small>{tool.description}</small></span><Icon name="chevron" size={16}/></NavLink>)}</div>
+            <div className="set-grid">{group.tools.map(tool => <NavLink key={tool.to} className="set-tile" to={tool.to}><span className="set-tile-icon"><Icon name={tool.icon} size={18}/></span><span className="set-tile-text"><b>{tool.label}</b><small>{tool.description}</small></span></NavLink>)}</div>
           </section>)}
+        </> : null}
+
+        {tab === "admin" && admin ? <>
+          <section className="set-section" aria-labelledby="set-admin"><h2 id="set-admin">People &amp; projects</h2>
+            <div className="set-grid">
+              <NavLink className="set-tile" to="/settings/users"><span className="set-tile-icon"><Icon name="user" size={18}/></span><span className="set-tile-text"><b>Users &amp; projects</b><small>Every user with their chats, projects, renders and files, in full detail.</small></span></NavLink>
+              <NavLink className="set-tile" to="/settings/ai"><span className="set-tile-icon"><Icon name="settings" size={18}/></span><span className="set-tile-text"><b>AI models &amp; logs</b><small>Routing, priorities and request history.</small></span></NavLink>
+            </div></section>
+          <details className="set-details set-collapsible">
+            <summary><span><b>Cloud rendering</b><small>Budgets, limits and the execution environment.</small></span><Icon name="chevron" size={16}/></summary>
+            <div className="set-detail-body"><React.Suspense fallback={<p className="set-hint">Loading render administration…</p>}><CloudRenderSettings/></React.Suspense></div>
+          </details>
         </> : null}
       </div>
     </div>

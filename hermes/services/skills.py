@@ -22,7 +22,7 @@ SKILL_DIR = Path(__file__).resolve().parents[2] / "vendor" / "instagram-agent-sk
 SKILLS: dict[str, dict] = {
     "profile": {"group": "understand", "label": "امتیاز پروفایل", "hint": "بیو، لینک و هایلایت‌ها را بچسبانید (یا خالی بگذارید تا از حساب وصل‌شده خوانده شود)", "video": False, "account": True},
     "audit": {"group": "understand", "label": "بازبینی محتوای قبلی", "hint": "اگر خالی بگذارید، پست‌های اخیر حساب وصل‌شده با آمارشان بررسی می‌شود", "video": False, "account": True},
-    "viral": {"group": "understand", "label": "فایل ایده از ویدیوهای موفق", "hint": "لینک یا متن ریلزهای رقیب/نیش را بچسبانید؛ جستجوی خودکار اینستاگرام در این نسخه نیست", "video": False, "account": False},
+    "viral": {"group": "understand", "label": "بنچمارک رقبا و فایل ایده (ig-viral)", "hint": "جدول ریلزهای رقبا را با تب بچسبانید: account، followers، median، views، hook (یک ریلز در هر سطر) تا رتبه‌بندی بر پایهٔ «چند برابر میانهٔ همان پیج» انجام شود؛ یا فقط هندل رقبا و توضیح نیش را بنویسید. جمع‌آوری خودکار از اینستاگرام انجام نمی‌شود (قانون خود اسکیل)", "video": False, "account": True},
     "plan": {"group": "plan", "label": "برنامه‌ی هفته", "hint": "موضوع، مخاطب و تعداد پست در هفته", "video": False, "account": True},
     "reel": {"group": "create", "label": "ریلز: هوک، متن و بیت‌ها", "hint": "ایده‌ی خام ریلز", "video": True, "account": True},
     "carousel": {"group": "create", "label": "کاروسل", "hint": "ایده یا فهرستی که باید کاروسل شود", "video": False, "account": True},
@@ -46,6 +46,36 @@ KEYS = {"profile": "title, summary, sections, next_steps", "audit": "title, summ
         "carousel": "title, summary, sections, caption, hashtags, editor_brief", "story": "title, sections, next_steps",
         "caption": "title, caption, hashtags", "repurpose": "title, summary, sections, hooks, editor_brief, next_steps",
         "comment": "title, sections", "reply": "title, sections", "dm": "title, sections, next_steps", "human": "title, script, summary"}
+
+
+def swipe_from_text(text: str) -> dict | None:
+    """The deterministic half of ig-viral: a pasted tab-separated table of reels (account, followers, median, views, hook) is ranked by how far each beat its OWN account's
+    baseline and each hook is named by the skill's formulas (the skill's own swipe.py). None when the text holds no such table."""
+    if "\t" not in (text or ""):
+        return None
+    import importlib.util
+    import tempfile
+    path = SKILL_DIR / "ig-viral" / "swipe.py"
+    try:
+        spec = importlib.util.spec_from_file_location("ig_viral_swipe", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)                     # type: ignore[union-attr]
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False, encoding="utf-8") as handle:
+            handle.write(text)
+            name = handle.name
+        try:
+            rows = module.read_rows(name)
+        finally:
+            os.unlink(name)
+        if len(rows) < 2:
+            return None
+        formulas = module.load_formulas(str(SKILL_DIR / "ig-reel" / "hooks.json"))
+        analysis = module.analyse(rows, formulas)
+    except Exception:
+        return None
+    reels = [{k: r.get(k) for k in ("account", "followers", "median", "views", "hook", "outlier", "formula", "words", "hook_score")} for r in analysis["reels"][:60]]
+    return {**{k: analysis[k] for k in ("baseline", "n", "accounts", "top_formulas", "top_hook_score", "bottom_hook_score", "top_words", "bottom_words", "unclassified")}, "reels": reels,
+            "confidence": ("کافی برای نتیجه‌گیری" if analysis["n"] >= 40 and analysis["accounts"] >= 6 else "نمونهٔ کم؛ فقط نشانه است، نه حکم")}
 
 
 def catalog() -> list[dict]:
@@ -117,9 +147,36 @@ async def run(user_id: str, skill: str, text: str, language: str = "fa", options
     system = (f"You are Hermes, an Instagram strategist and writer. Follow this skill definition exactly.\n\n{_skill_text(skill)}\n\n"
               f"Write for the person in {voice}. Use only the facts given; never invent metrics, quotes or results. If account data is absent, say what is missing. "
               f"Return ONLY JSON in this shape: {SCHEMA}. For this skill fill ONLY these keys: {KEYS[skill]} (leave every other key out).")
-    user = json.dumps({"request": text[:12_000], "options": options or {}, "account": context}, ensure_ascii=False)
+    ranked = await asyncio.to_thread(swipe_from_text, text) if skill == "viral" else None
+    payload = {"request": text[:12_000], "options": options or {}, "account": context}
+    if ranked:
+        payload["ranked_by_the_skills_own_script"] = ranked           # computed, not guessed: the findings must rest on these numbers and say how big the sample is
+        system += ("\n\nThe person pasted a table of reels. `ranked_by_the_skills_own_script` is its exact ranking (outlier multiple over each account's own baseline, formulas named, "
+                   "hook scores). Base every finding on it, state the sample size and the confidence in plain words, and list the unclassified hooks to read by hand.")
+    user = json.dumps(payload, ensure_ascii=False)
     result = await asyncio.to_thread(_complete, system, user)
     if not isinstance(result, dict):
         raise HTTPException(502, detail={"code": "SKILL_INVALID_RESPONSE"})
-    return {"skill": skill, "result": result, "checks": await asyncio.to_thread(_checks, skill, result, language), "account_used": bool(context),
+    checks = await asyncio.to_thread(_checks, skill, result, language)
+    if ranked:
+        checks["swipe"] = ranked
+    if skill == "viral":
+        await _remember_benchmark(user_id, text, result, ranked)
+    return {"skill": skill, "result": result, "checks": checks, "account_used": bool(context),
             "can_produce": spec["video"] or bool(result.get("editor_brief"))}
+
+
+async def _remember_benchmark(user_id: str, text: str, result: dict, ranked: dict | None) -> None:
+    """What the benchmark found is kept with the person's Hermes agent, so the ideas it proposes later are grounded in it (formulas that over-index, what the top third share)."""
+    try:
+        from hermes.services import agent
+        state = await agent.load(user_id)
+        state["benchmark"] = {"at": agent.utcnow(), "summary": str(result.get("summary") or "")[:800], "hooks": [h for h in (result.get("hooks") or []) if isinstance(h, str)][:12],
+                              "findings": [{"heading": str(x.get("heading") or ""), "body": str(x.get("body") or "")[:600], "items": [str(i)[:200] for i in (x.get("items") or [])[:8]]}
+                                           for x in (result.get("sections") or []) if isinstance(x, dict)][:6],
+                              "top_formulas": (ranked or {}).get("top_formulas", [])[:6], "sample": {"reels": (ranked or {}).get("n"), "accounts": (ranked or {}).get("accounts"),
+                                                                                                    "confidence": (ranked or {}).get("confidence")},
+                              "input": text[:1500]}
+        await agent.save(user_id, state)
+    except Exception:
+        pass                                              # remembering is an aid: the result is still returned

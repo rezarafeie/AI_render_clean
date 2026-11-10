@@ -210,6 +210,8 @@ app.include_router(resumable_router)
 from app.routers import lm_admin
 app.include_router(lm_admin.access_router)
 app.include_router(lm_admin.router)
+from app.routers import admin_manage
+app.include_router(admin_manage.router)
 
 
 @app.middleware("http")

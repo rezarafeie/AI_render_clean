@@ -43,6 +43,7 @@ function TalkingCard({ item, busy, onSend, onReject, onDelete }) {
   const open = item.status === 'proposed';
   return <IdeaShell item={item} className="idea-talking" tagline={item.hook || item.why} onDelete={onDelete}>
     {item.why ? <p className="idea-why" dir="auto">{item.why}</p> : null}
+    {item.benchmark_basis ? <p className="idea-why" dir="auto">بنچمارک: {item.benchmark_basis}</p> : null}
     <span className="idea-need">نیاز به ضبط ویدیو توسط شما</span>
     {item.script ? <div className="idea-script"><span className="idea-label">متن گفتاری</span><pre dir="auto">{item.script}</pre></div> : null}
     {array(item.on_screen).length ? <div className="idea-chips">{array(item.on_screen).map((t) => <span key={t} className="idea-chip">{t}</span>)}</div> : null}
@@ -65,6 +66,7 @@ function ProducedCard({ item, busy, onBuild, onReject, onDelete }) {
   const scenes = array(item.scenes);
   return <IdeaShell item={item} tagline={item.concept || item.hook || item.why} onDelete={onDelete}>
     {item.hook ? <p className="idea-why" dir="auto">هوک: «{item.hook}»</p> : null}
+    {item.benchmark_basis ? <p className="idea-why" dir="auto">بنچمارک: {item.benchmark_basis}</p> : null}
     {item.style || item.mood || item.music ? <div className="idea-chips">{[item.style, item.mood, item.music].filter(Boolean).map((t) => <span key={t} className="idea-chip" dir="auto">{t}</span>)}</div> : null}
     {scenes.length ? <ol className="idea-scenes">{scenes.map((s, i) => <li key={i} dir="auto"><b>{s.on_screen_text || `سکانس ${i + 1}`}</b><span>{s.visual}</span></li>)}</ol> : null}
     {item.script ? <details className="idea-more"><summary>متن کامل روایت</summary><pre className="agent-pre" dir="auto">{item.script}</pre></details> : null}
