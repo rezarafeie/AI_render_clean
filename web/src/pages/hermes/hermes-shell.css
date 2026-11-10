@@ -213,3 +213,7 @@
 .idea-del { position: absolute; inset-inline-start: 6px; top: 8px; width: 32px; height: 32px; opacity: 0; }
 .idea:hover .idea-del, .idea-del:focus-visible { opacity: 1; }
 @media (hover: none) { .idea-del { opacity: .7; } }
+
+.agent-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 6px; }
+.agent-chips .chip[aria-pressed='true'] { background: var(--accent-soft, var(--hover)); color: var(--text); font-weight: 600; }
+.agent-pre { white-space: pre-wrap; background: var(--hover); padding: 10px; border-radius: 8px; line-height: 1.8; }

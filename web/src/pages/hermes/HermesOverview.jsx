@@ -10,7 +10,7 @@ import AgentInsights from './AgentInsights';
 
 const ENGINE = { talking: 'صحبتی', explainer: 'اکسپلینر' };
 
-const STEPS = [['sync', 'Reading your profile and posts'], ['analyze', 'Analyzing the page'], ['propose', 'Writing ideas for the editor']];
+const STEPS = [['sync', 'Reading your profile and posts'], ['benchmark', 'Benchmarking competitors'], ['analyze', 'Analyzing the page'], ['propose', 'Writing ideas for the editor']];
 const REASON = { HERMES_AI_UNAVAILABLE: 'The AI models did not answer. Try again in a minute.', AGENT_NO_ACCOUNT: 'No Instagram account is connected.', AGENT_INTERRUPTED: 'The last review was interrupted. Start a new one.' };
 const reasonFor = (code) => REASON[code] || (String(code || '').startsWith('COMPOSIO') ? 'Instagram could not be read right now. Try again.' : 'The review stopped before it finished.');
 

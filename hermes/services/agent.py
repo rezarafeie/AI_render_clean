@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import time
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ ENGINES = {
     "talking": "صحبتی: گوینده جلوی دوربین، برش و زیرنویس، پنل‌های موشن (مناسب آموزش، نظر شخصی، داستان)",
     "explainer": "اکسپلینر: ویدیوی توضیحی با موشن‌گرافیک و روایت صوتی (مناسب مفاهیم، مقایسه، فرایند)",
 }
-STEPS = ("sync", "analyze", "propose")
+STEPS = ("sync", "benchmark", "analyze", "propose")
 
 
 def _empty() -> dict:
@@ -102,6 +103,47 @@ async def sync(user_id: str, state: dict) -> None:
         state["media"] = state.get("media") or []
         state["questions"] = [q for q in state.get("questions", []) if q["id"] != "media_unavailable"] + [{
             "id": "media_unavailable", "kind": "info", "text": "نتوانستم پست‌های اخیر را از اینستاگرام بخوانم (اتصال به Composio ناپایدار بود). دوباره تلاش می‌کنم؛ تا آن موقع تحلیل محتوا محدود است."}]
+
+
+def _own_outliers(media: list[dict]) -> dict | None:
+    """The account's own posts ranked by how far each beat the account's median engagement (the ig-viral outlier rule applied to what Composio can read: the connected account)."""
+    rows = []
+    for m in media or []:
+        try:
+            score = float(m.get("likes") or 0) + 3 * float(m.get("comments") or 0)
+        except (TypeError, ValueError):
+            continue
+        rows.append((score, m))
+    if len(rows) < 6:
+        return None
+    ordered = sorted(score for score, _ in rows)
+    median = ordered[len(ordered) // 2] or 1.0
+    top = sorted(rows, key=lambda r: -r[0])[:5]
+    return {"posts": len(rows), "median_engagement": round(median, 1),
+            "top": [{"caption": (m.get("caption") or "")[:120], "multiple": round(score / median, 1), "likes": m.get("likes"), "comments": m.get("comments"), "url": m.get("permalink")}
+                    for score, m in top]}
+
+
+async def benchmark(user_id: str, state: dict) -> None:
+    """The refresh's benchmark pass. Instagram's connection through Composio reads only the connected account (its Graph token has no business-discovery access to other
+    accounts), so competitors are measured from the table the person pasted (re-ranked here with the skill's own script, no model call) and the account's own outliers;
+    when competitors are named but no data exists, the page says exactly what to provide."""
+    current = dict(state.get("benchmark") or {})
+    raw = state.get("benchmark_input") or ""
+    ranked = await asyncio.to_thread(skills.swipe_from_text, raw) if raw else None
+    if ranked:
+        current.update(top_formulas=ranked.get("top_formulas", [])[:6], sample={"reels": ranked.get("n"), "accounts": ranked.get("accounts"), "confidence": ranked.get("confidence")},
+                       refreshed_at=utcnow())
+    own = _own_outliers(state.get("media") or [])
+    if own:
+        current["own"] = own
+    if current:
+        state["benchmark"] = current
+    notes = [q for q in state.get("questions", []) if q.get("id") != "benchmark_data"]
+    if state.get("competitors") and not ranked:
+        notes.append({"id": "benchmark_data", "kind": "info", "text": "رقبا ثبت شده‌اند، اما اتصال اینستاگرام از طریق Composio فقط خودِ پیج شما را می‌خواند و ریلزِ پیج‌های دیگر را نمی‌دهد. "
+                      "برای بنچمارک واقعی، در «مهارت‌ها ← بنچمارک رقبا» جدول ریلزهای رقبا را بچسبانید (پیج، فالوور، میانه، بازدید، هوک)؛ ایدهٔ بعدی با آن ساخته می‌شود."})
+    state["questions"] = notes
 
 
 def _json(system: str, payload: dict, tokens: int = 6000) -> dict:
@@ -221,15 +263,17 @@ async def propose(user_id: str, state: dict, count: int = 4) -> None:
 async def run(user_id: str, steps: tuple[str, ...] = STEPS, count: int = 4) -> None:
     """One agent pass; progress and the failing step are written to the state after every step so the page can show them."""
     state = await load(user_id)
-    state["run"] = {"status": "running", "step": steps[0], "error": None, "started_at": utcnow(), "finished_at": None, "ideas": 0, "ideas_total": count if "propose" in steps else 0}
+    state["run"] = {"status": "running", "step": next((x for x in STEPS if x in steps), steps[0]), "error": None, "started_at": utcnow(), "finished_at": None, "ideas": 0, "ideas_total": count if "propose" in steps else 0}
     await save(user_id, state)
     try:
-        for step in steps:
+        for step in [x for x in STEPS if x in steps]:
             state["run"]["step"] = step
             await save(user_id, state)
             if step == "sync":
                 await sync(user_id, state)
                 state["run"]["posts"] = len(state.get("media") or [])
+            elif step == "benchmark":
+                await benchmark(user_id, state)
             elif step == "analyze":
                 await analyze(user_id, state)
             elif step == "propose":
@@ -282,19 +326,44 @@ async def answer(user_id: str, key: str, value) -> dict:
     return state
 
 
+_HANDLE = re.compile(r"(?:instagram\.com/|@)([A-Za-z0-9._]{2,30})")
+_REMOVE = re.compile(r"حذف|پاک|برش دار|دیگه نباشه|remove|delete", re.I)
+
+
+def competitor_edit(message: str, current: list[str]) -> tuple[list[str], list[str]]:
+    """Competitors named in the chat («@nike را رقیب اضافه کن», «@nike را از رقبا حذف کن»): the handles with an @ or an instagram.com link, added or removed by the wording."""
+    handles = [h.rstrip(".").lower() for h in _HANDLE.findall(message or "")]
+    handles = list(dict.fromkeys(h for h in handles if h))
+    if not handles:
+        return [], []
+    removing = bool(_REMOVE.search(message))
+    wants = removing or re.search(r"رقیب|رقبا|رقابت|competitor|rival|benchmark|بنچمارک", message or "", re.I)
+    if not wants:
+        return [], []
+    if removing:
+        return [], [h for h in handles if h in current]
+    return [h for h in handles if h not in current], []
+
+
 CHAT_SCHEMA = '{"reply": str, "suggestions": [str], "action": null | {"type": "run_agent"|"open_tab", "tab": "overview|content|analytics|settings"}}'
 
 
 async def chat(user_id: str, message: str, page: dict | None, history: list[dict] | None) -> dict:
     """The agent talks with the person about what is on their screen. It sees the agent state and the text the open page gave it (page.title / page.text)."""
     state = await load(user_id)
-    brief = {"profile": state.get("profile"), "strategy": (state.get("analysis") or {}).get("strategy"), "profile_score": ((state.get("analysis") or {}).get("profile") or {}).get("score"),
+    added, removed = competitor_edit(message, state.get("competitors") or [])
+    if added or removed:
+        state["competitors"] = [h for h in (state.get("competitors") or []) if h not in removed][:9] + added
+        state["competitors"] = state["competitors"][:10]
+        await save(user_id, state)
+    brief = {"competitors": state.get("competitors"), "competitors_changed": {"added": added, "removed": removed}, "profile": state.get("profile"), "strategy": (state.get("analysis") or {}).get("strategy"), "profile_score": ((state.get("analysis") or {}).get("profile") or {}).get("score"),
              "data_gaps": (state.get("analysis") or {}).get("data_gaps"), "open_questions": [q.get("text") for q in state.get("questions", []) if q.get("kind") != "info"],
              "proposals": [{"title": p.get("title"), "engine": p.get("engine"), "status": p.get("status")} for p in state.get("proposals", [])[-8:]],
              "recent_posts": [{"caption": (m.get("caption") or "")[:100], "likes": m.get("likes"), "comments": m.get("comments")} for m in (state.get("media") or [])[:10]]}
     system = ("You are Hermes, the Instagram agent inside EditorGPT's Instagram studio. Talk Persian, short and concrete. The person is looking at the page described in PAGE; "
               "answer about what they see first, using AGENT (what you know about their account) for context. Never invent numbers or posts; say what is missing. "
-              "You can suggest running a new analysis (action run_agent) or opening a tab (action open_tab), only when it helps. "
+              "The person can add or remove competitors by chat; AGENT.competitors_changed says what was just changed (confirm it plainly). You CANNOT read other accounts' reels through the Instagram connection: "
+              "for a real benchmark ask them to paste the competitor table in the Skills tab. You can suggest running a new analysis (action run_agent) or opening a tab (action open_tab), only when it helps. "
               f"Return ONLY JSON: {CHAT_SCHEMA}")
     payload = {"agent": brief, "page": {"title": str((page or {}).get("title") or "")[:120], "text": str((page or {}).get("text") or "")[:6000]},
                "history": [{"role": h.get("role"), "text": str(h.get("text") or "")[:1500]} for h in (history or [])[-8:]], "message": message[:4000]}
@@ -302,4 +371,6 @@ async def chat(user_id: str, message: str, page: dict | None, history: list[dict
     action = result.get("action") if isinstance(result.get("action"), dict) and result["action"].get("type") in ("run_agent", "open_tab") else None
     consulted = [{"label": "خواندن محتوای صفحه‌ی باز", "tool": "page"}] if payload["page"]["text"] else []
     consulted.append({"label": "بررسی اطلاعات پیج و تحلیل ذخیره‌شده", "tool": "account"})
-    return {"activity": consulted, "reply": str(result.get("reply") or "")[:4000], "suggestions": [str(x)[:120] for x in (result.get("suggestions") or [])][:4], "action": action}
+    if added or removed:
+        consulted.append({"label": "به‌روزرسانی فهرست رقبا", "tool": "account"})
+    return {"activity": consulted, "competitors": state.get("competitors"), "reply": str(result.get("reply") or "")[:4000], "suggestions": [str(x)[:120] for x in (result.get("suggestions") or [])][:4], "action": action}

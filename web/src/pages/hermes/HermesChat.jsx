@@ -10,6 +10,7 @@ import AgentWorkspace from './AgentWorkspace';
 import AgentChat from './AgentChat';
 import AgentIdeas from './AgentIdeas';
 import AgentInsights from './AgentInsights';
+import AgentSkills from './AgentSkills';
 
 function Data() {
   const { agent } = useHermes();
@@ -43,8 +44,8 @@ export default function HermesChat() {
       <AgentChat key={chatId} chatId={chatId} title={title} />
     </section>
     {panel.layout !== 'desktop' && panel.overlay ? <button className="ws-backdrop" onClick={panel.closeOverlay} aria-label="Close panel" tabIndex={-1}/> : null}
-    <AgentWorkspace panel={panel} label="Data" tab={tab} onTab={setTab} tabs={[['data', 'Data', 'eye'], ['ideas', 'Ideas', 'wand', pending || null], ['insights', 'Insights', 'spark']]}>
-      {tab === 'data' ? <Data /> : tab === 'ideas' ? <AgentIdeas /> : <AgentInsights />}
+    <AgentWorkspace panel={panel} label="Data" tab={tab} onTab={setTab} tabs={[['data', 'Data', 'eye'], ['ideas', 'Ideas', 'wand', pending || null], ['insights', 'Insights', 'spark'], ['skills', 'مهارت‌ها', 'wand']]}>
+      {tab === 'data' ? <Data /> : tab === 'ideas' ? <AgentIdeas /> : tab === 'skills' ? <AgentSkills /> : <AgentInsights />}
     </AgentWorkspace>
   </div>;
 }

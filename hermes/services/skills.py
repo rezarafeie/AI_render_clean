@@ -177,6 +177,8 @@ async def _remember_benchmark(user_id: str, text: str, result: dict, ranked: dic
                               "top_formulas": (ranked or {}).get("top_formulas", [])[:6], "sample": {"reels": (ranked or {}).get("n"), "accounts": (ranked or {}).get("accounts"),
                                                                                                     "confidence": (ranked or {}).get("confidence")},
                               "input": text[:1500]}
+        if ranked:
+            state["benchmark_input"] = text[:20_000]       # kept whole so the refresh can re-rank it without asking the model again
         await agent.save(user_id, state)
     except Exception:
         pass                                              # remembering is an aid: the result is still returned

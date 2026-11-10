@@ -7,7 +7,7 @@ import { array, message } from './hermesUtils';
 import { peekCache, useHermesData, writeCache } from './hermesCache';
 import { useHermes } from './HermesContext';
 
-const STEPS = [['sync', 'خواندن پروفایل و پست‌ها', 'account'], ['analyze', 'تحلیل پیج و محتوای قبلی', 'creative'], ['propose', 'ساخت پیشنهاد محتوا برای موتورهای ادیتور', 'script']];
+const STEPS = [['sync', 'خواندن پروفایل و پست‌ها', 'account'], ['benchmark', 'بنچمارک رقبا و پست‌های برتر', 'creative'], ['analyze', 'تحلیل پیج و محتوای قبلی', 'creative'], ['propose', 'ساخت پیشنهاد محتوا برای موتورهای ادیتور', 'script']];
 const TAB_FOR = { overview: '', content: 'content', analytics: 'analytics', settings: 'settings' };
 const CHIPS = ['این صفحه را برایم توضیح بده', 'بهترین زمان انتشار چیست؟', 'یک ایده‌ی ریلز بده', 'برنامه‌ی این هفته را بچین'];
 
@@ -18,7 +18,7 @@ const fromStored = (m) => ({ role: m.role === 'user' ? 'user' : 'assistant', tex
  *  With `chatId` it is a stored chat (sidebar history); without, a light assistant for the page being viewed. */
 export default function AgentChat({ title, chatId }) {
   const navigate = useNavigate();
-  const { agent, runAgent } = useHermes();
+  const { agent, runAgent, reloadAgent } = useHermes();
   const stored = useHermesData(`chat:${chatId}`, () => hermesApi.getChat(chatId), { enabled: Boolean(chatId) });
   const [local, setLocal] = useState(() => (chatId ? [] : peekCache('assistant') || []));
   const [pending, setPending] = useState([]);
@@ -65,6 +65,7 @@ export default function AgentChat({ title, chatId }) {
         setPending([mine]);
         const out = await hermesApi.sendChatMessage(chatId, value, page);
         await stored.reload();
+        void reloadAgent();
         window.dispatchEvent(new Event('hermes:chats-updated'));
         act(out.reply?.action);
       } else {
@@ -74,9 +75,10 @@ export default function AgentChat({ title, chatId }) {
         const done = [...local, mine, { role: 'assistant', text: out.reply || '…', at: Date.now(), activity: out.activity, suggestions: out.suggestions }].slice(-60);
         setLocal(done); writeCache('assistant', done);
         act(out.action);
+        void reloadAgent();
       }
     } catch (e) { setError(message(e)); } finally { setPending([]); setBusy(false); }
-  }, [text, busy, title, chatId, local, stored, act]);
+  }, [text, busy, title, chatId, local, stored, act, reloadAgent]);
 
   useEffect(() => {          // a chat started from the home page carries its first message
     if (!chatId || sentFirst.current) return;
