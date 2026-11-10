@@ -133,3 +133,26 @@ def test_page_with_narration_has_audio_tracks(tmp_path):
                          audio=[{"path": str(clip), "start": 0.25, "duration": 3.5}])
     html = mg.assemble(page)
     assert '<audio id="vo1" src="assets/vo1.wav" data-start="0.25" data-duration="3.5" data-track-index="1">' in html
+
+
+def test_blank_scene_stills_are_found_before_the_render(tmp_path):
+    from PIL import Image
+    from app import motion_graphic as app_mg
+    record = app_mg.create("c1", "u1", "A film.")
+    directory = app_mg.folder("u1", "c1", record["id"])
+    shots = directory / "snapshots"; shots.mkdir()
+    Image.new("RGB", (64, 114), (0, 0, 0)).save(shots / "1.jpg")                  # black: nothing painted
+    Image.new("RGB", (64, 114), (240, 230, 200)).save(shots / "2.jpg")             # one flat colour: nothing in it
+    busy = Image.new("RGB", (64, 114), (240, 230, 200))
+    for x in range(10, 50):
+        for y in range(20, 60):
+            busy.putpixel((x, y), (20, 20, 20) if (x // 4 + y // 4) % 2 else (230, 60, 50))
+    busy.save(shots / "3.jpg")
+    saved = app_mg.load(directory); saved["snapshots"] = [{"n": 1, "headline": "a", "t": 1}, {"n": 2, "headline": "b", "t": 2}, {"n": 3, "headline": "c", "t": 3}]; app_mg.save(directory, saved)
+    assert app_mg._blank_scenes(directory) == [1, 2]
+
+
+def test_text_over_text_findings_name_their_scene():
+    from app import motion_graphic as app_mg
+    line = "layout: content_overlap: Two text blocks overlap and may render unreadable. [#s1-headline] Fix: Give each block its own zone"
+    assert app_mg._TEXT_OVERLAP.search(line) and app_mg._scenes_in([line], 8) == [1]

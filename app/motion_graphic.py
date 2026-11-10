@@ -311,8 +311,11 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
                    'uploading': 'در حال انتقال خروجی رندر', 'completed': 'خروجی رندر دریافت شد'}.get(stage)
         if message:
             _note(directory, 'render', message)
+    def cloud_detail(text):
+        if text:
+            _note(directory, 'render', text)              # "رندر ابری: ۴۰٪ · حدود … باقی مانده", the same line every other chat shows
     cloud_token = identity.set((owned.get('user_key'), owned.get('id'), (directory,),
-                                lambda: _cancelled(key), cloud_stage))
+                                lambda: _cancelled(key), cloud_stage, cloud_detail))
     try:
         _run(directory, change)
     except _Cancelled:
@@ -693,6 +696,26 @@ def _snapshot_scenes(directory: Path, work: Path, plan) -> None:
         _note(directory, "snapshots", f"عکس {len(items)} صحنه آماده شد", "done")
     except Exception as exc:
         log.warning("scene snapshots failed: %s", str(exc)[:160])
+
+
+def _blank_scenes(directory: Path) -> list[int]:
+    """Scenes whose still (taken where the scene's text and motion should be in place) shows nothing: a black or single-colour frame."""
+    blank: list[int] = []
+    try:
+        from PIL import Image, ImageStat
+        for item in load(directory).get("snapshots") or []:
+            path = directory / "snapshots" / f"{item['n']}.jpg"
+            if not path.is_file():
+                continue
+            stat = ImageStat.Stat(Image.open(path).convert("L"))
+            if stat.mean[0] < 14 or stat.stddev[0] < 4:
+                blank.append(int(item["n"]))
+    except Exception as exc:
+        log.warning("scene stills could not be checked for blank frames: %s", str(exc)[:120])
+    return blank
+
+
+_TEXT_OVERLAP = re.compile(r"content_overlap|text_occluded")
 
 
 def _remember_voice_error(directory: Path, record: dict, message: str | None) -> None:
@@ -1252,6 +1275,9 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
     notes: list[str] = list(getattr(build, "voice_notes", []) or [])
     repairs_left = 2
     isolated = 0
+    blank_checks = 0
+    overlap_tried = False
+    shots_of = None
     stats = _stats()
     while True:
         def component_progress(instance,percent):
@@ -1296,6 +1322,22 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                 page = dropped
                 continue
             raise RuntimeError("کامپوننت اجرایی از بررسی رد شد؛ کد اصلی با طراحی ساده جایگزین نشد: " + problems[0])
+        if not problems and build and result.ran and not skipped_check:
+            # The visual gate: text laid over text, or a scene that shows nothing at its settled moment, is repaired before anything is rendered.
+            if not overlap_tried:
+                overlap_tried = True
+                clashes = [q for q in result.quality if _TEXT_OVERLAP.search(q) and _scenes_in([q], len(build.plan.scenes))]
+                if clashes:
+                    problems = [q[:600] for q in clashes[:6]]
+                    notes.append(f"متن‌های روی‌هم‌افتاده در {len(clashes)} مورد پیدا شد و پیش از رندر اصلاح شد")
+            if not problems and blank_checks < 2:
+                blank_checks += 1
+                _snapshot_scenes(directory, work, build.plan)
+                shots_of = page_fp
+                empty = _blank_scenes(directory)
+                if empty:
+                    problems = [f"#s{n} shows an empty frame at its settled moment (60% of its length): nothing is visible. Every element must be placed and revealed relative to the scene's own start time, and the scene must paint its background and headline." for n in empty]
+                    notes.append("صحنه‌های " + "، ".join(str(n) for n in empty) + " در عکس بررسی خالی بودند و پیش از رندر دوباره طراحی شدند")
         if not problems:
             # Layout and contrast findings are not fatal and do not justify rewriting the page with a slow model: they are reported.
             notes = (notes + ([f"بررسی خودکار چیدمان/خوانایی: {len(result.quality)} مورد"] if result.quality else [])
@@ -1355,7 +1397,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         _progress(directory, "rendering", 40 + int(percent * 0.55), "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=max(4.0, estimate - elapsed))
 
     _note(directory, "check", "بررسی صفحه تمام شد", "done", detail="\n".join(notes) if notes else "بررسی چیدمان، خوانایی و خطاهای اجرا بدون هشدار تمام شد.")
-    if not (skipped_check and (directory / "snapshots").is_dir() and load(directory).get("snapshots")):
+    if shots_of != page_fp and not (skipped_check and (directory / "snapshots").is_dir() and load(directory).get("snapshots")):
         _snapshot_scenes(directory, work, build.plan if build else None)
     _note(directory, "render", f"دارم {page.duration:g} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     _progress(directory, "rendering", 40, "دارم ویدیو را فریم‌به‌فریم رندر می‌کنم.", stage="rendering", eta=estimate)

@@ -151,7 +151,20 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
 
   return <section className="mg assistant-body" dir="rtl" aria-label="موشن‌گرافیک">
     {ownsProgress && (motion.active || motion.status === "failed" || motion.status === "needs_input" || motion.log?.length) ? <div className="mg-progress">
-      <ActivityBlock steps={motionSteps(motion, now * 1000)} live={motion.active}/>
+      {(() => {
+        const all = motionSteps(motion, now * 1000);
+        const last = all[all.length - 1];
+        const rendering = motion.active && last?.key === "render" && !shown;
+        const renderPercent = rendering ? Math.max(0, Math.min(100, Math.round((motion.progress - 40) / 0.55))) : undefined;
+        return <>
+          <ActivityBlock steps={rendering ? all.filter(step => step.key !== "render") : all} live={motion.active}/>
+          {rendering ? <article className="render-card" data-phase="rendering" data-compact={compact || undefined} aria-label="Rendering your video">
+            <header className="rc-head"><h3>Rendering your video</h3>{formatDuration(Math.max(0, now * 1000 - last.startedAt)) ? <span className="rc-elapsed">{formatDuration(Math.max(0, now * 1000 - last.startedAt))}</span> : null}</header>
+            <div className="rc-meta"><span dir="auto">{last.label}</span>{renderPercent ? <span dir="ltr">{renderPercent}%</span> : null}</div>
+            {renderPercent ? <div className="meter" style={{ ["--value" as string]: `${renderPercent}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={renderPercent} aria-label="Rendering"><span/></div> : null}
+          </article> : null}
+        </>;
+      })()}
       {summaries?.ready && !motion.active ? <p className="mg-step-summary" dir="auto">{summaries.ready}</p> : null}
       {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
