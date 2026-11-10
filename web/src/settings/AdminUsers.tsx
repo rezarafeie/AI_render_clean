@@ -15,7 +15,11 @@ type JobRow = { id: string; title: string | null; status: string; stage: string 
 type Detail = { user: Omit<UserRow, "chats" | "projects" | "jobs" | "files" | "storage_bytes" | "last_active">; conversations: Chat[]; projects: Project[]; files: FileRow[]; jobs: JobRow[]; storage_bytes: number };
 
 const bytes = (value: number) => value >= 1e9 ? `${(value / 1e9).toFixed(2)} GB` : value >= 1e6 ? `${(value / 1e6).toFixed(1)} MB` : value >= 1e3 ? `${Math.round(value / 1e3)} KB` : `${value} B`;
-const when = (value?: string | null) => value ? new Date(value).toLocaleString(currentLang() === "fa" ? "fa-IR" : undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+const when = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(currentLang() === "fa" ? "fa-IR" : undefined, { dateStyle: "medium", timeStyle: "short" });
+};
 const tone = (status: string) => ["done", "completed", "ready"].includes(status) ? "ok" : ["error", "failed", "canceled", "cancelled"].includes(status) ? "bad" : ["running", "queued", "awaiting_input", "awaiting_confirmation"].includes(status) ? "warn" : "idle";
 
 function Status({ value }: { value: string }) { return <span className="adm-status" data-tone={tone(value)}><i/>{value}</span>; }
