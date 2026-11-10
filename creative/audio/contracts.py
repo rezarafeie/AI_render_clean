@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-EventType = Literal["word", "pause", "beat", "downbeat", "onset", "energy_peak", "music_transition", "sfx", "narrative_emphasis"]
+EventType = Literal["word", "pause", "beat", "downbeat", "onset", "energy_peak", "music_transition", "drop", "sfx", "narrative_emphasis"]
 Emotion = Literal["confident", "excited", "curious", "mysterious", "serious", "educational", "conversational", "friendly", "persuasive",
                   "inspirational", "cinematic", "calm", "dramatic", "urgent", "humorous", "empathetic"]
 RhythmMode = Literal["speech_first", "music_first", "balanced", "cinematic", "custom"]

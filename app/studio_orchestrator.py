@@ -797,7 +797,7 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             _start_motion_graphic(conversation_id, user_key, conversation, text, attachments, sources)
             return
         if intent in {"motion_graphic_revision", "motion_graphic_answer"}:
-            if _continue_motion_graphic(conversation_id, user_key, conversation, text, answering=intent == "motion_graphic_answer"):
+            if _continue_motion_graphic(conversation_id, user_key, conversation, text, answering=intent == "motion_graphic_answer", attachments=attachments):
                 return
             _start_motion_graphic(conversation_id, user_key, conversation, text, attachments, None)
             return
@@ -1210,7 +1210,7 @@ def _motion_summary(user_key: str, conversation: dict) -> dict | None:
     return summary
 
 
-def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, *, answering: bool) -> bool:
+def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, *, answering: bool, attachments: list[dict] | None = None) -> bool:
     """The understanding step decided this message belongs to the existing motion graphic. False when there is none to continue."""
     from app import motion_graphic
     pointer = (conversation.get("state") or {}).get("motion")
@@ -1230,6 +1230,14 @@ def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: 
         motion_graphic.start(directory)
         _assistant(conversation_id, user_key, "دوباره از اول شروع کردم.")
     else:
+        track = next((a for a in attachments or [] if a.get("kind") == "audio" and a.get("path")), None)
+        if track:                                                  # an audio file with the message: it is the film's music, and the audio alone is rebuilt unless more is asked
+            motion_graphic.use_attached_music(directory, track)
+            if not text.strip() or len(text.split()) <= 6:
+                motion_graphic.start(directory)
+                _assistant(conversation_id, user_key, f"موسیقی «{track.get('filename', '')}» را جایگزین می‌کنم و روی بیت هم‌زمانش می‌کنم؛ فقط صدا دوباره ساخته می‌شود.")
+                _emit(conversation_id, "motion.revising", motion_id=record["id"])
+                return True
         motion_graphic.revise(directory, text)
         _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
         _emit(conversation_id, "motion.revising", motion_id=record["id"])

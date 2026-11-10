@@ -568,6 +568,9 @@ class ScenePlan(BaseModel):
     shotcraft_component: NativeSpec | None = None
     transition: str = ""               # how this scene enters (a key of ENTRANCE_LIBRARY); empty or unknown = chosen from the film's style
     cues: list[dict] = Field(default_factory=list)     # {"word", "t"}: when each spoken word is heard, in seconds from this scene's start (from the real voice take)
+    beats: list[float] = Field(default_factory=list)   # the music's strong beats that fall inside this scene, in seconds from its start (empty without synced music)
+    accent: float | None = None                        # the music's drop / accent inside this scene, in seconds from its start
+    beat_s: float = 0.0                                # seconds between two beats of the music
 
     @model_validator(mode="after")
     def one_native_source(self):
@@ -925,6 +928,20 @@ def _scene_page(n: int, draft: SceneDraft, plan: MotionPlan) -> MotionPage:
                       build_js=draft.build_js, update_js=draft.update_js)
 
 
+def music_block(scene: ScenePlan) -> str:
+    """What the film's music does inside this scene, for its designer: the beat spacing, the strong beats and the accent, all on the scene's own clock. Empty without synced music."""
+    if not scene.beats and scene.accent is None:
+        return ""
+    lines = ["MUSIC OF THIS FILM (the viewer hears it; times are seconds from the scene start, measured from the real track):"]
+    if scene.beats:
+        lines.append(f"- a beat every {scene.beat_s:g} s; strong beats at " + ", ".join(f"{b:g}" for b in scene.beats))
+    if scene.accent is not None:
+        lines.append(f"- the music's biggest accent (its drop) lands at {scene.accent:g} s: put the scene's strongest visual event (the reveal, the biggest move or number) exactly there")
+    lines.append("Land entrances, scale pops, cuts inside the scene and text reveals ON these times (a tween that starts on a beat), but never at the cost of the narration cue times above, "
+                 "which come first. Do not make every element hit every beat: pick the beats that carry meaning, leave the rest still.")
+    return "\n".join(lines)
+
+
 def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style: str = "") -> str:
     scene = plan.scenes[n - 1]
     outline = [{"scene": i, "headline": sc.headline, "idea": sc.idea, "from": sc.start, "to": sc.end} for i, sc in enumerate(plan.scenes, 1)]
@@ -940,6 +957,7 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
                    "Do not spread entrances evenly or by guess.") if scene.cues else ""),
              font_catalog.designer_block(font_catalog.resolve(plan.title_font, font_catalog.DEFAULT_TITLE), font_catalog.resolve(plan.body_font, font_catalog.DEFAULT_BODY)),
              skills_library.designer_block(plan.skills),
+             music_block(scene),
              f"THE WHOLE CLIP (for rhythm and coherence; do not build the other scenes)\ntitle: {plan.title}; format {plan.format} {FORMATS[plan.format][0]}x{FORMATS[plan.format][1]}; "
              f"{plan.duration:g} s; palette {plan.palette.model_dump_json()}; signature device: {plan.signature or 'none'}\n" + json.dumps(outline, ensure_ascii=False),
              f"ORIGINAL REQUEST:\n{brief.strip()[:1500]}"]

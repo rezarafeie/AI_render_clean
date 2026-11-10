@@ -142,14 +142,23 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     request, wanted = directives.parse(request)
     if wanted.narrator is not None: voice_id = wanted.narrator
     if wanted.style is not None: voice_style = wanted.style
+    from creative.audio import music_director
     music = {"mode": wanted.music, "words": wanted.music_words} if wanted.music else None
-    if music and wanted.music == "attached":
+    if music is None and any(item.get("kind") == "audio" and item.get("path") for item in attachments or []):
+        music = {"mode": "attached", "words": ""}              # an audio file came with the request: it is the music
+    elif music is None and music_director.music_wanted(request):
+        music = {"mode": "auto", "words": ""}                  # the request talks about music: the studio chooses or makes it
+    if music and music.get("mode") == "attached":
         track = next((item for item in attachments or [] if item.get("kind") == "audio" and item.get("path")), None)
         if track: music["path"], music["name"] = track["path"], track.get("filename", "")
         else: wanted.notes.append("موسیقی «attached» خواسته شد ولی فایل صوتی پیوست نبود؛ ویدیو بدون موسیقی ساخته می‌شود.")
+    if music and music.get("mode") not in (None, "off"):
+        fresh = music["mode"] in {"auto", "search", "generate"}
+        music.update(cost=wanted.music_cost or "balanced", instrumental=True if wanted.music_instrumental is None else wanted.music_instrumental, variant=0,
+                     sync=wanted.music_sync if wanted.music_sync is not None else (fresh or (wanted.rhythm or "speech_first") != "speech_first"))
     from creative.audio import direction
     audio_plan, plan_notes = direction.plan(request, wanted)
-    if music and music.get("mode") == "library" and audio_plan.music_energy:
+    if music and music.get("mode") in {"library", "auto", "search", "generate"} and audio_plan.music_energy:
         music["energy"] = audio_plan.music_energy
     motion_id = uuid.uuid4().hex[:12]
     directory = folder(user_key, conversation_id, motion_id)
@@ -157,7 +166,7 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     record = {"id": motion_id, "conversation_id": conversation_id, "user_key": user_key, "request": request.strip()[:4000],
               "context": context[:9000], "style": style[:2000], "status": "queued", "stage": "queued", "progress": 0, "message": "", "questions": [],
               "versions": [], "current": 0, "error": None, "created_at": time.time(), "pending_change": None, "answers": [], "log": [],
-              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or "speech_first", "loudness": wanted.loudness or "social_video",
+              "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or ("balanced" if music and music.get("sync") and music.get("mode") in {"auto", "search", "generate"} else "speech_first"), "loudness": wanted.loudness or "social_video",
               "audio_plan": audio_plan.model_dump(), "audio_plan_notes": plan_notes,
               "music_gain_db": wanted.music_gain_db, "ducking_db": wanted.ducking_db}
     if attachments:
@@ -968,22 +977,58 @@ def _verify_clips(directory: Path, record: dict, texts: list[str], clips, voice_
     return fixed, notes
 
 
-def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
-    """Balanced / music-first: scene starts wait (never move earlier) for a near beat of the chosen music. Returns (plan, audio, notes)."""
-    mode = record.get("rhythm") or "speech_first"
-    wanted = record.get("music") or {}
-    if mode not in {"balanced", "music_first"} or wanted.get("mode") not in {"attached", "library"}:
-        return plan, audio, []
-    from creative import motion_graphic as mg
-    from creative import music_bed
-    from creative.audio import rhythm
+MUSIC_MODES = {"attached", "library", "auto", "search", "generate"}
+
+
+def _music_request(record: dict, plan, accent_s: float | None = None):
+    from creative.audio import music_director as md
+    music = record.get("music") or {}
+    audio_plan = record.get("audio_plan") or {}
+    energy = music.get("energy") if music.get("energy") is not None else audio_plan.get("music_energy")
+    words = " ".join(filter(None, [music.get("words", ""), audio_plan.get("music_mood", "")])).strip()
+    return md.MusicRequest(brief=record.get("request", ""), words=words, duration_s=float(plan.duration) + 3.0, mode=music.get("mode") or "auto", style=music.get("style", ""),
+                           energy=energy, instrumental=bool(music.get("instrumental", True)), accent_s=accent_s, cost=music.get("cost", "balanced"), path=music.get("path", ""),
+                           name=music.get("name", ""), user=str(record.get("user_key", "")), variant=int(music.get("variant") or 0), exclude=list(music.get("used") or []))
+
+
+def _resolve_music(directory: Path, record: dict, plan, accent_s: float | None = None):
+    """The music of this film, decided once (and kept in music_choice.json, so a retry or an edit of something else never makes or pays for it again)."""
+    from creative.audio import music_director as md
+    request = _music_request(record, plan, accent_s)
+    stamp = json.dumps([request.mode, request.words, request.style, request.energy, request.instrumental, request.cost, request.path, request.variant, request.exclude,
+                        int(plan.duration // 10)], ensure_ascii=False, default=str)
+    saved = directory / "music_choice.json"
     try:
-        source = _music_source(wanted, plan)
-        if not source:
+        cached = json.loads(saved.read_text())
+        if cached.get("stamp") == stamp and cached.get("path") and Path(cached["path"]).is_file():
+            return md.Result(path=Path(cached["path"]), label=cached["label"], source=cached["source"], notes=cached.get("notes", []), reasons=cached.get("reasons", []),
+                             attribution=cached.get("attribution"), cost=cached.get("cost"), style=cached.get("style", ""), arc=cached.get("arc", []), track=cached.get("track"))
+    except (OSError, ValueError):
+        pass
+
+    def progress(text: str, state: str = "active") -> None:
+        try: _note(directory, "music", text, state)
+        except _Cancelled: raise
+        except Exception: log.debug("music progress line not stored")
+    chosen = md.resolve(request, progress=progress)
+    if chosen.path:
+        small = {k: v for k, v in (chosen.track or {}).items() if k in {"id", "source", "provider", "title", "artist", "license", "rights", "cost", "duration_s"}}
+        saved.write_text(json.dumps({"stamp": stamp, "path": str(chosen.path), "label": chosen.label, "source": chosen.source, "notes": chosen.notes, "reasons": chosen.reasons,
+                                     "attribution": chosen.attribution, "cost": chosen.cost, "style": chosen.style, "arc": chosen.arc, "track": small}, ensure_ascii=False))
+    return chosen
+
+
+def _sync_rhythm_waiting(directory: Path, record: dict, plan, audio: list[dict], wanted: dict, mode: str):
+    """Balanced / music-first without Sync to Beat: a scene start waits (never moves earlier) for a near beat of the track, which starts at its beginning. Returns (plan, audio, notes)."""
+    from creative import motion_graphic as mg
+    from creative.audio import music_director as md, rhythm
+    try:
+        choice = _resolve_music(directory, record, plan, None)
+        if choice.path is None:
             return plan, audio, []
-        analysis = rhythm.analyse(source[0], cache_dir=directory)
+        analysis = rhythm.analyse(choice.path, cache_dir=directory)
         if analysis["bpm_confidence"] < 0.2 or len(analysis["beats_ms"]) < 8:
-            return plan, audio, [f"ضرب موسیقی «{source[1]}» قابل اتکا تشخیص داده نشد؛ زمان‌بندی بر پایهٔ گفتار ماند."]
+            return plan, audio, [f"ضرب موسیقی «{choice.label}» قابل اتکا تشخیص داده نشد؛ زمان‌بندی بر پایهٔ گفتار ماند."]
         starts = [sc.start for sc in plan.scenes]
         new_starts, total, on_beat = rhythm.snap_starts(starts, plan.duration, analysis["beats_ms"], 0.35 if mode == "balanced" else 0.9, mg.MAX_SECONDS)
         if not on_beat:
@@ -996,62 +1041,190 @@ def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
         for clip in audio:
             owner = next((i for i, sc in enumerate(plan.scenes) if sc.start - 1e-6 <= clip["start"] < sc.end + 1e-6), None)
             moved.append({**clip, "start": round(clip["start"] + (new_starts[owner] - starts[owner]), 2)} if owner is not None else clip)
-        return plan.model_copy(update={"scenes": scenes, "duration": round(total, 2)}), moved, [f"موسیقی {analysis['bpm']:.0f} BPM؛ شروع {len(on_beat)} صحنه روی بیت قرار گرفت (فیلم {total - plan.duration:.1f} ثانیه بلندتر شد)."]
+        return plan.model_copy(update={"scenes": scenes, "duration": round(total, 2)}), moved, [f"موسیقی {analysis['bpm']:.0f} BPM؛ شروع {len(on_beat)} صحنه روی بیت قرار گرفت (فیلم {total - plan.duration:+.1f} ثانیه)"]
+    except _Cancelled:
+        raise
     except Exception as exc:
         log.warning("rhythm sync skipped: %s", str(exc)[:160])
         return plan, audio, []
 
 
-def _music_source(wanted: dict, plan):
-    """(path, label) of the requested music, or None."""
-    from creative import music_bed
-    if wanted.get("mode") == "attached" and wanted.get("path"):
-        return Path(wanted["path"]), wanted.get("name") or "attached track"
-    if wanted.get("mode") == "library":
-        return music_bed.pick_from_library(wanted.get("words", ""), plan.duration, energy=wanted.get("energy"))
-    return None
+def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
+    """The rhythm of the film's own music meets the film. Always free of cost to the narration: the music is slid (trimmed), never stretched, so that the track's drop lands on the
+    film's accent (its last scene) or, without a drop, so that its beat grid falls on as many cuts as possible; and in balanced / music-first mode a scene start waits (never moves
+    earlier) for a near beat. Returns (plan, audio, notes). The fit is saved in music_fit.json for the music bed."""
+    mode = record.get("rhythm") or "speech_first"
+    wanted = record.get("music") or {}
+    if wanted.get("mode") not in MUSIC_MODES:
+        return plan, audio, []
+    if not wanted.get("sync"):
+        if mode not in {"balanced", "music_first"}:
+            return plan, audio, []
+        return _sync_rhythm_waiting(directory, record, plan, audio, wanted, mode)          # the original rule, unchanged, for music the person attached or chose from the library
+    from creative import motion_graphic as mg
+    from creative.audio import music_director as md, music_fit, rhythm
+    notes: list[str] = []
+    try:
+        starts = [sc.start for sc in plan.scenes]
+        accent_s = starts[-1] if len(starts) >= 2 else None
+        choice = _resolve_music(directory, record, plan, accent_s)
+        notes += choice.notes
+        if choice.path is None:
+            return plan, audio, notes
+        analysis = md.analysis_for(choice.path)
+        if not analysis or analysis.get("bpm_confidence", 0) < 0.2 or len(analysis.get("beats_ms", [])) < 8:
+            music_fit_path = directory / "music_fit.json"
+            music_fit_path.write_text(json.dumps({"offset_s": 0.0, "anchor": None, "loop": None, "notes": []}))
+            return plan, audio, [*notes, f"ضرب موسیقی «{choice.label}» قابل اتکا تشخیص داده نشد؛ زمان‌بندی بر پایهٔ گفتار ماند."]
+        solved = music_fit.solve(analysis, starts, float(plan.duration), snap=mode in {"balanced", "music_first"}, tolerance_s=0.35 if mode == "balanced" else 0.9, max_total_s=mg.MAX_SECONDS)
+        fit, new_starts, total = solved["fit"], solved["starts"], solved["total"]
+        (directory / "music_fit.json").write_text(json.dumps(fit))
+        notes += [f"موسیقی {analysis['bpm']:.0f} BPM (اطمینان ضرب {analysis.get('beat_confidence', 0):.0%})"]
+        for n in fit.get("notes", []):
+            notes.append("دراپ موسیقی روی لحظهٔ اوج فیلم (شروع صحنهٔ آخر) قرار گرفت" if "lands on the film's accent" in n else
+                         f"موسیقی {fit['offset_s']:.2f} ثانیه جابه‌جا شد تا ضرب‌ها روی برش‌ها بنشینند" if "beat grid falls" in n else n)
+        if not solved["moved"]:
+            return plan, audio, notes
+        scenes = []
+        for index, scene in enumerate(plan.scenes):
+            end = new_starts[index + 1] if index + 1 < len(plan.scenes) else total
+            scenes.append(scene.model_copy(update={"start": new_starts[index], "end": round(end, 3)}))
+        moved = []
+        for clip in audio:
+            owner = next((i for i, sc in enumerate(plan.scenes) if sc.start - 1e-6 <= clip["start"] < sc.end + 1e-6), None)
+            moved.append({**clip, "start": round(clip["start"] + (new_starts[owner] - starts[owner]), 2)} if owner is not None else clip)
+        shifted = sum(1 for a, b2 in zip(starts, new_starts) if abs(a - b2) > 1e-6)
+        notes.append(f"شروع {shifted} صحنه برای نشستن روی بیت کمی عقب رفت و {solved['aligned']} برش روی ضرب است (فیلم {total - plan.duration:+.1f} ثانیه)")
+        return plan.model_copy(update={"scenes": scenes, "duration": round(total, 2)}), moved, notes
+    except _Cancelled:
+        raise
+    except Exception as exc:
+        log.warning("rhythm sync skipped: %s", str(exc)[:160])
+        return plan, audio, [n for n in notes if n]
 
 
 def _add_music(directory: Path, record: dict, plan, audio: list[dict]):
-    """The requested background music as one more audio clip (already trimmed, faded and ducked under the narration).
-    Returns (audio, notes). Music that cannot be made never stops the build."""
+    """The film's background music as one more audio clip (fitted to the film, faded, and ducked under the narration). Returns (audio, notes).
+    Music that cannot be made never stops the build."""
     wanted = record.get("music") or {}
-    if wanted.get("mode") not in {"attached", "library"}:
+    if wanted.get("mode") not in MUSIC_MODES:
         return audio, []
     from creative import music_bed
+    from creative.audio import music_director as md, music_fit
 
     def progress(text: str, state: str = "active") -> None:
         try: _note(directory, "music", text, state)
         except _Cancelled: raise
         except Exception: log.debug("music progress line not stored")    # a progress line must never cost the music
     try:
-        if wanted["mode"] == "attached":
-            source, label = Path(wanted["path"]), wanted.get("name") or "attached track"
-        else:
-            picked = music_bed.pick_from_library(wanted.get("words", ""), plan.duration, energy=wanted.get("energy"))
-            if not picked:
-                return audio, ["در کتابخانهٔ موسیقی ترکی پیدا نشد؛ ویدیو بدون موسیقی ساخته شد. یک ترک در «Media library» آپلود کنید یا فایل صوتی پیوست کنید."]
-            source, label = picked
+        choice = _resolve_music(directory, record, plan, None)
+        if choice.path is None:
+            return audio, choice.notes or ["در کتابخانهٔ موسیقی ترکی پیدا نشد؛ ویدیو بدون موسیقی ساخته شد. یک ترک در «Media library» آپلود کنید یا فایل صوتی پیوست کنید."]
+        source, label = Path(choice.path), choice.label
         voice = [clip for clip in audio if clip.get("role") != "music"]
-        stamp = (f"{source.name}|{source.stat().st_size}|{plan.duration}|{record.get('music_gain_db')}|{record.get('ducking_db')}|"
+        try:
+            fit = json.loads((directory / "music_fit.json").read_text())
+        except (OSError, ValueError):
+            fit = {"offset_s": 0.0, "anchor": None, "loop": None}
+        use_fit = bool(wanted.get("sync")) and (float(fit.get("offset_s") or 0) > 0.001 or fit.get("loop") is True or wanted.get("mode") in {"auto", "search", "generate"})
+        stamp = (f"{source.name}|{source.stat().st_size}|{plan.duration}|{record.get('music_gain_db')}|{record.get('ducking_db')}|{fit.get('offset_s')}|{use_fit}|"
                  + ",".join(f"{c['start']}-{c['duration']}" for c in voice))
         output = directory / "music_bed.m4a"
         marker = directory / "music_bed.json"
+        analysis = md.analysis_for(source) if (use_fit or wanted.get("sync")) else None
+        notes = [*choice.notes, f"موسیقی: {label}"]
+        if choice.attribution:
+            notes.append("منبع و مجوز موسیقی (برای درج در توضیحات انتشار): " + choice.attribution)
+        if choice.cost and choice.cost.get("usd"):
+            notes.append(f"هزینهٔ ساخت موسیقی: حدود {choice.cost['usd']:.2f} دلار")
         try:
             if json.loads(marker.read_text()).get("stamp") == stamp and output.is_file():
-                return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], [f"موسیقی: {label}"]
+                _save_music_timing(directory, analysis, fit, plan, choice)
+                return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], notes
         except (OSError, ValueError):
             pass
         progress(f"موسیقی پس‌زمینه را با افت خودکار زیر صدا می‌سازم: {label}")
-        music_bed.make_bed(source, output, plan.duration, voice, gain_db=record.get("music_gain_db"), duck_db=record.get("ducking_db"))
+        bed_source = source
+        if use_fit:
+            bed_source = music_fit.render(source, directory / "music_fitted.wav", plan.duration, fit, analysis)
+        music_bed.make_bed(bed_source, output, plan.duration, voice, gain_db=record.get("music_gain_db"), duck_db=record.get("ducking_db"))
         marker.write_text(json.dumps({"stamp": stamp}))
+        _save_music_timing(directory, analysis, fit, plan, choice)
         progress("موسیقی پس‌زمینه آماده شد", "done")
-        return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], [f"موسیقی: {label}"]
+        return [*voice, {"path": str(output), "start": 0, "duration": plan.duration, "role": "music"}], notes
     except _Cancelled:
         raise
     except Exception as exc:
         log.warning("motion music bed could not be made: %s", str(exc)[:200])
         return audio, ["ساخت موسیقی پس‌زمینه انجام نشد و ویدیو بدون موسیقی ساخته شد: " + str(exc)[:140]]
+
+
+def _save_music_timing(directory: Path, analysis: dict | None, fit: dict, plan, choice) -> None:
+    """The track's rhythm on the film's own clock (offset removed): what the scene designers, the sound effects and the editor read. Beside the project, with its source and licence."""
+    from creative.audio import music_fit
+    timing = music_fit.film_timing(analysis, fit, float(plan.duration)) if analysis else {}
+    (directory / "music_timing.json").write_text(json.dumps({"timing": timing, "source": choice.source, "label": choice.label, "style": choice.style, "arc": choice.arc,
+                                                             "attribution": choice.attribution, "track": choice.track and {k: choice.track.get(k) for k in ("id", "provider", "license", "rights")}},
+                                                            ensure_ascii=False))
+
+
+def _attach_beats(directory: Path, record: dict, plan):
+    """Each scene gets the beats and the accent that fall inside it (seconds from its own start), so its designer can land the big moves on them. Only with Sync to Beat
+    on, a reliable beat grid and music that is really part of the film; otherwise the plan is returned untouched."""
+    wanted = record.get("music") or {}
+    if not wanted.get("sync") or wanted.get("mode") not in MUSIC_MODES:
+        return plan
+    try:
+        saved = json.loads((directory / "music_timing.json").read_text())
+        timing = saved["timing"]
+    except (OSError, ValueError, KeyError):
+        return plan
+    if not timing or float(timing.get("beat_confidence") or 0) < 0.3 or not timing.get("bpm"):
+        return plan
+    strong_all, bars_all, beats_all = timing.get("strong_beats_ms") or [], timing.get("bars_ms") or [], timing.get("beats_ms") or []
+    accents = [d for d in timing.get("drops_ms") or []] + ([timing["anchor"]["film_ms"]] if timing.get("anchor") else [])
+    period = round(60.0 / float(timing["bpm"]), 3)
+    scenes = []
+    for scene in plan.scenes:
+        def inside(values):
+            return [round(b / 1000 - scene.start, 2) for b in values if scene.start <= b / 1000 < scene.end - 0.1]
+        beats = (inside(strong_all) or inside(bars_all) or inside(beats_all)[::2])[:12]       # strong beats; else bar lines; else every second beat of the grid
+        accent = next((round(a / 1000 - scene.start, 2) for a in accents if scene.start - 1e-6 <= a / 1000 < scene.end), None)
+        scenes.append(scene.model_copy(update={"beats": beats, "accent": accent, "beat_s": period if beats else 0.0}))
+    return plan.model_copy(update={"scenes": scenes})
+
+
+def _add_sfx(directory: Path, record: dict, plan, audio: list[dict]):
+    """Sound effects with a purpose: one on each cut into a scene and a strong one on the film's accent, as dense as the film's sound-design level allows, snapped to a near beat
+    and never over a spoken word. They are synthesised in the studio, so there is no third-party audio. Only films that asked for music or a sound-design level get any."""
+    wanted = record.get("music") or {}
+    level = (record.get("sfx") or "").strip() or (((record.get("audio_plan") or {}).get("sound_design") or "minimal") if wanted.get("mode") in {"auto", "search", "generate"} else "none")
+    if level == "none" or not any(clip.get("role") != "music" for clip in audio):
+        return audio, []
+    try:
+        from creative.audio import music_director as md, sound_design
+        from creative.audio.contracts import AudioTimingEvent
+        try:
+            timing = json.loads((directory / "music_timing.json").read_text()).get("timing") or {}
+        except (OSError, ValueError):
+            timing = {}
+        starts = [{"start": sc.start} for sc in plan.scenes]
+        accent_s = plan.scenes[-1].start if len(plan.scenes) >= 2 else None
+        speech = [AudioTimingEvent(id=f"w{i}-{j}", type="word", time_ms=int((sc.start + float(c["t"])) * 1000), duration_ms=280)
+                  for i, sc in enumerate(plan.scenes) for j, c in enumerate(sc.cues or [])]
+        cues = sound_design.plan(md.sfx_moments(starts, timing, accent_s), level, md.sfx_library(directory / "sfx"), beats_ms=timing.get("beats_ms") or None, speech=speech,
+                                 total_ms=int(plan.duration * 1000))
+        track = md.render_sfx(cues, plan.duration, directory / "sfx_track.wav")
+        (directory / "sfx_cues.json").write_text(json.dumps(cues, ensure_ascii=False))
+        if not track or not any(c["status"] == "ready" for c in cues):
+            return audio, []
+        placed = [c for c in cues if c["status"] == "ready"]
+        return [*audio, {"path": str(track), "start": 0, "duration": plan.duration, "role": "sfx"}], [f"{len(placed)} افکت صوتی هم‌زمان با برش‌ها و لحظهٔ اوج (سطح {level})"]
+    except _Cancelled:
+        raise
+    except Exception as exc:
+        log.warning("sound effects skipped: %s", str(exc)[:200])
+        return audio, []
 
 
 def _image_input_questions(plan, record: dict) -> list[str]:
@@ -1213,8 +1386,10 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
     plan, audio, voice_notes = _narrate(directory, record, plan, plan_fp)
     plan, audio, rhythm_notes = _sync_rhythm(directory, record, plan, audio)
     audio, music_notes = _add_music(directory, record, plan, audio)
+    audio, sfx_notes = _add_sfx(directory, record, plan, audio)
+    plan = _attach_beats(directory, record, plan)
     audio, master_notes = _master_audio(directory, record, plan, audio)
-    voice_notes = [*record.get("directive_notes", []), *voice_notes, *rhythm_notes, *music_notes, *master_notes]
+    voice_notes = [*record.get("directive_notes", []), *voice_notes, *rhythm_notes, *music_notes, *sfx_notes, *master_notes]
     count = len(plan.scenes)
     import hashlib
     draft_inputs = [(sc.start, sc.end, sc.narration, sc.native_component.model_dump() if sc.native_component else None) for sc in plan.scenes]
@@ -1228,6 +1403,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         sc = plan.scenes[n - 1]
         own = [round(sc.end - sc.start, 2), sc.narration, sc.native_component.model_dump() if sc.native_component else None,
                sc.shotcraft_component.model_dump() if sc.shotcraft_component else None]
+        if sc.beats or sc.accent is not None:
+            own.append([[round(b * 20) / 20 for b in sc.beats], None if sc.accent is None else round(sc.accent * 20) / 20])       # a new beat grid redesigns the motion of that scene
         return plan_fp + "s" + hashlib.sha256(json.dumps(own, ensure_ascii=False).encode()).hexdigest()[:8]
     scenes_dir = directory / "scenes"
     scenes_dir.mkdir(exist_ok=True)
@@ -1666,12 +1843,70 @@ def answer(directory: Path, text: str) -> None:
     start(directory, change=change)
 
 
-def revise(directory: Path, change: str) -> None:
+def use_attached_music(directory: Path, track: dict) -> None:
+    """The person attached an audio file to a follow-up message: it becomes the film's music (synced to the beat), and only the audio is rebuilt."""
     with _lock(directory.name):
         record = load(directory)
+        previous = dict(record.get("music") or {})
+        record["music"] = {"mode": "attached", "words": previous.get("words", ""), "path": track["path"], "name": track.get("filename", ""), "cost": previous.get("cost", "balanced"),
+                           "instrumental": previous.get("instrumental", True), "variant": 0, "sync": True}
+        if (record.get("rhythm") or "speech_first") == "speech_first":
+            record["rhythm"] = "balanced"
+        (directory / "music_choice.json").unlink(missing_ok=True)
+        save(directory, record)
+
+
+def apply_music_edits(directory: Path, record: dict, edits: dict) -> list[str]:
+    """What a sentence about the music changes in the record (the same fields the Edit tab sets). Returns the changes in words."""
+    music = dict(record.get("music") or {})
+    said: list[str] = []
+    if edits.get("off"):
+        record["music"] = None
+        return ["موسیقی خاموش شد"]
+    if not music.get("mode"):
+        music = {"mode": "auto", "words": "", "cost": "balanced", "instrumental": True, "variant": 0, "sync": True}
+        said.append("موسیقی خودکار روشن شد")
+    if edits.get("regenerate"):
+        try:
+            previous = json.loads((directory / "music_choice.json").read_text()).get("path")
+        except (OSError, ValueError):
+            previous = None
+        music["used"] = [*music.get("used", []), *([previous] if previous else [])][-12:]
+        music["variant"] = int(music.get("variant") or 0) + 1
+        said.append("ترک دیگری انتخاب می‌شود")
+    if "energy_delta" in edits:
+        base = music.get("energy") if music.get("energy") is not None else (record.get("audio_plan") or {}).get("music_energy", 0.5)
+        music["energy"] = round(max(0.0, min(1.0, float(base) + edits["energy_delta"])), 2)
+        music["style"] = ""
+        music["used"] = [*music.get("used", []), *( [json.loads((directory / "music_choice.json").read_text()).get("path")] if (directory / "music_choice.json").is_file() else [])][-12:]
+        said.append(f"انرژی موسیقی {music['energy']:.2f}")
+    if "sync" in edits:
+        music["sync"] = bool(edits["sync"])
+        said.append("همگام‌سازی با بیت " + ("روشن" if edits["sync"] else "خاموش"))
+        if edits["sync"] and music.get("mode") in {"auto", "search", "generate"} and (record.get("rhythm") or "speech_first") == "speech_first":
+            record["rhythm"] = "balanced"
+    if "level_delta" in edits:
+        base = record.get("music_gain_db") if record.get("music_gain_db") is not None else -10.0
+        record["music_gain_db"] = round(max(-40.0, min(0.0, float(base) + edits["level_delta"])), 1)
+        said.append(f"سطح موسیقی {record['music_gain_db']:g} dB")
+    record["music"] = music
+    return said
+
+
+def revise(directory: Path, change: str) -> None:
+    from creative.audio import music_director
+    change = change.strip()[:3000]
+    edits = music_director.edits_from_text(change)
+    with _lock(directory.name):
+        record = load(directory)
+        if edits:
+            apply_music_edits(directory, record, edits)
         record.update(status="queued", stage="queued", progress=0, error=None)
         save(directory, record)
-    start(directory, change=change.strip()[:3000])
+    if edits and music_director.is_music_only(change):
+        start(directory)                       # nothing but the music changed: the plan and the designed scenes are kept, only the audio is rebuilt
+        return
+    start(directory, change=change)
 
 
 def edit(directory: Path, changes: dict) -> dict:

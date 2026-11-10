@@ -57,6 +57,26 @@ class AudioDirection(Args):
     brief: str = Field(min_length=3, max_length=6000, description="The request or script; Narrator/Voice style/Music/Rhythm/Loudness lines in it are respected.")
 
 
+class FindMusic(Args):
+    query: str = Field(default="", max_length=300, description="Mood, genre, instruments or the film's feeling, in any language.")
+    energy: float | None = Field(default=None, ge=0, le=1, description="0 calm … 1 driving.")
+    instrumental: bool = True
+    min_seconds: float | None = Field(default=None, ge=5, le=600)
+    max_seconds: float | None = Field(default=None, ge=5, le=600)
+    limit: int = Field(default=8, ge=1, le=20)
+
+
+class GenerateMusic(Args):
+    prompt: str = Field(min_length=3, max_length=2000, description="What the music should be: style, mood, tempo, instruments (English works best). It becomes an audio attachment of this chat.")
+    seconds: float = Field(default=30, ge=3, le=190)
+    instrumental: bool = True
+    provider: Literal["elevenlabs", "stability"] | None = Field(default=None, description="Leave empty: ElevenLabs first, Stable Audio when it cannot.")
+
+
+class AnalyzeMusic(Args):
+    attachment_id: str = Field(description="An audio attachment of this chat.")
+
+
 class MotionRevision(Args):
     change: str = Field(min_length=3, max_length=3000, description="What to change in the motion graphic that already exists in this chat: narration, voice, text, timing or look.")
 
@@ -84,14 +104,20 @@ SCHEMAS["search_creative_resources"] = studio_tools.ResourceSearchInput
 SCHEMAS["instagram_content_check"] = studio_tools.InstagramContentCheckInput
 SCHEMAS["audio_check"] = AudioCheck
 SCHEMAS["plan_audio_direction"] = AudioDirection
+SCHEMAS["find_music"] = FindMusic
+SCHEMAS["generate_music"] = GenerateMusic
+SCHEMAS["analyze_music"] = AnalyzeMusic
 SCHEMAS["discover_connected_app_tools"] = DiscoverInput
 SCHEMAS["read_connected_app"] = ReadInput
 READ_ONLY = {"inspect_media", "inspect_url", "check_render_status", "inspect_project", "search_creative_resources"}
 READ_ONLY.add("instagram_content_check")
-READ_ONLY.update({"audio_check", "plan_audio_direction"})
+READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music"})
 EXTRA_DESCRIPTIONS = {
     "discover_clips": "For a LONG attached video (a podcast, class, interview, meeting): transcribe all speech locally, understand the whole video and find every standalone piece worth publishing as a reel or post; each result opens as a card in this chat. Use it when the person wants many clips from one long video, never for editing one reel. It runs in the background for minutes.",
     "audio_check": "Measure an attached audio or video file's sound, deterministically with ffmpeg: duration, peak and clipping, silence share, integrated loudness (LUFS), true peak and loudness range, judged against a delivery preset. It does not judge naturalness or pronunciation and costs nothing.",
+    "find_music": "Find music for a video without making anything: ranks the studio library and music made before, and searches the authorised catalogues that are configured (Jamendo, Epidemic Sound). Every result shows its source, licence, whether it may be used in a published video and a preview where one is allowed. Providers without credentials are listed as skipped, never hidden.",
+    "generate_music": "Make NEW instrumental music with an AI generator (ElevenLabs Eleven Music, then Stable Audio): 3 to 190 seconds from a text description. It costs generation credits (a daily cap applies) and needs approval; the track becomes an audio attachment of this chat that a video can use. Identical requests are served from the cache at no cost.",
+    "analyze_music": "Measure the rhythm of an attached audio track from the audio itself: tempo, beat positions, bars, drops, build-ups, quiet passages and sections, with confidence values. Free and read-only.",
     "plan_audio_direction": "Draft the audio direction for a video from its brief: language, intent, voice emotion and pace, music mood and energy, rhythm mode, sound-design level and loudness preset. A suggestion made by rules; nothing is generated and nothing is spent.",
 }
 READ_ONLY.update({"discover_connected_app_tools", "read_connected_app"})
@@ -138,6 +164,41 @@ def validate(record, step):
     return args
 
 
+def _slim(track: dict) -> dict:
+    keys = ("id", "provider", "source", "title", "filename", "artist", "duration_s", "duration_sec", "bpm", "tags", "instrumental", "score", "reasons", "license", "rights", "preview_url", "page_url", "speed")
+    return {k: track[k] for k in keys if k in track and track[k] not in (None, [], "")}
+
+
+def _find_music(args) -> dict:
+    from creative.audio import music_director as md, music_providers as mp
+    style = md.pick_style(args.query, args.energy)
+    request = md.MusicRequest(brief=args.query, words=args.query, duration_s=args.max_seconds or 60.0, energy=args.energy, instrumental=args.instrumental)
+    pool = md.generated_before() + md.library_tracks()
+    ranked = md._rank(request, style, pool, []) if pool else []
+    external = mp.search(args.query, instrumental=args.instrumental or None, energy=args.energy, min_s=args.min_seconds, max_s=args.max_seconds, limit=args.limit)
+    return {"style": style, "library": [_slim(t) for t in ranked[:args.limit]], "external": [_slim(t) for t in external["tracks"]], "skipped": external["skipped"], "providers": mp.providers_status(),
+            "note": "Only tracks whose rights.ok is true may be rendered into a published video."}
+
+
+def _generate_music(record, args) -> dict:
+    import shutil
+    from app.studio_flags import conversation_dir
+    from creative.audio import music_providers as mp
+    cid, user = record["conversation_id"], record["user_key"]
+    track = mp.generate(args.prompt, args.seconds, provider=args.provider, instrumental=args.instrumental, user=str(user))
+    mp.ensure_rights(track)
+    folder = conversation_dir(user, cid) / "attachments"
+    folder.mkdir(parents=True, exist_ok=True)
+    source = Path(track["path"])
+    target = folder / f"music-{track['id'].split(':', 1)[1]}{source.suffix}"
+    if not target.is_file():
+        shutil.copy2(source, target)
+    item = run(repo.create_attachment(cid, user, kind="audio", filename=target.name, path=str(target), mime_type="audio/wav" if target.suffix == ".wav" else "audio/mpeg",
+                                      size_bytes=target.stat().st_size, metadata={"source": "generated", "provider": track["provider"], "prompt": track["prompt"], "license": track["license"], "cost": track.get("cost")}))
+    return {"attachment_id": item["id"], "title": track["title"], "provider": track["provider"], "seconds": track.get("duration_s"), "cache_hit": track["cache_hit"], "cost": track.get("cost"),
+            "rights": track["rights"], "next": "The track is an audio attachment of this chat: ask for the video with 'Music: attached' to use it."}
+
+
 def execute(record, step):
     from app import studio_orchestrator as shared
     name = step["tool"]; args = validate(record, step)
@@ -146,6 +207,18 @@ def execute(record, step):
     cid, user = record["conversation_id"], record["user_key"]
     if name == "instagram_content_check":
         return studio_tools.execute(name, args.model_dump())
+    if name == "find_music":
+        return _find_music(args)
+    if name == "analyze_music":
+        from creative.audio import music_director as md
+        asset = run(repo.get_attachments([args.attachment_id], record["conversation_id"], record["user_key"]))[0]
+        if asset["kind"] != "audio": raise ValueError("An audio attachment is required")
+        found = md.analysis_for(Path(asset["path"]))
+        if not found: raise ValueError("The audio could not be analysed (too short, silent or unreadable)")
+        keep = ("duration_ms", "bpm", "bpm_confidence", "beat_confidence", "bars_reliable", "drops_ms", "buildups_ms", "quiet_ms", "sections")
+        return {**{k: found[k] for k in keep if k in found}, "beats": len(found.get("beats_ms", [])), "first_beats_ms": found.get("beats_ms", [])[:16], "strong_beats": len(found.get("strong_beats_ms", []))}
+    if name == "generate_music":
+        return _generate_music(record, args)
     if name == "plan_audio_direction":
         from creative import directives
         from creative.audio import direction

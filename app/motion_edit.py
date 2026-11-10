@@ -19,7 +19,9 @@ from typing import Any
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 COLOURS = {"bg": "Background", "surface": "Panels", "ink": "Text", "accent": "Accent", "accent2": "Second accent"}
 RHYTHMS = {"speech_first": "Speech first", "balanced": "Balanced", "music_first": "Music first", "cinematic": "Cinematic"}
-MUSIC_MODES = {"off": "No music", "library": "From the library"}
+MUSIC_MODES = {"off": "No music", "auto": "Auto Music (the studio finds or makes it)", "library": "From the studio library", "search": "Find licensed music (Jamendo, Epidemic Sound)",
+               "generate": "Generate new music with AI"}
+SFX_LEVELS = {"": "Default for this film", "none": "No sound effects", "minimal": "Minimal (the reveal)", "balanced": "Balanced (cuts and the reveal)", "dynamic": "Dynamic", "cinematic": "Cinematic"}
 
 
 class EditError(ValueError):
@@ -72,18 +74,34 @@ def editable(directory: Path, record: dict) -> dict:
                "\n".join(f"{a} = {b}" for a, b in (record.get("pronunciations") or {}).items()), "audio", maxlength=2000),
     ]
     music = record.get("music") or {}
+    from creative.audio import music_director as md
+    try:
+        chosen = json.loads((directory / "music_choice.json").read_text())
+    except (OSError, ValueError):
+        chosen = {}
+    mode = music.get("mode") or "off"
+    now = (f"Now: {chosen['label']} ({chosen.get('source', '')})" + (f" · {chosen['attribution']}" if chosen.get("attribution") else "")) if chosen.get("label") else ""
     fields += [
-        _field("music.mode", "audio", "Background music", "select", "off" if music.get("mode") in (None, "off") else "library" if music.get("mode") == "library" else "attached", "audio",
-               options=[{"value": key, "label": label} for key, label in MUSIC_MODES.items()] + ([{"value": "attached", "label": "Your attached track"}] if music.get("mode") == "attached" else [])),
-        _field("music.words", "audio", "Music mood (words searched in the library)", "text", music.get("words", ""), "audio", maxlength=120),
-        _field("music.level_db", "audio", "Music level when nobody speaks (dB)", "number", record.get("music_gain_db") if record.get("music_gain_db") is not None else -10.0, "audio", min=-40, max=0, step=1),
-        _field("music.ducking_db", "audio", "How far music drops under the voice (dB, 0 = off)", "number", record.get("ducking_db") if record.get("ducking_db") is not None else 12.0, "audio", min=0, max=30, step=1),
-        _field("mix.loudness", "audio", "Delivery loudness", "select", record.get("loudness") or "social_video", "audio",
+        _field("music.mode", "music", "Music", "select", mode, "audio", help=now or "Auto Music looks in the library, then licensed catalogues, then generates new music. To use your own track, attach an audio file in the chat.",
+               options=[{"value": key, "label": label} for key, label in MUSIC_MODES.items()] + ([{"value": "attached", "label": "Your attached track"}] if mode == "attached" else [])),
+        _field("music.words", "music", "Mood, genre or instruments (any language)", "text", music.get("words", ""), "audio", maxlength=160),
+        _field("music.sync", "music", "Sync to the beat", "select", "on" if music.get("sync") else "off", "audio", options=[{"value": "on", "label": "On: the track's drop lands on the reveal and its beat meets the cuts"}, {"value": "off", "label": "Off"}],
+               help="With sync on, the motion of each scene is redesigned when the track (and so its beat) changes."),
+        _field("music.level_db", "music", "Music level when nobody speaks (dB)", "number", record.get("music_gain_db") if record.get("music_gain_db") is not None else -10.0, "audio", min=-40, max=0, step=1),
+        _field("music.regenerate", "music", "Another track", "select", "", "audio", options=[{"value": "", "label": "Keep this one"}, {"value": "new", "label": "Choose or make a different one"}]),
+        _field("music.style", "music_advanced", "Style", "select", music.get("style") or "auto", "audio", options=[{"value": "auto", "label": "Chosen from the brief"}] + [{"value": key, "label": key.title()} for key in md.STYLES]),
+        _field("music.energy", "music_advanced", "Energy (0 calm … 1 driving)", "number", music.get("energy") if music.get("energy") is not None else (record.get("audio_plan") or {}).get("music_energy", 0.5), "audio", min=0, max=1, step=0.05),
+        _field("music.instrumental", "music_advanced", "Vocals", "select", "instrumental" if music.get("instrumental", True) else "vocals", "audio", options=[{"value": "instrumental", "label": "Instrumental"}, {"value": "vocals", "label": "Vocals allowed"}]),
+        _field("music.cost", "music_advanced", "Cost preference", "select", music.get("cost") or "balanced", "audio",
+               options=[{"value": "free", "label": "Free only (library and free catalogues)"}, {"value": "balanced", "label": "Balanced (reuse first, generate when nothing fits)"}, {"value": "premium", "label": "Fresh music (prefer generating)"}]),
+        _field("music.ducking_db", "music_advanced", "How far music drops under the voice (dB, 0 = off)", "number", record.get("ducking_db") if record.get("ducking_db") is not None else 12.0, "audio", min=0, max=30, step=1),
+        _field("sfx.level", "music_advanced", "Sound effects", "select", record.get("sfx") or "", "audio", options=[{"value": key, "label": label} for key, label in SFX_LEVELS.items()]),
+        _field("mix.rhythm", "music_advanced", "Scene timing follows", "select", record.get("rhythm") or "speech_first", "audio", options=[{"value": key, "label": label} for key, label in RHYTHMS.items()]),
+        _field("mix.loudness", "music_advanced", "Delivery loudness", "select", record.get("loudness") or "social_video", "audio",
                options=[{"value": key, "label": f"{key.replace('_', ' ')} · {lufs:g} LUFS"} for key, (lufs, _tp, _lra) in loudness.PRESETS.items()] + [{"value": "off", "label": "No loudness processing"}]),
-        _field("mix.rhythm", "audio", "Scene timing follows", "select", record.get("rhythm") or "speech_first", "audio", options=[{"value": key, "label": label} for key, label in RHYTHMS.items()]),
     ]
-    titles = {"scenes": "Scenes", "colours": "Colours", "fonts": "Fonts", "voice": "Voice", "audio": "Music & sound"}
-    return {"groups": [{"id": gid, "title": titles[gid], "fields": [f for f in fields if f["group"] == gid]} for gid in ("scenes", "colours", "fonts", "voice", "audio")],
+    titles = {"scenes": "Scenes", "colours": "Colours", "fonts": "Fonts", "voice": "Voice", "music": "Music", "music_advanced": "Music · advanced"}
+    return {"groups": [{"id": gid, "title": titles[gid], "fields": [f for f in fields if f["group"] == gid]} for gid in ("scenes", "colours", "fonts", "voice", "music", "music_advanced")],
             "busy": record.get("status") in ("queued", "writing", "checking", "rendering"), "version": record.get("current")}
 
 
@@ -113,7 +131,7 @@ def _clean(field: dict, value: Any) -> Any:
             raise EditError(f"{field['label']}: a number")
         if not field["min"] <= number <= field["max"]:
             raise EditError(f"{field['label']}: between {field['min']} and {field['max']}")
-        return round(number, 1)
+        return round(number, 2 if field.get("step", 1) < 0.1 else 1)
     raise EditError("unknown field type")
 
 
@@ -224,13 +242,34 @@ def apply(directory: Path, record: dict, changes: dict[str, Any]) -> dict:
         record["pronunciations"] = parse_dictionary([l for l in clean["voice.pronunciations"].splitlines()])
     music = dict(record.get("music") or {})
     if "music.mode" in clean:
-        music["mode"] = None if clean["music.mode"] == "off" else clean["music.mode"]
-        if music["mode"] is None:
+        mode = clean["music.mode"]
+        if mode == "off":
             music = {}
+        else:
+            music["mode"] = mode
+            music.setdefault("cost", "balanced"); music.setdefault("instrumental", True); music.setdefault("variant", 0)
+            music["sync"] = music.get("sync", mode in {"auto", "search", "generate"}) if "music.sync" not in clean else music.get("sync")
     if "music.words" in clean and clean.get("music.mode") != "off":
         music["words"] = clean["music.words"]
-        music.setdefault("mode", "library")
+        if not music.get("mode"):
+            music.update(mode="auto", cost="balanced", instrumental=True, variant=0, sync=True)
+    if music.get("mode"):
+        if "music.style" in clean: music["style"] = "" if clean["music.style"] == "auto" else clean["music.style"]
+        if "music.energy" in clean: music["energy"] = float(clean["music.energy"])
+        if "music.instrumental" in clean: music["instrumental"] = clean["music.instrumental"] == "instrumental"
+        if "music.cost" in clean: music["cost"] = clean["music.cost"]
+        if "music.sync" in clean: music["sync"] = clean["music.sync"] == "on"
+        if clean.get("music.regenerate") == "new":
+            try:
+                previous = json.loads((directory / "music_choice.json").read_text()).get("path")
+            except (OSError, ValueError):
+                previous = None
+            music["used"] = [*music.get("used", []), *([previous] if previous else [])][-12:]
+            music["variant"] = int(music.get("variant") or 0) + 1
     record["music"] = music or None
+    if "sfx.level" in clean: record["sfx"] = clean["sfx.level"]
+    if "music.sync" in clean and music.get("sync") and music.get("mode") in {"auto", "search", "generate"} and (record.get("rhythm") or "speech_first") == "speech_first":
+        record["rhythm"] = "balanced"
     if "music.level_db" in clean: record["music_gain_db"] = clean["music.level_db"]
     if "music.ducking_db" in clean: record["ducking_db"] = clean["music.ducking_db"]
     if "mix.loudness" in clean: record["loudness"] = clean["mix.loudness"]

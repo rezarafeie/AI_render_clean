@@ -538,7 +538,20 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         if music:
             try:
                 from .music_bed import make_bed
-                bed = make_bed(Path(music), work / "bed.m4a", total, audio)
+                source = Path(music)
+                try:                                              # the track's drop on the reveal, else its beat on the cuts (a slide of the track: nothing is stretched, no word moves)
+                    from .audio import music_director as md, music_fit
+                    analysis = md.analysis_for(source)
+                    if analysis and float(analysis.get("beat_confidence") or 0) >= 0.3:
+                        starts = [sc.start for sc in plan.scenes]
+                        fit = music_fit.plan(analysis, total, starts[-1] if len(starts) > 1 else None)
+                        if fit["anchor"] is None:
+                            fit = music_fit.phase_offset(analysis, starts, total)
+                        if fit["offset_s"] > 0.001 or fit["loop"]:
+                            source = music_fit.render(source, work / "music_fitted.wav", total, fit, analysis)
+                except Exception as exc:
+                    log.info("reel music kept as it is (rhythm fit skipped): %s", str(exc)[:160])
+                bed = make_bed(source, work / "bed.m4a", total, audio)
                 audio.append({"path": str(bed), "start": 0, "duration": round(total, 3), "role": "music"})
             except Exception as exc:
                 log.warning("reel music bed failed (%s); the reel is made without music", str(exc)[:200])

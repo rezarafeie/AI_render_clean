@@ -22,14 +22,36 @@ _STYLE_WORDS = {"natural": "", "neutral": "", "طبیعی": "", "calm": "calm", 
                 "reflective": "reflective", "thoughtful": "reflective", "emotional": "reflective", "تأمل‌برانگیز": "reflective"}
 _OFF = {"off", "none", "no", "without", "بدون", "نه", "خاموش"}
 _ATTACHED = {"attached", "attachment", "my track", "my file", "file", "پیوست", "فایل"}
+_MODES = {"auto": {"auto", "automatic", "خودکار", "اتوماتیک"}, "generate": {"generate", "generated", "create", "compose", "ai", "new", "تولید", "بساز", "بسازید", "ساخت", "تازه"},
+          "search": {"search", "find", "catalog", "catalogue", "جستجو", "پیدا", "بگرد"}, "library": {"library", "کتابخانه"}}
+
+
+def _music_value(value: str) -> tuple[str, str, dict]:
+    """`Music: auto` / `generate, energetic synth` / `search calm piano` / `library, cinematic`: the mode, the person's own words and the options said in them."""
+    text = value.strip()
+    first = re.split(r"[\s,:;\-–—]+", text, maxsplit=1)[0].lower() if text else ""
+    mode = next((name for name, words in _MODES.items() if first in words), None)
+    words = re.sub(r"^[\s,:;\-–—]+", "", text[len(first):]) if mode else text
+    lowered = text.lower()
+    options: dict = {}
+    if re.search(r"\b(free|cheap)\b|رایگان", lowered): options["cost"] = "free"
+    elif re.search(r"\b(premium|best quality|fresh)\b|بهترین کیفیت", lowered): options["cost"] = "premium"
+    if re.search(r"\b(with vocals?|vocals? allowed|sung|lyrics)\b|با\s*آواز|خوانده", lowered): options["instrumental"] = False
+    elif re.search(r"\b(instrumental|no vocals?|no lyrics)\b|بی\s*کلام|بدون\s*کلام", lowered): options["instrumental"] = True
+    if re.search(r"\bno[\s-]?sync\b|without sync|بدون\s*(?:سینک|همگام)", lowered): options["sync"] = False
+    elif re.search(r"\b(beat[\s-]?sync|sync(?:ed)? to (?:the )?beat|on the beat)\b|روی\s*بیت|همگام", lowered): options["sync"] = True
+    return mode or "library", words, options
 
 
 @dataclass
 class Directives:
     narrator: str | None = None        # ElevenLabs voice id; "" means the studio default; None means not stated
     style: str | None = None           # key of brain.localize.VOICE_STYLES
-    music: str | None = None           # None = not stated, "off", "attached" or "library"
+    music: str | None = None           # None = not stated, "off", "attached", "library", "auto", "search" or "generate"
     music_words: str = ""
+    music_cost: str | None = None                              # free | balanced | premium
+    music_instrumental: bool | None = None
+    music_sync: bool | None = None                             # cut and move to the beat of the music
     loudness: str | None = None                                # a preset of creative.audio.loudness.PRESETS, or "off"
     rhythm: str | None = None                                  # speech_first | music_first | balanced | cinematic
     music_gain_db: float | None = None                         # level of the music bed when nobody speaks (-40..0)
@@ -119,7 +141,8 @@ def parse(text: str) -> tuple[str, Directives]:
             elif lowered in _ATTACHED:
                 found.music = "attached"
             else:
-                found.music = "library"
-                found.music_words = re.sub(r"^(from\s+)?library\s*[,:\-–—]*\s*", "", value.strip(), flags=re.I)
+                found.music, words, options = _music_value(re.sub(r"^from\s+", "", value.strip(), flags=re.I))
+                found.music_words = re.sub(r"^(from\s+)?library\s*[,:\-–—]*\s*", "", words, flags=re.I)
+                found.music_cost, found.music_instrumental, found.music_sync = options.get("cost"), options.get("instrumental"), options.get("sync")
     clean = _LINE.sub("", text or "")
     return re.sub(r"\n{3,}", "\n\n", clean).strip(), found
