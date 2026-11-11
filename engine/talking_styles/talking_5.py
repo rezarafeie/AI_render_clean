@@ -576,40 +576,75 @@ def render_hook(plan: ReelPlan, work_dir: Path, pack: StylePack) -> Optional[Pat
     return out
 
 
+def panel_mode() -> str:
+    """TALKING5_PANELS: "library" (default: the curated panel library first, the Motion Designer only for a beat nothing in it fits) | "authored" (the old behaviour:
+    the Motion Designer writes every panel) | "mixed" (library for lists/numbers/comparisons, the designer for headlines and concepts)."""
+    import os
+    value = os.environ.get("TALKING5_PANELS", "library").strip().lower()
+    return value if value in {"library", "authored", "mixed"} else "library"
+
+
 def author_panels(plan: ReelPlan, work_dir: Path) -> int:
-    """The Motion Designer writes one scene per panel (creative/motion.py, cached next to the job). Returns how many were authored."""
+    """Fills every panel: first from the curated panel library (creative/panel_library.py: finished, Persian-checked HyperFrames components, never the same one twice in a reel),
+    and only where nothing in it fits, by the Motion Designer (creative/motion.py, cached next to the job). Returns how many panels are ready; `plan.script["panels_info"]`
+    says, per panel, where it came from. A panel nobody could fill is dropped (the speaker keeps the whole frame)."""
     from creative import motion as creative_motion
+    from creative import panel_library
     from engine.hyperframes.schema import VisualBeat
-    if not creative_motion.enabled():
-        return 0
     segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
-    beats = []
-    for n, seg in enumerate(segs):
-        b = seg["beat"]
+    if not segs:
+        return 0
+    mode = panel_mode()
+    # The same walk as overlay_reel.build_project (panel index, components used so far), so the page makes exactly the pick made here.
+    used: set[str] = set()
+    from_library: dict[int, str] = {}
+    if mode != "authored":
+        for n, seg in enumerate(segs):
+            if mode == "mixed" and panel_library.role_of(seg["beat"]) in {"headline", "concept"}:
+                continue
+            pick = panel_library.choose(seg["beat"], used, seed=str(n))
+            if pick:
+                used.add(pick[0])
+                from_library[n] = pick[0]
+    to_author = [n for n in range(len(segs)) if n not in from_library]
+    beats: dict[int, VisualBeat] = {}
+    for n in to_author:
+        b = segs[n]["beat"]
         sentence = int(b.get("sentence") if b.get("sentence") is not None else 0)
         bid = f"beat-{sentence}-{n}"
         b["bid"] = bid
         spoken = b.get("spoken") or (plan.sentences[sentence]["text"] if 0 <= sentence < len(plan.sentences) else "")
-        beats.append(VisualBeat(id=bid, start=float(seg["start"]), end=float(seg["end"]), title=(str(b.get("title") or "") or "…")[:80],
-                                items=[str(i)[:35] for i in (b.get("items") or [])][:4], layout="top_panel",
-                                narrative_role=str(b.get("role") or "evidence"), why=str(b.get("visual") or ""), spoken=spoken))
-    if not beats:
-        return 0
-    creative_motion.PANEL_MAX_Y = CARD_Y - EXTRA - 20          # below this the speaker's head rises into the panel
-    for attempt in range(3):                              # a provider hiccup must not cost a scene: compose reuses what is cached and retries the rest
-        creative_motion.compose(beats, creative_motion.plan_from_public(plan.creative_plan), plan.sentences, cache=work_dir / "authored_scenes_v2.json")
-        if all(b.custom for b in beats):
-            break
-    done = 0
-    for seg, beat in zip(segs, beats):
-        if beat.custom:
-            seg["beat"]["custom"] = beat.custom
+        beats[n] = VisualBeat(id=bid, start=float(segs[n]["start"]), end=float(segs[n]["end"]), title=(str(b.get("title") or "") or "…")[:80],
+                              items=[str(i)[:35] for i in (b.get("items") or [])][:4], layout="top_panel",
+                              narrative_role=str(b.get("role") or "evidence"), why=str(b.get("visual") or ""), spoken=spoken)
+    attempted = bool(beats) and creative_motion.enabled() and getattr(plan, "creative_plan", None) is not None
+    if attempted:
+        creative_motion.PANEL_MAX_Y = CARD_Y - EXTRA - 20          # below this the speaker's head rises into the panel
+        ordered = [beats[n] for n in to_author]
+        for attempt in range(3):                              # a provider hiccup must not cost a scene: compose reuses what is cached and retries the rest
+            creative_motion.compose(ordered, creative_motion.plan_from_public(plan.creative_plan), plan.sentences, cache=work_dir / "authored_scenes_v2.json")
+            if all(b.custom for b in ordered):
+                break
+    info, done = [], 0
+    for n, seg in enumerate(segs):
+        title = str((seg["beat"] or {}).get("title") or "")
+        if n in from_library:
+            info.append({"n": n + 1, "title": title, "source": "library", "component": from_library[n]})
+            done += 1
+        elif n in beats and beats[n].custom:
+            seg["beat"]["custom"] = beats[n].custom
+            info.append({"n": n + 1, "title": title, "source": "authored"})
+            done += 1
+        elif not attempted:                              # no designer available (no creative plan): the page's own audited template fills the panel, as before
+            info.append({"n": n + 1, "title": title, "source": "template"})
             done += 1
         else:                                            # never show a weak or empty panel: the speaker keeps the whole frame
+            info.append({"n": n + 1, "title": title, "source": "dropped"})
             seg["layout"], seg["beat"] = "full", None
             for shot in plan.shots:
                 if seg["start"] - 1e-3 <= shot.out_start < seg["end"] - 1e-3:
                     shot.split = False
+    plan.script["panels_info"] = info
     return done
 
 
@@ -665,15 +700,20 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
     pack = kwargs.get("pack") or plan.pack
     note = kwargs.get("note") or (lambda *a, **k: None)         # the chat's step log (app/talking_reel.note); never required
     total_panels = sum(1 for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat"))
-    if getattr(plan, "creative_plan", None) is not None and total_panels:
-        note("دارم برای هر پنل یک صحنهٔ موشن طراحی می‌کنم", stage="designing panels")
-    authored = author_panels(plan, work_dir) if getattr(plan, "creative_plan", None) is not None else 0
+    if total_panels:
+        note("دارم برای هر پنل از کتابخانهٔ المان‌های آمادهٔ موشن انتخاب می‌کنم و فقط جایی که چیزی نمی‌خورد، طراح موشن صحنه می‌نویسد", stage="designing panels")
+    authored = author_panels(plan, work_dir)
     if authored:
         bg = next((s["beat"]["custom"].get("bg") for s in plan.script["segments"] if s.get("beat") and s["beat"].get("custom")), None)
         if bg:                                          # the speaker card's rounded corners show this colour: it must be the panel's
             pack = pack.model_copy(update={"palette": pack.palette.model_copy(update={"panel_bg": bg})})
-        titles = [str((s.get("beat") or {}).get("title") or "") for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
-        note(f"{authored} پنل موشن طراحی شد" + (f" از {total_panels}" if total_panels != authored else ""), stage="designing panels", done=True, detail="\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1) if t))
+        info = plan.script.get("panels_info") or []
+        lib = sum(1 for r in info if r["source"] == "library")
+        made = sum(1 for r in info if r["source"] == "authored")
+        label = {"library": "کتابخانهٔ المان‌ها", "authored": "طراح موشن", "template": "قالب پایهٔ سبک", "dropped": "ساخته نشد"}
+        note(f"{authored} پنل آماده شد" + (f" از {total_panels}" if total_panels != authored else "") + f" · {lib} از کتابخانهٔ المان‌ها، {made} با طراح موشن",
+             stage="designing panels", done=True,
+             detail="\n".join(f"{r['n']}. {r['title']} — {label[r['source']]}" + (f" ({r['component']})" if r.get("component") else "") for r in info))
         frames = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames")
         if frames:
             note(f"فریم {len(frames)} پنل آماده شد؛ پیش از رندر می‌توانید طراحی‌ها را ببینید", stage="panel previews", done=True, frames=frames)
