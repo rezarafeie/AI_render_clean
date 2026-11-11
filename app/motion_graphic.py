@@ -1404,7 +1404,13 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
             return None
         _learn("plan_s", time.monotonic() - started)
         plan = _scout_library(directory, plan, brief, used)
-        saved_plan.write_text(json.dumps({"fp": plan_fp, "plan": plan.model_dump()}, ensure_ascii=False))
+        saved = {"fp": plan_fp, "plan": plan.model_dump()}
+        from creative import plan_checks
+        if plan_checks.enabled():                      # advisory only: scored from the plan itself, never blocks, no model call
+            quality = plan_checks.score_plan(plan)
+            saved["quality"] = quality
+            _note(directory, "plan_quality", f"امتیاز تنوع طرح: {quality['score']:g} از ۵ ({quality['verdict']})", "done", detail="\n".join(quality["violations"]) or None)
+        saved_plan.write_text(json.dumps(saved, ensure_ascii=False))
         count = len(plan.scenes)
         _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done", detail=_plan_detail(brief, plan))
         outline = "\n".join(f"{i}) {sc.headline} — {sc.idea}" for i, sc in enumerate(plan.scenes, 1))
@@ -1785,6 +1791,13 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         except Exception as exc:
             log.warning("visual gate failed: %s", str(exc)[:200])
             notes.append("بررسی عکس صحنه‌ها اجرا نشد: " + str(exc)[:120])
+    if build is not None:
+        from creative import plan_checks
+        if plan_checks.promise_enabled():
+            broken = plan_checks.promise_broken(build.plan, build.drafts, mg.fallback_scene)
+            if broken:
+                notes.append(f"هشدار: {len(broken['scenes'])} از {len(build.plan.scenes)} صحنه ({'، '.join(map(str, broken['scenes']))}) با طرح ساده‌ی فقط‌متن جایگزین شده‌اند؛ ویدیو با حرکت کمتر از طرح اولیه ساخته می‌شود")
+                _note(directory, "promise", "چند صحنه به طرح ساده تبدیل شدند و حرکت طراحی‌شده را ندارند", "done", detail=f"{round(broken['share'] * 100)}٪ صحنه‌ها")
     output = work / "motion.mp4"
     render_started = time.monotonic()
     estimate = stats["render_per_s"] * page.duration
