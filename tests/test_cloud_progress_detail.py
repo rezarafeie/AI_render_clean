@@ -97,3 +97,50 @@ def test_worker_rejection_carries_its_finding_and_scrubs_it():
     assert '#beat-0-group-0-very-long-label-name-x' in text and 'https://' not in text and '/work/space' not in text
     assert isinstance(WorkerRejected('stopped', text), CloudRenderError)
     assert WorkerRejected('stopped', text).reason == text
+
+
+def _silent_worker(created_ago, startup=420, cancel_after=None):
+    import json
+    import time
+
+    class Ledger:
+        def get(self, job, user):
+            return {'state': 'provisioning', 'created': time.time() - created_ago, 'deadline': time.time() + 4000, 'cancel_requested': 0, 'pod_id': 'pod',
+                    'details': json.dumps({'storage': {'mailbox_key': 'm', 'control_key': 'c', 'output_key': 'o'}})}
+
+        def snapshot(self, *a, **k):
+            pass
+
+        def cancel(self, *a, **k):
+            pass
+
+    class Store:
+        def read_json(self, key):
+            return None                        # the worker never wrote its mailbox
+
+        def write_json(self, *a, **k):
+            pass
+    polls = {'n': 0}
+
+    def cancelled():
+        polls['n'] += 1
+        return cancel_after is not None and polls['n'] > cancel_after
+    spec = SimpleNamespace(job_id='j', user_id='1')
+    return lambda: service.await_result(spec, 'out.mp4', ledger=Ledger(), store=Store(), provider=None, sleep=lambda s: None, startup_seconds=startup, should_cancel=cancelled)
+
+
+def test_a_worker_that_never_reports_is_given_up_on_after_the_startup_window(monkeypatch):
+    monkeypatch.setattr(service, 'reconcile', lambda *a, **k: None)
+    with pytest.raises(service.WorkerStartupTimeout):
+        _silent_worker(created_ago=500, cancel_after=50)()
+
+
+def test_a_worker_still_inside_its_startup_window_is_waited_for(monkeypatch):
+    monkeypatch.setattr(service, 'reconcile', lambda *a, **k: None)
+    with pytest.raises(InterruptedError):                      # only the person's cancel ends the wait
+        _silent_worker(created_ago=60, cancel_after=5)()
+
+
+def test_the_startup_timeout_is_a_cloud_render_error_and_a_setting():
+    from app.render_cloud.settings import CloudSettings
+    assert issubclass(service.WorkerStartupTimeout, service.CloudRenderError) and CloudSettings().startup_seconds == 420

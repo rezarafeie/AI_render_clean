@@ -35,6 +35,8 @@ class CloudSettings(BaseSettings):
     max_workers: int = Field(default=1, ge=1, le=20)
     max_gpu: int = Field(default=0, ge=0, le=10)
     max_wall_seconds: int = Field(default=1800, ge=60, le=21000)
+    # How long a freshly created worker may stay silent (image pull, boot) before its pod is deleted and the render continues on the server.
+    startup_seconds: int = Field(default=420, ge=60, le=3600)
     max_cost: float = Field(default=.5, gt=0, allow_inf_nan=False)
     daily_budget: float = Field(default=5, gt=0, allow_inf_nan=False)
     monthly_budget: float = Field(default=30, gt=0, allow_inf_nan=False)

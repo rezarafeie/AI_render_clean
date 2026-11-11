@@ -29,6 +29,10 @@ class CloudRenderError(RuntimeError):
     """Never reinterpret as a creative/layout error or silently start another render."""
 
 
+class WorkerStartupTimeout(CloudRenderError):
+    """The worker never reported (its pod did not boot or pull its image in time): the pod is deleted, the render may continue on the server."""
+
+
 class WorkerRejected(CloudRenderError):
     """The worker stopped on the project itself (for example a HyperFrames check finding). `reason` is its scrubbed finding, so the caller
     that authored the project can repair it; every other cloud failure stays final."""
@@ -90,7 +94,7 @@ def cloud_detail(state: str, progress=None, rendering_seconds: float = 0.0) -> s
 
 
 def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_stage=None,
-                 should_cancel=None, sleep=time.sleep, on_detail=None):
+                 should_cancel=None, sleep=time.sleep, on_detail=None, startup_seconds=None):
     row = ledger.get(spec.job_id, spec.user_id)
     storage = json.loads(row['details']).get('storage')
     if not storage:
@@ -98,6 +102,7 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
     last_stage = None
     rendering_since = None
     last_detail = None
+    heard = False                      # the worker has reported at least once
 
     def detail(state, progress=None):
         nonlocal last_detail
@@ -133,6 +138,7 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
         else:
             report = store.read_json(storage['mailbox_key'])
             if report is not None:
+                heard = True
                 report = Snapshot.model_validate(report)
                 ledger.snapshot(spec.job_id, spec.user_id, report.token, report.sequence,
                                 report.history, report.observation.model_dump(),timings=report.timings,resources=report.resources)
@@ -151,6 +157,10 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                         raise CloudRenderError('Invalid cloud upload receipt')
                     candidate = {'sha256': report.sha256, 'size': report.size}
         current = ledger.get(spec.job_id, spec.user_id)
+        if (startup_seconds and not heard and current['state'] in {'queued', 'provisioning'} and not candidate
+                and time.time() - float(current['created']) > startup_seconds):
+            log.warning('cloud worker %s silent for %.0f s; its pod is deleted', spec.job_id, time.time() - float(current['created']))
+            raise WorkerStartupTimeout('Cloud worker did not start in time')
         if current['state'] != last_stage:
             if on_stage:
                 on_stage(current['state'])
@@ -322,7 +332,8 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                       bootstrap=lambda token: store.bootstrap(spec, root, token, time.time() + config.max_wall_seconds, ledger,
                                                               local_output=output.resolve()))
             await_result(spec, output, ledger=ledger, store=store, provider=provider,
-                         on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail)
+                         on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail,
+                         startup_seconds=config.startup_seconds)
             return True
         except InterruptedError:
             ledger.cancel(spec.job_id, spec.user_id)
@@ -337,6 +348,14 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                 if on_stage:
                     try:
                         on_stage('cloud budget reached', 'سقف مصرف رندر ابری رسیده است؛ این ویدیو روی سرور رندر می‌شود')
+                    except Exception:
+                        pass
+                return False
+            if isinstance(failure, WorkerStartupTimeout) and config.enable_local_fallback and config.override == 'auto':
+                ledger.finish(spec.job_id, spec.user_id, 'failed', 'worker_startup_timeout')      # the pod is deleted by the reconcile below; nothing else bills
+                if on_stage:
+                    try:
+                        on_stage('cloud unavailable', 'سرور رندر ابری به‌موقع بالا نیامد؛ این ویدیو روی سرور رندر می‌شود')
                     except Exception:
                         pass
                 return False
