@@ -92,3 +92,46 @@ def test_a_component_is_fitted_to_the_panels_length_so_it_does_not_leave_the_pan
     plan.script["segments"][0]["beat"]["force_component"] = "headline-slam"
     overlay_reel.build_project(tmp_path / "page", REFERENCE_AI_NEWS, plan.script, part="panel")
     assert 'data-duration="6.25"' in (tmp_path / "page" / "compositions" / "components" / "headline-slam.html").read_text()
+
+
+def test_a_weak_library_panel_is_swapped_for_another_component_and_kept_only_if_it_scores_higher(offline, monkeypatch, tmp_path):
+    from PIL import Image
+    from creative import design_critic
+    plan = _plan(BEATS[:2])
+    t5.author_panels(plan, tmp_path)
+    segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+    first = {i: s["beat"]["force_component"] for i, s in enumerate(segs, 1) if s["beat"].get("force_component")}
+    shots = tmp_path / "shots"
+    shots.mkdir()
+
+    def snap(plan_, pack_, work_, out_):
+        items = []
+        for i, seg in enumerate(segs, 1):
+            f = shots / f"{i}-{seg['beat'].get('force_component')}.jpg"
+            Image.new("RGB", (270, 400), (30 * i, 90, 120)).save(f)
+            items.append({"n": i, "t": 1.0, "title": "", "file": f, "seg": i})
+        return items
+    monkeypatch.setattr(t5, "snapshot_panels", snap)
+    seen = {"calls": 0}
+
+    def fake_ask(rubric, context, sheet):
+        seen["calls"] += 1
+        weak = seen["calls"] == 1                                   # first look: panel 1 is weak; second look: its replacement is better
+        return {"scenes": [{"scene": 1, "score": 3 if weak else 8, "problems": ["too plain"], "fix": "bigger type"}, {"scene": 2, "score": 8}][:2 if weak else 1]}
+    real = design_critic.critique
+    monkeypatch.setattr(design_critic, "critique", lambda *a, **k: real(*a, **{**k, "ask": fake_ask}))
+    notes = []
+    frames = t5.refine_panels(plan, REFERENCE_AI_NEWS, tmp_path, snap(None, None, None, None), lambda text, **kw: notes.append(text))
+    after = {i: s["beat"]["force_component"] for i, s in enumerate(segs, 1) if s["beat"].get("force_component")}
+    assert after[1] != first[1] and after.get(2) == first.get(2) and frames and notes
+
+
+def test_a_long_panel_is_never_given_a_component_that_animates_out_early(monkeypatch):
+    assert not panel_library.lasts("headline-slam", 6.0) and panel_library.lasts("headline-slam", 3.5) and panel_library.lasts("kinetic-type-swap", 6.5)
+    assert panel_library.lasts("state-chip-rail", 6.0)                                  # not measurable: not filtered
+    beat = {"title": "ایده‌ای که همه‌چیز را عوض کرد", "items": [], "visual_type": "kinetic_type"}
+    for seed in range(12):
+        pick = panel_library.choose(beat, set(), seed=str(seed), seconds=6.0)
+        assert pick is None or panel_library.lasts(pick[0], 6.0)
+    short = {panel_library.choose(beat, set(), seed=str(seed), seconds=3.0)[0] for seed in range(12)}
+    assert "headline-slam" in short or "push-in" in short or len(short) >= 2          # short panels may use the short components

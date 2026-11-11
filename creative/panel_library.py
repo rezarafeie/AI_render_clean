@@ -7,6 +7,7 @@ here. `choose()` is deterministic (same beat, same pick) and takes the component
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -223,6 +224,29 @@ LIBRARY: dict[str, Entry] = {e.name: e for e in (
 )}
 
 
+def _hold() -> dict[str, float]:
+    """How long each component keeps something on screen (measured by rendering it with a long panel; creative/panel_hold.json). A component that animates out early would leave
+    a long panel empty, so a panel is only given components that last about as long as it does. Unknown components are not filtered."""
+    global _HOLD
+    if _HOLD is None:
+        try:
+            _HOLD = {k: float(v["visible_until"]) for k, v in json.loads((Path(__file__).with_name("panel_hold.json")).read_text(encoding="utf-8")).items()}
+        except (OSError, ValueError, KeyError, TypeError):
+            _HOLD = {}
+    return _HOLD
+
+
+_HOLD: dict[str, float] | None = None
+HOLD_SLACK = 0.9           # a component may end this much before its panel does (the next panel's cut hides it)
+
+
+def lasts(name: str, seconds: float | None) -> bool:
+    if not seconds:
+        return True
+    visible = _hold().get(name)
+    return visible is None or visible >= min(float(seconds), 7.0) - HOLD_SLACK
+
+
 def role_of(beat: dict) -> str:
     items = _items(beat, 1, 6)
     vtype = str(beat.get("visual_type") or "concept")
@@ -246,14 +270,14 @@ def available() -> list[str]:
     return [n for n in LIBRARY if (LIBRARY_DIR / f"{n}.html").is_file()]
 
 
-def choose(beat: dict, used: set[str], seed: str = "") -> tuple[str, dict] | None:
-    """The component for this beat and the variable values that fill it; None when the library has nothing that fits."""
+def choose(beat: dict, used: set[str], seed: str = "", seconds: float | None = None) -> tuple[str, dict] | None:
+    """The component for this beat and the variable values that fill it; None when the library has nothing that fits (for a panel of `seconds`, only components that last that long)."""
     role = role_of(beat)
     items = len(_items(beat, 1, 6))
     ready = set(available())
 
     def pool(r: str) -> list[str]:
-        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items)
+        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and lasts(n, seconds))
 
     candidates = [n for n in pool(role) if n not in used] or [n for n in pool("headline") if n not in used] or [n for n in pool(role) if n not in used]
     if not candidates:
@@ -270,14 +294,14 @@ def forced(beat: dict) -> tuple[str, dict] | None:
     return None
 
 
-def alternatives(beat: dict, exclude: set[str]) -> list[str]:
+def alternatives(beat: dict, exclude: set[str], seconds: float | None = None) -> list[str]:
     """Other components that fit this beat, best first (same role, then the headline pool), never one in `exclude`."""
     role = role_of(beat)
     items = len(_items(beat, 1, 6))
     ready = set(available())
 
     def pool(r: str) -> list[str]:
-        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude)
+        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude and lasts(n, seconds))
     return pool(role) + [n for n in pool("headline") if n not in pool(role)]
 
 

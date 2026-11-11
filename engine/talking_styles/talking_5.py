@@ -602,7 +602,7 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
         for n, seg in enumerate(segs):
             if mode == "mixed" and panel_library.role_of(seg["beat"]) in {"headline", "concept"}:
                 continue
-            pick = panel_library.choose(seg["beat"], used, seed=str(n))
+            pick = panel_library.choose(seg["beat"], used, seed=str(n), seconds=float(seg["end"]) - float(seg["start"]))
             if pick:
                 used.add(pick[0])
                 from_library[n] = pick[0]
@@ -684,13 +684,58 @@ def snapshot_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, out_dir: Pa
                 base.thumbnail((540, 960))
                 target = out_dir / f"panel{n}.jpg"
                 base.save(target, quality=82)
-            items.append({"n": n, "t": t, "title": str((seg.get("beat") or {}).get("title") or "")[:60], "file": target})
+            items.append({"n": n, "t": t, "title": str((seg.get("beat") or {}).get("title") or "")[:60], "file": target, "seg": segs.index(seg) + 1})
         if not items:
             log.warning("panel previews not made: %s", (done.stderr or done.stdout or "")[-200:])
         return items
     except Exception as exc:
         log.warning("panel previews failed: %s", str(exc)[:200])
         return []
+
+
+def refine_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, frames: list[dict], note: Callable[..., None]) -> list[dict]:
+    """The art-director pass (creative/design_critic.py) on the panel stills: a panel from the library that scores low is swapped for another component that fits the same beat
+    and lasts as long, and kept only if the same eye scores the new one higher. Authored and template panels are left alone. Returns the (possibly new) frames."""
+    from creative import design_critic, panel_library
+    segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+    drafts = {i + 1: s["beat"].get("force_component") for i, s in enumerate(segs) if s["beat"].get("force_component")}
+    if not frames or not drafts:
+        return frames
+    state = {"frames": frames, "tried": {n: {name} for n, name in drafts.items()}}
+
+    def stills():
+        return {f["seg"]: f["file"] for f in state["frames"]}
+
+    def author(n, feedback):
+        beat = segs[n - 1]["beat"]
+        seconds = float(segs[n - 1]["end"]) - float(segs[n - 1]["start"])
+        taken = set(drafts.values()) | state["tried"][n]
+        options = panel_library.alternatives(beat, taken, seconds)
+        if not options:
+            raise ValueError("no other component fits")
+        state["tried"][n].add(options[0])
+        return options[0]
+
+    def apply_all():
+        for n, name in drafts.items():
+            segs[n - 1]["beat"]["force_component"] = name
+
+    def rebuild():
+        apply_all()
+        state["frames"] = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames") or state["frames"]
+        return True
+
+    def restore(before):
+        drafts.clear(); drafts.update(before)
+
+    verdict = design_critic.refine(drafts=drafts, headlines={i + 1: str(s["beat"].get("title") or "") for i, s in enumerate(segs)}, protected={i + 1 for i in range(len(segs)) if (i + 1) not in drafts},
+                                   stills=stills, author=author, rebuild=rebuild, restore=restore, work=work_dir / "critic", brief=str(getattr(plan, "title", "") or ""),
+                                   style_note=pack.summary, note=lambda text: note(text, stage="art director", done=True))
+    apply_all()
+    if verdict["before"]:
+        note("نظر طراح ارشد دربارهٔ پنل‌ها آماده شد", stage="art director", done=True,
+             detail="امتیاز هر پنل (از ۱۰): " + "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items())))
+    return state["frames"]
 
 
 def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Optional[Path] = None,
@@ -716,6 +761,12 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
              stage="designing panels", done=True,
              detail="\n".join(f"{r['n']}. {r['title']} — {label[r['source']]}" + (f" ({r['component']})" if r.get("component") else "") for r in info))
         frames = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames")
+        try:
+            from creative import design_critic
+            if frames and design_critic.enabled():
+                frames = refine_panels(plan, pack, work_dir, frames, note)
+        except Exception as exc:
+            log.warning("panel design critic skipped: %s", str(exc)[:200])
         if frames:
             note(f"فریم {len(frames)} پنل آماده شد؛ پیش از رندر می‌توانید طراحی‌ها را ببینید", stage="panel previews", done=True, frames=frames)
     elif total_panels:
