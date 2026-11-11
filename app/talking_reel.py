@@ -750,6 +750,43 @@ def pack_of(render_settings: dict):
     return pack
 
 
+def _style5_music(job_dir: Path, state: dict, plan, pack, plan_data: dict | None, transcript: dict) -> Optional[Path]:
+    """The track under a style-pack reel. The person's own choice (a library track they picked, or none) is kept; the studio's default is replaced by the music director's pick
+    for this reel (library, then the free catalogues; never a paid generation here), and the track is slid so its beat grid falls on the reel's cuts. Never fails the render."""
+    from creative.audio import film_music, music_director as md
+    music = state.get("music")
+    chosen_by_person = bool(state.get("music_chosen")) or (music not in (None, DEFAULT_MUSIC))
+    fallback = resolve_music(music)
+    if not music or not film_music.director_enabled():
+        return fallback
+    work = job_dir / "talking_reel_work" / "style5"
+    notes: list[str] = []
+    try:
+        work.mkdir(parents=True, exist_ok=True)
+        starts = sorted({round(float(seg["start"]), 3) for seg in (plan.script or {}).get("segments", []) if "start" in seg} | {0.0})
+        cut = (float(pack.rhythm.cut_min) + float(pack.rhythm.cut_max)) / 2
+        energy = 0.75 if cut <= 2.2 else 0.55 if cut <= 3.5 else 0.4
+        creative = (plan_data or {}).get("chosen") or {}
+        words = " ".join(str(creative.get(k) or "") for k in ("name", "angle", "pacing")).strip()[:300]
+        brief = " ".join(filter(None, [str(state.get("hook") or ""), str(state.get("title") or ""), str(transcript.get("text") or "")[:500]]))
+        request = md.MusicRequest(brief=brief, words=words, duration_s=float(plan.duration) + 3.0, mode="attached" if chosen_by_person and fallback else "auto",
+                                  path=str(fallback or "") if chosen_by_person else "", energy=energy, accent_s=None, cost="free", user=str(state.get("user_id") or ""))
+        choice = film_music.choose(work, request)
+        if choice.path is None:
+            return fallback
+        source, fit, analysis = film_music.fit(work, choice, starts, float(plan.duration), None, notes)
+        notes = [*choice.notes, f"موسیقی: {choice.label}", *notes]
+        if choice.attribution:
+            notes.append("منبع و مجوز موسیقی (برای درج در توضیحات انتشار): " + choice.attribution)
+        current = load(job_dir)
+        current["music_notes"] = notes
+        save(job_dir, current)
+        return Path(source)
+    except Exception as exc:
+        log.warning("style 5 music director skipped: %s", str(exc)[:200])
+        return fallback
+
+
 def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     """"صحبتی ۵": a style-pack reel (panels written by the Motion Designer, the speaker as a card with the head over the panel, tscaps hook, face effects)."""
     from engine.talking_styles import talking_5 as t5
@@ -774,8 +811,8 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     out = _next_output(job_dir)
     progress, _stage_cb = _render_reporter(job_dir, 50)
     _stage(job_dir, "rendering", progress=45)
-    music = state.get("music")
-    t5.render(video, plan, out, work_dir=job_dir / "talking_reel_work" / "style5", music=resolve_music(music), on_progress=progress, pack=pack)
+    music = _style5_music(job_dir, state, plan, pack, plan_data, transcript)
+    t5.render(video, plan, out, work_dir=job_dir / "talking_reel_work" / "style5", music=music, on_progress=progress, pack=pack)
     _apply_effects(job_dir, out, settings)
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(plan.duration, 2), shots=len(plan.shots))

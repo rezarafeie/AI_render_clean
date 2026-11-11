@@ -444,6 +444,37 @@ def _skipped(job, reason: str) -> bool:
     return False
 
 
+def _film_music(job, data: dict, plan, work: Path, storyboard: dict, creative: dict):
+    """The same music director the motion-graphic engine uses (creative/audio/film_music.py), for a reel whose scene times are fixed by the recorded voice.
+    The person's attached track is used as it is (only slid to the rhythm); without one the director picks a track from the library and the free catalogues
+    (never a paid generation here), with a drop for the last scene. Returns {"source", "choice", "notes"} or None (no music: the reel keeps working without)."""
+    from .audio import film_music, music_director as md
+    attached = (data.get("music") or {}).get("file")
+    if not attached and not film_music.director_enabled():
+        return None
+    notes: list[str] = []
+    try:
+        chosen = creative.get("chosen") or {}
+        words = " ".join(str(chosen.get(k) or "") for k in ("name", "angle", "pacing", "visual_language")).strip()[:300]
+        starts = [sc.start for sc in plan.scenes]
+        accent_s = starts[-1] if len(starts) >= 2 else None
+        request = md.MusicRequest(brief=str(storyboard.get("prompt") or "")[:1500], words=words, duration_s=float(plan.duration) + 3.0, mode="attached" if attached else "auto",
+                                  path=str(attached or ""), accent_s=accent_s, cost="free", user=str(getattr(job, "user_id", "") or ""))
+        choice = film_music.choose(work, request)
+        notes += choice.notes
+        if choice.path is None:
+            return {"source": None, "choice": choice, "notes": notes}
+        source, plan_fit, analysis = film_music.fit(work, choice, starts, float(plan.duration), accent_s, notes)
+        film_music.save_timing(work, analysis, plan_fit, float(plan.duration), choice)
+        notes.append(f"موسیقی: {choice.label}")
+        if choice.attribution:
+            notes.append("منبع و مجوز موسیقی (برای درج در توضیحات انتشار): " + choice.attribution)
+        return {"source": source, "choice": choice, "notes": notes}
+    except Exception as exc:
+        log.warning("reel music director skipped: %s", str(exc)[:200])
+        return {"source": Path(attached) if attached else None, "choice": None, "notes": notes}
+
+
 def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, should_cancel=None, timeout: int = 5400) -> bool:
     """Design, check and render the reel. True when out_path was written; False (nothing raised) when the caller should use the built-in page."""
     from engine.hyperframes import product_reel, standalone
@@ -513,6 +544,18 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                   detail=f"امضای بصری: {plan.signature}\n{plan.design_direction}\n\n" + "\n".join(f"صحنهٔ {n} · {sc.headline}\n{sc.idea}" for n, sc in enumerate(plan.scenes, 1)))
         if on_progress:
             on_progress(2)
+        try:
+            from . import plan_checks
+            if plan_checks.enabled():                            # advisory: the same plan score the motion engine records; it never blocks the reel
+                quality = plan_checks.score_plan(plan)
+                _progress(job.dir, f"امتیاز تنوع طرح: {quality['score']:g} از ۵ ({quality['verdict']})", done=True, detail="\n".join(quality["violations"]))
+        except Exception as exc:
+            log.info("reel plan score skipped: %s", str(exc)[:120])
+        music_state = _film_music(job, data, plan, work, storyboard, creative)
+        if music_state and music_state.get("source") is not None:
+            from .audio import film_music
+            plan = film_music.attach_beats(work, plan)             # every scene designer learns where the beats and the accent fall inside its scene
+            _progress(job.dir, "موسیقی فیلم انتخاب شد", done=True, detail="\n".join(music_state["notes"]))
         count = len(plan.scenes)
         contexts = [contextvars.copy_context() for _ in range(count)]
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
@@ -533,28 +576,32 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             for scene, row in zip(plan.scenes, config["scenes"]):
                 if row.get("narration"):
                     audio.append({"path": str(Path(row["narration"])), "start": scene.start, "duration": round(scene.end - scene.start, 3)})
-        sfx = sound_effects(work / "sfx", plan)
-        music = (data.get("music") or {}).get("file")
-        if music:
+        from .audio import film_music
+        sfx = []
+        voice_words = [sc.start + float(c["t"]) for sc in plan.scenes for c in (sc.cues or [])]
+        starts_now = [sc.start for sc in plan.scenes]
+        clip, sfx_notes = film_music.sfx(work, starts_now, total, voice_words, starts_now[-1] if len(starts_now) >= 2 else None, "minimal")
+        sfx = [clip] if clip else sound_effects(work / "sfx", plan)        # the old whooshes when the sound designer could not place any
+        music_clip = None
+        source = music_state.get("source") if music_state else None
+        if source is not None:
             try:
                 from .music_bed import make_bed
-                source = Path(music)
-                try:                                              # the track's drop on the reveal, else its beat on the cuts (a slide of the track: nothing is stretched, no word moves)
-                    from .audio import music_director as md, music_fit
-                    analysis = md.analysis_for(source)
-                    if analysis and float(analysis.get("beat_confidence") or 0) >= 0.3:
-                        starts = [sc.start for sc in plan.scenes]
-                        fit = music_fit.plan(analysis, total, starts[-1] if len(starts) > 1 else None)
-                        if fit["anchor"] is None:
-                            fit = music_fit.phase_offset(analysis, starts, total)
-                        if fit["offset_s"] > 0.001 or fit["loop"]:
-                            source = music_fit.render(source, work / "music_fitted.wav", total, fit, analysis)
-                except Exception as exc:
-                    log.info("reel music kept as it is (rhythm fit skipped): %s", str(exc)[:160])
-                bed = make_bed(source, work / "bed.m4a", total, audio)
-                audio.append({"path": str(bed), "start": 0, "duration": round(total, 3), "role": "music"})
+                bed = make_bed(Path(source), work / "bed.m4a", total, audio)
+                music_clip = {"path": str(bed), "start": 0, "duration": round(total, 3), "role": "music"}
             except Exception as exc:
                 log.warning("reel music bed failed (%s); the reel is made without music", str(exc)[:200])
+        import os
+        mastered = None
+        if os.environ.get("FILM_MASTER", "1").strip().lower() not in {"0", "false", "off", "no"}:
+            mastered, master_notes = film_music.master(work, [*audio, *sfx], music_clip, total)
+            sfx_notes += master_notes
+        if mastered:
+            audio, sfx = [mastered], []                          # narration, sound effects and the ducked music at the delivery loudness, as one track
+        elif music_clip:
+            audio = [*audio, music_clip]
+        if sfx_notes:
+            _progress(job.dir, "صدا: " + "؛ ".join(sfx_notes[:2]), done=True, detail="\n".join(sfx_notes))
         page = mg.assemble_scenes(plan, drafts, audio + sfx)
         problems = [p for p in mg.validate_page(page, min_scenes=1) if not p.startswith("use 2-6 scenes")]      # a storyboard may have up to ten scenes
         if problems:
@@ -613,6 +660,13 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
             return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
         if "plain" in how:
             job.designer_note = f"{how.count('plain')} صحنه پس از ردشدن در بررسی با صحنهٔ ساده جایگزین شد"
+        try:
+            from . import plan_checks
+            broken = plan_checks.promise_broken(plan, {n: d for n, d in enumerate(drafts, 1)}, mg.fallback_scene) if plan_checks.promise_enabled() else None
+            if broken:
+                _progress(job.dir, f"هشدار: {len(broken['scenes'])} از {count} صحنه با طرح ساده جایگزین شده و حرکت طراحی‌شده را ندارد", done=True)
+        except Exception:
+            log.info("reel delivery promise check skipped")
         _progress(job.dir, "طراحی تمام شد و بررسی مرورگر پاک بود؛ رندر ویدیو شروع می‌شود")
         if on_progress:
             on_progress(12)
