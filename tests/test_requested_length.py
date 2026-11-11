@@ -18,7 +18,7 @@ def _plan(duration: float, words: int = 20) -> MotionPlan:
 
 
 def test_a_plan_far_from_the_requested_length_is_rejected_with_the_word_budget_and_a_close_one_is_not():
-    assert length_problems(_plan(74), 45) and "117" in length_problems(_plan(74), 45)[0]          # 45 s × 2.6 words
+    assert length_problems(_plan(74), 45) and "36-54 s" in length_problems(_plan(74), 45)[0]          # the budget is said in seconds and in words
     assert not length_problems(_plan(44), 45) and not length_problems(_plan(52), 45) and not length_problems(_plan(74), None)
 
 
@@ -33,7 +33,7 @@ def test_an_invented_catalogue_id_or_component_is_dropped_instead_of_rejecting_t
 
 
 def test_a_plan_stretched_by_the_timing_repair_is_still_held_to_the_requested_length(monkeypatch):
-    long_words = " ".join(["کلمه"] * 110)
+    long_words = " ".join(["کلمه"] * 80)
     scenes = [{"headline": "h", "idea": "i", "start": 0, "end": 22, "narration": long_words}, {"headline": "h", "idea": "i", "start": 22, "end": 44, "narration": long_words}]
     shaped = MotionPlan.model_validate({"duration": 44, "scenes": scenes})
     seen = []
@@ -44,6 +44,5 @@ def test_a_plan_stretched_by_the_timing_repair_is_still_held_to_the_requested_le
     monkeypatch.setattr(mg.llm, "ask", fake_ask)
     import pytest
     from creative.schemas import CreativeUnavailable
-    with pytest.raises(CreativeUnavailable):
-        mg.plan("یک ریل حدود ۴۵ ثانیه‌ای بساز", repairs=1)
-    assert len(seen) == 2 and "asked for about 45" in seen[1] and "LENGTH" in seen[0]
+    kept = mg.plan("یک ریل حدود ۴۵ ثانیه‌ای بساز", repairs=1)             # still too long after the repair: kept, a long film beats no film
+    assert len(seen) == 2 and "asked for about 45" in seen[1] and "LENGTH" in seen[0] and kept.duration > 54

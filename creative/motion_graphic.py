@@ -719,6 +719,7 @@ def _between(text: str, start: str, end: str) -> str:
 SCENE_GUIDE = (_SCENE_INTRO + "\n" + _between(GUIDE, "KIT (global HM", "DESIGN") + "\n" + _between(GUIDE, "DESIGN", "- Do not add branding").replace("\n- Hook:", "\n- (Hook, applies to the clip) ", 1))
 
 
+WORDS_PER_SECOND = 1.8                      # spoken Persian narration with its pauses (measured: 110-116 words filled 60-65 s of films)
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _SECONDS = re.compile(r"(\d{1,3}(?:[.,٫]\d)?)\s*(?:-|–|تا|to)?\s*(\d{1,3})?\s*(?:ثانیه|ثانيه|sec(?:ond)?s?\b|s\b)", re.I)
 _MINUTES = re.compile(r"(\d{1,2})\s*(?:دقیقه|دقيقه|min(?:ute)?s?\b)", re.I)
@@ -750,9 +751,10 @@ def length_problems(plan: "MotionPlan", seconds: float | None) -> list[str]:
     if low <= plan.duration <= high:
         return []
     words = sum(len(scene.narration.split()) for scene in plan.scenes)
-    target_words = int(seconds * 2.6)
-    return [f"the person asked for about {seconds:g} seconds but the plan lasts {plan.duration:g} s with {words} narration words: make the whole film {low:.0f}-{high:.0f} s "
-            f"(about {target_words} narration words in total, fewer or shorter scenes if needed)"]
+    spoken = speech.total_seconds([scene.narration for scene in plan.scenes]) * speech.MARGIN
+    target_words = int(words * (seconds / spoken)) if spoken > 0 and words else int(seconds * WORDS_PER_SECOND)
+    return [f"the person asked for about {seconds:g} seconds but the plan lasts {plan.duration:g} s with {words} narration words (spoken, they take about {spoken:.0f} s): make the whole film "
+            f"{low:.0f}-{high:.0f} s with about {target_words} narration words in total, fewer or shorter scenes if needed"]
 
 
 def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
@@ -930,8 +932,8 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
                     "the usual 2-6 scene limit does not apply to it.")
     wanted_s = None if (supplied or approved) else requested_seconds(brief)
     if wanted_s:
-        request += (f"\n\nLENGTH: the person asked for about {wanted_s:g} seconds. The whole film must last {wanted_s * 0.85:.0f}-{wanted_s * 1.15:.0f} s: about {int(wanted_s * 2.6)} narration words "
-                    f"in total, and scenes sized so that they tile exactly that. Do not exceed it.")
+        request += (f"\n\nLENGTH: the person asked for about {wanted_s:g} seconds. The whole film must last {wanted_s * 0.85:.0f}-{wanted_s * 1.15:.0f} s: about {int(wanted_s * WORDS_PER_SECOND)} narration words "
+                    f"in total (Persian is spoken at about {WORDS_PER_SECOND:g} words a second once pauses are counted), and scenes sized so that they tile exactly that. Do not exceed it.")
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -956,6 +958,9 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
+        if attempt == repairs and wanted_s and all(item.startswith("the person asked for about") for item in problems):
+            log.warning("motion plan kept although it is %.0f s for a request of about %.0f s: only its length was off after every repair", result.duration, wanted_s)
+            return result                      # a film a little off the asked length is better than no film
     raise CreativeUnavailable("motion plan did not pass validation: " + "; ".join(problems[:3]))
 
 
