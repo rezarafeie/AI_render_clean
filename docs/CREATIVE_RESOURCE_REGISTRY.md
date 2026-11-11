@@ -242,7 +242,7 @@ Searches that find nothing: `.mogrt`, Locomotion. Lottie: 2 skills + 1 catalog b
 
 | # | Repository | Licence | Status before | Decision | Now |
 | --- | --- | --- | --- | --- | --- |
-| 1 | lemomo-ai/lemo-opuscar | MIT | missing | C Director skill (+ E reference for its canvas/WebGL film code) | **67 skills** (`lemo:<style>` + `lemo:director-method`): a digest of each STYLE.md for the scene designers, the full text as a reference file; planner offered only the best matches (retrieval). Executable as design language: verified in a render, see §5 |
+| 1 | lemomo-ai/lemo-opuscar | MIT | missing | C Director skill (+ E reference for its canvas/WebGL film code) | **67 skills** (`lemo:<style>` + `lemo:director-method`): a digest of each STYLE.md for the scene designers, the full text as a reference file; planner offered only the best matches (retrieval). Verified executable as a design language: §5 (Swiss-style render) |
 | 2 | kajisho5/ffmpeg-skill | MIT | missing | E reference (agent know-how); its 42 Python tools overlap our FFmpeg/MLT code and are not copied | **1 skill** `ffmpegskill:ffmpeg-skill` (workflow digest + gotchas, workflow, timestamps, flags, process-pitfalls). Catalog-only: never offered to the motion planner, readable by agents |
 | 3 | OpenMontageInc/OpenMontage (moved from calesthio) | AGPL-3.0 | audited 2026-11-11 | C Director skill (owner chose direct use) | 6 skills + `plan_checks` ideas (clean-room), `DELIVERY_PROMISE`; talking/product agents read them |
 | 4 | blixvip/MotionClone | none (repository does not exist) | n/a | F skip | `codename-zen/motionclone` (MIT) stays catalog-only: needs the motionclone CLI |
@@ -271,8 +271,21 @@ Searches that find nothing: `.mogrt`, Locomotion. Lottie: 2 skills + 1 catalog b
 - **Cloud render reliability**: a worker that does not report within `RENDER_CLOUD_STARTUP_SECONDS` (300) is given up on, its pod deleted and the render continues on the server; after two such timeouts in 45 minutes the next renders skip the cloud (circuit breaker). Deploys refuse while a cloud or talking render is in flight.
 - **Talking chats now have a step log** (`talking_notes.json`) with the panel previews before the render.
 
+### 5. Verified renders (all through the app's own chat path on the production image, 2026-11-12; outputs in the chats of user 1)
+
+| Test | Result | What the evidence shows |
+| --- | --- | --- |
+| Minimal story explainer (45 s asked) | 36.8 s, -14.4 LUFS | planner picked `openmontage:short-form` + `storytelling`; the critic scored the scenes 5,6,5,4,7,4, redesigned two (4 to 6, 4 to 6) and reverted one that did not improve |
+| Swiss-style explainer (30 s asked) | 29.2 s, -13.9 LUFS | planner picked **`lemo:swiss-motion`**; the render shows paper, one signal red, flat black rect and grid: the Lemo style is executable as a design language. The critic's redesign was rejected by the browser check and the original kept |
+| Product ad, watch (30 s asked) | 32.4 s, then 32.2 s after the fix | v2: the reveal scene was a poor ready-made component (critic 3, tiny text). v3: the critic replaced it by a designed scene (3 to 7) |
+| Product reel from a link (30 s asked, storyboard path) | 24.7 s | first attempt silently fell back to the plain template: the six designed scenes made `build_js` 20,382 > the fixed 20,000 limit. Limits now scale with the scene count; the re-render kept the designed scenes. The built-in creative review did not complete (existing, unrelated) |
+| Talking 5, the user's chat (79 s source, 58 s reel) | v2 library-first, v3 best-of | v2: library panels scored 3,4,2,3 and were swapped up to 5. v3: both candidates per panel, the art director picked the designed scene 4 of 4 (5/6/6/5 against 3/5/4/2) and one refinement went 5 to 8. The first cloud attempt ran 13 min (library components with a CDN script on an offline worker); such reels now render on the server |
+
+Not measured: render-time deltas of the critic pass (it adds about 2-4 minutes per film: one or two vision calls, one redesign, one re-check); a blind human rubric (needs reviewers); the product reel's ElevenLabs/voice path was exercised only as far as the app's existing narration step.
+
 ### 4. Not done (and why)
 
+- The RunPod worker image still carries the old panel library and the old overlay code: reels with library panels render on the server (feature `panel-library`). Rebuilding the worker image (new digest, profiles) would restore the cloud path.
 - 400 HyperFrames registry items (210 blocks, 190 components) remain `catalog-only`: each needs an adapter (variable mapping, Persian check, measured hold time) before it may be called executable. The panel library (48) shows the route and the two traps (envelope length, CDN script).
 - No Lottie runtime, GL-transition port, `.aep`/`.mogrt` importer: none of these exist in the registry as executable resources and none was claimed.
 - Lemo's films are tuned for Latin text and for Opus; their rules were taken as a design language, not as a Persian typography reference.
