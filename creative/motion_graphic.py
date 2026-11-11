@@ -603,6 +603,32 @@ class MotionPlan(BaseModel):
     design_direction: str = Field(default="", max_length=2500)
     scenes: list[ScenePlan] = Field(default_factory=list)
 
+    @classmethod
+    def clean_llm_data(cls, data):
+        """A model asked for a catalogue id or component parameters sometimes invents them (0 of 96 scenes were ever right in the studio's films, and one invented id used to
+        reject the whole plan twice over). The optional part is dropped, the scene stays a custom design. Only a model's raw answer goes through this (llm._ask): saved plans and
+        ScenePlan itself stay strict."""
+        if not isinstance(data, dict) or not isinstance(data.get("scenes"), list):
+            return data
+        from .shotcraft import catalog
+        known = {row["id"] for row in catalog()}
+        scenes = []
+        for raw in data["scenes"]:
+            if isinstance(raw, dict):
+                raw = dict(raw)
+                if raw.get("shotcraft_id") and raw["shotcraft_id"] not in known:
+                    raw["shotcraft_id"] = ""
+                for key, model in (("native_component", NativeMotion), ("shotcraft_component", NativeSpec)):
+                    if raw.get(key) is not None:
+                        try:
+                            model.model_validate(raw[key])
+                        except Exception:
+                            raw[key] = None
+                if raw.get("native_component") and raw.get("shotcraft_component"):
+                    raw["shotcraft_component"] = None
+            scenes.append(raw)
+        return {**data, "scenes": scenes}
+
     @field_validator("questions")
     @classmethod
     def _few(cls, value):

@@ -129,7 +129,8 @@ def _ask(schema: type[T], system: str, user: str, *, route: str, tokens: int = 6
         if used is not None and usage.model not in used:
             used.append(usage.model)
         try:
-            return schema.model_validate(data)
+            clean = getattr(schema, "clean_llm_data", None)
+            return schema.model_validate(clean(data) if clean else data)
         except ValidationError as exc:
             problems = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()[:5])
             last = problems

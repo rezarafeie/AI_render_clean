@@ -20,3 +20,13 @@ def _plan(duration: float, words: int = 20) -> MotionPlan:
 def test_a_plan_far_from_the_requested_length_is_rejected_with_the_word_budget_and_a_close_one_is_not():
     assert length_problems(_plan(74), 45) and "117" in length_problems(_plan(74), 45)[0]          # 45 s × 2.6 words
     assert not length_problems(_plan(44), 45) and not length_problems(_plan(52), 45) and not length_problems(_plan(74), None)
+
+
+def test_an_invented_catalogue_id_or_component_is_dropped_instead_of_rejecting_the_whole_plan():
+    scene = {"headline": "h", "idea": "i", "start": 0, "end": 5, "narration": "n", "shotcraft_id": "shotcraft:made-up",
+             "native_component": {"resource_id": "nope", "intensity": 3}}
+    plan = MotionPlan.model_validate(MotionPlan.clean_llm_data({"duration": 5, "scenes": [scene, {**scene, "start": 5, "end": 10}]}))
+    assert [s.shotcraft_id for s in plan.scenes] == ["", ""] and all(s.native_component is None for s in plan.scenes)
+    import pytest
+    with pytest.raises(ValueError):
+        ScenePlan(headline="h", idea="i", start=0, end=5, shotcraft_id="bad")
