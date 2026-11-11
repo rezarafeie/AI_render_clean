@@ -757,6 +757,53 @@ def length_problems(plan: "MotionPlan", seconds: float | None) -> list[str]:
             f"{low:.0f}-{high:.0f} s with about {target_words} narration words in total, fewer or shorter scenes if needed"]
 
 
+class _Narration(llm.BaseModel):
+    lines: list[str]
+
+
+def retime_to(plan: "MotionPlan", seconds: float) -> "MotionPlan":
+    """Re-tile the scenes so the film lasts `seconds`: each scene keeps at least the time its narration needs, the rest is shared in proportion
+    (a deterministic repair; when the words alone need more than `seconds`, the scenes keep what the words need)."""
+    needs = [max(2.0, speech.speech_seconds(s.narration) * speech.MARGIN + 0.9) if s.narration.strip() else 2.5 for s in plan.scenes]
+    total = sum(needs)
+    spare = max(0.0, seconds - total)
+    scale = (total + spare) / total if total else 1.0
+    cursor, scenes = 0.0, []
+    for scene, need in zip(plan.scenes, needs):
+        length = round(need * scale, 2)
+        scenes.append(scene.model_copy(update={"start": round(cursor, 2), "end": round(cursor + length, 2)}))
+        cursor += length
+    return plan.model_copy(update={"scenes": scenes, "duration": round(cursor, 2)})
+
+
+def fit_length(plan: "MotionPlan", seconds: float, language: str = "fa") -> "MotionPlan | None":
+    """The plan's narration rewritten to the length that was asked for: one small model call that only shortens (or lengthens) each scene's line to
+    a word target, then the scenes are re-tiled. Facts and order are kept; None when the model's answer is unusable (the caller regenerates)."""
+    count = len(plan.scenes)
+    words = [len(s.narration.split()) for s in plan.scenes]
+    spoken = speech.total_seconds([s.narration for s in plan.scenes]) * speech.MARGIN
+    total = sum(words)
+    if not total or not spoken:
+        return None
+    ratio = seconds / spoken
+    targets = [max(3, round(w * ratio)) for w in words]
+    rows = "\n".join(f"{i + 1}. [{w} words -> about {t} words] {s.narration}" for i, (s, w, t) in enumerate(zip(plan.scenes, words, targets)))
+    system = ("You edit the narration lines of a short video. Rewrite each numbered line to the word target given for it (+-1 word), keeping its meaning, its facts and its order; "
+              "never add a claim, a number or a name that is not already in the lines. Keep the language and tone of each line. "
+              f"Return JSON {{\"lines\": [...]}} with exactly {count} strings, in order, without numbers or brackets.")
+    try:
+        got = llm.ask(_Narration, system, f"{'Persian' if language == 'fa' else 'English'} narration, the whole film must be spoken in about {seconds:g} seconds.\n{rows}",
+                      route=PLAN_ROUTE, tokens=1500, attempts=2)
+    except Exception as exc:
+        log.warning("narration length fit failed: %s", str(exc)[:160])
+        return None
+    lines = getattr(got, "lines", None)
+    if not isinstance(lines, list) or len(lines) != count or any(not str(line).strip() for line in lines):
+        return None
+    fitted = plan.model_copy(update={"scenes": [s.model_copy(update={"narration": str(line).strip()}) for s, line in zip(plan.scenes, lines)]})
+    return retime_to(fitted, seconds)
+
+
 def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     problems: list[str] = []
     if not MIN_SECONDS <= plan.duration <= MAX_SECONDS:
@@ -933,7 +980,8 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
     wanted_s = None if (supplied or approved) else requested_seconds(brief)
     if wanted_s:
         request += (f"\n\nLENGTH: the person asked for about {wanted_s:g} seconds. The whole film must last {wanted_s * 0.85:.0f}-{wanted_s * 1.15:.0f} s: about {int(wanted_s * WORDS_PER_SECOND)} narration words "
-                    f"in total (Persian is spoken at about {WORDS_PER_SECOND:g} words a second once pauses are counted), and scenes sized so that they tile exactly that. Do not exceed it.")
+                    f"in total (Persian is spoken at about {WORDS_PER_SECOND:g} words a second once pauses are counted), and scenes sized so that they tile exactly that. Do not exceed it. "
+                    f"Plan about {max(3, round(wanted_s / 8))} scenes of 6-9 s with at most {max(8, int(wanted_s * WORDS_PER_SECOND / max(3, round(wanted_s / 8))) + 3)} narration words each; count the words before you answer.")
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -955,6 +1003,13 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             problems = validate_plan(result, max_scenes=cap)
             if not problems:             # lengthening the scenes to fit too many words can take the film far past the length that was asked for
                 problems = length_problems(result, wanted_s)
+        if problems and wanted_s and all(item.startswith("the person asked for about") for item in problems):
+            fitted = fit_length(result, wanted_s, film_language(brief))        # one small call that only edits the lines; far more reliable than another whole plan
+            if fitted is not None:
+                again = validate_plan(fitted, max_scenes=cap)
+                if not again and not length_problems(fitted, wanted_s):
+                    log.info("motion plan narration fitted to about %.0f s (was %.0f s)", wanted_s, result.duration)
+                    return fitted
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])
