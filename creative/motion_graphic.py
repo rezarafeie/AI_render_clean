@@ -693,6 +693,42 @@ def _between(text: str, start: str, end: str) -> str:
 SCENE_GUIDE = (_SCENE_INTRO + "\n" + _between(GUIDE, "KIT (global HM", "DESIGN") + "\n" + _between(GUIDE, "DESIGN", "- Do not add branding").replace("\n- Hook:", "\n- (Hook, applies to the clip) ", 1))
 
 
+_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+_SECONDS = re.compile(r"(\d{1,3}(?:[.,٫]\d)?)\s*(?:-|–|تا|to)?\s*(\d{1,3})?\s*(?:ثانیه|ثانيه|sec(?:ond)?s?\b|s\b)", re.I)
+_MINUTES = re.compile(r"(\d{1,2})\s*(?:دقیقه|دقيقه|min(?:ute)?s?\b)", re.I)
+
+
+def requested_seconds(brief: str) -> float | None:
+    """The length the person asked for ("حدود ۴۵ ثانیه", "45 seconds", "یک دقیقه"), or None. A range takes its middle; anything outside the film limits is ignored."""
+    text = str(brief or "").translate(_DIGITS).replace("٫", ".").replace(",", ".")
+    found = None
+    if re.search(r"یک\s*دقیقه|one minute", text, re.I):
+        found = 60.0
+    match = _MINUTES.search(text)
+    if match:
+        found = float(match.group(1)) * 60
+    match = next((m for m in _SECONDS.finditer(text) if not re.search(r"(?:\bدر|\bظرف|\bwithin|\bin|\bunder|\bfor)\s*$", text[max(0, m.start() - 12):m.start()], re.I)), None)
+    if match:                                     # "ساخته می‌شود در ۳۰ ثانیه" is a claim about a product, not the length of the film
+        low = float(match.group(1))
+        high = float(match.group(2)) if match.group(2) else low
+        if high >= low:
+            found = (low + high) / 2
+    return found if found and MIN_SECONDS <= found <= MAX_SECONDS else None
+
+
+def length_problems(plan: "MotionPlan", seconds: float | None) -> list[str]:
+    """A film is within a fifth of the length that was asked for; the reason names the scenes' words so the planner can cut or add."""
+    if not seconds:
+        return []
+    low, high = seconds * 0.8, seconds * 1.2
+    if low <= plan.duration <= high:
+        return []
+    words = sum(len(scene.narration.split()) for scene in plan.scenes)
+    target_words = int(seconds * 2.6)
+    return [f"the person asked for about {seconds:g} seconds but the plan lasts {plan.duration:g} s with {words} narration words: make the whole film {low:.0f}-{high:.0f} s "
+            f"(about {target_words} narration words in total, fewer or shorter scenes if needed)"]
+
+
 def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     problems: list[str] = []
     if not MIN_SECONDS <= plan.duration <= MAX_SECONDS:
@@ -866,6 +902,10 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
     if cap > 6 and not supplied and not approved:
         request += (f"\n\nTHIS BRIEF IS LONG ({len(brief.split())} words): use up to {cap} scenes, about one per 3-6 seconds of narration, so every scene's narration fits its length; "
                     "the usual 2-6 scene limit does not apply to it.")
+    wanted_s = None if (supplied or approved) else requested_seconds(brief)
+    if wanted_s:
+        request += (f"\n\nLENGTH: the person asked for about {wanted_s:g} seconds. The whole film must last {wanted_s * 0.85:.0f}-{wanted_s * 1.15:.0f} s: about {int(wanted_s * 2.6)} narration words "
+                    f"in total, and scenes sized so that they tile exactly that. Do not exceed it.")
     problems: list[str] = []
     for attempt in range(repairs + 1):
         user = request if not problems else request + "\n\nYour previous plan was rejected. Fix EVERY point and return the complete JSON again:\n- " + "\n- ".join(problems)
@@ -878,6 +918,8 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
             result = script_given.apply(result, supplied)
         result = fix_fonts(result, advice)
         problems = validate_plan(result, max_scenes=cap)
+        if not problems:
+            problems = length_problems(result, wanted_s)
         if supplied and len(result.scenes) != len(supplied):
             problems.insert(0, f"the person's narration script has {len(supplied)} lines: make exactly {len(supplied)} scenes, one per line, narration word for word")
         if problems and all("the narration needs about" in item for item in problems):

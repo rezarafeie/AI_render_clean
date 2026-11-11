@@ -200,6 +200,17 @@ def generated_before() -> list[dict]:
     return out
 
 
+def _with_drop(ranked: list[dict], best: dict) -> tuple[dict | None, bool]:
+    """Among the few best candidates, the first whose measured rhythm has a drop (a suitable score is kept: it is only reordered). (None, True) when none has a drop."""
+    for track in ranked[:4]:
+        if track["score"] < SUITABLE:
+            continue
+        analysis = analysis_for(Path(track["path"])) or {}
+        if analysis.get("drops_ms"):
+            return track, False
+    return best, True
+
+
 def _rank(request: MusicRequest, style: str, tracks: list[dict], arc: list[dict]) -> list[dict]:
     brief = " ".join(filter(None, [request.words, request.genre, request.instruments, STYLES[style]["words"], request.brief[:400]]))
     energy = request.energy if request.energy is not None else (sum(s["energy"] * (s["end_s"] - s["start_s"]) for s in arc) / max(1.0, request.duration_s) if arc else None)
@@ -240,6 +251,11 @@ def resolve(request: MusicRequest, *, progress: Callable[[str, str], None] | Non
         pool = [t for t in pool if t["path"] not in set(request.exclude)]
         ranked = _rank(request, style, pool, arc) if pool else []
         best = ranked[0] if ranked else None
+        if best and request.accent_s and mode == "auto" and style not in {"educational", "minimal", "relaxed"}:
+            best, missed = _with_drop(ranked, best)
+            if missed:               # a film that asks for an accent on its reveal needs music that has a drop: fresh music is preferred when it can be had
+                result.notes.append("ترک‌های موجود درآپ (اوج) واضحی ندارند؛ برای نشستن اوج روی رونمایی موسیقی تازه ساخته می‌شود.")
+                best = None
         if best and (best["score"] >= SUITABLE or (mode == "library" and not request.strict)):
             src = "cache" if best.get("source") == "cache" else "library"
             weak = best["score"] < SUITABLE

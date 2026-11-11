@@ -1720,6 +1720,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                         continue
                     try:
                         draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=why[:4], style=build.style)
+                        from creative.reel_designer import svg_problems
                         if not svg_problems(draft.html):
                             build.drafts[n] = draft
                             changed.append(n)
