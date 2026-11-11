@@ -951,6 +951,8 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         if problems and all("the narration needs about" in item for item in problems):
             result = fit_scene_timing(result)
             problems = validate_plan(result, max_scenes=cap)
+            if not problems:             # lengthening the scenes to fit too many words can take the film far past the length that was asked for
+                problems = length_problems(result, wanted_s)
         if not problems:
             return result
         log.warning("motion plan rejected (attempt %d): %s", attempt + 1, problems[:3])

@@ -1076,6 +1076,7 @@ def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
             music_fit_path = directory / "music_fit.json"
             music_fit_path.write_text(json.dumps({"offset_s": 0.0, "anchor": None, "loop": None, "notes": []}))
             return plan, audio, [*notes, f"ضرب موسیقی «{choice.label}» قابل اتکا تشخیص داده نشد؛ زمان‌بندی بر پایهٔ گفتار ماند."]
+        analysis, choice = _lengthen_buildup(directory, choice, analysis, accent_s, notes)
         solved = music_fit.solve(analysis, starts, float(plan.duration), snap=mode in {"balanced", "music_first"}, tolerance_s=0.35 if mode == "balanced" else 0.9, max_total_s=mg.MAX_SECONDS)
         fit, new_starts, total = solved["fit"], solved["starts"], solved["total"]
         (directory / "music_fit.json").write_text(json.dumps(fit))
@@ -1101,6 +1102,41 @@ def _sync_rhythm(directory: Path, record: dict, plan, audio: list[dict]):
     except Exception as exc:
         log.warning("rhythm sync skipped: %s", str(exc)[:160])
         return plan, audio, [n for n in notes if n]
+
+
+def _lengthen_buildup(directory: Path, choice, analysis: dict, accent_s: float | None, notes: list[str]):
+    """A track whose drop comes before the film's reveal gets a longer build-up (music_fit.extend_buildup), so the drop can fall on the reveal. The new file is kept as the film's
+    music (music_choice.json), measured again, and used only when its drop really is where it should be; otherwise the original track is kept. Returns (analysis, choice)."""
+    from creative.audio import music_director as md, music_fit, music_providers
+    try:
+        ext = music_fit.extend_buildup(Path(choice.path), analysis, accent_s, music_providers.store_root() / "extended")
+        if not ext:
+            return analysis, choice
+        longer = md.analysis_for(ext["path"])
+        if not longer or longer.get("bpm_confidence", 0) < 0.2 or not any(abs(d - ext["drop_ms"]) <= 650 for d in longer.get("drops_ms") or []):
+            return analysis, choice                  # the detector must still see a drop near where the repeats put it (it may sit up to a beat early on the lengthened build-up)
+        # The repeats put the drop at an exactly known place: the measured one is replaced by it (in the cached analysis too, so every later step reads the same grid).
+        added_ms = int(round(ext["added_s"] * 1000))
+        original = int(ext["drop_ms"]) - added_ms
+        longer["drops_ms"] = [int(ext["drop_ms"])] + [int(d) + added_ms for d in analysis.get("drops_ms") or [] if int(d) > original + 500]
+        try:
+            from creative.audio import rhythm
+            (md.analysis_dir() / f"rhythm-{rhythm.content_key(Path(ext['path']))}.json").write_text(json.dumps(longer))
+        except Exception:
+            log.info("lengthened build-up analysis not cached")
+        saved = directory / "music_choice.json"
+        try:
+            record = json.loads(saved.read_text())
+            record.update({"path": str(ext["path"]), "extended_from": str(choice.path)})
+            saved.write_text(json.dumps(record, ensure_ascii=False))
+        except (OSError, ValueError):
+            pass
+        choice.path = ext["path"]
+        notes.append(f"بیلدآپ موسیقی {ext['added_s']:.1f} ثانیه (دو میزان، {ext['repeats']} بار تکرار) طولانی‌تر شد تا دراپ به لحظهٔ رونمایی برسد")
+        return longer, choice
+    except Exception as exc:
+        log.info("build-up not lengthened: %s", str(exc)[:160])
+        return analysis, choice
 
 
 def _add_music(directory: Path, record: dict, plan, audio: list[dict]):

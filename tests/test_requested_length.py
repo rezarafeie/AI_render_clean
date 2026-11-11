@@ -30,3 +30,20 @@ def test_an_invented_catalogue_id_or_component_is_dropped_instead_of_rejecting_t
     import pytest
     with pytest.raises(ValueError):
         ScenePlan(headline="h", idea="i", start=0, end=5, shotcraft_id="bad")
+
+
+def test_a_plan_stretched_by_the_timing_repair_is_still_held_to_the_requested_length(monkeypatch):
+    long_words = " ".join(["کلمه"] * 110)
+    scenes = [{"headline": "h", "idea": "i", "start": 0, "end": 22, "narration": long_words}, {"headline": "h", "idea": "i", "start": 22, "end": 44, "narration": long_words}]
+    shaped = MotionPlan.model_validate({"duration": 44, "scenes": scenes})
+    seen = []
+
+    def fake_ask(schema, system, user, **kw):
+        seen.append(user)
+        return shaped
+    monkeypatch.setattr(mg.llm, "ask", fake_ask)
+    import pytest
+    from creative.schemas import CreativeUnavailable
+    with pytest.raises(CreativeUnavailable):
+        mg.plan("یک ریل حدود ۴۵ ثانیه‌ای بساز", repairs=1)
+    assert len(seen) == 2 and "asked for about 45" in seen[1] and "LENGTH" in seen[0]

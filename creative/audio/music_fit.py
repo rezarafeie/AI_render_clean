@@ -60,6 +60,54 @@ def plan(analysis: dict | None, film_s: float, accent_s: float | None = None, tr
     return result
 
 
+def extend_buildup(source: Path, analysis: dict | None, accent_s: float | None, out_dir: Path, *, max_repeats: int = 8) -> dict | None:
+    """A track whose drop comes EARLIER than the film's reveal cannot start earlier (plan() reports it). Its build-up is lengthened instead: the two bars before the drop are
+    repeated (bar line to bar line, so the grid is unbroken) enough times that the drop falls at or just after the reveal; plan() then trims the few seconds of intro that remain.
+
+    Returns {"path", "added_s", "repeats", "drop_ms"} (the new file's drop), or None when the track has no drop earlier than the reveal, no clean bar lines before it, or
+    would need more than `max_repeats` repeats. Nothing is stretched or pitch-shifted; the same input gives the same file."""
+    if not analysis or not accent_s or accent_s < 3.0:
+        return None
+    drops = [int(d) for d in analysis.get("drops_ms") or []]
+    if not drops or any(d / 1000 >= accent_s - 0.05 for d in drops):
+        return None                                                       # a drop that can already reach the reveal: plan() places it by trimming
+    drop_ms = max(d for d in drops if d / 1000 < accent_s - 0.05)
+    bars = [int(b) for b in analysis.get("bars_ms") or []]
+    if len(bars) < 4:
+        return None
+    joint = min(range(len(bars)), key=lambda i: abs(bars[i] - drop_ms))
+    if abs(bars[joint] - drop_ms) > 450 or joint < 2:
+        return None
+    block_a, block_b = bars[joint - 2] / 1000.0, bars[joint] / 1000.0
+    block = block_b - block_a
+    need = accent_s - drop_ms / 1000.0
+    repeats = int(-(-need // block))                                      # ceil
+    if block < 1.5 or repeats < 1 or repeats > max_repeats:
+        return None
+    track_s = float(analysis.get("duration_ms", 0)) / 1000 or _duration(source)
+    import hashlib
+    key = hashlib.sha1(f"{source}|{source.stat().st_size}|{drop_ms}|{repeats}|{block_a}".encode()).hexdigest()[:16]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output = out_dir / f"ext-{key}.wav"
+    added = repeats * block
+    if not output.is_file():
+        parts = [(0.0, block_b)] + [(block_a, block_b)] * repeats + [(block_b, track_s)]
+        fade = 0.008
+        command, filters, labels = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"], [], []
+        for index, (a, b) in enumerate(parts):
+            command += ["-i", str(source)]
+            fades = f",afade=t=in:d={fade}" if index else ""
+            fades += f",afade=t=out:st={max(0.0, b - a - fade):.3f}:d={fade}" if index < len(parts) - 1 else ""
+            filters.append(f"[{index}:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo{fades}[p{index}]")
+            labels.append(f"[p{index}]")
+        filters.append("".join(labels) + f"concat=n={len(parts)}:v=0:a=1[out]")
+        command += ["-filter_complex", ";".join(filters), "-map", "[out]", "-c:a", "pcm_s16le", str(output)]
+        done = subprocess.run(command, capture_output=True, text=True, timeout=240)
+        if done.returncode != 0 or not output.is_file():
+            return None
+    return {"path": output, "added_s": round(added, 3), "repeats": repeats, "drop_ms": int(drop_ms + added * 1000)}
+
+
 def aligned(analysis: dict | None, starts_s: list[float], offset_s: float, tolerance_ms: int = 80) -> int:
     """How many of the scene starts (after the first) fall within `tolerance_ms` of a beat of the track once it starts at `offset_s`."""
     beats = [int(b) - int(round(offset_s * 1000)) for b in (analysis or {}).get("beats_ms") or []]
