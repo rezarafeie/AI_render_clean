@@ -644,6 +644,7 @@ def snapshot_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, out_dir: Pa
             with Image.open(source) as layer:                   # the panel layer is transparent: show it on the panel colour it will have under the speaker
                 base = Image.new("RGB", layer.size, pack.palette.panel_bg)
                 base.paste(layer.convert("RGBA"), (0, 0), layer.convert("RGBA"))
+                base = base.crop((0, 0, base.width, min(base.height, int(base.height * CARD_Y / H))))      # the panel's own area (the rest is the speaker's)
                 base.thumbnail((540, 960))
                 target = out_dir / f"panel{n}.jpg"
                 base.save(target, quality=82)
