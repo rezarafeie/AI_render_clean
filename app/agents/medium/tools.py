@@ -101,6 +101,7 @@ SCHEMAS["discover_clips"] = DiscoverClips
 SCHEMAS["create_motion_graphic"] = MotionGraphic
 SCHEMAS["revise_motion_graphic"] = MotionRevision
 SCHEMAS["search_creative_resources"] = studio_tools.ResourceSearchInput
+SCHEMAS["read_creative_skill"] = studio_tools.SkillReadInput
 SCHEMAS["instagram_content_check"] = studio_tools.InstagramContentCheckInput
 SCHEMAS["audio_check"] = AudioCheck
 SCHEMAS["plan_audio_direction"] = AudioDirection
@@ -111,6 +112,7 @@ SCHEMAS["discover_connected_app_tools"] = DiscoverInput
 SCHEMAS["read_connected_app"] = ReadInput
 READ_ONLY = {"inspect_media", "inspect_url", "check_render_status", "inspect_project", "search_creative_resources"}
 READ_ONLY.add("instagram_content_check")
+READ_ONLY.add("read_creative_skill")
 READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music"})
 EXTRA_DESCRIPTIONS = {
     "discover_clips": "For a LONG attached video (a podcast, class, interview, meeting): transcribe all speech locally, understand the whole video and find every standalone piece worth publishing as a reel or post; each result opens as a card in this chat. Use it when the person wants many clips from one long video, never for editing one reel. It runs in the background for minutes.",
@@ -202,7 +204,7 @@ def _generate_music(record, args) -> dict:
 def execute(record, step):
     from app import studio_orchestrator as shared
     name = step["tool"]; args = validate(record, step)
-    if name == "search_creative_resources":
+    if name in {"search_creative_resources", "read_creative_skill"}:
         return studio_tools.execute(name, args.model_dump())
     cid, user = record["conversation_id"], record["user_key"]
     if name == "instagram_content_check":

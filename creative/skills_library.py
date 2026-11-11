@@ -114,7 +114,7 @@ def designer_block(ids) -> str:
         text = body(skill_id, BODY_CHARS)
         if text:
             row = get(skill_id) or {}
-            parts.append(f"SKILL «{skill_id}» (from {row.get('repo', '')}, MIT). Use its craft where it fits this scene; the rules above and the scene's own limits come first:\n{text}")
+            parts.append(f"SKILL «{skill_id}» (from {row.get('repo', '')}, {row.get('license', 'MIT')}). Use its craft where it fits this scene; the rules above and the scene's own limits come first:\n{text}")
     return "\n\n".join(parts)
 
 

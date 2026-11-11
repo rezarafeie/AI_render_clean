@@ -52,7 +52,7 @@ def _read_skill(args: SkillReadInput) -> dict:
     if row is None:
         return {"error": "unknown-skill"}
     text = skills_library.reference(args.skill_id, args.reference, args.max_chars) if args.reference else skills_library.body(args.skill_id, args.max_chars)
-    return {"id": row["id"], "source": row["repo"], "revision": row["revision"], "license": "MIT", "references": row["references"], "text": text}
+    return {"id": row["id"], "source": row["repo"], "revision": row["revision"], "license": row.get("license", "MIT"), "references": row["references"], "text": text}
 
 
 class LocalizeInput(ToolInput):

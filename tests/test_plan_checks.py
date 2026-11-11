@@ -43,3 +43,20 @@ def test_delivery_promise_counts_scenes_that_fell_back_to_plain_cards(monkeypatc
     assert plan_checks.promise_broken(plan, {3: drafts[3]}, mg.fallback_scene) is None
     monkeypatch.delenv("DELIVERY_PROMISE", raising=False)
     assert not plan_checks.promise_enabled()
+
+
+def test_the_agents_can_read_the_openmontage_skills_and_the_licence_is_reported():
+    from app import studio_tools
+    from app.agents.medium import tools
+    assert "read_creative_skill" in tools.READ_ONLY
+    assert any(t["name"] == "read_creative_skill" for t in tools.catalog())
+    found = studio_tools.execute("search_creative_resources", {"query": "openmontage", "engine": "skill", "limit": 12})
+    assert any(i["id"] == "openmontage:short-form" for i in found["items"])
+    got = tools.execute({"id": "t"}, {"tool": "read_creative_skill", "arguments": {"skill_id": "openmontage:short-form", "max_chars": 800}})
+    assert got["license"] == "AGPL-3.0" and got["text"] and got["source"].endswith("/OpenMontage")
+
+
+def test_the_instagram_agent_gets_a_read_only_skill_route():
+    from hermes.routers import content_tools
+    paths = {r.path for r in content_tools.router.routes}
+    assert {"/api/hermes/content-tools/skills/search", "/api/hermes/content-tools/skills/read"} <= paths
