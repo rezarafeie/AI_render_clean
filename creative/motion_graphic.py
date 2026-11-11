@@ -727,7 +727,7 @@ _MINUTES = re.compile(r"(\d{1,2})\s*(?:دقیقه|دقيقه|min(?:ute)?s?\b)", 
 
 def requested_seconds(brief: str) -> float | None:
     """The length the person asked for ("حدود ۴۵ ثانیه", "45 seconds", "یک دقیقه"), or None. A range takes its middle; anything outside the film limits is ignored."""
-    text = str(brief or "").translate(_DIGITS).replace("٫", ".").replace(",", ".")
+    text = str(brief or "").translate(_DIGITS).replace("٫", ".").replace(",", ".").replace("\u200c", " ")      # «یک‌دقیقه‌ای» is written with a half-space
     found = None
     if re.search(r"یک\s*دقیقه|one minute", text, re.I):
         found = 60.0
@@ -744,10 +744,10 @@ def requested_seconds(brief: str) -> float | None:
 
 
 def length_problems(plan: "MotionPlan", seconds: float | None) -> list[str]:
-    """A film is within a fifth of the length that was asked for; the reason names the scenes' words so the planner can cut or add."""
+    """A film is within 15 % of the length that was asked for; the reason names the scenes' words so the planner can cut or add."""
     if not seconds:
         return []
-    low, high = seconds * 0.8, seconds * 1.2
+    low, high = seconds * 0.85, seconds * 1.15
     if low <= plan.duration <= high:
         return []
     words = sum(len(scene.narration.split()) for scene in plan.scenes)

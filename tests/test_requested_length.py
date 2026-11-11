@@ -7,7 +7,7 @@ def test_the_requested_length_is_read_in_persian_and_english_and_product_claims_
     assert requested_seconds("ریل پرانرژی حدود ۴۵ ثانیه‌ای بساز") == 45
     assert requested_seconds("make a 45 seconds promo") == 45
     assert requested_seconds("30-40 seconds") == 35
-    assert requested_seconds("یک دقیقه") == 60 and requested_seconds("۲ دقیقه") is None and requested_seconds("بدون عدد") is None
+    assert requested_seconds("ویدیوی یک‌دقیقه‌ای بساز") == 60 and requested_seconds("یک دقیقه") == 60 and requested_seconds("۲ دقیقه") is None and requested_seconds("بدون عدد") is None
     assert requested_seconds("ویدیو در ۳۰ ثانیه ساخته می‌شود؛ ریل ۴۵ ثانیه‌ای") == 45
     assert requested_seconds("within 20 seconds") is None and requested_seconds("video 200 seconds") is None
 
@@ -18,8 +18,8 @@ def _plan(duration: float, words: int = 20) -> MotionPlan:
 
 
 def test_a_plan_far_from_the_requested_length_is_rejected_with_the_word_budget_and_a_close_one_is_not():
-    assert length_problems(_plan(74), 45) and "36-54 s" in length_problems(_plan(74), 45)[0]          # the budget is said in seconds and in words
-    assert not length_problems(_plan(44), 45) and not length_problems(_plan(52), 45) and not length_problems(_plan(74), None)
+    assert length_problems(_plan(74), 45) and "38-52 s" in length_problems(_plan(74), 45)[0]          # the budget is said in seconds and in words
+    assert not length_problems(_plan(44), 45) and not length_problems(_plan(51), 45) and not length_problems(_plan(74), None)
 
 
 def test_an_invented_catalogue_id_or_component_is_dropped_instead_of_rejecting_the_whole_plan():
@@ -71,7 +71,7 @@ def test_a_plan_only_too_long_is_fitted_by_one_small_narration_call_instead_of_a
         return _long_plan(6, 30, 12)                                     # the planner keeps writing a 72 s film with 180 words
     monkeypatch.setattr(mg.llm, "ask", fake_ask)
     result = mg.plan("ریل ۴۵ ثانیه‌ای برای محصول بساز", repairs=2)
-    assert calls == ["MotionPlan", "_Narration"] and 36 <= result.duration <= 54 and all(len(s.narration.split()) == 8 for s in result.scenes)
+    assert calls == ["MotionPlan", "_Narration"] and 38 <= result.duration <= 52 and all(len(s.narration.split()) == 8 for s in result.scenes)
 
 
 def test_an_unusable_narration_answer_falls_back_to_regenerating_the_plan(monkeypatch):
@@ -83,4 +83,4 @@ def test_an_unusable_narration_answer_falls_back_to_regenerating_the_plan(monkey
             return mg._Narration(lines=["only one"])
         return _long_plan(6, 30, 12) if len(seen) < 3 else _long_plan(5, 15, 9)
     monkeypatch.setattr(mg.llm, "ask", fake_ask)
-    assert 36 <= mg.plan("ریل ۴۵ ثانیه‌ای برای محصول بساز", repairs=2).duration <= 54
+    assert 38 <= mg.plan("ریل ۴۵ ثانیه‌ای برای محصول بساز", repairs=2).duration <= 52
