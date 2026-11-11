@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 PASS_SCORE = 6                       # a scene scoring below this is redesigned
 MAX_REDESIGN = 3                     # scenes redesigned per film (the weakest first)
 MIN_GAIN = 1                         # a redesign must score at least this much higher to replace the original
+REPLACE_SCORE = 4                    # a ready-made component scene scoring at most this is replaced by a scene designed for the film
 
 
 def enabled() -> bool:
@@ -99,11 +100,12 @@ def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, 
 
 def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stills: Callable[[], dict[int, Path]], author: Callable[[int, list[str]], object],
            rebuild: Callable[[], bool], restore: Callable[[dict], None], work: Path, brief: str = "", style_note: str = "", note: Callable[[str], None] = lambda text: None,
-           ask: Callable | None = None) -> dict:
+           ask: Callable | None = None, replaceable: set[int] = frozenset()) -> dict:
     """The whole loop: look, redesign the weakest scenes from the critic's fixes, look again, keep only what improved.
 
     stills()   -> {scene: still path} of the page as it is now (called again after a rebuild)
-    author(n, feedback) -> a new draft for scene n (may raise: that scene keeps its design)
+    author(n, feedback) -> a new draft for scene n (may raise: that scene keeps its design); for a `replaceable` component scene it designs one without the component
+    protected  scenes the critic never touches (ready-made components); replaceable: those of them that may be replaced when they score REPLACE_SCORE or less
     rebuild()  -> True when the page with the current `drafts` passed the browser check (the caller assembles, writes and checks)
     restore(before) puts the earlier drafts back (the caller reassembles)
     Returns {"before": {n: score}, "after": {n: score}, "changed": [n], "kept": [n]} (empty dicts when nothing could be judged)."""
@@ -112,7 +114,9 @@ def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stil
     if not first:
         return result
     result["before"] = {n: v.score for n, v in first.items()}
-    weak = sorted((n for n, v in first.items() if v.score < PASS_SCORE and n not in protected), key=lambda n: (first[n].score, n))[:MAX_REDESIGN]
+    def eligible(n: int) -> bool:
+        return n not in protected or (n in replaceable and first[n].score <= REPLACE_SCORE)          # a poor ready-made component may be replaced, a fair one is left alone
+    weak = sorted((n for n, v in first.items() if v.score < PASS_SCORE and eligible(n)), key=lambda n: (first[n].score, n))[:MAX_REDESIGN]
     if not weak:
         note("منتقد طراحی همهٔ صحنه‌ها را قابل‌قبول دید: " + "، ".join(f"{n}:{v.score}" for n, v in sorted(first.items())))
         return result

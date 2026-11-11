@@ -212,3 +212,68 @@ Usability revision also modifies `app/project_document.py`,
 `web/src/studio/{EditCard,MotionScenes,TimelineView,timeline}.tsx` (`timeline.ts`
 is the helper file), `web/src/styles/studio.css`, and adds
 `web/tests/edit-card-motion.test.mjs`.
+
+## Library completion and integration (2026-11-12)
+
+Scope: complete and use the existing Registry, no new engine, registry, agent or UI. Everything below was verified against the running code and the live registry
+(776 resources on the production image), not against earlier documents.
+
+### 1. Registry inventory (production, `creative/resources/registry.py`)
+
+| Type | Availability | Engine | Count |
+| --- | --- | --- | --- |
+| block (HyperFrames registry) | catalog-only (`adapter-required`) | hyperframes | 210 |
+| component (HyperFrames registry) | catalog-only (`adapter-required`) | hyperframes | 190 |
+| skill | existing-pipeline (offered to the planner / readable by agents) | skill | 124 |
+| effect (MLT) | existing-pipeline | mlt | 118 |
+| component | existing-pipeline (the panel library, assets/hyperframes_components) | hyperframes | 52 |
+| face-effect | existing-pipeline | ffmpeg | 42 |
+| motion-preset (recipes) | existing-pipeline | hyperframes | 20 |
+| skill | catalog-only (needs a runtime or is agent-reference only) | skill | 8 |
+| transition (MLT) | existing-pipeline | mlt | 4 |
+| effect (MLT) | unsupported | mlt | 5 |
+| motion-reference | catalog-only | hyperframes | 3 |
+
+Licences: 168 MIT, 8 Apache-2.0, 6 AGPL-3.0 (OpenMontage skills, owner-accepted 2026-11-11, isolated in `vendor/motion-skills/openmontage/`), 594 without a declared type
+(the HyperFrames catalog entries: provenance is the pinned registry, not a licence file). No resource is marked `verified` or `commercial_use_approved`; that stays the owner's decision.
+Searches that find nothing: `.mogrt`, Locomotion. Lottie: 2 skills + 1 catalog block, no runtime. GL transitions: 15 catalog-only components + 2 executable.
+
+### 2. Repository integration matrix (licences read from the GitHub API and the LICENSE files, 2026-11-12)
+
+| # | Repository | Licence | Status before | Decision | Now |
+| --- | --- | --- | --- | --- | --- |
+| 1 | lemomo-ai/lemo-opuscar | MIT | missing | C Director skill (+ E reference for its canvas/WebGL film code) | **67 skills** (`lemo:<style>` + `lemo:director-method`): a digest of each STYLE.md for the scene designers, the full text as a reference file; planner offered only the best matches (retrieval). Executable as design language: verified in a render, see §5 |
+| 2 | kajisho5/ffmpeg-skill | MIT | missing | E reference (agent know-how); its 42 Python tools overlap our FFmpeg/MLT code and are not copied | **1 skill** `ffmpegskill:ffmpeg-skill` (workflow digest + gotchas, workflow, timestamps, flags, process-pitfalls). Catalog-only: never offered to the motion planner, readable by agents |
+| 3 | OpenMontageInc/OpenMontage (moved from calesthio) | AGPL-3.0 | audited 2026-11-11 | C Director skill (owner chose direct use) | 6 skills + `plan_checks` ideas (clean-room), `DELIVERY_PROMISE`; talking/product agents read them |
+| 4 | blixvip/MotionClone | none (repository does not exist) | n/a | F skip | `codename-zen/motionclone` (MIT) stays catalog-only: needs the motionclone CLI |
+| 5 | iart-ai/motion-skills (19 pack repos) | MIT | integrated | C | 35 skills |
+| 6 | charlie947/motion-graphics-skills | MIT | integrated | C | 15 skills |
+| 7 | bangtutorial/bang-motion | MIT | integrated | C | 1 skill (+ distilled anti-slide rules in the designer prompt) |
+| 8 | Barty-Bart/motion-graphics | MIT (GitHub shows NOASSERTION; the LICENSE file is the MIT text) | integrated | C | 6 skills (two catalog-only: they need SAM 2 / a measuring script) |
+| 9 | hughminhphan/motion-kit | MIT | integrated | B engine enhancement | skill + `motion-kit.js` loaded as `MotionKit` |
+| 10 | nexu-io/open-design | Apache-2.0 | distilled | C/E | its motion-design craft rules live in the designer prompt; the 100k-star workspace itself is a competing agent UI: reference only |
+| 11 | 0xsline/OpenChatCut | AGPL-3.0 | missing | E reference | overlaps the Studio orchestrator; AGPL was accepted only for the OpenMontage skill text: **not integrated**, needs an explicit decision |
+| 12 | hypit-ai/hypit | NOASSERTION (restrictive commercial SaaS terms) | missing | F skip | not cloned, not read, no code or ideas derived |
+| 13 | Autom8AI/Open-Higgsfield-AI | none | missing | E reference-only | no licence: nothing may be copied |
+
+### 3. What was implemented (all behind existing seams, all reversible)
+
+- **Skills** (`creative/skills_library.py`, `vendor/motion-skills/`): `lemo`, `openmontage` and `ffmpegskill` namespaces added by re-runnable scripts that touch only their own namespace
+  (`scripts/vendor_lemo_styles.py`, `vendor_openmontage_skills.py`, `vendor_ffmpeg_skill.py`, each with `--remove`). **Targeted retrieval**: the planner is offered the 36 skills that fit the brief
+  (keyword scoring with Persian to English synonyms, plus a core set), never the whole library (133 skills). Per-skill body length (`body_chars`), per-skill licence in the designer text and in `read_creative_skill`.
+- **Agents**: the EditorGPT/orchestrator agent can read skills (`read_creative_skill`); the Instagram agent has `/api/hermes/content-tools/skills/{search,read}` (read-only).
+- **Art-director pass** (`creative/design_critic.py`): a vision model scores every scene's still on hierarchy, phone legibility, density, polish and meaning; the weakest are redesigned from its concrete fixes
+  (a poor ready-made component, score <= 4, is replaced by a scene designed for the film); a redesign is kept only if the same eye scores it higher. Used by the motion-graphic engine, the product reel and the talking 5 panels. `DESIGN_CRITIC=0` turns it off.
+- **Talking 5 panels**: the curated panel library (48 HyperFrames components, 37 usable) is used first and the Motion Designer only where nothing fits (`TALKING5_PANELS=library|mixed|authored`).
+  Two real defects were found and fixed by rendering every component with Persian content: components animated out after their own 3-5 s envelope and left a long panel EMPTY (now fitted to the panel's length; components that cannot stretch are only given to short panels,
+  measured in `creative/panel_hold.json`), and a CDN `<script>` that a network-less render worker cannot load (removed; the page's GSAP is used).
+- **Music director for the product reel and talking 5** (`creative/audio/film_music.py`): chosen/fitted track, beats for scene designers, sound effects, loudness mastering.
+- **Cloud render reliability**: a worker that does not report within `RENDER_CLOUD_STARTUP_SECONDS` (300) is given up on, its pod deleted and the render continues on the server; after two such timeouts in 45 minutes the next renders skip the cloud (circuit breaker). Deploys refuse while a cloud or talking render is in flight.
+- **Talking chats now have a step log** (`talking_notes.json`) with the panel previews before the render.
+
+### 4. Not done (and why)
+
+- 400 HyperFrames registry items (210 blocks, 190 components) remain `catalog-only`: each needs an adapter (variable mapping, Persian check, measured hold time) before it may be called executable. The panel library (48) shows the route and the two traps (envelope length, CDN script).
+- No Lottie runtime, GL-transition port, `.aep`/`.mogrt` importer: none of these exist in the registry as executable resources and none was claimed.
+- Lemo's films are tuned for Latin text and for Opus; their rules were taken as a design language, not as a Persian typography reference.
+- OpenChatCut, Hypit, Open Higgsfield: see the matrix.

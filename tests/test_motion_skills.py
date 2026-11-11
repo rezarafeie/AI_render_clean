@@ -33,7 +33,7 @@ def test_one_skill_name_is_kept_once_and_the_best_resource_wins():
 
 def test_each_source_keeps_its_licence_and_revision():
     sources = sl.notices()
-    assert {s["namespace"] for s in sources} == {"iart", "charlie", "barty", "bang", "motionkit", "motionclone", "openmontage", "lemo"}
+    assert {s["namespace"] for s in sources} == {"iart", "charlie", "barty", "bang", "motionkit", "motionclone", "openmontage", "lemo", "ffmpegskill"}
     for source in sources:
         licence = (VENDOR / source["license_file"]).read_text()
         if source["namespace"] == "openmontage":      # the owner accepted AGPL-3.0 for these files; they stay isolated and removable
@@ -183,3 +183,10 @@ def test_a_film_style_skill_reaches_the_designer_as_a_digest_with_the_full_text_
     block = sl.designer_block(["lemo:swiss-motion"])
     assert "Colour logic" in block and "Motion quality" in block and "(from https://github.com/lemomo-ai/lemo-opuscar, MIT)" in block
     assert len(sl.reference("lemo:swiss-motion", "STYLE.md", 20000)) > len(sl.body("lemo:swiss-motion"))
+
+
+def test_the_ffmpeg_know_how_is_an_agent_reference_the_planner_is_never_offered():
+    row = sl.get("ffmpegskill:ffmpeg-skill")
+    assert row and row["license"] == "MIT" and row["runtime_needed"] and not sl.planner_eligible(row)
+    assert "ffmpegskill:ffmpeg-skill" not in [r["id"] for r in sl.retrieve("ffmpeg cut loudness export")]
+    assert "gotchas" in " ".join(row["references"]) and len(sl.reference("ffmpegskill:ffmpeg-skill", "gotchas.md", 3000)) > 500

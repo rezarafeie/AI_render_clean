@@ -144,3 +144,55 @@ def test_a_worker_still_inside_its_startup_window_is_waited_for(monkeypatch):
 def test_the_startup_timeout_is_a_cloud_render_error_and_a_setting():
     from app.render_cloud.settings import CloudSettings
     assert issubclass(service.WorkerStartupTimeout, service.CloudRenderError) and CloudSettings().startup_seconds == 300
+
+
+def test_the_circuit_breaker_counts_only_recent_startup_timeouts(tmp_path):
+    from app.render_cloud.ledger import Ledger
+    led = Ledger(tmp_path / "l.sqlite")
+    assert led.recent_failures('worker_startup_timeout', 3600) == 0
+    import sqlite3, json, time
+    with led.transaction() as db:
+        for i, (state, code, ago) in enumerate([('failed', 'worker_startup_timeout', 100), ('failed', 'worker_startup_timeout', 500), ('failed', 'other', 100), ('failed', 'worker_startup_timeout', 99999), ('completed', None, 50)]):
+            db.execute("INSERT INTO cloud_render_executions (id,user_id,fingerprint,state,backend,created,updated,deadline,reservation,details,finished) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                       (f'j{i}', '1', 'f', state, 'runpod_cpu', time.time() - ago, time.time() - ago, time.time() + 99, 0.07, json.dumps({'error_code': code}), time.time() - ago))
+    assert led.recent_failures('worker_startup_timeout', 3600) == 2
+    from app.render_cloud.settings import CloudSettings
+    assert CloudSettings().startup_breaker_count == 2 and CloudSettings().startup_breaker_window_seconds == 2700
+
+
+def test_a_worker_whose_progress_stops_is_given_up_on_and_one_that_keeps_moving_is_not(monkeypatch):
+    import json
+    import time as _time
+    monkeypatch.setattr(service, 'reconcile', lambda *a, **k: None)
+    clock = {'t': _time.time()}
+    monkeypatch.setattr(service.time, 'time', lambda: clock['t'])
+
+    def run(progress_for_call, stall=480):
+        calls = {'n': 0}
+
+        class Ledger:
+            def get(self, job, user):
+                return {'state': 'rendering', 'created': clock['t'] - 10, 'deadline': clock['t'] + 99999, 'cancel_requested': 0, 'pod_id': 'pod',
+                        'details': json.dumps({'storage': {'mailbox_key': 'm', 'control_key': 'c', 'output_key': 'o'}})}
+
+            def snapshot(self, *a, **k):
+                pass
+
+            def cancel(self, *a, **k):
+                pass
+
+        class Store:
+            def read_json(self, key):
+                calls['n'] += 1
+                clock['t'] += 100                         # every poll is 100 s later
+                return {'token': 't' * 40, 'sequence': calls['n'], 'history': ['rendering'], 'observation': {'state': 'rendering', 'progress': progress_for_call(calls['n'])}}
+
+            def write_json(self, *a, **k):
+                pass
+        spec = SimpleNamespace(job_id='j', user_id='1')
+        return service.await_result(spec, 'o.mp4', ledger=Ledger(), store=Store(), provider=None, sleep=lambda s: None, stall_seconds=stall, should_cancel=lambda: calls['n'] > 12)
+    with pytest.raises(service.WorkerStalled):
+        run(lambda n: 73.0)                               # stuck at 73 % for 500 s
+    with pytest.raises(InterruptedError):
+        run(lambda n: float(n))                           # moving every poll: only the cancel ends it
+    assert issubclass(service.WorkerStalled, service.WorkerStartupTimeout)

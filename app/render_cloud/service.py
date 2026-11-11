@@ -33,6 +33,10 @@ class WorkerStartupTimeout(CloudRenderError):
     """The worker never reported (its pod did not boot or pull its image in time): the pod is deleted, the render may continue on the server."""
 
 
+class WorkerStalled(WorkerStartupTimeout):
+    """The worker reported but its progress stopped for too long (a hung render): the pod is deleted, the render may continue on the server."""
+
+
 class WorkerRejected(CloudRenderError):
     """The worker stopped on the project itself (for example a HyperFrames check finding). `reason` is its scrubbed finding, so the caller
     that authored the project can repair it; every other cloud failure stays final."""
@@ -94,7 +98,7 @@ def cloud_detail(state: str, progress=None, rendering_seconds: float = 0.0) -> s
 
 
 def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_stage=None,
-                 should_cancel=None, sleep=time.sleep, on_detail=None, startup_seconds=None):
+                 should_cancel=None, sleep=time.sleep, on_detail=None, startup_seconds=None, stall_seconds=None):
     row = ledger.get(spec.job_id, spec.user_id)
     storage = json.loads(row['details']).get('storage')
     if not storage:
@@ -103,6 +107,7 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
     rendering_since = None
     last_detail = None
     heard = False                      # the worker has reported at least once
+    progress_mark, progress_since = None, time.time()           # the last progress value and when it last changed
 
     def detail(state, progress=None):
         nonlocal last_detail
@@ -148,6 +153,8 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                     raise WorkerRejected('Cloud worker stopped before completion', report.observation.reason or '')
                 if report.observation.state == 'rendering' and rendering_since is None:
                     rendering_since = time.monotonic()
+                if report.observation.state == 'rendering' and report.observation.progress != progress_mark:
+                    progress_mark, progress_since = report.observation.progress, time.time()
                 if on_progress and report.observation.progress is not None and report.observation.state == 'rendering':
                     on_progress(report.observation.progress)
                 if report.observation.state == 'rendering':
@@ -161,6 +168,9 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
                 and time.time() - float(current['created']) > startup_seconds):
             log.warning('cloud worker %s silent for %.0f s; its pod is deleted', spec.job_id, time.time() - float(current['created']))
             raise WorkerStartupTimeout('Cloud worker did not start in time')
+        if stall_seconds and rendering_since is not None and not candidate and time.time() - progress_since > stall_seconds:
+            log.warning('cloud worker %s made no progress for %.0f s (stuck at %s); its pod is deleted', spec.job_id, time.time() - progress_since, progress_mark)
+            raise WorkerStalled('Cloud worker stopped making progress')
         if current['state'] != last_stage:
             if on_stage:
                 on_stage(current['state'])
@@ -303,6 +313,16 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
         if profile.hardware_id not in allowed_ids:
             raise CloudRenderError('Benchmark hardware is not allowlisted')
         ledger = Ledger(config.ledger)
+        if (config.enable_local_fallback and config.override == 'auto'
+                and ledger.recent_failures('worker_startup_timeout', config.startup_breaker_window_seconds) >= config.startup_breaker_count):
+            # The cloud workers have just failed to come up several times in a row: waiting out another startup window for each film helps nobody.
+            log.warning('cloud render skipped: %d worker startup timeouts in the last %d s', config.startup_breaker_count, config.startup_breaker_window_seconds)
+            if on_stage:
+                try:
+                    on_stage('cloud unavailable', 'رندر ابری این روزها به‌موقع بالا نمی‌آید؛ این ویدیو مستقیم روی سرور رندر می‌شود')
+                except Exception:
+                    pass
+            return False
         fingerprint = hashlib.sha256(spec.model_dump_json().encode()).hexdigest()
         marker = (marker_root or project) / '.cloud-render-job.json'
         job_id = None
@@ -333,7 +353,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                                                               local_output=output.resolve()))
             await_result(spec, output, ledger=ledger, store=store, provider=provider,
                          on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail,
-                         startup_seconds=config.startup_seconds)
+                         startup_seconds=config.startup_seconds, stall_seconds=config.stall_seconds)
             return True
         except InterruptedError:
             ledger.cancel(spec.job_id, spec.user_id)
@@ -352,10 +372,10 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                         pass
                 return False
             if isinstance(failure, WorkerStartupTimeout) and config.enable_local_fallback and config.override == 'auto':
-                ledger.finish(spec.job_id, spec.user_id, 'failed', 'worker_startup_timeout')      # the pod is deleted by the reconcile below; nothing else bills
+                ledger.finish(spec.job_id, spec.user_id, 'failed', 'worker_stalled' if isinstance(failure, WorkerStalled) else 'worker_startup_timeout')      # the pod is deleted by the reconcile below; nothing else bills
                 if on_stage:
                     try:
-                        on_stage('cloud unavailable', 'سرور رندر ابری به‌موقع بالا نیامد؛ این ویدیو روی سرور رندر می‌شود')
+                        on_stage('cloud unavailable', 'سرور رندر ابری به‌موقع بالا نیامد یا متوقف شد؛ این ویدیو روی سرور رندر می‌شود')
                     except Exception:
                         pass
                 return False

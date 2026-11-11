@@ -665,8 +665,14 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 by_number = {n: d for n, d in enumerate(drafts, 1)}
                 protected = {n for n, sc in enumerate(plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None)} | {n for n, kind in enumerate(how, 1) if kind == "plain"}
 
+                component_scenes = {n for n, sc in enumerate(plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None)}
+
                 def critic_author(n, feedback):
-                    draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=feedback)
+                    plan_for = plan
+                    if n in component_scenes:                        # a poor ready-made component: the scene is designed for this reel instead
+                        plan_for = plan.model_copy(update={"scenes": [sc.model_copy(update={"native_component": None, "shotcraft_component": None, "shotcraft_id": ""}) if i == n else sc
+                                                                       for i, sc in enumerate(plan.scenes, 1)]})
+                    draft = mg.author_scene(plan_for, n, brief, context=context, used=used, feedback=feedback)
                     if svg_problems(draft.html):
                         raise ValueError("invalid svg")
                     return draft
@@ -683,7 +689,7 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
                 _progress(job.dir, "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد", detail="وضعیت: در حال بررسی")
                 critic_notes: list[str] = []
                 verdict = design_critic.refine(drafts=by_number, headlines={n: sc.headline for n, sc in enumerate(plan.scenes, 1)}, protected=protected,
-                                               stills=lambda: visual_gate.scene_stills(project, plan, work), author=critic_author, rebuild=critic_rebuild,
+                                               stills=lambda: visual_gate.scene_stills(project, plan, work), author=critic_author, rebuild=critic_rebuild, replaceable=component_scenes,
                                                restore=lambda before: (by_number.clear(), by_number.update(before)), work=work / "critic",
                                                brief=str(storyboard.get("prompt") or "")[:600], style_note=plan.design_direction, note=critic_notes.append)
                 drafts = [by_number[i] for i in range(1, count + 1)]

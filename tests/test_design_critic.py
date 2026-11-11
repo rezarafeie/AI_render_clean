@@ -28,7 +28,7 @@ def _ask(scores_by_call):
     return ask
 
 
-def _loop(stills, tmp_path, scores_by_call, protected=frozenset(), rebuild_ok=True):
+def _loop(stills, tmp_path, scores_by_call, protected=frozenset(), rebuild_ok=True, replaceable=frozenset()):
     drafts = {n: f"old{n}" for n in stills}
     log, notes, built = {"authored": [], "rebuilt": 0, "restored": 0}, [], {"n": 0}
 
@@ -44,7 +44,7 @@ def _loop(stills, tmp_path, scores_by_call, protected=frozenset(), rebuild_ok=Tr
         log["restored"] += 1
         drafts.clear(); drafts.update(before)
     result = dc.refine(drafts=drafts, headlines={n: f"h{n}" for n in stills}, protected=set(protected), stills=lambda: stills, author=author, rebuild=rebuild, restore=restore,
-                       work=tmp_path / "w", note=notes.append, ask=_ask(scores_by_call))
+                       work=tmp_path / "w", note=notes.append, ask=_ask(scores_by_call), replaceable=set(replaceable))
     return result, drafts, log, notes
 
 
@@ -87,3 +87,8 @@ def test_the_contact_sheet_numbers_every_tile_and_the_flag_turns_it_off(stills, 
     assert not dc.enabled()
     monkeypatch.delenv("DESIGN_CRITIC")
     assert dc.enabled()
+
+
+def test_a_poor_ready_made_component_is_replaced_but_a_fair_one_is_left_alone(stills, tmp_path):
+    result, drafts, log, notes = _loop(stills, tmp_path, [{1: 3, 2: 5, 3: 9, 4: 9}, {1: 7}], protected={1, 2}, replaceable={1, 2})
+    assert [n for n, _ in log["authored"]] == [1] and drafts[1] == "new1" and drafts[2] == "old2"       # 3 <= REPLACE_SCORE, 5 is only flawed: the component stays

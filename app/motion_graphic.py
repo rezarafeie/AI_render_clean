@@ -1807,7 +1807,11 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
 
             def critic_author(n, feedback):
                 from creative.reel_designer import svg_problems
-                draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=feedback, style=build.style)
+                plan_for = build.plan
+                if n in protected:                                   # a poor ready-made component: the scene is designed for this film instead
+                    plan_for = build.plan.model_copy(update={"scenes": [sc.model_copy(update={"native_component": None, "shotcraft_component": None, "shotcraft_id": ""}) if i == n else sc
+                                                                         for i, sc in enumerate(build.plan.scenes, 1)]})
+                draft = mg.author_scene(plan_for, n, brief, context=build.context, used=used, feedback=feedback, style=build.style)
                 if svg_problems(draft.html):
                     raise ValueError("invalid svg")
                 return draft
@@ -1829,7 +1833,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             _note(directory, "critic", "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد")
             verdict = design_critic.refine(drafts=build.drafts, headlines={n: sc.headline for n, sc in enumerate(build.plan.scenes, 1)}, protected=protected, stills=critic_stills,
                                            author=critic_author, rebuild=critic_rebuild, restore=critic_restore, work=work / "critic", brief=brief, style_note=build.plan.design_direction,
-                                           note=lambda text: notes.append(text))
+                                           note=lambda text: notes.append(text), replaceable=protected)
             if verdict["before"]:
                 scores = "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items()))
                 _note(directory, "critic", "نظر طراح ارشد دربارهٔ صحنه‌ها آماده شد", "done", detail=f"امتیاز هر صحنه (از ۱۰): {scores}\n" + "\n".join(notes[-2:]))
