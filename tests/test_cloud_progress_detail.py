@@ -196,3 +196,14 @@ def test_a_worker_whose_progress_stops_is_given_up_on_and_one_that_keeps_moving_
     with pytest.raises(InterruptedError):
         run(lambda n: float(n))                           # moving every poll: only the cancel ends it
     assert issubclass(service.WorkerStalled, service.WorkerStartupTimeout)
+
+
+def test_the_breaker_counts_stalled_workers_too(tmp_path):
+    import json, time
+    from app.render_cloud.ledger import Ledger
+    led = Ledger(tmp_path / "l2.sqlite")
+    with led.transaction() as db:
+        for i, code in enumerate(['worker_stalled', 'worker_startup_timeout', 'something_else']):
+            db.execute("INSERT INTO cloud_render_executions (id,user_id,fingerprint,state,backend,created,updated,deadline,reservation,details,finished) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                       (f'k{i}', '1', 'f', 'failed', 'runpod_cpu', time.time(), time.time(), time.time() + 99, 0.07, json.dumps({'error_code': code}), time.time() - 10))
+    assert led.recent_failures(('worker_startup_timeout', 'worker_stalled'), 600) == 2 and led.recent_failures('worker_stalled', 600) == 1

@@ -349,6 +349,11 @@ def localize(video, state, placements, output, *, work_dir, fonts_dir=None, musi
                                on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)
 
 
+def _library_panels(plan) -> bool:
+    """True when any panel of the reel is filled from the panel library (or the page's own template) on the worker instead of a finished authored scene."""
+    return any(seg.get("layout") == "split" and seg.get("beat") and not (seg["beat"].get("custom")) for seg in (plan.script or {}).get("segments", []))
+
+
 def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progress=None):
     """Talking 5's heavy half: the two HyperFrames layers, the person matte, the face effects and the composition run on a worker. The model-written
     panels and the effect plan are already in `plan`/`fx`; the tscaps hook is a finished overlay file."""
@@ -382,8 +387,12 @@ def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progres
             (staged / 'talking5.json').write_text(json.dumps(data, ensure_ascii=False))
         except (TypeError, ValueError):
             return False                      # anything that cannot travel as plain data keeps its local render
+        # A worker builds the panel layer with ITS OWN image's code: a panel that is not a finished authored scene is filled there from the panel library, whose components in the
+        # image still load GSAP from a CDN that an offline worker never reaches (the render hangs). Until the worker image carries the fixed library such a reel renders on the server:
+        # no profile has this feature, so the policy keeps it local.
+        features = (['face-effects'] if fx else []) + (['panel-library'] if _library_panels(plan) else [])
         return render_prepared(staged, output, user=who[0], project_id=who[1], engine='talking_5', entrypoint='talking5.json',
                                duration=plan.duration, width=1080, height=1920, fps=30, on_progress=on_progress,
-                               features=['face-effects'] if fx else [],
+                               features=features,
                                should_cancel=who[3] if len(who) > 3 else None, on_stage=who[4] if len(who) > 4 else None,
                                on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)

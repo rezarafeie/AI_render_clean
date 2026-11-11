@@ -314,7 +314,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
             raise CloudRenderError('Benchmark hardware is not allowlisted')
         ledger = Ledger(config.ledger)
         if (config.enable_local_fallback and config.override == 'auto'
-                and ledger.recent_failures('worker_startup_timeout', config.startup_breaker_window_seconds) >= config.startup_breaker_count):
+                and ledger.recent_failures(('worker_startup_timeout', 'worker_stalled'), config.startup_breaker_window_seconds) >= config.startup_breaker_count):
             # The cloud workers have just failed to come up several times in a row: waiting out another startup window for each film helps nobody.
             log.warning('cloud render skipped: %d worker startup timeouts in the last %d s', config.startup_breaker_count, config.startup_breaker_window_seconds)
             if on_stage:

@@ -183,12 +183,13 @@ class Ledger:
                 WHERE id=? AND user_id=? AND state NOT IN ('completed','failed','cancelled')""",
                 (state, time.time(), time.time(), json.dumps(details), job_id, user))
 
-    def recent_failures(self, error_code: str, within_seconds: float) -> int:
-        """How many executions ended `failed` with this control-plane error code in the last `within_seconds` (a circuit breaker reads it; never raises)."""
+    def recent_failures(self, error_code, within_seconds: float) -> int:
+        """How many executions ended `failed` with this control-plane error code (or any of several) in the last `within_seconds` (a circuit breaker reads it; never raises)."""
+        codes = {error_code} if isinstance(error_code, str) else set(error_code)
         try:
             with self.transaction() as db:
                 rows = db.execute("SELECT details FROM cloud_render_executions WHERE state='failed' AND finished>?", (time.time() - within_seconds,)).fetchall()
-            return sum(1 for r in rows if json.loads(r['details'] or '{}').get('error_code') == error_code)
+            return sum(1 for r in rows if json.loads(r['details'] or '{}').get('error_code') in codes)
         except Exception:
             return 0
 

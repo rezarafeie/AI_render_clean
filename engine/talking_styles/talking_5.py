@@ -577,11 +577,12 @@ def render_hook(plan: ReelPlan, work_dir: Path, pack: StylePack) -> Optional[Pat
 
 
 def panel_mode() -> str:
-    """TALKING5_PANELS: "library" (default: the curated panel library first, the Motion Designer only for a beat nothing in it fits) | "authored" (the old behaviour:
+    """TALKING5_PANELS: "best" (default: BOTH a library component and a Motion Designer scene are made for every beat, an art director scores each in a still and the better one is used) |
+    "library" (the curated panel library first, the Motion Designer only for a beat nothing in it fits) | "authored" (the old behaviour:
     the Motion Designer writes every panel) | "mixed" (library for lists/numbers/comparisons, the designer for headlines and concepts)."""
     import os
-    value = os.environ.get("TALKING5_PANELS", "library").strip().lower()
-    return value if value in {"library", "authored", "mixed"} else "library"
+    value = os.environ.get("TALKING5_PANELS", "best").strip().lower()
+    return value if value in {"best", "library", "authored", "mixed"} else "best"
 
 
 def author_panels(plan: ReelPlan, work_dir: Path) -> int:
@@ -606,7 +607,7 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
             if pick:
                 used.add(pick[0])
                 from_library[n] = pick[0]
-    to_author = [n for n in range(len(segs)) if n not in from_library]
+    to_author = [n for n in range(len(segs)) if mode == "best" or n not in from_library]
     beats: dict[int, VisualBeat] = {}
     for n in to_author:
         b = segs[n]["beat"]
@@ -628,7 +629,12 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
     info, done = [], 0
     for n, seg in enumerate(segs):
         title = str((seg["beat"] or {}).get("title") or "")
-        if n in from_library:
+        if n in from_library and n in beats and beats[n].custom:                # best mode: both candidates exist, pick_panels decides
+            seg["beat"]["force_component"] = from_library[n]
+            seg["beat"]["custom"] = beats[n].custom
+            info.append({"n": n + 1, "title": title, "source": "both", "component": from_library[n]})
+            done += 1
+        elif n in from_library:
             seg["beat"]["force_component"] = from_library[n]                  # the page builds exactly this one (and a later swap names another)
             info.append({"n": n + 1, "title": title, "source": "library", "component": from_library[n]})
             done += 1
@@ -693,32 +699,117 @@ def snapshot_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, out_dir: Pa
         return []
 
 
+def _panel_segs(plan: ReelPlan) -> list[dict]:
+    return [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+
+
+def pick_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, note: Callable[..., None]) -> None:
+    """For a beat that has BOTH a library component and a Motion Designer scene, an art director (creative/design_critic.py) scores a still of each and the better one is used
+    (a tie goes to the designed scene: it is the one written for these words). Beats with only one candidate are untouched. Never raises."""
+    from creative import design_critic
+    segs = _panel_segs(plan)
+    both = [i for i, s in enumerate(segs) if s["beat"].get("custom") and s["beat"].get("force_component")]
+    if not both or not design_critic.enabled():
+        return
+
+    def show(use: str) -> list[dict]:
+        for i in both:
+            beat = segs[i]["beat"]
+            custom, comp = beat.get("custom") or beat.pop("_alt_custom", None), beat.get("force_component") or beat.pop("_alt_comp", None)
+            for key in ("custom", "force_component", "_alt_custom", "_alt_comp"):
+                beat.pop(key, None)
+            if use == "library":
+                beat["force_component"], beat["_alt_custom"] = comp, custom
+            else:
+                beat["custom"], beat["_alt_comp"] = custom, comp
+        return snapshot_panels(plan, pack, work_dir, work_dir / f"panel_frames_{use}")
+
+    try:
+        looks = {}
+        for use in ("library", "authored"):
+            frames = show(use)
+            stills = {f["seg"]: f["file"] for f in frames if f["seg"] - 1 in both}
+            looks[use] = design_critic.critique(stills, {i + 1: str(segs[i]["beat"].get("title") or "") for i in both}, work_dir / f"critic_{use}", style_note=pack.summary)
+        chosen = {}
+        for i in both:
+            lib, auth = looks["library"].get(i + 1), looks["authored"].get(i + 1)
+            chosen[i] = "authored" if (auth and (not lib or auth.score >= lib.score)) or not (lib or auth) else "library"
+        report = []
+        for i in both:
+            beat = segs[i]["beat"]
+            custom, comp = beat.get("custom") or beat.pop("_alt_custom", None), beat.get("force_component") or beat.pop("_alt_comp", None)
+            for key in ("custom", "force_component", "_alt_custom", "_alt_comp"):
+                beat.pop(key, None)
+            if chosen[i] == "authored":
+                beat["custom"] = custom
+            else:
+                beat["force_component"] = comp
+            lib, auth = looks["library"].get(i + 1), looks["authored"].get(i + 1)
+            report.append(f"{i + 1}. {str(beat.get('title') or '')[:30]} — کتابخانه {lib.score if lib else '?'} · طراح موشن {auth.score if auth else '?'} ← {'طراح موشن' if chosen[i] == 'authored' else 'کتابخانه (' + str(comp) + ')'}")
+            for row in plan.script.get("panels_info") or []:
+                if row["n"] == i + 1:
+                    row["source"] = chosen[i]
+        note("طراح ارشد برای هر پنل بین المان کتابخانه و صحنهٔ طراح موشن بهترین را انتخاب کرد", stage="art director", done=True, detail="\n".join(report))
+    except Exception as exc:
+        log.warning("panel tournament skipped: %s", str(exc)[:200])
+        for i in both:                                      # whatever state the variants left: authored scene wins, the library is the fallback
+            beat = segs[i]["beat"]
+            custom = beat.get("custom") or beat.pop("_alt_custom", None)
+            for key in ("custom", "force_component", "_alt_custom", "_alt_comp"):
+                beat.pop(key, None)
+            if custom:
+                beat["custom"] = custom
+
+
 def refine_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, frames: list[dict], note: Callable[..., None]) -> list[dict]:
-    """The art-director pass (creative/design_critic.py) on the panel stills: a panel from the library that scores low is swapped for another component that fits the same beat
-    and lasts as long, and kept only if the same eye scores the new one higher. Authored and template panels are left alone. Returns the (possibly new) frames."""
+    """The art-director pass (creative/design_critic.py) on the final panel stills. A weak LIBRARY panel is swapped for another component that fits the beat and lasts as long;
+    a weak AUTHORED panel is written again by the Motion Designer from the critic's fixes; either is kept only if the same eye scores it higher. Returns the (possibly new) frames."""
     from creative import design_critic, panel_library
-    segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
-    drafts = {i + 1: s["beat"].get("force_component") for i, s in enumerate(segs) if s["beat"].get("force_component")}
+    segs = _panel_segs(plan)
+    drafts = {}
+    for i, s in enumerate(segs, 1):
+        if s["beat"].get("custom"):
+            drafts[i] = {"custom": s["beat"]["custom"]}
+        elif s["beat"].get("force_component"):
+            drafts[i] = {"lib": s["beat"]["force_component"]}
     if not frames or not drafts:
         return frames
-    state = {"frames": frames, "tried": {n: {name} for n, name in drafts.items()}}
+    state = {"frames": frames, "tried": {n: {d["lib"]} if "lib" in d else set() for n, d in drafts.items()}}
 
     def stills():
         return {f["seg"]: f["file"] for f in state["frames"]}
 
     def author(n, feedback):
         beat = segs[n - 1]["beat"]
+        if "custom" in drafts[n]:
+            from creative import motion as creative_motion
+            from engine.hyperframes.schema import VisualBeat
+            sentence = int(beat.get("sentence") if beat.get("sentence") is not None else 0)
+            fresh = VisualBeat(id=str(beat.get("bid") or f"beat-{sentence}-{n - 1}"), start=float(segs[n - 1]["start"]), end=float(segs[n - 1]["end"]),
+                               title=(str(beat.get("title") or "") or "…")[:80], items=[str(x)[:35] for x in (beat.get("items") or [])][:4], layout="top_panel",
+                               narrative_role=str(beat.get("role") or "evidence"), why=str(beat.get("visual") or ""), spoken=str(beat.get("spoken") or ""))
+            creative_motion.PANEL_MAX_Y = CARD_Y - EXTRA - 20
+            creative_motion.compose([fresh], creative_motion.plan_from_public(plan.creative_plan), plan.sentences, cache=work_dir / "authored_scenes_v2.json", feedback={fresh.id: feedback})
+            if not fresh.custom:
+                raise ValueError("the designer returned nothing")
+            return {"custom": fresh.custom}
         seconds = float(segs[n - 1]["end"]) - float(segs[n - 1]["start"])
-        taken = set(drafts.values()) | state["tried"][n]
+        taken = {d["lib"] for d in drafts.values() if "lib" in d} | state["tried"][n]
         options = panel_library.alternatives(beat, taken, seconds)
         if not options:
             raise ValueError("no other component fits")
         state["tried"][n].add(options[0])
-        return options[0]
+        return {"lib": options[0]}
 
     def apply_all():
-        for n, name in drafts.items():
-            segs[n - 1]["beat"]["force_component"] = name
+        for n, draft in drafts.items():
+            beat = segs[n - 1]["beat"]
+            for key in ("custom", "force_component"):
+                beat.pop(key, None)
+            if "custom" in draft:
+                beat["custom"] = draft["custom"]
+            else:
+                beat["force_component"] = draft["lib"]
 
     def rebuild():
         apply_all()
@@ -756,10 +847,11 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
         info = plan.script.get("panels_info") or []
         lib = sum(1 for r in info if r["source"] == "library")
         made = sum(1 for r in info if r["source"] == "authored")
-        label = {"library": "کتابخانهٔ المان‌ها", "authored": "طراح موشن", "template": "قالب پایهٔ سبک", "dropped": "ساخته نشد"}
+        label = {"library": "کتابخانهٔ المان‌ها", "authored": "طراح موشن", "both": "هر دو (انتخاب با طراح ارشد)", "template": "قالب پایهٔ سبک", "dropped": "ساخته نشد"}
         note(f"{authored} پنل آماده شد" + (f" از {total_panels}" if total_panels != authored else "") + f" · {lib} از کتابخانهٔ المان‌ها، {made} با طراح موشن",
              stage="designing panels", done=True,
              detail="\n".join(f"{r['n']}. {r['title']} — {label[r['source']]}" + (f" ({r['component']})" if r.get("component") else "") for r in info))
+        pick_panels(plan, pack, work_dir, note)
         frames = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames")
         try:
             from creative import design_critic

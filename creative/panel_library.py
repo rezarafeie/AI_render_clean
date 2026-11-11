@@ -177,6 +177,22 @@ def _fill_social(b, d):
     return {"brand": (b.get("title") or "")[:22], "proof": items[0], "cta": items[1], "f1": f"{items[0]}", "f2": f"{items[1]}", "f3": f"{items[2]}"}
 
 
+# Components that would put things on screen the speaker never said: made-up metrics, ratings, avatars, English interface words. Never offered.
+FABRICATES = {"pull-back-reveal", "star-rating-fill", "avatar-cloud", "overwhelm-surround", "social-proof-card", "native-notification-pop"}
+# Components that show a number: only offered when the beat's own title carries one (and a chart only with two or more numbers among its items).
+NEEDS_NUMBER = {"count-up", "conic-progress-ring", "chart-story"}
+
+
+def _numbers_ok(name: str, beat: dict) -> bool:
+    if name in FABRICATES:
+        return False
+    if name not in NEEDS_NUMBER:
+        return True
+    if name == "chart-story":
+        return sum(1 for i in _items(beat, 1, 6) if number_of(i)) >= 2
+    return number_of(str((beat or {}).get("title") or "")) is not None
+
+
 LIBRARY: dict[str, Entry] = {e.name: e for e in (
     # lists / steps
     Entry("beat-timeline", ("list", "steps"), _fill_timeline, 2, 4, zoom=1.8),
@@ -277,7 +293,7 @@ def choose(beat: dict, used: set[str], seed: str = "", seconds: float | None = N
     ready = set(available())
 
     def pool(r: str) -> list[str]:
-        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and lasts(n, seconds))
+        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and lasts(n, seconds) and _numbers_ok(n, beat))
 
     candidates = [n for n in pool(role) if n not in used] or [n for n in pool("headline") if n not in used] or [n for n in pool(role) if n not in used]
     if not candidates:
@@ -301,7 +317,7 @@ def alternatives(beat: dict, exclude: set[str], seconds: float | None = None) ->
     ready = set(available())
 
     def pool(r: str) -> list[str]:
-        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude and lasts(n, seconds))
+        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude and lasts(n, seconds) and _numbers_ok(n, beat))
     return pool(role) + [n for n in pool("headline") if n not in pool(role)]
 
 

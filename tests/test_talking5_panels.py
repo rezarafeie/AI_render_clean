@@ -40,7 +40,7 @@ def offline(monkeypatch):
 
 
 def test_the_library_fills_the_panels_it_fits_and_the_designer_is_not_asked_for_them(offline, monkeypatch):
-    monkeypatch.delenv("TALKING5_PANELS", raising=False)
+    monkeypatch.setenv("TALKING5_PANELS", "library")
     plan = _plan(BEATS)
     assert t5.author_panels(plan, __import__("pathlib").Path("/tmp")) == 4
     info = plan.script["panels_info"]
@@ -50,7 +50,8 @@ def test_the_library_fills_the_panels_it_fits_and_the_designer_is_not_asked_for_
     assert len(offline) == sum(1 for r in info if r["source"] == "authored")        # the designer only got what the library could not fill
 
 
-def test_the_page_builds_exactly_the_components_chosen_here(offline, tmp_path):
+def test_the_page_builds_exactly_the_components_chosen_here(offline, tmp_path, monkeypatch):
+    monkeypatch.setenv("TALKING5_PANELS", "library")
     plan = _plan(BEATS)
     t5.author_panels(plan, tmp_path)
     expected = [r["component"] for r in plan.script["panels_info"] if r["source"] == "library"]
@@ -97,6 +98,7 @@ def test_a_component_is_fitted_to_the_panels_length_so_it_does_not_leave_the_pan
 def test_a_weak_library_panel_is_swapped_for_another_component_and_kept_only_if_it_scores_higher(offline, monkeypatch, tmp_path):
     from PIL import Image
     from creative import design_critic
+    monkeypatch.setenv("TALKING5_PANELS", "library")
     plan = _plan(BEATS[:2])
     t5.author_panels(plan, tmp_path)
     segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
@@ -135,3 +137,61 @@ def test_a_long_panel_is_never_given_a_component_that_animates_out_early(monkeyp
         assert pick is None or panel_library.lasts(pick[0], 6.0)
     short = {panel_library.choose(beat, set(), seed=str(seed), seconds=3.0)[0] for seed in range(12)}
     assert "headline-slam" in short or "push-in" in short or len(short) >= 2          # short panels may use the short components
+
+
+def test_a_reel_with_library_panels_is_kept_off_the_cloud_until_the_worker_image_has_the_fixed_library():
+    from app.render_cloud import hooks
+    library = _plan(BEATS[:2])
+    for seg in library.script["segments"]:
+        seg["beat"]["force_component"] = "beat-timeline"
+    assert hooks._library_panels(library)
+    authored = _plan(BEATS[:2])
+    for seg in authored.script["segments"]:
+        seg["beat"]["custom"] = {"html": "<p>x</p>", "css": "", "js": ""}
+    assert not hooks._library_panels(authored)
+    plain = _plan(BEATS[:1])
+    plain.script["segments"][0]["layout"] = "full"
+    assert not hooks._library_panels(plain)
+
+
+def test_best_mode_makes_both_candidates_and_the_art_director_keeps_the_higher_scoring_one(offline, monkeypatch, tmp_path):
+    from PIL import Image
+    from creative import design_critic
+    monkeypatch.delenv("TALKING5_PANELS", raising=False)                       # the default is "best"
+    plan = _plan(BEATS[:3])
+    t5.author_panels(plan, tmp_path)
+    segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+    assert all(s["beat"].get("custom") and s["beat"].get("force_component") for s in segs)          # both candidates for every beat
+    assert {r["source"] for r in plan.script["panels_info"]} == {"both"}
+    shots = tmp_path / "shots"
+    shots.mkdir()
+
+    def snap(plan_, pack_, work_, out_):
+        items = []
+        for i, seg in enumerate(segs, 1):
+            f = shots / f"{out_.name}-{i}.jpg"
+            Image.new("RGB", (270, 400), (30 * i, 90, 120)).save(f)
+            items.append({"n": i, "t": 1.0, "title": "", "file": f, "seg": i})
+        return items
+    monkeypatch.setattr(t5, "snapshot_panels", snap)
+    scores = {"panel_frames_library": {1: 8, 2: 4, 3: 6}, "panel_frames_authored": {1: 5, 2: 7, 3: 6}}          # 1: library wins, 2: designer wins, 3: tie goes to the designer
+    real = design_critic.critique
+    monkeypatch.setattr(design_critic, "critique", lambda stills, headlines, work, **kw: real(stills, headlines, work, **{**kw, "ask": lambda rubric, ctx, sheet: {"scenes": [
+        {"scene": n, "score": sc} for n, sc in scores["panel_frames_library" if "library" in str(work) else "panel_frames_authored"].items()]}}))
+    notes = []
+    t5.pick_panels(plan, REFERENCE_AI_NEWS, tmp_path, lambda text, **kw: notes.append((text, kw)))
+    assert segs[0]["beat"].get("force_component") and not segs[0]["beat"].get("custom")
+    assert segs[1]["beat"].get("custom") and not segs[1]["beat"].get("force_component")
+    assert segs[2]["beat"].get("custom") and not segs[2]["beat"].get("force_component")
+    assert [r["source"] for r in plan.script["panels_info"]] == ["library", "authored", "authored"] and notes
+    assert not any(k.startswith("_alt") for s in segs for k in s["beat"])
+
+
+def test_a_chart_or_a_rating_is_never_offered_without_the_numbers_the_speaker_said():
+    beat = {"title": "نگرش‌ها", "items": ["الف", "ب", "ج"], "visual_type": "stat"}
+    for seed in range(20):
+        pick = panel_library.choose(beat, set(), seed=str(seed), seconds=4.0)
+        assert pick is None or pick[0] not in panel_library.FABRICATES | {"chart-story", "count-up", "conic-progress-ring"}
+    numeric = {"title": "۷۲٪ رشد", "items": [], "visual_type": "stat"}
+    assert "count-up" in panel_library.alternatives(numeric, set(), 4.0) or "conic-progress-ring" in panel_library.alternatives(numeric, set(), 3.0)
+    assert not any(n in panel_library.alternatives(numeric, set(), 4.0) for n in panel_library.FABRICATES)
