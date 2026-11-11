@@ -21,13 +21,20 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "vendor" / "motion-skills"
 NS = "openmontage"
 REPO = "https://github.com/calesthio/OpenMontage"
-SKILLS = {  # file under skills/ -> (id, tags)
-    "creative/short-form.md": ("short-form", ["short-form", "composition"]),
-    "creative/storytelling.md": ("storytelling", ["explainer", "composition"]),
-    "creative/data-visualization.md": ("data-visualization", ["data"]),
-    "creative/sound-design.md": ("sound-design", ["sound"]),
-    "creative/commercial-product-video.md": ("commercial-product-video", ["product"]),
-    "meta/taste-direction.md": ("taste-direction", ["composition", "brand"]),
+# file under skills/ -> (id, tags, one line telling the planner WHEN this skill pays off; written here, the skill text itself is verbatim)
+SKILLS = {
+    "creative/short-form.md": ("short-form", ["short-form", "composition"],
+        "vertical 9:16 reels / TikTok / Shorts: the hook in the first 2 s, safe zones, length targets, pacing and retention rules"),
+    "creative/storytelling.md": ("storytelling", ["explainer", "composition"],
+        "any explainer or idea-led film: hook, problem, insight, payoff arc; one idea per scene; how narration and picture share the load"),
+    "creative/data-visualization.md": ("data-visualization", ["data"],
+        "a film that shows numbers or comparisons: which chart fits which question, animation order, labels, how much data per scene"),
+    "creative/sound-design.md": ("sound-design", ["sound"],
+        "a film with music and sound effects: ducking and level rules, whoosh timing, where silence and an accent go"),
+    "creative/commercial-product-video.md": ("commercial-product-video", ["product"],
+        "a product launch, promo or ad: treatment, keeping the product consistent across shots, the hero reveal and the call to action"),
+    "meta/taste-direction.md": ("taste-direction", ["composition", "brand"],
+        "when the look must not feel generic: choosing a mood and references before design, avoiding the stock-AI look"),
 }
 
 
@@ -50,7 +57,7 @@ def main(clone: Path, remove_only: bool = False) -> None:
         sources.append({"namespace": NS, "repo": REPO, "revision": rev, "license": "AGPL-3.0", "copyright": "OpenMontage contributors",
                         "license_file": f"_licenses/{NS}/OpenMontage.LICENSE",
                         "vendored": "Markdown of the listed skills only, verbatim; no code, scripts, styles or pipeline manifests"})
-        for rel, (name, tags) in SKILLS.items():
+        for rel, (name, tags, hint) in SKILLS.items():
             data = (clone / "skills" / rel).read_bytes()
             text = data.decode("utf-8", errors="ignore")
             dst = OUT / NS / name / "SKILL.md"
@@ -59,7 +66,7 @@ def main(clone: Path, remove_only: bool = False) -> None:
             index["skills"].append({
                 "id": f"{NS}:{name}", "name": name, "namespace": NS, "pack": "OpenMontage", "description": describe(text), "repo": REPO, "revision": rev,
                 "path": f"{NS}/{name}/SKILL.md", "subpath": f"skills/{rel}", "bytes": len(data), "references": [], "tags": tags, "runtime_needed": "",
-                "license": "AGPL-3.0", "files": {f"{NS}/{name}/SKILL.md": hashlib.sha256(data).hexdigest()}})
+                "license": "AGPL-3.0", "hint": hint, "files": {f"{NS}/{name}/SKILL.md": hashlib.sha256(data).hexdigest()}})
     (OUT / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
     (OUT / "SOURCES.json").write_text(json.dumps(sources, ensure_ascii=False, indent=1), encoding="utf-8")
 

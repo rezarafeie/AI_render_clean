@@ -53,7 +53,7 @@ def planning_block() -> str:
     rows = [r for r in index().values() if planner_eligible(r)]
     if not rows:
         return ""
-    lines = [f"- {r['id']}: {_first_sentence(r['description'])}" for r in rows]
+    lines = [f"- {r['id']}: {r.get('hint') or _first_sentence(r['description'])}" for r in rows]
     return ("CRAFT SKILLS (optional). Name up to two skill ids in `skills` when their craft really fits this film (for example a kinetic-typography film, a product launch, "
             "a data story, an explainer); the scene designers then read those skills. Leave `skills` empty for a simple film.\n" + "\n".join(lines))
 
