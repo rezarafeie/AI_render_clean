@@ -33,7 +33,7 @@ def test_one_skill_name_is_kept_once_and_the_best_resource_wins():
 
 def test_each_source_keeps_its_licence_and_revision():
     sources = sl.notices()
-    assert {s["namespace"] for s in sources} == {"iart", "charlie", "barty", "bang", "motionkit", "motionclone", "openmontage"}
+    assert {s["namespace"] for s in sources} == {"iart", "charlie", "barty", "bang", "motionkit", "motionclone", "openmontage", "lemo"}
     for source in sources:
         licence = (VENDOR / source["license_file"]).read_text()
         if source["namespace"] == "openmontage":      # the owner accepted AGPL-3.0 for these files; they stay isolated and removable
@@ -166,3 +166,20 @@ document.title = JSON.stringify({same: times.every(t => fwd[t] === jump[t]), dCl
     assert report["same"], report
     assert report["moved"], report
     assert "100%" in report["dClip"] and report["dClip"].split("inset(")[1].split(" ")[3].startswith("100"), report     # right-to-left text starts hidden from its right edge
+
+
+def test_the_planner_is_offered_the_skills_that_fit_the_brief_not_the_whole_library():
+    product = [r["id"] for r in sl.retrieve("یک ریل تبلیغاتی برای ساعت هوشمند")]
+    data = [r["id"] for r in sl.retrieve("ویدیوی داده‌محور رشد فروش و نمودار")]
+    assert len(product) <= sl.PLANNER_CAP < len(sl.index()) and "lemo:glass-product" in product and "lemo:dataviz" in data and "lemo:dataviz" not in product
+    assert all(core in product for core in sl.CORE if sl.get(core))
+    block = sl.planning_block("اکسپلینر مینیمال")
+    assert "lemo:swiss-motion" in block and block.count("\n- ") <= sl.PLANNER_CAP and len(block) < 9000
+
+
+def test_a_film_style_skill_reaches_the_designer_as_a_digest_with_the_full_text_as_reference():
+    row = sl.get("lemo:swiss-motion")
+    assert row and row["license"] == "MIT" and row["body_chars"] >= 5000 and any(r.endswith("STYLE.md") for r in row["references"])
+    block = sl.designer_block(["lemo:swiss-motion"])
+    assert "Colour logic" in block and "Motion quality" in block and "(from https://github.com/lemomo-ai/lemo-opuscar, MIT)" in block
+    assert len(sl.reference("lemo:swiss-motion", "STYLE.md", 20000)) > len(sl.body("lemo:swiss-motion"))

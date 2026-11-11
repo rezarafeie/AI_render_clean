@@ -299,7 +299,7 @@ def build_project(directory: Path, pack: StylePack, script: dict, part: str = "a
                 seg["component"] = "authored"
                 pick = None
             else:
-                pick = panel_library.choose(seg["beat"], used, seed=str(n)) if script.get("use_library", True) else None
+                pick = (panel_library.forced(seg["beat"]) or panel_library.choose(seg["beat"], used, seed=str(n))) if script.get("use_library", True) else None
                 if pick:
                     name, values = pick
                     comps.mkdir(parents=True, exist_ok=True)

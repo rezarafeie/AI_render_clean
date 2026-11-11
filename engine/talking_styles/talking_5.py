@@ -629,6 +629,7 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
     for n, seg in enumerate(segs):
         title = str((seg["beat"] or {}).get("title") or "")
         if n in from_library:
+            seg["beat"]["force_component"] = from_library[n]                  # the page builds exactly this one (and a later swap names another)
             info.append({"n": n + 1, "title": title, "source": "library", "component": from_library[n]})
             done += 1
         elif n in beats and beats[n].custom:

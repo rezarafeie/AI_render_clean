@@ -876,8 +876,8 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
                  + "\nWhen a native design fits the actual meaning and constraints, use its typed shotcraft_component, not a model recreation of its code. Keep custom scene design when no native component fits. Never claim that shotcraft_id authoring executed original TSX.")
     parts.append("Card-flip is a brief three-feature overview. Reading holds are per-card, NOT a guarantee of serial reading of all three cards; keep copy terse or use sequential custom scenes for detailed explanation.")
     from . import skills_library
-    if skills_library.planning_block():
-        parts.append(skills_library.planning_block())
+    if skills_library.planning_block(brief):
+        parts.append(skills_library.planning_block(brief))
     parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
         parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")

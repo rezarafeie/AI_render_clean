@@ -658,6 +658,40 @@ def render(job, data: dict, config: dict, out_path: Path, *, on_progress=None, s
         if check.blocking:
             log.warning("reel page failed the browser check: %s", check.blocking[:2])
             return _skipped(job, "بررسی مرورگر صفحهٔ طراحی‌شده را رد کرد: " + mg.explain_problem(check.blocking[0]))
+        from . import design_critic
+        if design_critic.enabled():
+            # An art director's pass on the stills (creative/design_critic.py): the weakest scenes are designed again from its fixes and kept only if the same eye scores them higher.
+            try:
+                by_number = {n: d for n, d in enumerate(drafts, 1)}
+                protected = {n for n, sc in enumerate(plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None)} | {n for n, kind in enumerate(how, 1) if kind == "plain"}
+
+                def critic_author(n, feedback):
+                    draft = mg.author_scene(plan, n, brief, context=context, used=used, feedback=feedback)
+                    if svg_problems(draft.html):
+                        raise ValueError("invalid svg")
+                    return draft
+
+                def critic_rebuild():
+                    nonlocal page
+                    candidate = mg.assemble_scenes(plan, [by_number[i] for i in range(1, count + 1)], audio + sfx)
+                    mg.write_project(project, candidate)
+                    again = standalone.check(project, should_cancel=should_cancel)
+                    if again.ran and not again.blocking:
+                        page = candidate
+                        return True
+                    return False
+                _progress(job.dir, "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد", detail="وضعیت: در حال بررسی")
+                critic_notes: list[str] = []
+                verdict = design_critic.refine(drafts=by_number, headlines={n: sc.headline for n, sc in enumerate(plan.scenes, 1)}, protected=protected,
+                                               stills=lambda: visual_gate.scene_stills(project, plan, work), author=critic_author, rebuild=critic_rebuild,
+                                               restore=lambda before: (by_number.clear(), by_number.update(before)), work=work / "critic",
+                                               brief=str(storyboard.get("prompt") or "")[:600], style_note=plan.design_direction, note=critic_notes.append)
+                drafts = [by_number[i] for i in range(1, count + 1)]
+                if verdict["before"]:
+                    _progress(job.dir, "نظر طراح ارشد دربارهٔ صحنه‌ها آماده شد", done=True,
+                              detail="امتیاز هر صحنه (از ۱۰): " + "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items())) + "\n" + "\n".join(critic_notes))
+            except Exception as exc:
+                log.warning("reel design critic skipped: %s", str(exc)[:200])
         if "plain" in how:
             job.designer_note = f"{how.count('plain')} صحنه پس از ردشدن در بررسی با صحنهٔ ساده جایگزین شد"
         try:

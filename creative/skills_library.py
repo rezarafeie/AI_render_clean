@@ -48,14 +48,64 @@ def _first_sentence(text: str, limit: int = 78) -> str:
     return (cut if len(cut) <= limit else cut[:limit].rsplit(" ", 1)[0] + "…")
 
 
-def planning_block() -> str:
-    """One line per skill the planner may pick, in the planner's prompt. Empty when the vendored library is missing."""
+# Persian words of a brief -> the English tags/words the skill descriptions use (retrieval is keyword scoring, no model call)
+_SYNONYMS = {
+    "محصول": "product launch ad promo", "تبلیغ": "ad promo product launch", "تبلیغاتی": "ad promo product", "فروشگاه": "product ecommerce", "رونمایی": "launch reveal product",
+    "داده": "data chart infographic", "آمار": "data chart infographic", "نمودار": "chart data", "درصد": "data stat chart", "رشد": "growth data chart", "عدد": "data stat",
+    "آموزش": "explainer educational", "آموزشی": "explainer educational", "توضیح": "explainer", "توضیحی": "explainer", "ایده": "explainer concept",
+    "ریل": "short-form vertical reels", "اینستاگرام": "short-form vertical reels", "شورت": "short-form vertical", "تیک‌تاک": "short-form vertical tiktok",
+    "ویروسی": "short-form viral hook", "هوک": "hook short-form", "داستان": "story storytelling", "داستانی": "story storytelling", "مینیمال": "minimal swiss clean",
+    "لوگو": "logo brand identity", "برند": "brand identity logo", "موسیقی": "sound music beat", "بیت": "beat sync sound", "تایپوگرافی": "typography kinetic type",
+    "متن": "typography kinetic type", "سینمایی": "cinematic film", "ساده": "minimal", "مدرن": "modern minimal", "سبک": "style", "ترند": "viral short-form",
+    "گفتاری": "talking-head", "گوینده": "talking-head", "نریشن": "narration voice",
+}
+_STOP = {"the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "with", "is", "are", "be", "that", "this", "it", "as", "at", "by", "من", "را", "از", "به", "که", "در", "با", "یک", "این", "و", "برای"}
+CORE = ("openmontage:short-form", "openmontage:storytelling", "lemo:director-method")         # a short film brief always gets these on offer
+PLANNER_CAP = 36
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in re.findall(r"[A-Za-z]{3,}|[\u0600-\u06FF\u200c]{2,}", str(text or "").lower()) if w not in _STOP]
+
+
+def retrieve(brief: str, limit: int = PLANNER_CAP) -> list[dict]:
+    """The skills worth offering the planner for THIS brief: keyword scoring over each skill's id, tags, hint and description (Persian words are mapped to the English ones the
+    descriptions use), the core skills, then the best of the rest. Deterministic; no model call; the whole library is never put in the prompt."""
     rows = [r for r in index().values() if planner_eligible(r)]
+    query = _words(brief)
+    for w in list(query):
+        query += _words(_SYNONYMS.get(w, ""))
+    for key, extra in _SYNONYMS.items():                      # a Persian stem inside a longer word ("ریلی", "محصولات")
+        if key in str(brief) and key not in query:
+            query += _words(extra)
+    if not query:
+        return rows[:limit]
+    weights: dict[str, float] = {}
+    for w in query:
+        weights[w] = weights.get(w, 0) + 1
+    def score(row: dict) -> float:
+        text = " ".join([row["id"].replace("-", " ").replace(":", " "), " ".join(row.get("tags") or []), str(row.get("hint") or ""), str(row.get("description") or "")]).lower()
+        found = set(_words(text))
+        return sum(wt * (3 if w in row["id"] else 1) for w, wt in weights.items() if w in found)
+    ranked = sorted(rows, key=lambda r: (-score(r), r["id"]))
+    chosen = [r for r in rows if r["id"] in CORE]
+    for r in ranked:
+        if len(chosen) >= limit:
+            break
+        if r not in chosen:
+            chosen.append(r)
+    return chosen
+
+
+def planning_block(brief: str = "") -> str:
+    """One line per skill offered to the planner, in the planner's prompt: the ones that fit this brief (retrieve), or the first few without a brief. Empty when the library is missing."""
+    rows = retrieve(brief) if brief else [r for r in index().values() if planner_eligible(r)][:PLANNER_CAP]
     if not rows:
         return ""
     lines = [f"- {r['id']}: {r.get('hint') or _first_sentence(r['description'])}" for r in rows]
-    return ("CRAFT SKILLS (optional). Name up to two skill ids in `skills` when their craft really fits this film (for example a kinetic-typography film, a product launch, "
-            "a data story, an explainer); the scene designers then read those skills. Leave `skills` empty for a simple film.\n" + "\n".join(lines))
+    return ("CRAFT SKILLS (optional; the ones that best fit this brief). Name up to two skill ids in `skills` when their craft really fits this film: a film-style skill (`lemo:*`) gives the whole "
+            "film one design language (palette, type, motion, camera); the others give craft for a kind of film (a kinetic-typography film, a product launch, a data story, an explainer, "
+            "a vertical reel). Leave `skills` empty for a simple film.\n" + "\n".join(lines))
 
 
 def normalize_ids(ids) -> list[str]:
@@ -111,7 +161,7 @@ def designer_block(ids) -> str:
     chosen = normalize_ids(ids)
     parts = [MOTION_CRAFT, COMPOSITION_CRAFT]
     for skill_id in chosen:
-        text = body(skill_id, BODY_CHARS)
+        text = body(skill_id, int((get(skill_id) or {}).get("body_chars") or BODY_CHARS))
         if text:
             row = get(skill_id) or {}
             parts.append(f"SKILL «{skill_id}» (from {row.get('repo', '')}, {row.get('license', 'MIT')}). Use its craft where it fits this scene; the rules above and the scene's own limits come first:\n{text}")

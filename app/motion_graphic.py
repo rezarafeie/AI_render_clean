@@ -1791,6 +1791,57 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         except Exception as exc:
             log.warning("visual gate failed: %s", str(exc)[:200])
             notes.append("بررسی عکس صحنه‌ها اجرا نشد: " + str(exc)[:120])
+    from creative import design_critic
+    if build and result.ran and not skipped_check and design_critic.enabled():
+        # An art director's pass: a vision model scores every scene's still; the weakest are designed again from its concrete fixes and kept only if the same eye scores them higher.
+        try:
+            count = len(build.plan.scenes)
+            protected = {n for n, sc in enumerate(build.plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None)}
+
+            def critic_stills():
+                nonlocal shots_of
+                if shots_of != page_fp:
+                    _snapshot_scenes(directory, work, build.plan)
+                    shots_of = page_fp
+                return {n: directory / "snapshots" / f"{n}.jpg" for n in range(1, count + 1) if (directory / "snapshots" / f"{n}.jpg").is_file()}
+
+            def critic_author(n, feedback):
+                from creative.reel_designer import svg_problems
+                draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=feedback, style=build.style)
+                if svg_problems(draft.html):
+                    raise ValueError("invalid svg")
+                return draft
+
+            def critic_rebuild():
+                nonlocal page, page_fp, shots_of
+                candidate = mg.assemble_scenes(build.plan, [build.drafts[i] for i in range(1, count + 1)], build.audio)
+                mg.write_project(work, candidate)
+                again = standalone.check(work, should_cancel=lambda: _cancelled(key))
+                if not (again.ran and not again.blocking):
+                    return False
+                page, page_fp = candidate, hashlib.sha256((work / "index.html").read_bytes()).hexdigest()
+                shots_of = None                                      # the stills are of the page before this change
+                return True
+
+            def critic_restore(before):
+                build.drafts.clear(); build.drafts.update(before)
+
+            _note(directory, "critic", "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد")
+            verdict = design_critic.refine(drafts=build.drafts, headlines={n: sc.headline for n, sc in enumerate(build.plan.scenes, 1)}, protected=protected, stills=critic_stills,
+                                           author=critic_author, rebuild=critic_rebuild, restore=critic_restore, work=work / "critic", brief=brief, style_note=build.plan.design_direction,
+                                           note=lambda text: notes.append(text))
+            if verdict["before"]:
+                scores = "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items()))
+                _note(directory, "critic", "نظر طراح ارشد دربارهٔ صحنه‌ها آماده شد", "done", detail=f"امتیاز هر صحنه (از ۱۰): {scores}\n" + "\n".join(notes[-2:]))
+            else:
+                _note(directory, "critic", "بازبینی زیبایی‌شناسی انجام نشد؛ طراحی همان‌طور که بود ماند", "done")
+            if page_fp != shots_of and verdict["kept"]:
+                _snapshot_scenes(directory, work, build.plan)
+                shots_of = page_fp
+        except _Cancelled:
+            raise
+        except Exception as exc:
+            log.warning("design critic skipped: %s", str(exc)[:200])
     if build is not None:
         from creative import plan_checks
         if plan_checks.promise_enabled():

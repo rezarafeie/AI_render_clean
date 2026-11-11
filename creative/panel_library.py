@@ -260,3 +260,22 @@ def choose(beat: dict, used: set[str], seed: str = "") -> tuple[str, dict] | Non
         return None
     pick = candidates[int(hashlib.sha1(f"{seed}{beat.get('title','')}".encode()).hexdigest(), 16) % len(candidates)]
     return pick, LIBRARY[pick].fill(beat, 4.0)
+
+
+def forced(beat: dict) -> tuple[str, dict] | None:
+    """The component a beat was told to use (`beat["force_component"]`), with its values; None when none is set or it is not in the library."""
+    name = str((beat or {}).get("force_component") or "")
+    if name in LIBRARY and name in set(available()):
+        return name, LIBRARY[name].fill(beat, 4.0)
+    return None
+
+
+def alternatives(beat: dict, exclude: set[str]) -> list[str]:
+    """Other components that fit this beat, best first (same role, then the headline pool), never one in `exclude`."""
+    role = role_of(beat)
+    items = len(_items(beat, 1, 6))
+    ready = set(available())
+
+    def pool(r: str) -> list[str]:
+        return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude)
+    return pool(role) + [n for n in pool("headline") if n not in pool(role)]

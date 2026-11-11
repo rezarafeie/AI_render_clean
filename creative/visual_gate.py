@@ -42,6 +42,22 @@ def blank_scenes(project: Path, plan, work: Path) -> list[int]:
         return []
 
 
+def scene_stills(project: Path, plan, work: Path) -> dict[int, Path]:
+    """{scene (1-based): PNG} of every scene at its settled moment, from the page in `project`. {} when the stills cannot be taken (never raises)."""
+    try:
+        from engine.hyperframes.cli import cli_command
+        times = settled_times(plan)
+        raw = work / "critic-stills"
+        shutil.rmtree(raw, ignore_errors=True)
+        raw.mkdir(parents=True)
+        subprocess.run([*cli_command(), "snapshot", ".", "--at", ",".join(f"{t:g}" for t in times), "--no-end", "--keep", "--describe", "false", "-o", str(raw)],
+                       cwd=project, capture_output=True, text=True, timeout=150, env={**os.environ, "NO_COLOR": "1"})
+        return {n: raw / f"at-{t:g}s.png" for n, t in enumerate(times, 1) if (raw / f"at-{t:g}s.png").is_file()}
+    except Exception as exc:
+        log.warning("scene stills could not be taken: %s", str(exc)[:160])
+        return {}
+
+
 def problems(project: Path, plan, work: Path, quality: list[str], check_overlap: bool) -> list[str]:
     """Blocking findings (in the `sN-` form the repair loops read) for a page that passed the browser check."""
     out: list[str] = []
