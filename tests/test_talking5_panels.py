@@ -81,3 +81,14 @@ def test_a_panel_nobody_can_fill_is_dropped_and_no_designer_means_the_pages_own_
     monkeypatch.setattr(creative_motion, "enabled", lambda: False)
     plan = _plan(BEATS[:1])
     assert t5.author_panels(plan, tmp_path) == 1 and plan.script["segments"][0]["layout"] == "split" and plan.script["panels_info"][0]["source"] == "template"
+
+
+def test_a_component_is_fitted_to_the_panels_length_so_it_does_not_leave_the_panel_empty(tmp_path):
+    html = panel_library.fitted_html("headline-slam", 6.25)
+    assert html.count('data-duration="6.25"') >= 2 and 'data-composition-duration="6.25"' in html and 'data-duration="3.5"' not in html
+    assert "cdn.jsdelivr.net" not in html                                      # the page's own GSAP is used: a render worker has no network
+    plan = _plan(BEATS[3:])
+    plan.script["segments"][0]["end"] = 6.25
+    plan.script["segments"][0]["beat"]["force_component"] = "headline-slam"
+    overlay_reel.build_project(tmp_path / "page", REFERENCE_AI_NEWS, plan.script, part="panel")
+    assert 'data-duration="6.25"' in (tmp_path / "page" / "compositions" / "components" / "headline-slam.html").read_text()

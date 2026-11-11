@@ -279,3 +279,16 @@ def alternatives(beat: dict, exclude: set[str]) -> list[str]:
     def pool(r: str) -> list[str]:
         return sorted(n for n, e in LIBRARY.items() if n in ready and r in e.roles and e.min_items <= items <= e.max_items and n not in exclude)
     return pool(role) + [n for n in pool("headline") if n not in pool(role)]
+
+
+def fitted_html(name: str, seconds: float) -> str:
+    """The component's page with its own envelope set to the panel's length and without its CDN script.
+
+    A component animates in and out over the duration it declares (`data-duration` on its root, default 3-5 s) and then leaves the panel EMPTY; a panel lasts as long as the
+    speaker's sentence, so the declared duration must be the panel's. The page already loads GSAP locally, so the component's CDN `<script src>` (which would need the network, and
+    a render worker has none) is dropped."""
+    html = (LIBRARY_DIR / f"{name}.html").read_text(encoding="utf-8")
+    value = f"{max(1.0, float(seconds)):.2f}".rstrip("0").rstrip(".")
+    html = re.sub(r'(data-duration=")[0-9.]+(")', rf"\g<1>{value}\g<2>", html)
+    html = re.sub(r'(data-composition-duration=")[0-9.]+(")', rf"\g<1>{value}\g<2>", html)
+    return re.sub(r'<script src="https://cdn\.jsdelivr\.net/[^"]+"></script>', "", html)

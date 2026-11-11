@@ -303,7 +303,7 @@ def build_project(directory: Path, pack: StylePack, script: dict, part: str = "a
                 if pick:
                     name, values = pick
                     comps.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(panel_library.LIBRARY_DIR / f"{name}.html", comps / f"{name}.html")
+                    (comps / f"{name}.html").write_text(panel_library.fitted_html(name, float(seg["end"]) - float(seg["start"])), encoding="utf-8")
                     used.add(name)
                     h, j = _component_panel(n, name, values, pack, float(seg["start"]), float(seg["end"]), panel_library.LIBRARY[name].zoom)
                     seg["component"] = name
