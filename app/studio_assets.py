@@ -75,6 +75,24 @@ def summary(assets: list[dict]) -> str:
     return "، ".join(parts)
 
 
+def talking_notes(job_dir: Path) -> list[dict]:
+    """The log lines of a talking reel (see app.talking_reel.note): text, detail, stage, done, and optional preview frames."""
+    try:
+        return list(json.loads((job_dir / "talking_notes.json").read_text()).get("notes") or [])
+    except (OSError, ValueError):
+        return []
+
+
+def note_frames(job_dir: Path, note: dict) -> list[dict]:
+    """A note's preview frames as prepared files for the step log (only files inside the job folder)."""
+    out = []
+    for frame in note.get("frames") or []:
+        src = _safe(job_dir, frame.get("src"))
+        if src:
+            out.append({"kind": "image", "scene": frame.get("n"), "group": "پیش‌نمایش پنل‌های طراحی‌شده (پیش از رندر)", "label": frame.get("label") or "", "src": src})
+    return out
+
+
 def review_frames(job_dir: Path, report: dict | None) -> list[dict]:
     """The frames the creative review looked at, as prepared files for the step log (one group, in time order)."""
     out: list[dict] = []

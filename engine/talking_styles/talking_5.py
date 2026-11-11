@@ -613,22 +613,81 @@ def author_panels(plan: ReelPlan, work_dir: Path) -> int:
     return done
 
 
+def snapshot_panels(plan: ReelPlan, pack: StylePack, work_dir: Path, out_dir: Path, limit: int = 8) -> list[dict]:
+    """One still of each designed panel (60 % into its stretch, where its text and motion are in place), composited on the panel colour, so the person sees the
+    designs before the render. Bounded; returns [{n, t, title, file}] and never raises (a missing preview is not a failed reel)."""
+    import os
+    import subprocess
+    segs = [s for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+    if not segs:
+        return []
+    try:
+        from PIL import Image
+        from engine.hyperframes import overlay_reel
+        from engine.hyperframes.cli import cli_command
+        step = max(1, -(-len(segs) // limit))
+        picked = segs[::step][:limit]
+        times = [round(min(float(s["start"]) + (float(s["end"]) - float(s["start"])) * 0.6, plan.duration - 0.1), 2) for s in picked]
+        project, raw = work_dir / "layer_panel_preview", work_dir / ".panel_snapshots"
+        for folder in (project, raw):
+            shutil.rmtree(folder, ignore_errors=True)
+            folder.mkdir(parents=True)
+        overlay_reel.build_project(project, pack, plan.script, part="panel")
+        done = subprocess.run([*cli_command(), "snapshot", ".", "--at", ",".join(f"{t:g}" for t in times), "--no-end", "--keep", "--describe", "false", "-o", str(raw)],
+                              cwd=project, capture_output=True, text=True, timeout=150, env={**os.environ, "NO_COLOR": "1"})
+        out_dir.mkdir(parents=True, exist_ok=True)
+        items = []
+        for n, (seg, t) in enumerate(zip(picked, times), 1):
+            source = raw / f"at-{t:g}s.png"
+            if not source.is_file():
+                continue
+            with Image.open(source) as layer:                   # the panel layer is transparent: show it on the panel colour it will have under the speaker
+                base = Image.new("RGB", layer.size, pack.palette.panel_bg)
+                base.paste(layer.convert("RGBA"), (0, 0), layer.convert("RGBA"))
+                base.thumbnail((540, 960))
+                target = out_dir / f"panel{n}.jpg"
+                base.save(target, quality=82)
+            items.append({"n": n, "t": t, "title": str((seg.get("beat") or {}).get("title") or "")[:60], "file": target})
+        if not items:
+            log.warning("panel previews not made: %s", (done.stderr or done.stdout or "")[-200:])
+        return items
+    except Exception as exc:
+        log.warning("panel previews failed: %s", str(exc)[:200])
+        return []
+
+
 def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Optional[Path] = None,
            on_progress: Optional[Callable[[int], None]] = None, **kwargs) -> Path:
     """Server side: everything that asks a model (the panels, the effects) and the tscaps hook. The browser layers, the person matte, the effects and the
     composition are `compose`, which runs on a RunPod worker when the cloud profile admits it and here otherwise."""
     work_dir.mkdir(parents=True, exist_ok=True)
     pack = kwargs.get("pack") or plan.pack
-    if getattr(plan, "creative_plan", None) is not None and author_panels(plan, work_dir):
+    note = kwargs.get("note") or (lambda *a, **k: None)         # the chat's step log (app/talking_reel.note); never required
+    total_panels = sum(1 for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat"))
+    if getattr(plan, "creative_plan", None) is not None and total_panels:
+        note("دارم برای هر پنل یک صحنهٔ موشن طراحی می‌کنم", stage="designing panels")
+    authored = author_panels(plan, work_dir) if getattr(plan, "creative_plan", None) is not None else 0
+    if authored:
         bg = next((s["beat"]["custom"].get("bg") for s in plan.script["segments"] if s.get("beat") and s["beat"].get("custom")), None)
         if bg:                                          # the speaker card's rounded corners show this colour: it must be the panel's
             pack = pack.model_copy(update={"palette": pack.palette.model_copy(update={"panel_bg": bg})})
+        titles = [str((s.get("beat") or {}).get("title") or "") for s in plan.script["segments"] if s["layout"] == "split" and s.get("beat")]
+        note(f"{authored} پنل موشن طراحی شد" + (f" از {total_panels}" if total_panels != authored else ""), stage="designing panels", done=True, detail="\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1) if t))
+        frames = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames")
+        if frames:
+            note(f"فریم {len(frames)} پنل آماده شد؛ پیش از رندر می‌توانید طراحی‌ها را ببینید", stage="panel previews", done=True, frames=frames)
+    elif total_panels:
+        note("پنل‌های موشن ساخته نشد؛ گوینده تمام‌قاب می‌ماند", stage="designing panels", done=True)
     hook = render_hook(plan, work_dir, pack)
+    if plan.script.get("teaser"):
+        note("هوک ابتدایی با قالب tscaps ساخته شد" if hook else "هوک ابتدایی با قالب داخلی کپشن‌ها کشیده می‌شود", stage="hook", done=True)
     try:
         fx = choose_effects(plan, pack, work_dir)
     except Exception as exc:
         log.warning("effects not chosen: %s", str(exc)[:300])
         fx = []
+    note(f"{len(fx)} جلوهٔ چهره انتخاب شد" if fx else "جلوهٔ چهره‌ای انتخاب نشد", stage="effects", done=True,
+         detail="\n".join(f"{e.get('kind') or e.get('effect') or e.get('type') or '?'} · {float(e.get('start', 0)):.1f}s" for e in fx[:8]) if fx else "")
     from app.render_cloud.hooks import talking5 as cloud_talking5
     if cloud_talking5(video, plan, out, work_dir=work_dir, music=music, pack=pack, fx=fx, hook=hook, on_progress=on_progress):
         return out

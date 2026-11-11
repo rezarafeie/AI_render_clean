@@ -750,6 +750,30 @@ def pack_of(render_settings: dict):
     return pack
 
 
+_NOTES = threading.Lock()
+
+
+def note(job_dir: Path, text: str, *, stage: str = "talking", detail: str = "", request: str = "", done: bool = False, frames: list[dict] | None = None) -> None:
+    """A line of the chat's step log for this reel (the studio's status sync reads talking_notes.json, like the motion designer's notes). `frames` are previews:
+    [{n, t, title, file}] whose files live inside the job folder. Never raises: a missing log line must not cost the reel."""
+    try:
+        path = job_dir / "talking_notes.json"
+        entry = {"text": text, "detail": detail[:3000], "request": request[:3000], "stage": stage, "done": done}
+        if frames:
+            root = job_dir.resolve()
+            entry["frames"] = [{"n": f["n"], "t": f.get("t"), "label": f"پنل {f['n']}" + (f" · {f['title']}" if f.get("title") else ""),
+                                "src": Path(f["file"]).resolve().relative_to(root).as_posix()} for f in frames]
+        with _NOTES:
+            try:
+                data = json.loads(path.read_text()) if path.is_file() else {"notes": []}
+            except (OSError, ValueError):
+                data = {"notes": []}
+            data["notes"].append(entry)
+            path.write_text(json.dumps(data, ensure_ascii=False))
+    except Exception:
+        log.debug("talking note not written", exc_info=True)
+
+
 def _style5_music(job_dir: Path, state: dict, plan, pack, plan_data: dict | None, transcript: dict) -> Optional[Path]:
     """The track under a style-pack reel. The person's own choice (a library track they picked, or none) is kept; the studio's default is replaced by the music director's pick
     for this reel (library, then the free catalogues; never a paid generation here), and the track is slid so its beat grid falls on the reel's cuts. Never fails the render."""
@@ -790,8 +814,10 @@ def _style5_music(job_dir: Path, state: dict, plan, pack, plan_data: dict | None
 def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     """"صحبتی ۵": a style-pack reel (panels written by the Motion Designer, the speaker as a card with the head over the panel, tscaps hook, face effects)."""
     from engine.talking_styles import talking_5 as t5
+    (job_dir / "talking_notes.json").unlink(missing_ok=True)                  # a new attempt writes its log from the start
     _stage(job_dir, "loading transcript" if (job_dir / "transcript.json").is_file() else "transcribing", progress=5)
     transcript = transcript_for(job_dir, video)
+    note(job_dir, f"گفتار آماده است: {len(transcript.get('sentences') or [])} جمله، {float(transcript.get('duration') or 0):.0f} ثانیه", stage="transcript", done=True)
     state = load(job_dir)
     decisions = state.get("decisions")
     if not decisions:
@@ -803,16 +829,24 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
                  "hook": state.get("hook") or decisions.get("hook"), "hook_highlight": state.get("hook_highlight") or []}
     _stage(job_dir, "tracking the face", progress=20)
     faces = _faces(job_dir, video, t5)
+    note(job_dir, "چهرهٔ گوینده ردیابی شد تا کادر و کارت گوینده درست بنشیند", stage="face tracking", done=True)
     duration = float(transcript.get("duration") or 0) or t5.probe_video(video)[2]
     plan_data = state.get("creative_plan")
     beats = ((plan_data or {}).get("chosen") or {}).get("beats") or []
     _stage(job_dir, "planning render", progress=35)
     plan = t5.plan_reel(transcript, decisions, faces, duration, pack, beats, key_moments_of(decisions), plan_data, settings)
+    panels = sum(1 for seg in (plan.script or {}).get("segments", []) if seg.get("layout") == "split" and seg.get("beat"))
+    note(job_dir, f"طرح رندر آماده شد: {len(plan.shots)} برش، {panels} پنل، سبک «{pack.title}»، {plan.duration:.0f} ثانیه", stage="render plan", done=True,
+         detail=f"{pack.summary}\nهوک: {state.get('hook') or decisions.get('hook') or '—'}")
     out = _next_output(job_dir)
     progress, _stage_cb = _render_reporter(job_dir, 50)
     _stage(job_dir, "rendering", progress=45)
     music = _style5_music(job_dir, state, plan, pack, plan_data, transcript)
-    t5.render(video, plan, out, work_dir=job_dir / "talking_reel_work" / "style5", music=music, on_progress=progress, pack=pack)
+    music_lines = (load(job_dir).get("music_notes") or []) if music else []
+    note(job_dir, ("موسیقی انتخاب و روی برش‌ها تنظیم شد" if music_lines else "موسیقی پیش‌فرض یا انتخاب شما استفاده می‌شود") if music else "ویدیو بدون موسیقی ساخته می‌شود",
+         stage="music", done=True, detail="\n".join(music_lines))
+    t5.render(video, plan, out, work_dir=job_dir / "talking_reel_work" / "style5", music=music, on_progress=progress, pack=pack,
+              note=lambda text, **kw: note(job_dir, text, **kw))
     _apply_effects(job_dir, out, settings)
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(plan.duration, 2), shots=len(plan.shots))

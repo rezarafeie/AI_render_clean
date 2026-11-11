@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STYLE_IDS = ("talking_1", "talking_2", "talking_3")
 SAMPLE_PHOTO = ROOT / "assets" / "style_previews" / "cinematic_still.jpg"   # a style 3 still-life, generated once
 SECONDS = 1.2   # entrance animations (pops, fades, slides) have settled by then
-PREVIEW_VERSION = 4   # bump when previews change, so cached plan frames are rebuilt
+PREVIEW_VERSION = 5   # bump when previews change, so cached plan frames are rebuilt
 
 
 class MockupUnavailable(RuntimeError):
@@ -159,7 +159,40 @@ def _talking_4(work: Path, fonts: Path, d: dict) -> tuple[list[str], str, str]:
     return [str(vignette_png(work / "vignette.png"))], graph, ass
 
 
-BUILDERS = {"talking_1": _talking_1, "talking_2": _talking_2, "talking_3": _talking_3, "talking_4": _talking_4}
+def _panel_for_pack(out: Path, size: tuple[int, int], palette, icon: Path) -> Path:
+    """The cream panel of a style-pack reel: the pack's own panel colour with one white rounded card carrying the sample graphic (a single frame cannot show the real panels)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", size, palette.panel_bg)
+    draw = ImageDraw.Draw(img)
+    pad = int(size[0] * 0.07)
+    box = (pad, int(size[1] * 0.12), size[0] - pad, int(size[1] * 0.88))
+    draw.rounded_rectangle(box, radius=int(size[0] * 0.05), fill=palette.card)
+    with Image.open(icon) as picture:
+        picture = picture.convert("RGB")
+        picture.thumbnail((box[2] - box[0] - 2 * pad, box[3] - box[1] - 2 * pad))
+        img.paste(picture, ((size[0] - picture.width) // 2, box[1] + (box[3] - box[1] - picture.height) // 2))
+    img.save(out)
+    return out
+
+
+def _talking_5(work: Path, fonts: Path, d: dict) -> tuple[list[str], str, str]:
+    """Style 5 (a style-pack reel): the pack's panel on top, the speaker as the lower part, captions in the pack's voice. The default pack is shown; the chosen pack changes
+    colours, which a preview of the default does not claim to show."""
+    from .caption_preferences import caption_font
+    from .talking_styles import talking_2 as t2
+    from .talking_styles.talking_1 import vignette_png
+    from creative import style_packs
+    pack = style_packs.get("ref-ai-news")
+    panel = _panel_for_pack(work / "panel.png", (t2.W, t2.SPLIT_Y), pack.palette, motion_icon(work / "icon.png"))
+    ass = _recolour(caption_font(t2.build_ass(_split_plan(d, split=True, theme="editorial"), fonts), {"caption_font": d["caption_font"]}), t2.YELLOW, d["accent"])
+    graph = (f"[1:v]scale={t2.W}:{t2.SPLIT_Y}:flags=lanczos,setsar=1[top];"
+             f"[0:v]{_crop(d['size'], t2.W / (t2.H - t2.SPLIT_Y))},scale={t2.W}:{t2.H - t2.SPLIT_Y}:flags=lanczos,"
+             f"setsar=1,{_grade_split(d['grade'])}[bottom];[top][bottom]vstack=inputs=2[base];"
+             f"[2:v]format=rgba,colorchannelmixer=aa={d['vignette']:.3f}[vig];[base][vig]overlay=0:0")
+    return [str(panel), str(vignette_png(work / "vignette.png"))], graph, ass
+
+
+BUILDERS = {"talking_1": _talking_1, "talking_2": _talking_2, "talking_3": _talking_3, "talking_4": _talking_4, "talking_5": _talking_5}
 
 
 def render_mockup(video: Path, out: Path, *, style_id: str, at: float, hook: str, highlight: list[str] | None = None,

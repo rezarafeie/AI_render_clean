@@ -2508,6 +2508,24 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         await repo.update_project(project['id'], user_key, state=project['state'])
                 except Exception:
                     log.debug('design notes could not be announced', exc_info=True)
+            if engine == 'talking' and raw_status in {'running', 'done', 'error'}:
+                try:
+                    from app import studio_assets
+                    notes = await asyncio.to_thread(studio_assets.talking_notes, job.dir)
+                    seen = int(project['state'].get('talking_notes_seen') or 0)
+                    if len(notes) < seen:
+                        seen = 0                                           # a new attempt writes its notes from the start
+                    for entry in notes[seen:]:
+                        frames = await asyncio.to_thread(studio_assets.note_frames, job.dir, entry)
+                        await repo.emit(conversation_id, 'tool.completed' if entry.get('done') else 'tool.progress',
+                                        {'project_id': project['id'], 'engine': engine, 'status': 'done' if entry.get('done') else 'running', 'stage': entry.get('stage') or 'talking',
+                                         'progress': None, 'message': entry['text'], **({'request': entry['request']} if entry.get('request') else {}),
+                                         **({'response': entry['detail']} if entry.get('detail') else {}), **({'assets': frames} if frames else {})})
+                    if len(notes) != seen:
+                        project['state'] = {**project['state'], 'talking_notes_seen': len(notes)}
+                        await repo.update_project(project['id'], user_key, state=project['state'])
+                except Exception:
+                    log.debug('talking notes could not be announced', exc_info=True)
             if engine == 'motion' and stage == 'rendering' and isinstance(status, dict) and status.get('render'):
                 from app import studio_assets
                 metrics = {'stage': stage, 'detail': studio_assets.render_detail(status['render'].get('message'))}
