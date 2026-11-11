@@ -841,6 +841,7 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
         note("دارم برای هر پنل از کتابخانهٔ المان‌های آمادهٔ موشن انتخاب می‌کنم و فقط جایی که چیزی نمی‌خورد، طراح موشن صحنه می‌نویسد", stage="designing panels")
     authored = author_panels(plan, work_dir)
     if authored:
+        pick_panels(plan, pack, work_dir, note)                  # a beat with both a library component and a designed scene: the art director keeps the better one
         bg = next((s["beat"]["custom"].get("bg") for s in plan.script["segments"] if s.get("beat") and s["beat"].get("custom")), None)
         if bg:                                          # the speaker card's rounded corners show this colour: it must be the panel's
             pack = pack.model_copy(update={"palette": pack.palette.model_copy(update={"panel_bg": bg})})
@@ -851,7 +852,6 @@ def render(video: Path, plan: ReelPlan, out: Path, *, work_dir: Path, music: Opt
         note(f"{authored} پنل آماده شد" + (f" از {total_panels}" if total_panels != authored else "") + f" · {lib} از کتابخانهٔ المان‌ها، {made} با طراح موشن",
              stage="designing panels", done=True,
              detail="\n".join(f"{r['n']}. {r['title']} — {label[r['source']]}" + (f" ({r['component']})" if r.get("component") else "") for r in info))
-        pick_panels(plan, pack, work_dir, note)
         frames = snapshot_panels(plan, pack, work_dir, work_dir / "panel_frames")
         try:
             from creative import design_critic

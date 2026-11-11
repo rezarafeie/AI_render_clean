@@ -201,7 +201,10 @@ def validate_page(page: MotionPage, *, min_scenes: int = 1) -> list[str]:
     problems: list[str] = []
     if not MIN_SECONDS <= page.duration <= MAX_SECONDS:
         problems.append(f"duration must be between {MIN_SECONDS:g} and {MAX_SECONDS:g} seconds (got {page.duration:g})")
+    scenes_n = page.scenes_html.count('class="hm-scene')
+    scale = min(3.0, max(1.0, scenes_n / 4))                  # the limits are sized for about four scenes; a reel of six or eight designed scenes needs proportionally more
     for name, limit in LIMITS.items():
+        limit = int(limit * scale)
         if len(getattr(page, name)) > limit:
             problems.append(f"{name} is too long ({len(getattr(page, name))} > {limit} characters): simplify")
     if not page.scenes_html.strip():

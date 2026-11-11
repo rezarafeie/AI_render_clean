@@ -84,3 +84,13 @@ def test_an_unusable_narration_answer_falls_back_to_regenerating_the_plan(monkey
         return _long_plan(6, 30, 12) if len(seen) < 3 else _long_plan(5, 15, 9)
     monkeypatch.setattr(mg.llm, "ask", fake_ask)
     assert 38 <= mg.plan("ریل ۴۵ ثانیه‌ای برای محصول بساز", repairs=2).duration <= 52
+
+
+def test_the_page_size_limits_grow_with_the_number_of_scenes():
+    def page(n, js_each):
+        html = "".join(f'<section class="hm-scene" id="s{i}"><p>x</p></section>' for i in range(1, n + 1))
+        return mg.MotionPage(duration=20, scenes_html=html, build_js="x" * (js_each * n))
+    four = [p for p in mg.validate_page(page(4, 5200)) if "build_js is too long" in p]
+    six = [p for p in mg.validate_page(page(6, 3400)) if "build_js is too long" in p]
+    assert four and not six                                     # 20.8k over four scenes is too much; 20.4k over six is a normal reel
+    assert [p for p in mg.validate_page(page(6, 5300)) if "build_js is too long" in p]          # but 30k over six is still too long
