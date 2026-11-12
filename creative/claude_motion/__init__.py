@@ -784,6 +784,7 @@ class Hooks(BaseModel):
     note: Callable[..., None]
     progress: Callable[[int, str], None]
     cancelled: Callable[[], bool]
+    snapshots: Callable[[list, list], None] | None = None    # called with ([(label, still path)], [narration line per scene]) as soon as the scene stills exist, so the chat shows them while the film is still being made
 
 
 def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", reference_sheet: Path | None = None) -> dict:
@@ -852,6 +853,11 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         ok, detail, built = stills(work, timeline)
         if ok and built:
             hooks.note("build", f"پروژه ساخته شد و از {len(built)} لحظه عکس گرفته شد", "done")
+            if hooks.snapshots:
+                try:
+                    hooks.snapshots(built, [b.line for b in direction.beats])
+                except Exception:
+                    log.warning("claude motion snapshots could not be published", exc_info=True)
             hooks.note("snapshots", f"عکس {len([1 for label, _ in built if not label.endswith('a')])} صحنه آماده شد", "done")
             break
         feedback = "The project failed to build or render. Error output:\n" + detail
@@ -895,6 +901,11 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
                 shutil.rmtree(work, ignore_errors=True)
                 trial.replace(work)
                 film, built = revised, [(label, work / "stills" / path.name) for label, path in trial_stills]
+                if hooks.snapshots:
+                    try:
+                        hooks.snapshots(built, [b.line for b in direction.beats])
+                    except Exception:
+                        log.warning("claude motion snapshots could not be published", exc_info=True)
                 hooks.note("revise", "ایرادها اصلاح شد و نسخهٔ اصلاح‌شده جایگزین شد", "done")
             else:
                 shutil.rmtree(trial, ignore_errors=True)

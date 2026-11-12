@@ -540,8 +540,11 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
         status = "rendering" if percent >= 66 else "checking" if percent >= 40 else "writing"
         _progress(directory, status, percent, message, stage=status)
 
+    def publish_stills(built, lines) -> None:
+        _publish_claude_snapshots(directory, built, lines)
+
     hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
-                                progress=progress, cancelled=lambda: _cancelled(key))
+                                progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills)
     _note(directory, "engine", "موتور «موشن کلاد»: یک مدل کل فیلم را یک‌جا کارگردانی و کدنویسی می‌کند", "done")
     try:
         result = claude_motion.build(directory, record, hooks, change=change, reference_sheet=directory.parent.parent / "reference" / "frame-table.jpg")
@@ -558,6 +561,25 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
         return True
     _save_claude_version(directory, result["direction"], result["timing"], result["stills"], list(result.get("notes") or []), change)
     return True
+
+
+def _publish_claude_snapshots(directory: Path, built: list, lines: list[str]) -> list[dict]:
+    """Scene stills of a Claude-motion film (the settled moment of every scene) into snapshots/N.jpg and the record, so the chat shows them as soon as they exist."""
+    shots = directory / "snapshots"
+    shutil.rmtree(shots, ignore_errors=True)
+    shots.mkdir(exist_ok=True)
+    items = []
+    finals = [(label, Path(path)) for label, path in built if not str(label).endswith("a")]
+    for n, (label, path) in enumerate(finals, 1):
+        if not path.is_file():
+            continue
+        shutil.copy2(path, shots / f"{n}.jpg")
+        items.append({"n": n, "headline": (lines[n - 1] if n <= len(lines) else label)[:80], "t": 0})
+    with _lock(directory.name):
+        record = load(directory)
+        record["snapshots"] = items
+        save(directory, record)
+    return items
 
 
 def finish_claude_external(directory: Path, video: Path) -> None:
@@ -582,15 +604,6 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
     from creative import motion_graphic as mg
     record = load(directory)
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
-    shots = directory / "snapshots"
-    shutil.rmtree(shots, ignore_errors=True)
-    shots.mkdir(exist_ok=True)
-    items = []
-    finals = [(label, path) for label, path in stills if not label.endswith("a")]
-    for n, (label, path) in enumerate(finals, 1):
-        shutil.copy2(path, shots / f"{n}.jpg")
-        beat = direction.beats[n - 1] if n <= len(direction.beats) else None
-        items.append({"n": n, "headline": (beat.line if beat else label)[:80], "t": 0})
     page = mg.MotionPage(title=direction.title, summary=direction.summary, format="vertical", duration=timeline["total"])
     with _lock(key):
         if _cancelled(key):
@@ -600,7 +613,6 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
         target = directory / f"v{number}"
         shutil.rmtree(target, ignore_errors=True)
         (directory / "work").replace(target)
-        record["snapshots"] = items
         record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_motion"], "engine": "claude",
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
         record["versions"] = record["versions"][-MAX_VERSIONS:]
