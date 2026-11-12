@@ -840,7 +840,7 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
          detail=f"{pack.summary}\nهوک: {state.get('hook') or decisions.get('hook') or '—'}")
     out = _next_output(job_dir)
     progress, _stage_cb = _render_reporter(job_dir, 50)
-    _stage(job_dir, "rendering", progress=45)
+    _stage(job_dir, "designing motion panels", progress=45)           # the panels are designed (library, designer, art director) before any frame is rendered
     music = _style5_music(job_dir, state, plan, pack, plan_data, transcript)
     music_lines = (load(job_dir).get("music_notes") or []) if music else []
     note(job_dir, ("موسیقی انتخاب و روی برش‌ها تنظیم شد" if music_lines else "موسیقی پیش‌فرض یا انتخاب شما استفاده می‌شود") if music else "ویدیو بدون موسیقی ساخته می‌شود",

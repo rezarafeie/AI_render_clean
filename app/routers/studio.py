@@ -870,7 +870,7 @@ async def project_job_file(request: Request, project_id: str, name: str):
     from app.studio_assets import SERVABLE
     try: project = await repo.get_project(project_id, _user(request))
     except KeyError: raise HTTPException(404, "project not found")
-    job = jobstore.get(project["external_ref"]) if project["engine"] == "motion" and project.get("external_ref") else None
+    job = jobstore.get(project["external_ref"]) if project["engine"] in {"motion", "talking"} and project.get("external_ref") else None      # a talking reel's panel previews are served too
     if not job: raise HTTPException(404, "render job not found")
     path = (job.dir / name).resolve()
     if job.dir.resolve() not in path.parents or not path.is_file() or path.suffix.lower() not in SERVABLE or path.name.startswith("."):

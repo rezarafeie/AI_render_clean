@@ -243,6 +243,7 @@ def _ground_request(conversation_id: str, user_key: str, text: str, attachments:
     if not (urls or pictures or audio or video):
         return {"attached": "nothing", "links": "none"}
     found: dict = {}
+    _checkpoint(conversation_id)
     _emit(conversation_id, "tool.started", tool="grounding", message="قبل از اینکه تصمیم بگیرم چه کاری لازم است، دارم همهٔ چیزهایی که فرستاده‌اید را می‌خوانم و می‌بینم.")
     if video:
         found["video"] = {"name": video.get("filename") or video.get("name"), "what_it_is": (brief or {}).get("footage") or "", "scope_read_from_footage": (brief or {}).get("scope") or "",
@@ -273,8 +274,10 @@ def _ground_request(conversation_id: str, user_key: str, text: str, attachments:
         else:
             _emit(conversation_id, "tool.progress", tool="grounding", message="دارم صفحهٔ لینک را می‌خوانم.")
             links.extend(_peek_links(url))
+        _checkpoint(conversation_id)
     if links:
         found["links"] = links
+    _checkpoint(conversation_id)
     _emit(conversation_id, "tool.completed", tool="grounding", message="خواندن تمام شد؛ حالا با همین اطلاعات تصمیم می‌گیرم چه کاری انجام بدهم.")
     return found
 
@@ -1488,6 +1491,7 @@ def _analyze_reference_now(conversation_id: str, user_key: str, source: str):
     folder = Path(jobstore.JOBS_ROOT) / "studio" / user_key / conversation_id / "reference"
     with TemporaryDirectory(prefix="studio-reference-") as temporary:
         profile = reference_analysis.analyze(source, Path(temporary), table_dir=folder)
+    _checkpoint(conversation_id)                                   # Stop pressed while the frames were being read: nothing more is said or built
     if profile.usable:
         _emit(conversation_id, "tool.completed", tool="reference_analysis",
               message=f"رفرنس تحلیل شد: {profile.shot_count} نما، {len(profile.frame_table)} فریم بررسی شد.")
@@ -2392,6 +2396,7 @@ def _status_message(engine: str, status: str, stage: str) -> str:
         "choosing style": "در حال انتخاب ساختار تدوین",
         "editing text": "در حال آماده‌سازی هوک و متن‌ها",
         "rendering": "در حال رندر ویدیو",
+        "designing motion panels": "در حال طراحی پنل‌های موشن (کتابخانه، طراح موشن و طراح ارشد)؛ رندر هنوز شروع نشده",
         "directing the edit": "در حال تحلیل محتوا و طراحی ایدهٔ ادیت",
         "reviewing creative output":"در حال بررسی فریم‌های خروجی و تطبیق آن با ایده و منابع واقعی",
         "reviewing localized output":"در حال بازبینی خوانایی فارسی و پوشش متن اصلی در خروجی",
