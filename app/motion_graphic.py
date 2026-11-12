@@ -833,9 +833,16 @@ def _blank_scenes(directory: Path) -> list[int]:
             path = directory / "snapshots" / f"{item['n']}.jpg"
             if not path.is_file():
                 continue
-            stat = ImageStat.Stat(Image.open(path).convert("L"))
+            gray = Image.open(path).convert("L")
+            stat = ImageStat.Stat(gray)
             if stat.mean[0] < 14 or stat.stddev[0] < 4:
-                blank.append(int(item["n"]))
+                # A thin-line drawing on a dark ground has a tiny mean and spread yet is far from empty: judge by how much of the frame differs from the ground.
+                histogram = gray.histogram()
+                total = sum(histogram) or 1
+                ground = next((v for v in range(256) if sum(histogram[:v + 1]) >= total / 2), 0)
+                ink = sum(histogram[v] for v in range(256) if abs(v - ground) > 40) / total
+                if ink < 0.0015:
+                    blank.append(int(item["n"]))
     except Exception as exc:
         log.warning("scene stills could not be checked for blank frames: %s", str(exc)[:120])
     return blank
@@ -1804,6 +1811,8 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                 if waved:
                     _note(directory, "check", f"بررسی چیدمان صحنه‌های {'، '.join(map(str, waved))} را مشکوک دید ولی در عکس صحنه‌ها متنی روی متن نیفتاده بود؛ همان طراحی نگه داشته شد", "done")
             for n in _blank_scenes(directory):
+                if getattr(build.drafts.get(n), "image_clip", None):
+                    continue                           # a drawn picture: its still can be taken before the video is decoded; the design is never redone for that
                 flagged.setdefault(n, []).append("this scene shows an empty frame at its settled moment (60% of its length): nothing is visible. Every element must be revealed relative to the scene's own start, and the scene must paint its background and headline.")
             if flagged:
                 _note(directory, "check", f"بررسی عکس‌ها: صحنه‌های {'، '.join(map(str, sorted(flagged)))} خالی یا با متن روی‌هم‌افتاده‌اند؛ هر کدام یک بار دوباره طراحی می‌شود", "active")
@@ -1811,8 +1820,8 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                 changed = []
                 for n, why in sorted(flagged.items()):
                     scene = build.plan.scenes[n - 1]
-                    if scene.native_component or getattr(scene, "shotcraft_component", None):
-                        continue
+                    if scene.native_component or getattr(scene, "shotcraft_component", None) or getattr(build.drafts.get(n), "image_clip", None):
+                        continue                       # a ready-made component or a drawn picture is never replaced by a code design here
                     try:
                         draft = mg.author_scene(build.plan, n, brief, context=build.context, used=used, feedback=why[:4], style=build.style)
                         from creative.reel_designer import svg_problems
