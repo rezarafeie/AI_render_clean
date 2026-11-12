@@ -770,6 +770,10 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         forced = "motion_graphic" if marker == "explainer" and not current else (conversation.get('state') or {}).get('forced_intent') if not current else None
         motion_context = _motion_summary(user_key, conversation)
         history = [{"role": m["role"], "text": m["content"][:300]} for m in conversation.get("messages", [])[-5:-1]]
+        resumed = _interrupted_request(conversation_id, user_key, conversation, message_id, text, attachments, motion_context)
+        if resumed:                    # «ادامه بده» after a run that was cut off: the person's earlier request (with its link) is the request
+            _assistant(conversation_id, user_key, "کار قبلی نیمه‌کاره قطع شده بود؛ دوباره از همان درخواست شما شروع می‌کنم: «" + _short(re.sub(r"https?://\S+", "لینک", resumed), 140) + "»")
+            text = resumed
         brief = _understand_request(conversation_id, text, attachments, history) if not completed_manual and not forced else {}
         intent = completed_manual['engine'] if completed_manual else (forced or _brief_intent(brief) or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
         _checkpoint(conversation_id)
@@ -1204,6 +1208,32 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
                + " می‌نویسم، بعد هر صحنه را طراحی، بررسی و رندر می‌کنم. پیشرفت را در آخرین پیام می‌بینید.")
     _emit(conversation_id, "motion.created", motion_id=record["id"])
     motion_graphic.start(motion_graphic.folder(user_key, conversation_id, record["id"]))
+
+
+_CONTINUE = re.compile(r"^\s*(?:لطفا\s*|لطفاً\s*)?(?:ادامه(?:\s*بده|\s*بدید|\s*بده\s*لطفا)?|بزن\s*بره|ادامه\s*همون|go\s*on|continue|keep\s*going)\s*[.!؟?]*\s*$", re.I)
+_OUTCOME_EVENTS = {"motion.created", "motion.completed", "storyboard.ready", "render.started", "render.completed", "question.required", "assistant.error", "tool.failed"}
+
+
+def _interrupted_request(conversation_id, user_key, conversation, message_id, text, attachments, motion_context) -> str:
+    """The earlier request of this chat when `text` is a bare «continue» and that request never got anywhere (the server restarted or the run died before it produced a
+    storyboard, a film or a question). '' otherwise: a continue that answers a pending question, or a chat with nothing to resume, is handled as before."""
+    if attachments or not _CONTINUE.match(text or ""):
+        return ""
+    if motion_context and motion_context.get("status") in {"needs_input", "queued", "writing", "checking", "rendering"}:
+        return ""
+    messages = [m for m in conversation.get("messages", []) if m["role"] == "user" and str(m["id"]) != str(message_id)]
+    earlier = next((m for m in reversed(messages) if len(str(m.get("content") or "").strip()) >= 15 and not _CONTINUE.match(str(m.get("content") or ""))), None)
+    if earlier is None:
+        return ""
+    try:
+        events = run(repo.events(conversation_id, user_key, 0, 800))
+    except Exception:
+        return ""
+    after = [e for e in events if e["type"] in _OUTCOME_EVENTS and str(e["data"].get("message_id", "")) != str(message_id)]
+    started = next((e["seq"] for e in events if e["type"] == "message.started" and str(e["data"].get("message_id")) == str(earlier["id"])), None)
+    if started is None or any(e["seq"] > started for e in after):
+        return ""
+    return str(earlier["content"]).strip()
 
 
 def _motion_summary(user_key: str, conversation: dict) -> dict | None:
