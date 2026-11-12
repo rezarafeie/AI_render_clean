@@ -1152,6 +1152,9 @@ def _reference_style(profile) -> str:
             parts.append(f"{label}: {value}")
     if profile.palette:
         parts.append("measured palette: " + ", ".join(profile.palette[:6]))
+    if getattr(profile, "transcript", ""):
+        parts.append("REFERENCE SPEECH (what the reference video says, as a transcript: the most reliable source of its SUBJECT; use it ONLY to learn the subject when the person says "
+                     "'the same topic'/«همین موضوع», in your own new wording):\n" + profile.transcript)
     seen, lines = set(), []
     for row in profile.frame_table or []:                                            # what the reference is ABOUT: the words and scenes seen frame by frame
         text = " ".join(str(row.get("text") or "").split())

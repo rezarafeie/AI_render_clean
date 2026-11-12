@@ -340,6 +340,18 @@ def table_image(frames: list[Path], table: list[dict], cuts: list[float], durati
     return dest
 
 
+def speech_text(path: Path, work: Path, limit: int = 1800) -> str:
+    """What the reference video SAYS (speech to text through the studio's own transcription). '' when there is no speech or the transcription is unavailable."""
+    try:
+        from brain.transcribe import transcribe
+        result = transcribe(path, work / "speech", language=None)
+        text = " ".join(str(item.get("text") or "").strip() for item in (result.get("sentences") or []))
+        return " ".join(text.split())[:limit]
+    except Exception as exc:
+        log.info("reference speech not transcribed: %s", str(exc)[:160])
+        return ""
+
+
 def analyze_video(path: Path, *, source: str = "", describe=None, describe_frames=None, table_dir: Path | None = None) -> ReferenceProfile:
     """Measure and describe a reference video. ``describe`` is the vision call (injectable for tests)."""
     duration, fps, audio = _probe(path)
@@ -368,6 +380,8 @@ def analyze_video(path: Path, *, source: str = "", describe=None, describe_frame
             except Exception as exc:  # measured facts are still real; say what is missing
                 log.warning("reference description unavailable: %s", exc)
                 profile.reason = "توصیف بصری رفرنس انجام نشد؛ فقط ریتم و رنگ اندازه‌گیری شد."
+        if audio:
+            profile.transcript = speech_text(path, work)
         try:                                                   # the frame-by-frame review (also needs only the file for the picture)
             table, table_frames_ = review_frames(path, duration, cuts, work, describe_frames)
             profile.frame_table = table
