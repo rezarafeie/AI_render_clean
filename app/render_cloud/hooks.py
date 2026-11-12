@@ -390,7 +390,9 @@ def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progres
         # A worker builds the panel layer with ITS OWN image's code: a panel that is not a finished authored scene is filled there from the panel library, whose components in the
         # image still load GSAP from a CDN that an offline worker never reaches (the render hangs). Until the worker image carries the fixed library such a reel renders on the server:
         # no profile has this feature, so the policy keeps it local.
-        features = (['face-effects'] if fx else []) + (['panel-library'] if _library_panels(plan) else [])
+        # RENDER_CLOUD_PANEL_LIBRARY=1 is set once the talking_5 worker image carries the offline-safe library (rebuilt 2026-11-12); without it such a reel stays local.
+        gated = _library_panels(plan) and os.environ.get('RENDER_CLOUD_PANEL_LIBRARY', '').strip() != '1'
+        features = (['face-effects'] if fx else []) + (['panel-library'] if gated else [])
         return render_prepared(staged, output, user=who[0], project_id=who[1], engine='talking_5', entrypoint='talking5.json',
                                duration=plan.duration, width=1080, height=1920, fps=30, on_progress=on_progress,
                                features=features,
