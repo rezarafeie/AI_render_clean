@@ -854,6 +854,70 @@ def validate_plan(plan: MotionPlan, *, max_scenes: int = 6) -> list[str]:
     return problems
 
 
+_LOOK_KEYS = ("typography:", "composition:", "motion language:", "transitions:", "visual density:", "overall feel:", "measured palette:")
+
+
+def reference_look(style: str, limit: int = 1500) -> str:
+    """The visual lines of a reference-style block (typography, composition, motion, density, feel, measured palette), without the speech transcript that opens it."""
+    lines = [line.strip() for line in (style or "").splitlines() if line.strip().lower().startswith(_LOOK_KEYS)]
+    return "\n".join(lines)[:limit]
+
+
+def reference_hexes(style: str) -> list[str]:
+    found = re.search(r"measured palette:\s*([^\n]+)", style or "", re.I)
+    return re.findall(r"#[0-9a-fA-F]{6}", found.group(1)) if found else []
+
+
+def reference_is_achromatic(style: str) -> bool:
+    """True when every colour measured in the reference is a grey (a black-and-white line drawing): the film must not invent an accent hue."""
+    import colorsys
+    colours = reference_hexes(style)
+    if not colours:
+        return False
+    for code in colours:
+        r, g, b = (int(code[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        if colorsys.rgb_to_hsv(r, g, b)[1] > 0.18 and max(r, g, b) > 0.2:
+            return False
+    return True
+
+
+def fit_palette(plan_: "MotionPlan", style: str) -> "MotionPlan":
+    """A film made 'like this reference' wears the reference's colours: for a grey reference the palette becomes black, white and greys whatever the planner chose."""
+    if not reference_is_achromatic(style):
+        return plan_
+    greys = sorted(reference_hexes(style))
+    bg = greys[0] if greys else "#0A0A0A"
+    surface = greys[1] if len(greys) > 1 else "#1C1C1C"
+    palette = plan_.palette.model_copy(update={"bg": bg, "surface": surface, "ink": "#E8E8E8", "accent": "#FFFFFF", "accent2": "#8C8C8C"})
+    return plan_.model_copy(update={"palette": palette})
+
+
+FIDELITY = (
+    "REFERENCE FIDELITY: the person asked for a film that LOOKS like the reference below, so its look OVERRIDES every default of the DESIGN rules above wherever they disagree "
+    "(vivid accent, never-flat backgrounds, huge headlines, whole-frame filling, cards and plates). Match: (1) COLOUR: use only the measured palette; when it is greys, the film is "
+    "black/white/grey only, with no teal, blue or any other hue; (2) TYPE SCALE: text as small and light as the reference's (a short line of 44-72 px, regular weight), not a big title; "
+    "(3) PICTURE LANGUAGE: the same kind of drawing (thin-line pictograms and diagrams drawn with HM.draw, flat black ground, much empty space) instead of cards, boxes, gradients or panels; "
+    "(4) MOTION: lines draw themselves, figures and labels enter one after another on their spoken words, something is always moving in every 1-2 seconds of the scene. "
+    "The narration is already typeset by the caption layer at the bottom: never write narration sentences on screen and keep every element out of the caption band."
+)
+
+
+def add_motion_floor(draft, n: int, duration: float, minimum: int = 8):
+    """A valid scene with too few animation calls gets an entrance for every element that has none, spread over the scene, so no scene sits still."""
+    moves = len(re.findall(r"\b(?:tl|HM)\s*\.", draft.build_js)) + len(re.findall(r"\bHM\.", draft.update_js))
+    if moves >= minimum:
+        return draft
+    ids = list(dict.fromkeys(re.findall(r'\bid="(s%d-[\w-]+)"' % n, draft.html)))
+    used = draft.build_js + "\n" + draft.update_js
+    free = [i for i in ids if i not in used and not i.endswith(("-bg", "-stage"))]
+    if not free:
+        return draft
+    span = max(0.8, duration * 0.65)
+    step = min(0.55, span / max(1, len(free)))
+    lines = [f'tl.from("#{i}", {{opacity: 0, y: 34, duration: 0.7, ease: "power3.out"}}, {round(0.25 + k * step, 2)});' for k, i in enumerate(free[:14])]
+    return draft.model_copy(update={"build_js": draft.build_js.rstrip() + "\n" + "\n".join(lines)})
+
+
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "", fonts: str = "") -> str:
     from .shotcraft import catalog
     parts = [f"REQUEST:\n{brief.strip()}", "AVAILABLE SHOTCRAFT REFERENCES (choose exact IDs for suitable scenes):\n" + json.dumps(catalog(), ensure_ascii=False,separators=(",",":"))]
@@ -885,7 +949,7 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
         parts.append(skills_library.planning_block(brief))
     parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
-        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words; its REFERENCE CONTENT, when listed, tells the subject):\n{style.strip()[:7000]}")
+        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words; its REFERENCE CONTENT, when listed, tells the subject):\n{style.strip()[:7000]}\n\n{FIDELITY}")
     if brand:
         parts.append(f"BRAND (use only when the request is about this brand):\n{brand.strip()}")
     if context:
@@ -998,6 +1062,7 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         if supplied and len(result.scenes) == len(supplied):
             result = script_given.apply(result, supplied)
         result = fix_fonts(result, advice)
+        result = fit_palette(result, style)
         problems = validate_plan(result, max_scenes=cap)
         if not problems:
             problems = length_problems(result, wanted_s)
@@ -1099,7 +1164,8 @@ def scene_request(plan: MotionPlan, n: int, brief: str, context: str = "", style
     if context:
         parts.append("FACTS you may use (the only ones besides the request):\n" + context.strip()[:5000])
     if style:
-        parts.append("REFERENCE STYLE to echo (rhythm, type treatment, transitions, density):\n" + style.strip()[:900])
+        look = reference_look(style)
+        parts.append(FIDELITY + "\nTHE REFERENCE:\n" + (look or style.strip()[:900]))
     if plan.design_direction:
         parts.append("SHARED DESIGN BIBLE (all scenes must follow, not invent their own system):\n" + plan.design_direction)
     if scene.shotcraft_id:
@@ -1260,6 +1326,10 @@ def author_scene(plan: MotionPlan, n: int, brief: str, *, context: str = "", use
         if not problems:
             thin = plainness_problems(draft)                  # valid, but only a title with little around it: sent back while a correction is left, accepted on the last attempt
             if not thin or attempt >= repairs:
+                scene_ = plan.scenes[n - 1]
+                lifted = add_motion_floor(draft, n, scene_.end - scene_.start)
+                if lifted is not draft and not validate_page(_scene_page(n, lifted, plan)):
+                    return lifted
                 return draft
             problems = thin
         log.warning("scene %d rejected (attempt %d): %s", n, attempt + 1, problems[:3])

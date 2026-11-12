@@ -135,6 +135,20 @@ def _assistant(conversation_id: str, user_key: str, text: str) -> None:
         log.warning("motion message could not be stored", exc_info=True)
 
 
+
+def _spoken_words(path: str) -> str:
+    """The transcript of an attached audio file when it is speech (at least 8 words), else ''. A failure to transcribe means 'treat it as music', as before."""
+    try:
+        import tempfile
+        from creative.reference import speech_text
+        with tempfile.TemporaryDirectory(prefix="attached-audio-") as work:
+            text = speech_text(Path(path), Path(work), limit=3000)
+        return text if len(text.split()) >= 8 else ""
+    except Exception:
+        log.info("attached audio could not be checked for speech", exc_info=True)
+        return ""
+
+
 # ── records ──────────────────────────────────────────────────────────────────
 
 def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "", *, attachments: list[dict] | None = None) -> dict:
@@ -145,7 +159,12 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     from creative.audio import music_director
     music = {"mode": wanted.music, "words": wanted.music_words} if wanted.music else None
     if music is None and any(item.get("kind") == "audio" and item.get("path") for item in attachments or []):
-        music = {"mode": "attached", "words": ""}              # an audio file came with the request: it is the music
+        spoken = _spoken_words(next(item for item in attachments or [] if item.get("kind") == "audio" and item.get("path"))["path"])
+        if spoken:                                             # a voice recording, not music: laid under the new narration it would be heard twice
+            context = ("ATTACHED VOICE RECORDING (the person's own spoken words, transcribed; it is the source of the film's content and is NOT used as music):\n" + spoken + "\n\n" + context)
+            wanted.notes.append("فایل صوتی پیوست‌شده گفتار بود، نه موسیقی؛ برای اینکه صدا دوبار پخش نشود زیر نریشن نگذاشتم و متن آن را منبع محتوا گرفتم.")
+        else:
+            music = {"mode": "attached", "words": ""}          # an audio file with no speech came with the request: it is the music
     elif music is None and music_director.music_wanted(request):
         music = {"mode": "auto", "words": ""}                  # the request talks about music: the studio chooses or makes it
     if music and music.get("mode") == "attached":
@@ -1845,7 +1864,8 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             _note(directory, "critic", "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد")
             verdict = design_critic.refine(drafts=build.drafts, headlines={n: sc.headline for n, sc in enumerate(build.plan.scenes, 1)}, protected=protected, stills=critic_stills,
                                            author=critic_author, rebuild=critic_rebuild, restore=critic_restore, work=work / "critic", brief=brief, style_note=build.plan.design_direction,
-                                           note=lambda text: notes.append(text), replaceable=protected)
+                                           note=lambda text: (notes.append(text), _note(directory, f"critic-{len(notes)}", text, "done")), replaceable=protected,
+                                           reference=(directory.parent.parent / "reference" / "frame-table.jpg"), look=mg.reference_look(build.style))
             if verdict["before"]:
                 scores = "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items()))
                 _note(directory, "critic", "نظر طراح ارشد دربارهٔ صحنه‌ها آماده شد", "done", detail=f"امتیاز هر صحنه (از ۱۰): {scores}\n" + "\n".join(notes[-2:]))

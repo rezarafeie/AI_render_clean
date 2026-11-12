@@ -19,8 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 log = logging.getLogger(__name__)
 
-PASS_SCORE = 6                       # a scene scoring below this is redesigned
-MAX_REDESIGN = 3                     # scenes redesigned per film (the weakest first)
+PASS_SCORE = 7                       # a scene scoring below this is redesigned
+MAX_REDESIGN = 4                     # scenes redesigned per film (the weakest first)
 MIN_GAIN = 1                         # a redesign must score at least this much higher to replace the original
 REPLACE_SCORE = 4                    # a ready-made component scene scoring at most this is replaced by a scene designed for the film
 
@@ -52,6 +52,10 @@ RUBRIC = (
     "4. POLISH AND DEPTH: layers (a background treatment, the message, foreground details), consistent palette, aligned edges, believable spacing; nothing looks like a default "
     "template or a stock card.\n"
     "5. MEANING: the picture says what the scene's headline says, with one idea, not decoration.\n"
+    "6. REFERENCE FIDELITY (only when a REFERENCE image is attached after the scene sheet): the person asked for a film that looks like that reference. Compare colour (a black/grey "
+    "reference means NO other hue), type scale (small light text vs a big title), picture language (thin line drawings vs cards, panels, gradients) and density. A scene that does not "
+    "look like the reference scores at most 4, and `fix` says exactly what to change to match it.\n"
+    "7. COLLISIONS: text on top of other text, the narration caption touching or overlapping scene text, or any element inside the bottom caption band scores at most 4.\n"
     "Do NOT punish a deliberately minimal composition that is intentional and confident; punish emptiness that looks unfinished. 8-10 = could be in a professional film; 6-7 = good "
     "but ordinary; 4-5 = flawed (say how); 1-3 = broken. Be strict and specific: each problem names what is wrong and where; `fix` is ONE concrete instruction the designer can "
     "execute (sizes, positions, what to add or remove), never 'make it better'. "
@@ -79,16 +83,17 @@ def _sheet(stills: dict[int, Path], headlines: dict[int, str], out: Path) -> Pat
     return out
 
 
-def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, brief: str = "", style_note: str = "", ask: Callable | None = None) -> dict[int, SceneVerdict]:
+def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, brief: str = "", style_note: str = "", ask: Callable | None = None, reference: Path | None = None, look: str = "") -> dict[int, SceneVerdict]:
     """{scene: verdict} for the stills given; {} when the critic cannot run (no vision route, an unusable answer): the caller then changes nothing."""
     if not stills:
         return {}
     try:
         sheet = _sheet(stills, headlines, work / "critic-sheet.jpg")
-        context = json.dumps({"film_brief": brief[:600], "design_language": style_note[:600], "scene_headlines": {str(n): headlines.get(n, "")[:80] for n in sorted(stills)}}, ensure_ascii=False)
+        context = json.dumps({"film_brief": brief[:600], "design_language": style_note[:600], "scene_headlines": {str(n): headlines.get(n, "")[:80] for n in sorted(stills)}, "reference_look": look[:1200]}, ensure_ascii=False)
         if ask is None:
             from brain.llm import chat_vision
-            raw, _usage = chat_vision(RUBRIC, context, images=[str(sheet)], route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
+            images = [str(sheet)] + ([str(reference)] if reference and Path(reference).is_file() else [])
+            raw, _usage = chat_vision(RUBRIC, context, images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
         else:
             raw = ask(RUBRIC, context, sheet)
         verdicts = Verdicts.model_validate(raw)
@@ -100,7 +105,7 @@ def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, 
 
 def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stills: Callable[[], dict[int, Path]], author: Callable[[int, list[str]], object],
            rebuild: Callable[[], bool], restore: Callable[[dict], None], work: Path, brief: str = "", style_note: str = "", note: Callable[[str], None] = lambda text: None,
-           ask: Callable | None = None, replaceable: set[int] = frozenset()) -> dict:
+           ask: Callable | None = None, replaceable: set[int] = frozenset(), reference: Path | None = None, look: str = "") -> dict:
     """The whole loop: look, redesign the weakest scenes from the critic's fixes, look again, keep only what improved.
 
     stills()   -> {scene: still path} of the page as it is now (called again after a rebuild)
@@ -110,10 +115,12 @@ def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stil
     restore(before) puts the earlier drafts back (the caller reassembles)
     Returns {"before": {n: score}, "after": {n: score}, "changed": [n], "kept": [n]} (empty dicts when nothing could be judged)."""
     result = {"before": {}, "after": {}, "changed": [], "kept": []}
-    first = critique(stills(), headlines, work, brief=brief, style_note=style_note, ask=ask)
+    first = critique(stills(), headlines, work, brief=brief, style_note=style_note, ask=ask, reference=reference, look=look)
     if not first:
         return result
     result["before"] = {n: v.score for n, v in first.items()}
+    for n, v in sorted(first.items()):
+        note(f"صحنهٔ {n}: امتیاز {v.score} از ۱۰" + (" — " + "؛ ".join(v.problems[:2]) if v.problems else ""))
     def eligible(n: int) -> bool:
         return n not in protected or (n in replaceable and first[n].score <= REPLACE_SCORE)          # a poor ready-made component may be replaced, a fair one is left alone
     weak = sorted((n for n, v in first.items() if v.score < PASS_SCORE and eligible(n)), key=lambda n: (first[n].score, n))[:MAX_REDESIGN]
@@ -125,6 +132,7 @@ def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stil
     for n in weak:
         feedback = [*first[n].problems[:4], "FIX: " + first[n].fix] if first[n].fix else list(first[n].problems[:4])
         try:
+            note(f"دارم صحنهٔ {n} را طبق نظر طراح ارشد دوباره طراحی می‌کنم: " + (first[n].fix[:160] if first[n].fix else ""))
             drafts[n] = author(n, feedback)
             result["changed"].append(n)
         except Exception as exc:
@@ -137,7 +145,7 @@ def refine(*, drafts: dict, headlines: dict[int, str], protected: set[int], stil
         note("طراحی دوباره در بررسی مرورگر رد شد؛ طراحی قبلی نگه داشته شد")
         result["changed"] = []
         return result
-    second = critique({n: p for n, p in stills().items() if n in result["changed"]}, headlines, work, brief=brief, style_note=style_note, ask=ask)
+    second = critique({n: p for n, p in stills().items() if n in result["changed"]}, headlines, work, brief=brief, style_note=style_note, ask=ask, reference=reference, look=look)
     result["after"] = {n: v.score for n, v in second.items()}
     kept = [n for n in result["changed"] if n in second and second[n].score >= first[n].score + MIN_GAIN]
     reverted = [n for n in result["changed"] if n not in kept]
