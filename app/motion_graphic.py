@@ -1414,6 +1414,9 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         saved_plan.write_text(json.dumps(saved, ensure_ascii=False))
         count = len(plan.scenes)
         _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done", detail=_plan_detail(brief, plan))
+        from creative import captions as _caption_design
+        _look = _caption_design.choose_style(getattr(plan, "caption_style", ""), (plan.title or "") + "|" + (plan.signature or ""))
+        _note(directory, "captions", f"زیرنویس نریشن: سبک «{_look}»، با فونت متن فیلم", "done")
         outline = "\n".join(f"{i}) {sc.headline} — {sc.idea}" for i, sc in enumerate(plan.scenes, 1))
         from app import studio_narrator
         studio_narrator.narrate(cid, user, "motion_plan", {"title": plan.title, "duration_seconds": plan.duration, "format": plan.format, "signature_idea": plan.signature,

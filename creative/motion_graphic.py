@@ -494,7 +494,7 @@ EXAMPLE = {
 def build_request(brief: str, *, context: str = "", previous: MotionPage | None = None, change: str = "", brand: str = "", style: str = "") -> str:
     parts = [f"REQUEST:\n{brief.strip()}"]
     if style:
-        parts.append(f"REFERENCE STYLE (keep following it):\n{style.strip()[:1800]}")
+        parts.append(f"REFERENCE STYLE (keep following it):\n{style.strip()[:7000]}")
     if brand:
         parts.append(f"BRAND (use only when the request is about this brand):\n{brand.strip()}")
     if context:
@@ -668,9 +668,9 @@ scene designers can build each scene on their own. Return ONE JSON object and no
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
 you should decide, use short generic wording and placeholders without any invented number, price, date, address or name of a real thing. If the
-request gives a topic and you can write honest copy from it, do NOT ask. When the request says the clip is about the SAME TOPIC as a reference video («همین موضوع», "the same subject") and a REFERENCE SPEECH transcript and/or REFERENCE CONTENT block is supplied, THAT is the topic (the speech first, the frame texts second; read ALL of it, not only the opening): work out the subject from it, make every scene serve that subject (not the visual metaphor of the reference's first seconds), write the clip on that subject in your own words (state the subject you understood in `summary`), and do NOT ask what the topic is. Ask only if the block is empty or says nothing about a subject. Never invent statistics, prices, dates, testimonials or claims: use only facts
+request gives a topic and you can write honest copy from it, do NOT ask. When the request says the clip is about the SAME TOPIC as a reference video («همین موضوع», "the same subject") and a REFERENCE SPEECH transcript and/or REFERENCE CONTENT block is supplied, THAT is the topic (the speech first, the frame texts second; read ALL of it, not only the opening): work out the subject from it AND KEEP ITS THESIS AND STRUCTURE (the claim it makes and the stages/steps/points it lists, in its order; state the thesis in `summary`; do not generalise it into advice of your own), make every scene serve that subject (not the visual metaphor of the reference's first seconds), write the clip on that subject in your own words (state the subject you understood in `summary`), and do NOT ask what the topic is. Ask only if the block is empty or says nothing about a subject. Never invent statistics, prices, dates, testimonials or claims: use only facts
 in the request or in the page content provided. Defaults: vertical, 15-20 seconds.
-CAPTION_STYLE (how the spoken narration is typeset on screen, one choice for the whole film, set in the film's body font): plate = rounded card (calm, corporate, soft); marker = highlighter bar that follows the spoken word (educational, explainer); bar = full-width editorial lower third with an accent rule (news, serious, data); pop = one huge word at a time in the title font (viral, energetic, short punchy lines); outline = bold outlined words without a box (story, social, busy backgrounds); minimal = small light text with a progress line (luxury, quiet, poster-like). Pick the one that fits this film's tone and design; never leave it empty.
+CAPTION_STYLE (how the spoken narration is typeset on screen, one choice for the whole film, set in the film's body font): plate = rounded card (calm, corporate, soft); marker = highlighter bar that follows the spoken word (educational, explainer); bar = full-width editorial lower third with an accent rule (news, serious, data); pop = one huge word at a time in the title font (viral, energetic, short punchy lines); outline = bold outlined words without a box (story, social, busy backgrounds); minimal = small light text with a progress line (luxury, quiet, poster-like). Pick the one that fits this film's tone and design; never leave it empty. Use plate only for a calm, corporate or soft film; a poster-like, editorial, story or energetic film should use marker, bar, pop or outline.
 
 PLAN
 - 2-6 scenes that tile the whole duration without gaps (the first starts at 0, each starts where the previous ends, the last ends at duration), each
@@ -885,7 +885,7 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
         parts.append(skills_library.planning_block(brief))
     parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
-        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words; its REFERENCE CONTENT, when listed, tells the subject):\n{style.strip()[:1800]}")
+        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words; its REFERENCE CONTENT, when listed, tells the subject):\n{style.strip()[:7000]}")
     if brand:
         parts.append(f"BRAND (use only when the request is about this brand):\n{brand.strip()}")
     if context:

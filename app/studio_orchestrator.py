@@ -1159,6 +1159,9 @@ def _gather_sources(conversation_id: str, user_key: str, text: str, attachments:
 def _reference_style(profile) -> str:
     """What was observed in the reference video, as direction for the planner and the scene designers."""
     parts = [f"{profile.shot_count} shots in {profile.duration_s:g}s, about {profile.avg_shot_s:g}s per shot, {profile.cuts_per_second:g} cuts/second"]
+    if getattr(profile, "transcript", ""):                                           # the subject first: nothing downstream may cut it off
+        parts.insert(0, "REFERENCE SPEECH (what the reference video says, as a transcript: the most reliable source of its SUBJECT; use it ONLY to learn the subject when the person says "
+                        "'the same topic'/«همین موضوع», in your own new wording, keeping its thesis and structure):\n" + profile.transcript)
     for label, value in (("typography", profile.typography), ("composition", profile.composition), ("motion language", profile.motion_language),
                          ("transitions", profile.transitions), ("visual density", profile.visual_density), ("hook", profile.hook_structure),
                          ("overall feel", profile.overall_feel)):
@@ -1166,9 +1169,6 @@ def _reference_style(profile) -> str:
             parts.append(f"{label}: {value}")
     if profile.palette:
         parts.append("measured palette: " + ", ".join(profile.palette[:6]))
-    if getattr(profile, "transcript", ""):
-        parts.append("REFERENCE SPEECH (what the reference video says, as a transcript: the most reliable source of its SUBJECT; use it ONLY to learn the subject when the person says "
-                     "'the same topic'/«همین موضوع», in your own new wording):\n" + profile.transcript)
     seen, lines = set(), []
     for row in profile.frame_table or []:                                            # what the reference is ABOUT: the words and scenes seen frame by frame
         text = " ".join(str(row.get("text") or "").split())
