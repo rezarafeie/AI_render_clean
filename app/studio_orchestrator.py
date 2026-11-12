@@ -776,6 +776,8 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
             text = resumed
         brief = _understand_request(conversation_id, text, attachments, history) if not completed_manual and not forced else {}
         intent = completed_manual['engine'] if completed_manual else (forced or _brief_intent(brief) or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history))
+        if intent == "motion" and not completed_manual and os.environ.get("MOTION_ENGINE", "").strip() != "1":
+            intent = "motion_graphic"      # the storyboard/AI-picture engine is switched off: every new «motion» request is a designed motion graphic (MOTION_ENGINE=1 turns it back on)
         _checkpoint(conversation_id)
         intent = _long_video_intent(intent, attachments)
         if completed_manual and completed_manual['engine'] == 'talking':
