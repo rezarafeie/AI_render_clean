@@ -218,30 +218,12 @@ def _kit_api() -> str:
     return (KIT / "src" / "lib.tsx").read_text(encoding="utf-8")
 
 
-CODE_GUIDE = """You are a senior motion designer and React/Remotion engineer. You write the WHOLE film as two TypeScript files on a small kit. It is rendered
-frame by frame (30 fps, 1080x1920) by Remotion in headless Chromium; you never see it, so make it correct by construction. Return strict JSON:
-{"art_tsx": "<the complete file src/art.tsx>", "scenes_tsx": "<the complete file src/Scenes.tsx>", "notes": "<one line>"}
-
-THE KIT (src/lib.tsx, already written; read its source below): THEME tokens G (accent), GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT; useT() seconds in the scene;
+COMMON = """THE KIT (src/lib.tsx, already written; read its source below): THEME tokens G (accent), GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT; useT() seconds in the scene;
 prog(t, at, dur, ease) 0..1; useSpr(at, damping, mass) spring 0..1; easeOut, easeInOut, clamp; useScene() -> {dur, cue}; Txt (one line rising in with blur),
 Words (headline revealed word by word, `hl` words in the accent), Pill (dark chip; <Hl> part in accentLight; `light` variant), Badge (label chip; active/strike/dim),
 Abs (absolute block at x,y with anchor center|right|left), Pop (spring scale-in wrapper), useFloat(amp, speed, phase) idle float, fa(n) Persian digits.
 cue('word', occurrence = 0, offset = 0) = seconds from the scene start at which that word of the scene's line is HEARD. Every element's `at` comes from cue
 (offset -0.1 to -0.25 so the text lands just before the word); only the very first element may use a small number.
-
-src/art.tsx (YOU WRITE IT): `import React from 'react'; import {interpolate} from 'remotion'; import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';`
-- export const Backdrop: React.FC — the film-wide background layer drawn under every scene (the ground, grid/grain/glow/paper as the LOOK says, slow
-  ambient motion from useT()); 1080x1920, pointer-events none.
-- export a Defs component with every gradient/filter the film uses, and an Svg wrapper; every <svg> you render includes <Defs/> (an svg without its own
-  defs renders the gradients colourless).
-- one component per illustration of the storyboard, parameterized by position/size and by animated 0..1 values (fill level, growth, opening) so scenes can
-  drive them. Craft: real objects with volume (2-3 tone gradients, a highlight, a soft blurred ground shadow, one light direction) — or the reference's own
-  art language when the LOOK says so (for example thin glowing white lines on black). Never a generic placeholder (an empty box, a picture-frame icon).
-- No images, no fonts, no network, no external packages.
-
-src/Scenes.tsx (YOU WRITE IT): imports from 'react', 'remotion' (AbsoluteFill, interpolate, spring, Easing, random), './lib', './art'.
-`export const SCENES: React.FC[] = [S01, S02, ...];` exactly one component per TIMING scene, in order. Each scene: `const t = useT(); const {cue, dur} = useScene();`
-then absolute layout on the 1080x1920 canvas.
 
 REMOTION PACKAGES available besides 'remotion' (all 4.0.536): @remotion/paths (evolvePath(progress, d) for lines that draw themselves, getLength, interpolatePath),
 @remotion/shapes (makeCircle/makeRect/makeStar/makePie/makeTriangle... and <Circle/>, <Pie/>...), @remotion/noise (noise2D/noise3D for organic drift),
@@ -263,29 +245,176 @@ RULES THAT BREAK FILMS (from the studio's QA):
 - Deterministic: no Math.random (use random('seed') from remotion), no Date, no timers, no fetch, no window.
 - TypeScript must compile: declare props types, no unused imports of names that do not exist.
 
-The two EXAMPLE files at the end come from another film the studio made (its art.tsx and Scenes.tsx; there Badge took `n`, here it takes `label`). They show the
-craft bar: how cue drives everything, how scenes are phased, how art has volume. Do not copy their topic, colours or objects unless they genuinely fit this film."""
+"""
+
+ART_GUIDE = """You are a senior illustrator and React/Remotion engineer. You write src/art.tsx: the illustration library and the backdrop of ONE film, on a small kit.
+It is rendered frame by frame (30 fps, 1080x1920) by Remotion in headless Chromium; you never see it, so make it correct by construction.
+Return strict JSON {"art_tsx": "<the complete file>"}.
+
+src/art.tsx (YOU WRITE IT): `import React from 'react'; import {interpolate} from 'remotion'; import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';`
+- export const Backdrop: React.FC — the film-wide background layer drawn under every scene (the ground, grid/grain/glow/paper as the LOOK says, slow
+  ambient motion from useT()); 1080x1920, pointer-events none.
+- export a Defs component with every gradient/filter the film uses, and an Svg wrapper; every <svg> you render includes <Defs/> (an svg without its own
+  defs renders the gradients colourless).
+- one component per illustration of the storyboard, parameterized by position/size and by animated 0..1 values (fill level, growth, opening) so scenes can
+  drive them. Craft: real objects with volume (2-3 tone gradients, a highlight, a soft blurred ground shadow, one light direction) — or the reference's own
+  art language when the LOOK says so (for example thin glowing white lines on black). Never a generic placeholder (an empty box, a picture-frame icon).
+- No images, no fonts, no network, no external packages.
+
+- Export every component with `export const Name: React.FC<{...}> = ...` (scenes import them by name). Give each a clear props type.
+
+""" + COMMON + """
+The EXAMPLE art.tsx at the end comes from another film (it shows the craft bar: volume, gradients, shadows, parameterized animation). Do not copy its objects
+or colours unless they genuinely fit this film."""
+
+SCENES_GUIDE = """You are a senior motion designer and React/Remotion engineer. You write SOME of the scene components of ONE film (others write the other
+scenes at the same time on the same art library). Rendered frame by frame (30 fps, 1080x1920) by Remotion; you never see it: correct by construction.
+Return strict JSON {"components": "<TypeScript code: one `const SNN: React.FC = () => { ... };` per scene you were given, nothing else>"}.
+
+YOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only these names):
+@HEADER@
+Each scene: `const t = useT(); const {cue, dur} = useScene();` then absolute layout on the 1080x1920 canvas, the art components of this film (their source is
+given) and the kit. Name each component exactly S + its two-digit scene id (S01, S07...).
+
+""" + COMMON + """
+The EXAMPLE Scenes.tsx at the end comes from another film (there Badge took `n`, here it takes `label`; there everything was imported by name, here the header
+does it). It shows the craft bar: how cue drives everything, how scenes are phased. Do not copy its topic, colours or objects."""
+
+SCENES_HEADER = """import React from 'react';
+import {AbsoluteFill, interpolate, spring, Easing, random, useCurrentFrame, useVideoConfig} from 'remotion';
+import {evolvePath, getLength, interpolatePath} from '@remotion/paths';
+import {noise2D, noise3D} from '@remotion/noise';
+import {fitText, measureText} from '@remotion/layout-utils';
+import * as L from './lib';
+import * as A from './art';
+const {G, GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT, clamp, easeOut, easeInOut, useT, prog, useSpr, useScene, Txt, Words, Pill, Hl, Badge, Abs, useFloat, Pop, fa} = L;
+"""
+
+GROUP = 4                                  # scenes written per call: short answers, written in parallel
 
 
-def write(direction: Direction, timeline: dict, *, feedback: str = "", previous: Code | None = None, change: str = "") -> Code:
-    from creative import llm
+class ArtDraft(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    art_tsx: str
+
+
+class SceneDraft(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    components: str
+
+
+def art_names(art_tsx: str) -> list[str]:
+    return list(dict.fromkeys(re.findall(r"export\s+(?:const|function)\s+([A-Za-z_]\w*)", art_tsx)))
+
+
+def header(art_tsx: str) -> str:
+    taken = set(re.findall(r"[A-Za-z_]\w*", SCENES_HEADER.split("const {", 1)[1]))      # the kit names already destructured: an art export with the same name would clash
+    names = [n for n in art_names(art_tsx) if n not in taken]
+    return SCENES_HEADER + (f"const {{{', '.join(names)}}} = A;\n" if names else "")
+
+
+def _brief(direction: Direction, timeline: dict) -> list[str]:
     beats = [{"scene": s["id"], "line": s["text"], "seconds": s["dur"], "plan": b.plan} for s, b in zip(timeline["scenes"], direction.beats)]
-    parts = [f"THE FILM: {direction.title}\n{direction.summary}",
-             f"LOOK: {direction.look}\nBACKDROP: {direction.backdrop}\nTHEME (already in theme.ts): {direction.theme.model_dump_json()}",
-             "TIMING + STORYBOARD (one component per scene, in this order; `line` is exactly the text cue() searches):\n" + json.dumps(beats, ensure_ascii=False, indent=1)]
-    if previous is not None:
-        parts.append("YOUR PREVIOUS art.tsx:\n" + previous.art_tsx)
-        parts.append("YOUR PREVIOUS Scenes.tsx:\n" + previous.scenes_tsx)
+    return [f"THE FILM: {direction.title}\n{direction.summary}",
+            f"LOOK: {direction.look}\nBACKDROP: {direction.backdrop}\nTHEME (already in theme.ts): {direction.theme.model_dump_json()}",
+            "TIMING + STORYBOARD (`line` is exactly the text cue() searches):\n" + json.dumps(beats, ensure_ascii=False, indent=1)]
+
+
+def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "") -> str:
+    from creative import llm
+    parts = _brief(direction, timeline)
+    if previous:
+        parts.append("YOUR PREVIOUS art.tsx:\n" + previous)
+    if change:
+        parts.append("THE PERSON ASKS FOR THIS CHANGE (apply what concerns the art, keep the rest): " + change.strip()[:1500])
+    if feedback:
+        parts.append("FIX THIS (return the complete file again):\n" + feedback.strip()[:5000])
+    parts.append("THE KIT, src/lib.tsx:\n" + _kit_api())
+    if not previous:
+        parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
+    with _long_call(600, 16000):
+        return llm.ask(ArtDraft, ART_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=16000, attempts=2).art_tsx
+
+
+def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "") -> str:
+    from creative import llm
+    parts = _brief(direction, timeline)
+    parts.append(f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues).")
+    parts.append("THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx)
+    if previous:
+        parts.append("YOUR PREVIOUS CODE FOR THESE SCENES:\n" + previous)
     if change:
         parts.append("THE PERSON ASKS FOR THIS CHANGE (apply it, keep everything else): " + change.strip()[:1500])
     if feedback:
-        parts.append("FIX THIS (return both complete files again):\n" + feedback.strip()[:6000])
+        parts.append("FIX THIS (return the complete code of these scenes again):\n" + feedback.strip()[:5000])
     parts.append("THE KIT, src/lib.tsx:\n" + _kit_api())
-    if previous is None:
-        parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
+    if not previous:
         parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
-    with _long_call(900, 32000):
-        return llm.ask(Code, CODE_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=32000, attempts=2)
+    guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
+    with _long_call(600, 14000):
+        code = llm.ask(SceneDraft, guide, "\n\n".join(parts), route=ROUTE, tokens=14000, attempts=2).components
+    code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
+    return code
+
+
+def groups_of(timeline: dict) -> list[list[str]]:
+    ids = [s["id"] for s in timeline["scenes"]]
+    return [ids[i:i + GROUP] for i in range(0, len(ids), GROUP)]
+
+
+class Film(BaseModel):
+    """The film's code in pieces: art + one block per group of scenes."""
+    model_config = ConfigDict(extra="ignore")
+    art: str
+    blocks: dict[str, str] = Field(default_factory=dict)        # first scene id of the group -> its code
+
+    def code(self, timeline: dict) -> "Code":
+        ids = [s["id"] for s in timeline["scenes"]]
+        body = "\n\n".join(self.blocks[g[0]] for g in groups_of(timeline) if g[0] in self.blocks)
+        missing = [i for i in ids if not re.search(rf"\bconst\s+S{i}\b", body)]
+        for i in missing:                                           # a scene its author forgot still renders (empty) instead of breaking the film
+            body += f"\nconst S{i}: React.FC = () => null;\n"
+        scenes = header(self.art) + "\n" + body + "\n\nexport const SCENES: React.FC[] = [" + ", ".join("S" + i for i in ids) + "];\n"
+        return Code(art_tsx=self.art, scenes_tsx=scenes)
+
+
+def write(direction: Direction, timeline: dict, *, previous: "Film | None" = None, change: str = "", art_feedback: str = "",
+          scene_feedback: dict[str, str] | None = None, redo_art: bool = True, redo: list[str] | None = None) -> Film:
+    """Write (or rewrite) the film: the art first, then every group of scenes in parallel. `redo` limits the rewrite to the groups holding those scenes."""
+    from concurrent.futures import ThreadPoolExecutor
+    art = previous.art if (previous and not redo_art) else write_art(direction, timeline, previous=previous.art if previous else "",
+                                                                       feedback=art_feedback, change=change)
+    groups = groups_of(timeline)
+    wanted = [g for g in groups if redo is None or any(i in redo for i in g)]
+    blocks = dict(previous.blocks) if previous else {}
+    feedback = scene_feedback or {}
+
+    def one(group):
+        note = "\n".join(feedback[i] for i in group if i in feedback)
+        return group[0], write_group(direction, timeline, art, group, previous=blocks.get(group[0], "") if previous else "", feedback=note, change=change)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for first, code in pool.map(one, wanted):
+            blocks[first] = code
+    return Film(art=art, blocks=blocks)
+
+
+def blame(error: str, film: Film, timeline: dict) -> tuple[bool, list[str]]:
+    """Which part an error points at: (art, [scene ids])."""
+    ids = [s["id"] for s in timeline["scenes"]]
+    scenes = sorted(set(re.findall(r"\bat S(\d\d)\b", error)) & set(ids))
+    if scenes:
+        return False, scenes
+    if "art.tsx" in error or re.search(r"\bat (Backdrop|Defs)\b", error):
+        return True, []
+    found = re.search(r"Scenes\.tsx:(\d+)", error)
+    if found:
+        line = int(found.group(1))
+        text = film.code(timeline).scenes_tsx.splitlines()[:line]
+        names = re.findall(r"\bconst\s+S(\d\d)\b", "\n".join(text))
+        if names:
+            return False, [names[-1]]
+    return True, ids                                                 # unknown: everything is rewritten with the error
 
 
 # ── 4. the project ───────────────────────────────────────────────────────────
@@ -521,20 +650,24 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     hooks.note("voice", f"نریشن آماده شد: {timeline['total']:.1f} ثانیه، {len(texts)} جمله", "done")
     check()
 
-    previous = Code.model_validate(saved["code"]) if (saved.get("code") and change) else None
-    hooks.note("code", "دارم کل فیلم را کدنویسی می‌کنم: کتابخانهٔ تصویرسازی همین فیلم و همهٔ صحنه‌ها، هر عنصر روی کلمهٔ گفته‌شده‌اش")
+    previous = Film.model_validate(saved["film"]) if (saved.get("film") and change) else None
+    hooks.note("code", f"دارم فیلم را کدنویسی می‌کنم: اول کتابخانهٔ تصویرسازی همین فیلم، بعد {len(timeline['scenes'])} صحنه در {len(groups_of(timeline))} گروه موازی، هر عنصر روی کلمهٔ گفته‌شده‌اش")
     hooks.progress(22, "دارم صحنه‌ها و تصویرسازی‌ها را کدنویسی می‌کنم.")
-    code = write(direction, timeline, previous=previous, change=change)
+    film = write(direction, timeline, previous=previous, change=change)
+    hooks.note("code", f"کد فیلم نوشته شد: {len(art_names(film.art))} تصویرسازی و {len(timeline['scenes'])} صحنه", "done")
     check()
 
     feedback = ""
     built: list[tuple[str, Path]] = []
     for attempt in range(4):
         if feedback:
-            hooks.note("build", f"ساخت صحنه‌ها خطا داد؛ دارم خطا را به نویسنده برمی‌گردانم تا اصلاح کند (تلاش {attempt + 1} از ۴)")
-            code = write(direction, timeline, previous=code, feedback=feedback)
+            art_wrong, scenes_wrong = blame(feedback, film, timeline)
+            where = ("کتابخانهٔ تصویرسازی" if art_wrong else "") + (("، " if art_wrong and scenes_wrong else "") + "صحنه‌های " + "، ".join(scenes_wrong) if scenes_wrong else "")
+            hooks.note("build", f"ساخت فیلم خطا داد ({where}); خطا را به نویسنده برگرداندم تا همان بخش را اصلاح کند (تلاش {attempt + 1} از ۴)")
+            film = write(direction, timeline, previous=film, redo_art=art_wrong, art_feedback=feedback if art_wrong else "",
+                         scene_feedback={i: feedback for i in scenes_wrong}, redo=scenes_wrong)
             check()
-        project(work, direction, timeline, code)
+        project(work, direction, timeline, film.code(timeline))
         hooks.note("build", "دارم پروژه را می‌سازم و از هر صحنه عکس می‌گیرم")
         hooks.progress(40 + attempt * 4, "دارم صحنه‌ها را می‌سازم و بررسی می‌کنم.")
         ok, detail, built = stills(work, timeline)
@@ -561,19 +694,26 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     if not verdict["ok"] and verdict["problems"]:
         hooks.note("revise", f"دارم {len(verdict['problems'])} ایراد طراح ارشد را در کد اصلاح می‌کنم")
         hooks.progress(60, "دارم ایرادهای صحنه‌ها را اصلاح می‌کنم.")
-        fix = "\n".join(f"- scene {p.get('scene')}: {p.get('what')} -> {p.get('fix')}" for p in verdict["problems"])
+        ids = [s_["id"] for s_ in timeline["scenes"]]
+        per_scene: dict[str, str] = {}
+        for p_ in verdict["problems"]:
+            line = f"- {p_.get('what')} -> {p_.get('fix')}"
+            targets = [str(p_.get("scene", ""))[:2]] if str(p_.get("scene", ""))[:2] in ids else ids
+            for i in targets:
+                per_scene[i] = (per_scene.get(i, "") + "\n" + line).strip()
         try:
-            revised = write(direction, timeline, previous=code, feedback="The art director reviewed the stills:\n" + fix)
+            revised = write(direction, timeline, previous=film, redo_art=False,
+                            scene_feedback={i: "The art director reviewed the stills of this film:\n" + v for i, v in per_scene.items()}, redo=list(per_scene))
             check()
             trial = directory / "work_revised"
             shutil.rmtree(trial, ignore_errors=True)
             trial.mkdir()
-            project(trial, direction, timeline, revised)
+            project(trial, direction, timeline, revised.code(timeline))
             ok, detail, trial_stills = stills(trial, timeline)
             if ok and trial_stills:
                 shutil.rmtree(work, ignore_errors=True)
                 trial.replace(work)
-                code, built = revised, [(label, work / "stills" / path.name) for label, path in trial_stills]
+                film, built = revised, [(label, work / "stills" / path.name) for label, path in trial_stills]
                 hooks.note("revise", "ایرادها اصلاح شد و نسخهٔ اصلاح‌شده جایگزین شد", "done")
             else:
                 shutil.rmtree(trial, ignore_errors=True)
@@ -587,7 +727,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         hooks.note("review", "طراح ارشد ایراد جدی ندید", "done")
     check()
 
-    state_file.write_text(json.dumps({"direction": direction.model_dump(), "code": code.model_dump()}, ensure_ascii=False))
+    state_file.write_text(json.dumps({"direction": direction.model_dump(), "film": film.model_dump()}, ensure_ascii=False))
     (work / "pending.json").write_text(json.dumps({"timing": timeline, "stills": [[label, str(path)] for label, path in built], "notes": notes}, ensure_ascii=False, default=str))
     if os.environ.get("CLAUDE_MOTION_RENDER", "server").strip().lower() == "defer":
         hooks.note("render", "پروژه آماده است؛ رندر بیرون از این سرور انجام می‌شود", "active")
