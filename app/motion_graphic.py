@@ -1754,6 +1754,14 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
                         flagged.setdefault(n, []).append(line[:500])
             _snapshot_scenes(directory, work, build.plan)
             shots_of = page_fp
+            if flagged:      # the layout check compares rough boxes (a split headline, a highlighted word): a person's eye decides whether text really lies over text
+                from creative import visual_gate as _gate
+                seen = _gate.confirm_text_overlap({n: directory / "snapshots" / f"{n}.jpg" for n in flagged}, work)
+                waved = sorted(n for n in flagged if seen.get(n) is False)
+                for n in waved:
+                    flagged.pop(n, None)
+                if waved:
+                    _note(directory, "check", f"بررسی چیدمان صحنه‌های {'، '.join(map(str, waved))} را مشکوک دید ولی در عکس صحنه‌ها متنی روی متن نیفتاده بود؛ همان طراحی نگه داشته شد", "done")
             for n in _blank_scenes(directory):
                 flagged.setdefault(n, []).append("this scene shows an empty frame at its settled moment (60% of its length): nothing is visible. Every element must be revealed relative to the scene's own start, and the scene must paint its background and headline.")
             if flagged:
