@@ -277,28 +277,55 @@ RULES THAT BREAK FILMS (from the studio's QA):
 
 """
 
-ART_GUIDE = """You are a senior illustrator and React/Remotion engineer. You write src/art.tsx: the illustration library and the backdrop of ONE film, on a small kit.
-It is rendered frame by frame (30 fps, 1080x1920) by Remotion in headless Chromium; you never see it, so make it correct by construction.
-Return ONLY the complete file, between these two marker lines (no JSON, no markdown fence, nothing else):
+ART_FOUNDATION_GUIDE = """You are a senior illustrator and React/Remotion engineer. You write the FOUNDATION of src/art.tsx for ONE film (colleagues write its illustrations next, from
+your foundation). It is rendered frame by frame (30 fps, 1080x1920) by Remotion in headless Chromium; you never see it: correct by construction.
+Return ONLY the code, between these two marker lines (no JSON, no markdown fence, no import lines):
 =====FILE=====
-<the whole src/art.tsx>
+<the code>
 =====END=====
 
-src/art.tsx (YOU WRITE IT): `import React from 'react'; import {interpolate} from 'remotion'; import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';`
-- export const Backdrop: React.FC — the film-wide background layer drawn under every scene (the ground, grid/grain/glow/paper as the LOOK says, slow
-  ambient motion from useT()); 1080x1920, pointer-events none.
-- export a Defs component with every gradient/filter the film uses, and an Svg wrapper; every <svg> you render includes <Defs/> (an svg without its own
-  defs renders the gradients colourless).
-- one component per illustration of the storyboard, parameterized by position/size and by animated 0..1 values (fill level, growth, opening) so scenes can
-  drive them. Craft: real objects with volume (2-3 tone gradients, a highlight, a soft blurred ground shadow, one light direction) — or the reference's own
-  art language when the LOOK says so (for example thin glowing white lines on black). Never a generic placeholder (an empty box, a picture-frame icon).
-- No images, no fonts, no network, no external packages.
-
-- Export every component with `export const Name: React.FC<{...}> = ...` (scenes import them by name). Give each a clear props type.
+The imports are added for you: React, interpolate/random/Easing from 'remotion', evolvePath/getLength from '@remotion/paths', noise2D/noise3D, and from './lib' G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut.
+Write, at most about 150 lines in all:
+- `export const Backdrop: React.FC` — the film-wide background layer drawn under every scene (the ground, grid/grain/glow/paper as the LOOK says, slow ambient
+  motion from useT()); 1080x1920.
+- `export const Defs: React.FC` — the shared gradients/filters of the film's art language, with ids prefixed `d-`; every <svg> includes <Defs/> (an svg without
+  its own defs renders gradients colourless).
+- `export const Svg: React.FC<{w: number; h: number; children?: React.ReactNode; style?: React.CSSProperties}>` — an absolutely placed svg wrapper that includes <Defs/>.
+- `export const Shadow: React.FC<{w: number; y: number; cx: number; o?: number}>` — a ground shadow drawn as an ellipse with a radial gradient (no blur filter).
+- tiny shared helpers your colleagues will reuse (named exports).
+Keep it CHEAP to render (CSS gradients, at most ~80 svg elements, no large blur). No images, fonts, network or external packages.
 
 """ + COMMON + """
-The EXAMPLE art.tsx at the end comes from another film (it shows the craft bar: volume, gradients, shadows, parameterized animation). Do not copy its objects
-or colours unless they genuinely fit this film."""
+The EXAMPLE art.tsx at the end comes from another film (craft bar: volume, gradients, soft shadows). Do not copy its objects or colours unless they fit this film."""
+
+ART_PARTS_GUIDE = """You are a senior illustrator and React/Remotion engineer. You write SOME illustration components of ONE film's src/art.tsx (colleagues write the other
+components at the same time; the foundation below is already written). Rendered frame by frame (30 fps, 1080x1920) by Remotion; you never see it.
+Return ONLY the code, between these two marker lines (no JSON, no markdown fence, no import lines):
+=====FILE=====
+<the code>
+=====END=====
+
+Write exactly the components you were given, each as `export const Name: React.FC<{...props}> = (...) => ...` with the props listed (animated values are 0..1 numbers
+the scenes drive; positions and sizes are props). Use the foundation's Svg / Defs / Shadow / helpers by name (do not redefine them). A component may add its own
+<defs> inside its svg; prefix those ids with the component's name. Craft: real objects with volume (2-3 tone gradients, a highlight, a soft ground shadow, one
+light direction) - or the reference's own art language when the LOOK says so (for example thin glowing white lines on black). Never a generic placeholder.
+About 40-90 lines per component. Imports available: React, interpolate/random/Easing from 'remotion', evolvePath/getLength, noise2D/noise3D, and from './lib'
+G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut.
+
+""" + COMMON + """
+The EXAMPLE art.tsx at the end comes from another film (craft bar). Do not copy its objects or colours unless they fit this film."""
+
+ART_IMPORTS = """import React from 'react';
+import {interpolate, random, Easing} from 'remotion';
+import {evolvePath, getLength} from '@remotion/paths';
+import {noise2D, noise3D} from '@remotion/noise';
+import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';
+"""
+
+ART_PLAN_GUIDE = """You are the art director of ONE film. From its storyboard list every illustration component the scenes need, so illustrators can draw them in parallel.
+Return strict JSON {"components": [{"name": "PascalCase", "props": "x: number, y: number, s?: number, p: number (0..1 growth)", "what": "one sentence: the object, its look, what p animates"}]}.
+8 to 18 components, each a single object or small group (a phone, a chart, a crowd, a lamp...); reuse one component in many scenes with different props instead of
+making near-duplicates. Match the film's LOOK (art language, palette). Names must not be Backdrop, Defs, Svg or Shadow (those exist)."""
 
 SCENES_GUIDE = """You are a senior motion designer and React/Remotion engineer. You write SOME of the scene components of ONE film (others write the other
 scenes at the same time on the same art library). Rendered frame by frame (30 fps, 1080x1920) by Remotion; you never see it: correct by construction.
@@ -326,7 +353,7 @@ import * as A from './art';
 const {G, GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT, clamp, easeOut, easeInOut, useT, prog, useSpr, useScene, Txt, Words, Pill, Hl, Badge, Abs, useFloat, Pop, fa} = L;
 """
 
-GROUP = 4                                  # scenes written per call: short answers, written in parallel
+GROUP = 2                                  # scenes written per call: every call must finish well inside the provider's ~200 s ceiling (about 6k output tokens)
 
 
 class ArtDraft(BaseModel):
@@ -356,20 +383,62 @@ def _brief(direction: Direction, timeline: dict) -> list[str]:
             "TIMING + STORYBOARD (`line` is exactly the text cue() searches):\n" + json.dumps(beats, ensure_ascii=False, indent=1)]
 
 
+class ArtPlan(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    components: list[dict] = Field(default_factory=list)
+
+
+ART_CHUNK = 3                              # illustrations per call
+
+
+def _art_context(direction: Direction, timeline: dict, extra: list[str]) -> str:
+    return "\n\n".join(_brief(direction, timeline) + extra + ["THE KIT, src/lib.tsx:\n" + _kit_api(),
+                                                              "EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8")])
+
+
+def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2):
+    """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
+    try:
+        with _long_call(300, tokens):
+            return _retrying(lambda: ask_text(guide, user, tokens=tokens), tries=tries, waits=(10,))
+    except Exception as exc:
+        if split is None or not _TRANSIENT.search(str(exc)):
+            raise
+        log.warning("claude motion call failed twice (%s); splitting it into smaller calls", str(exc)[:120])
+        return split()
+
+
 def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "") -> str:
+    """art.tsx in short calls: the illustration list, the foundation, then the illustrations three at a time (all in parallel after the foundation)."""
+    from concurrent.futures import ThreadPoolExecutor
     from creative import llm
-    parts = _brief(direction, timeline)
+    if previous and not (feedback or change):
+        return previous
+    extra = []
     if previous:
-        parts.append("YOUR PREVIOUS art.tsx:\n" + previous)
+        extra.append("YOUR PREVIOUS art.tsx (keep its names and props; apply only the change below):\n" + previous)
     if change:
-        parts.append("THE PERSON ASKS FOR THIS CHANGE (apply what concerns the art, keep the rest): " + change.strip()[:1500])
+        extra.append("THE PERSON ASKS FOR THIS CHANGE (apply what concerns the art): " + change.strip()[:1500])
     if feedback:
-        parts.append("FIX THIS (return the complete file again):\n" + feedback.strip()[:5000])
-    parts.append("THE KIT, src/lib.tsx:\n" + _kit_api())
-    if not previous:
-        parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
-    with _long_call(600, 16000):
-        return _retrying(lambda: ask_text(ART_GUIDE, "\n\n".join(parts), tokens=16000))
+        extra.append("FIX THIS:\n" + feedback.strip()[:5000])
+    with _long_call(120, 4000):
+        plan = _retrying(lambda: llm.ask(ArtPlan, ART_PLAN_GUIDE, "\n\n".join(_brief(direction, timeline) + extra), route=ROUTE, tokens=4000, attempts=2))
+    comps = [c for c in plan.components if isinstance(c, dict) and re.fullmatch(r"[A-Z]\w*", str(c.get("name", ""))) and c["name"] not in {"Backdrop", "Defs", "Svg", "Shadow"}][:18]
+    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 5000)
+    chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
+
+    def part(group: list[dict]) -> str:
+        listing = "\n".join(f"- {c['name']}: props {{{c.get('props', '')}}} - {c.get('what', '')}" for c in group)
+        user = _art_context(direction, timeline, [f"THE FOUNDATION ALREADY WRITTEN:\n{foundation}", f"WRITE THESE COMPONENTS NOW:\n{listing}"])
+
+        def split() -> str:
+            return "\n\n".join(part([c]) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 6000, None, tries=3)
+
+        return _one_ask(ART_PARTS_GUIDE, user, 6000, split if len(group) > 1 else None)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        bodies = list(pool.map(part, chunks))
+    return ART_IMPORTS + "\n" + foundation + "\n\n" + "\n\n".join(bodies) + "\n"
 
 
 def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "") -> str:
@@ -387,8 +456,12 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     if not previous:
         parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
     guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
-    with _long_call(600, 14000):
-        code = _retrying(lambda: ask_text(guide, "\n\n".join(parts), tokens=14000))
+    user = "\n\n".join(parts)
+
+    def split() -> str:
+        return "\n\n".join(write_group(direction, timeline, art_tsx, [i], previous=previous, feedback=feedback, change=change) for i in ids)
+
+    code = _one_ask(guide, user, 6500, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2)
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
     return code
 
