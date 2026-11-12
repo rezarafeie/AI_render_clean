@@ -55,8 +55,9 @@
       proxy[method] = function () {
         var args = Array.prototype.slice.call(arguments), posIndex = method === "fromTo" ? 3 : 2;
         var at = args[posIndex];
-        if (typeof at !== "number" || !Number.isFinite(at) || at < 0 || at > duration)
+        if (typeof at !== "number" || !Number.isFinite(at) || at < 0)
           throw new Error("Scene animation position outside local duration: " + at);
+        if (at > duration) at = args[posIndex] = Math.max(0, duration - .3);      // a late entrance is pulled inside its scene instead of failing the whole film
         var vars = args[method === "fromTo" ? 2 : 1] || {};
         var seconds = method === "set" ? 0 : (vars.duration === undefined ? .5 : vars.duration);
         var repeats = vars.repeat || 0, delay = vars.delay || 0, repeatDelay = vars.repeatDelay || 0, stagger = vars.stagger || 0;
@@ -65,7 +66,13 @@
           throw new Error("Scene duration, delay and repeat must be bounded non-negative numbers");
         var tail = typeof stagger === "number" ? Math.abs(stagger) * Math.max(0, targets.length - 1) :
           (stagger && typeof stagger.amount === "number" ? Math.abs(stagger.amount) : NaN);
-        if (!Number.isFinite(tail) || at + delay + seconds * (repeats + 1) + repeatDelay * repeats + tail > duration + .001)
+        function total() { return at + delay + seconds * (repeats + 1) + repeatDelay * repeats + tail; }
+        if (Number.isFinite(tail) && total() > duration + .001) {          // fitted to the scene instead of failing: fewer repeats, then a shorter move, then an earlier start
+          if (repeats > 0) { repeats = vars.repeat = 0; }
+          if (total() > duration + .001 && seconds > 0 && method !== "set") { seconds = vars.duration = Math.max(.05, seconds - (total() - duration)); }
+          if (total() > duration + .001) { at = args[posIndex] = Math.max(0, at - (total() - duration)); }
+        }
+        if (!Number.isFinite(tail) || total() > duration + .001)
           throw new Error("Scene animation extends beyond its scene");
         args[posIndex] = start + at;
         master[method].apply(master, args);

@@ -898,7 +898,8 @@ FIDELITY = (
     "black/white/grey only, with no teal, blue or any other hue; (2) TYPE SCALE: text as small and light as the reference's (a short line of 44-72 px, regular weight), not a big title; "
     "(3) PICTURE LANGUAGE: the same kind of drawing (thin-line pictograms and diagrams drawn with HM.draw, flat black ground, much empty space) instead of cards, boxes, gradients or panels; "
     "(4) MOTION: lines draw themselves, figures and labels enter one after another on their spoken words, something is always moving in every 1-2 seconds of the scene. "
-    "The narration is already typeset by the caption layer at the bottom: never write narration sentences on screen and keep every element out of the caption band."
+    "The narration is already typeset by the caption layer at the bottom: never write narration sentences on screen and keep every element out of the caption band. "
+    "Draw the REAL subject of the scene (people, a room, a table, a head, a phone, a filmstrip) as line pictograms; never a generic placeholder such as a picture-frame icon with a mountain and a sun, an empty rectangle or a box with a title."
 )
 
 
@@ -916,6 +917,18 @@ def add_motion_floor(draft, n: int, duration: float, minimum: int = 8):
     step = min(0.55, span / max(1, len(free)))
     lines = [f'tl.from("#{i}", {{opacity: 0, y: 34, duration: 0.7, ease: "power3.out"}}, {round(0.25 + k * step, 2)});' for k, i in enumerate(free[:14])]
     return draft.model_copy(update={"build_js": draft.build_js.rstrip() + "\n" + "\n".join(lines)})
+
+
+_LIKE_REFERENCE = re.compile(r"همین|همان|مثل|شبیه|دقیق|عین|same|exactly|like (?:this|the)", re.I)
+
+
+def reference_seconds(brief: str, style: str) -> float | None:
+    """When the person asks for a film 'like this reference' and the reference is 15-90 s long, the film is about as long as the reference (it has that many beats to cover)."""
+    found = re.search(r"\b\d+ shots? in (\d+(?:\.\d+)?)s", style or "")
+    if not found or not _LIKE_REFERENCE.search(brief or ""):
+        return None
+    seconds = float(found.group(1))
+    return seconds if 15 <= seconds <= 90 else None
 
 
 def plan_request(brief: str, *, context: str = "", brand: str = "", style: str = "", fonts: str = "") -> str:
@@ -1047,6 +1060,8 @@ def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", use
         request += (f"\n\nTHIS BRIEF IS LONG ({len(brief.split())} words): use up to {cap} scenes, about one per 3-6 seconds of narration, so every scene's narration fits its length; "
                     "the usual 2-6 scene limit does not apply to it.")
     wanted_s = None if (supplied or approved) else requested_seconds(brief)
+    if not wanted_s and not (supplied or approved):
+        wanted_s = reference_seconds(brief, style)
     if wanted_s:
         request += (f"\n\nLENGTH: the person asked for about {wanted_s:g} seconds. The whole film must last {wanted_s * 0.85:.0f}-{wanted_s * 1.15:.0f} s: about {int(wanted_s * WORDS_PER_SECOND)} narration words "
                     f"in total (Persian is spoken at about {WORDS_PER_SECOND:g} words a second once pauses are counted), and scenes sized so that they tile exactly that. Do not exceed it. "
