@@ -9,8 +9,11 @@ from __future__ import annotations
 import asyncio
 import collections
 import itertools
+import json
+import os
 import threading
 import time
+import uuid
 from typing import Any
 
 _LOCK = threading.Lock()
@@ -21,8 +24,67 @@ KEEP = 64
 MAX_AGE = 120.0
 
 
-def publish(conversation_id: str, event_type: str, data: dict[str, Any]) -> int:
+_ORIGIN = uuid.uuid4().hex                      # this process; a message that came back from Redis with this origin is already local
+_CHANNEL = "editorgpt:studio-live"
+_client = None
+_listener_started = False
+
+
+def _redis():
+    """The Redis client shared by the processes of the studio (None when there is no Redis: then streaming works inside one process only)."""
+    global _client
+    if _client is None:
+        url = os.environ.get("REDIS_URL", "").strip()
+        if not url:
+            return None
+        import redis
+        _client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2)
+    return _client
+
+
+def _relay(conversation_id: str, event_type: str, data: dict[str, Any]) -> None:
+    """The studio's work often runs in the worker process while the open chats are served by the app process: the running text goes through Redis so both see it."""
+    try:
+        client = _redis()
+        if client is not None:
+            client.publish(_CHANNEL, json.dumps({"o": _ORIGIN, "c": conversation_id, "t": event_type, "d": data}, ensure_ascii=False))
+    except Exception:
+        pass                                                      # streaming is a courtesy: the finished message is saved anyway
+
+
+def _listen() -> None:
+    while True:
+        try:
+            client = _redis()
+            if client is None:
+                return
+            pubsub = client.pubsub(ignore_subscribe_messages=True)
+            pubsub.subscribe(_CHANNEL)
+            for message in pubsub.listen():
+                try:
+                    item = json.loads(message["data"])
+                    if item.get("o") != _ORIGIN:
+                        publish(item["c"], item["t"], item["d"], relay=False)
+                except Exception:
+                    continue
+        except Exception:
+            time.sleep(2)                                         # Redis restarted: subscribe again
+
+
+def start_listener() -> None:
+    """Called by the process that serves the chats' streams: it hears what other processes (the worker) publish."""
+    global _listener_started
+    with _LOCK:
+        if _listener_started or not os.environ.get("REDIS_URL", "").strip():
+            return
+        _listener_started = True
+    threading.Thread(target=_listen, name="studio-live-listener", daemon=True).start()
+
+
+def publish(conversation_id: str, event_type: str, data: dict[str, Any], relay: bool = True) -> int:
     """Hand a running piece of text to every open stream of the chat (callable from any thread). Returns its live number."""
+    if relay:
+        _relay(conversation_id, event_type, data)
     number = next(_COUNTER)
     entry = {"live": number, "type": event_type, "data": data, "at": time.monotonic()}
     with _LOCK:
@@ -61,6 +123,7 @@ class Subscription:
         self.conversation_id = conversation_id
         self.flag = asyncio.Event()
         self._entry = (asyncio.get_running_loop(), self.flag)
+        start_listener()
         with _LOCK:
             _WAITERS.setdefault(conversation_id, []).append(self._entry)
 
