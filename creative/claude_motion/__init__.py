@@ -49,7 +49,21 @@ class Cancelled(Exception):
 from contextlib import contextmanager
 
 
-_TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded", re.I)
+def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
+    """One long generation as plain text between =====FILE===== and =====END===== (code does not survive being a JSON string). A reply without the end marker was cut off and is an error."""
+    from brain.lm_gateway import complete
+    from brain.lm_adapters import text as adapter_text
+    response, _record = complete(route, [{"role": "system", "content": system}, {"role": "user", "content": user}], tokens=tokens)
+    reply = adapter_text("chat", response)
+    found = re.search(r"=====FILE=====\s*\n(.*?)\n\s*=====END=====", reply, re.S)
+    if not found:
+        raise RuntimeError("the model's reply had no complete FILE block (cut off or wrongly formatted): " + reply[-200:].replace("\n", " "))
+    body = found.group(1).strip()
+    body = re.sub(r"^```[a-z]*\n|\n```$", "", body)
+    return body
+
+
+_TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded|no complete FILE block", re.I)
 
 
 def _retrying(call, tries: int = 4, waits=(20, 45, 90)):
@@ -265,7 +279,10 @@ RULES THAT BREAK FILMS (from the studio's QA):
 
 ART_GUIDE = """You are a senior illustrator and React/Remotion engineer. You write src/art.tsx: the illustration library and the backdrop of ONE film, on a small kit.
 It is rendered frame by frame (30 fps, 1080x1920) by Remotion in headless Chromium; you never see it, so make it correct by construction.
-Return strict JSON {"art_tsx": "<the complete file>"}.
+Return ONLY the complete file, between these two marker lines (no JSON, no markdown fence, nothing else):
+=====FILE=====
+<the whole src/art.tsx>
+=====END=====
 
 src/art.tsx (YOU WRITE IT): `import React from 'react'; import {interpolate} from 'remotion'; import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';`
 - export const Backdrop: React.FC — the film-wide background layer drawn under every scene (the ground, grid/grain/glow/paper as the LOOK says, slow
@@ -285,7 +302,10 @@ or colours unless they genuinely fit this film."""
 
 SCENES_GUIDE = """You are a senior motion designer and React/Remotion engineer. You write SOME of the scene components of ONE film (others write the other
 scenes at the same time on the same art library). Rendered frame by frame (30 fps, 1080x1920) by Remotion; you never see it: correct by construction.
-Return strict JSON {"components": "<TypeScript code: one `const SNN: React.FC = () => { ... };` per scene you were given, nothing else>"}.
+Return ONLY the code, between these two marker lines (no JSON, no markdown fence, nothing else): one `const SNN: React.FC = () => { ... };` per scene you were given.
+=====FILE=====
+<the code>
+=====END=====
 
 YOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only these names):
 @HEADER@
@@ -349,7 +369,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     if not previous:
         parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
     with _long_call(600, 16000):
-        return _retrying(lambda: llm.ask(ArtDraft, ART_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=16000, attempts=2)).art_tsx
+        return _retrying(lambda: ask_text(ART_GUIDE, "\n\n".join(parts), tokens=16000))
 
 
 def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "") -> str:
@@ -368,7 +388,7 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
         parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
     guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
     with _long_call(600, 14000):
-        code = _retrying(lambda: llm.ask(SceneDraft, guide, "\n\n".join(parts), route=ROUTE, tokens=14000, attempts=2)).components
+        code = _retrying(lambda: ask_text(guide, "\n\n".join(parts), tokens=14000))
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
     return code
 
