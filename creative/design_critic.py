@@ -64,6 +64,11 @@ RUBRIC = (
 )
 
 
+CAPTION_NOTE = (
+    "\n\nThe narration caption in the lower band (with its underline or progress line) is added by the studio's caption layer AFTER the scene is designed; the scene designer cannot change it. "
+    "Do NOT lower a scene's score or write a fix about that caption's size, colour or underline; judge only the drawing, the scene's own text, and whether anything of the scene lies inside the caption band."
+)
+
 REFERENCE_NOTE = (
     "\n\nA REFERENCE IMAGE IS ATTACHED: its look is the standard for this film. Judge every point above RELATIVE to the reference. Thin, dim lines, small light text, a black "
     "ground, much empty space and a low density are CORRECT when the reference has them: never lower a score for faintness, small titles, low contrast of drawn lines or empty space "
@@ -101,7 +106,7 @@ def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, 
         if ask is None:
             from brain.llm import chat_vision
             images = [str(sheet)] + ([str(reference)] if reference and Path(reference).is_file() else [])
-            raw, _usage = chat_vision(RUBRIC + (REFERENCE_NOTE if len(images) > 1 else ""), context, images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
+            raw, _usage = chat_vision(RUBRIC + CAPTION_NOTE + (REFERENCE_NOTE if len(images) > 1 else ""), context, images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
         else:
             raw = ask(RUBRIC, context, sheet)
         verdicts = Verdicts.model_validate(raw)

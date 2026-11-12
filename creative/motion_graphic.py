@@ -900,24 +900,22 @@ def reference_hexes(style: str) -> list[str]:
     return re.findall(r"#[0-9a-fA-F]{6}", found.group(1)) if found else []
 
 
+def _chroma(code: str) -> int:
+    r, g, b = (int(code[i:i + 2], 16) for i in (1, 3, 5))
+    return max(r, g, b) - min(r, g, b)
+
+
 def reference_is_achromatic(style: str) -> bool:
-    """True when every colour measured in the reference is a grey (a black-and-white line drawing): the film must not invent an accent hue."""
-    import colorsys
+    """True when every colour measured in the reference is (nearly) a grey: a black-and-white line drawing. Dark compression noise (a faint green or blue cast) does not count as a colour."""
     colours = reference_hexes(style)
-    if not colours:
-        return False
-    for code in colours:
-        r, g, b = (int(code[i:i + 2], 16) / 255 for i in (1, 3, 5))
-        if colorsys.rgb_to_hsv(r, g, b)[1] > 0.18 and max(r, g, b) > 0.2:
-            return False
-    return True
+    return bool(colours) and all(_chroma(code) <= 48 for code in colours)
 
 
 def fit_palette(plan_: "MotionPlan", style: str) -> "MotionPlan":
     """A film made 'like this reference' wears the reference's colours: for a grey reference the palette becomes black, white and greys whatever the planner chose."""
     if not reference_is_achromatic(style):
         return plan_
-    greys = sorted(reference_hexes(style))
+    greys = sorted(code for code in reference_hexes(style) if _chroma(code) <= 12) or sorted(reference_hexes(style))
     bg = greys[0] if greys else "#0A0A0A"
     surface = greys[1] if len(greys) > 1 else "#1C1C1C"
     palette = plan_.palette.model_copy(update={"bg": bg, "surface": surface, "ink": "#E8E8E8", "accent": "#FFFFFF", "accent2": "#8C8C8C"})
@@ -930,6 +928,7 @@ FIDELITY = (
     "black/white/grey only, with no teal, blue or any other hue; (2) TYPE SCALE: text as small and light as the reference's (a short line of 44-72 px, regular weight), not a big title; "
     "(3) PICTURE LANGUAGE: the same kind of drawing (thin-line pictograms and diagrams drawn with HM.draw, flat black ground, much empty space) instead of cards, boxes, gradients or panels; "
     "(4) MOTION: lines draw themselves, figures and labels enter one after another on their spoken words, something is always moving in every 1-2 seconds of the scene. "
+    "CAPTIONS: choose caption_style to match the reference's own subtitles (small, dim, no box: minimal). "
     "The narration is already typeset by the caption layer at the bottom: never write narration sentences on screen and keep every element out of the caption band. "
     "Draw the REAL subject of the scene (people, a room, a table, a head, a phone, a filmstrip) as line pictograms; never a generic placeholder such as a picture-frame icon with a mountain and a sun, an empty rectangle or a box with a title."
 )

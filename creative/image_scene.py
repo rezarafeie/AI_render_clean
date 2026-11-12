@@ -24,6 +24,8 @@ SIZES = {"vertical": "1024x1536", "horizontal": "1536x1024", "square": "1024x102
 FRAME = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080)}
 FPS = 30
 NO_TEXT = "No text, no letters, no numbers, no logos anywhere in the picture."
+LINE_BASE = ("Minimal line illustration on a pure black background (#000000). Thin, bright white luminous lines with a soft glow of light around them, high contrast, "
+             "lots of empty black space, no filled shapes, no shading, no colour, flat pictogram style like an architectural diagram, vertical composition with the subject centred. ")
 
 
 def enabled() -> bool:
@@ -72,7 +74,7 @@ def _check(path: Path, style: str) -> tuple[bool, str]:
 def picture(prompt: str, style: str, fmt: str, folder: Path) -> Path:
     """The still for a scene, from the cache when the same prompt and style were painted before."""
     folder.mkdir(parents=True, exist_ok=True)
-    full = f"{style.strip()} {prompt.strip()} {NO_TEXT}"
+    full = f"{LINE_BASE}Extra style notes for this film (never colours): {style.strip()} Scene: {prompt.strip()} {NO_TEXT}"
     key = hashlib.sha256(f"{fmt}|{full}".encode()).hexdigest()[:16]
     target = folder / f"{key}.png"
     if target.is_file():
