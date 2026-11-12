@@ -41,6 +41,10 @@ def _pod_snapshot(provider, pod_id) -> str:
         return 'snapshot unavailable: ' + type(exc).__name__
 
 
+import threading as _threading
+_STATE = _threading.local()      # per render thread: whether a fresh-pod retry is still allowed / the last attempt ended in a startup timeout
+
+
 class WorkerStartupTimeout(CloudRenderError):
     """The worker never reported (its pod did not boot or pull its image in time): the pod is deleted, the render may continue on the server."""
 
@@ -237,7 +241,15 @@ def render_prepared(project: Path, output: Path, **kwargs):
         except BlockingIOError:
             raise CloudRenderError('This prepared project already has a render coordinator') from None
         try:
-            return _render_prepared(project, output, marker_root=lock_root, **{**kwargs, 'config': config})
+            _STATE.retry_allowed, _STATE.timed_out = True, False
+            result = _render_prepared(project, output, marker_root=lock_root, **{**kwargs, 'config': config})
+            if result is False and _STATE.timed_out and not (kwargs.get('should_cancel') and kwargs['should_cancel']()):
+                # A pod that never got a machine is the usual way the cloud fails (capacity differs from pod to pod): one fresh pod is tried before the server renders it.
+                # The startup-failure breaker still applies, so two bad attempts in a row keep the next films off the cloud for a while.
+                log.warning('cloud worker did not start; trying one fresh pod before rendering on the server')
+                _STATE.retry_allowed, _STATE.timed_out = False, False
+                result = _render_prepared(project, output, marker_root=lock_root, **{**kwargs, 'config': config})
+            return result
         finally:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
@@ -386,9 +398,11 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                 return False
             if isinstance(failure, WorkerStartupTimeout) and config.enable_local_fallback and config.override == 'auto':
                 ledger.finish(spec.job_id, spec.user_id, 'failed', 'worker_stalled' if isinstance(failure, WorkerStalled) else 'worker_startup_timeout')      # the pod is deleted by the reconcile below; nothing else bills
+                will_retry = bool(getattr(_STATE, 'retry_allowed', False)) and not isinstance(failure, WorkerStalled)
+                _STATE.timed_out = will_retry
                 if on_stage:
                     try:
-                        on_stage('cloud unavailable', 'سرور رندر ابری به‌موقع بالا نیامد یا متوقف شد؛ این ویدیو روی سرور رندر می‌شود')
+                        on_stage('cloud unavailable', 'سرور ابری اول بالا نیامد؛ یک سرور تازه امتحان می‌شود' if will_retry else 'سرور رندر ابری به‌موقع بالا نیامد یا متوقف شد؛ این ویدیو روی سرور رندر می‌شود')
                     except Exception:
                         pass
                 return False
