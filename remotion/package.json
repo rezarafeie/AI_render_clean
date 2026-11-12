@@ -8,7 +8,12 @@
   },
   "dependencies": {
     "@remotion/bundler": "4.0.536",
+    "@remotion/layout-utils": "4.0.536",
+    "@remotion/motion-blur": "4.0.536",
+    "@remotion/noise": "4.0.536",
+    "@remotion/paths": "4.0.536",
     "@remotion/renderer": "4.0.536",
+    "@remotion/shapes": "4.0.536",
     "@remotion/transitions": "4.0.536",
     "react": "18.3.1",
     "react-dom": "18.3.1",
