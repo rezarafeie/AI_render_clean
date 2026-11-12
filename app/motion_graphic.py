@@ -727,11 +727,11 @@ def _advice_text(advice: dict) -> str:
     return f"title_font={advice.get('title_font') or '-'}; body_font={advice.get('body_font') or '-'}; accent={advice.get('accent_font') or '-'}; because {advice.get('why', '')}"
 
 
-def _font_advice(directory: Path, brief: str) -> dict:
+def _font_advice(directory: Path, brief: str, reference_sheet=None) -> dict:
     """The vision model looks at the specimen sheets of the font library and recommends the film's fonts: one visible step with what it saw (a failure is shown, the planner then chooses from the list)."""
     from creative import font_catalog
     _note(directory, "fonts", "دارم نمونهٔ فونت‌های کتابخانه را می‌بینم و فونت مناسب این فیلم را انتخاب می‌کنم", request=brief[:600])
-    advice = font_catalog.advise(brief)
+    advice = font_catalog.advise(brief, reference_sheet=reference_sheet)
     if advice.get("error") or not advice:
         reason = advice.get("error") or "پاسخی نیامد"
         _note(directory, "fonts", "انتخاب فونت با مدل بینایی انجام نشد؛ طراح برنامه از روی فهرست فونت‌ها انتخاب می‌کند", "done", detail=str(reason)[:400])
@@ -1387,7 +1387,8 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         started = time.monotonic()
         if style.startswith("THE PERSON'S OWN HABITS"):
             _note(directory, "style", "سبک و قانون‌هایی که قبلاً به استودیو یاد داده‌اید در طراحی اعمال می‌شود", "done", detail=style)
-        advice = _font_advice(directory, brief)
+        sheet = directory.parent.parent / "reference" / "frame-table.jpg"          # the frames of a reference video in this chat: the font advisor matches their lettering
+        advice = _font_advice(directory, brief, sheet if style and sheet.is_file() else None)
         plan = mg.plan(brief, context=context, style=style, used=used, fonts=_advice_text(advice), advice=advice)
         if _cancelled(key):
             raise _Cancelled()

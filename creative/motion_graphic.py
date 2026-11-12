@@ -667,7 +667,7 @@ scene designers can build each scene on their own. Return ONE JSON object and no
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
 you should decide, use short generic wording and placeholders without any invented number, price, date, address or name of a real thing. If the
-request gives a topic and you can write honest copy from it, do NOT ask. Never invent statistics, prices, dates, testimonials or claims: use only facts
+request gives a topic and you can write honest copy from it, do NOT ask. When the request says the clip is about the SAME TOPIC as a reference video («همین موضوع», "the same subject") and a REFERENCE CONTENT block is supplied, that block IS the topic: work out the subject from it, write the clip on that subject in your own words (state the subject you understood in `summary`), and do NOT ask what the topic is. Ask only if the block is empty or says nothing about a subject. Never invent statistics, prices, dates, testimonials or claims: use only facts
 in the request or in the page content provided. Defaults: vertical, 15-20 seconds.
 
 PLAN
@@ -883,7 +883,7 @@ def plan_request(brief: str, *, context: str = "", brand: str = "", style: str =
         parts.append(skills_library.planning_block(brief))
     parts.append(font_catalog.planning_block() + (f"\nVISION ADVICE (a model looked at the specimens of every font and recommends): {fonts}" if fonts else ""))
     if style:
-        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words):\n{style.strip()[:1800]}")
+        parts.append(f"REFERENCE STYLE (observed in the reference video the person gave: follow its rhythm, type treatment, colour feel, transitions and density; never copy its words; its REFERENCE CONTENT, when listed, tells the subject):\n{style.strip()[:1800]}")
     if brand:
         parts.append(f"BRAND (use only when the request is about this brand):\n{brand.strip()}")
     if context:

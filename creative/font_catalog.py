@@ -171,15 +171,22 @@ ADVISE_SYSTEM = (
     "Return ONLY JSON: {\"title_font\": id, \"body_font\": id, \"accent_font\": id or \"\", \"why\": one Persian sentence that names what you saw in the shapes}.")
 
 
-def advise(brief: str, tone: str = "") -> dict:
-    """The vision model looks at the specimen sheets and picks the title/body fonts for a film. {} when it cannot (the planner then chooses from the text list)."""
+REFERENCE_NOTE = (
+    "\nThe FIRST image is a contact sheet of frames from the REFERENCE VIDEO the person wants the film to look like. Look at its lettering first: if one library font has the same letter shapes "
+    "(stroke contrast, terminals, width, weight), choose THAT font and say in `why` that it matches the reference; only when none of them resembles it choose by fit. "
+    "Never claim a match you cannot see.")
+
+
+def advise(brief: str, tone: str = "", reference_sheet=None) -> dict:
+    """The vision model looks at the specimen sheets (and the reference video's frames when there are any) and picks the title/body fonts for a film. {} when it cannot (the planner then chooses from the text list)."""
     images = sheets()
     if not images or not load():
         return {}
+    reference = [str(reference_sheet)] if reference_sheet and Path(str(reference_sheet)).is_file() else []
     try:
         from brain.llm import chat_vision
         user = f"FILM:\n{brief.strip()[:1800]}\n" + (f"TONE: {tone}\n" if tone else "") + "\nFONT LIBRARY (ids and notes):\n" + shortlist()
-        data, _usage = chat_vision(ADVISE_SYSTEM, user, images=[str(p) for p in images], return_json=True, max_tokens=700, timeout_seconds=150, route="font_advisor")
+        data, _usage = chat_vision(ADVISE_SYSTEM + (REFERENCE_NOTE if reference else ""), user, images=[*reference, *(str(p) for p in images)], return_json=True, max_tokens=700, timeout_seconds=150, route="font_advisor")
     except Exception as exc:
         log.warning("font advice by vision failed: %s", str(exc)[:200])
         return {"error": str(exc)[:200]}
