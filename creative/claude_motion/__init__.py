@@ -49,6 +49,22 @@ class Cancelled(Exception):
 from contextlib import contextmanager
 
 
+_TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded", re.I)
+
+
+def _retrying(call, tries: int = 4, waits=(20, 45, 90)):
+    """The provider sometimes answers 502 'upstream unavailable' for a moment: the same call is tried again after a pause (an error that is not transient is raised at once)."""
+    for attempt in range(tries):
+        try:
+            return call()
+        except Exception as exc:
+            if attempt == tries - 1 or not _TRANSIENT.search(str(exc)):
+                raise
+            wait = waits[min(attempt, len(waits) - 1)]
+            log.warning("claude motion call failed (%s); retrying in %d s", str(exc)[:160], wait)
+            time.sleep(wait)
+
+
 @contextmanager
 def _long_call(seconds: float = 900, tokens: int = 32000):
     """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
@@ -160,13 +176,13 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
     if reference_sheet and Path(reference_sheet).is_file():
         from brain.llm import chat_vision
         with _long_call(600, 12000):
-            raw, _usage = chat_vision(DIRECT_GUIDE, user + "\n\nThe attached image is a frame-by-frame sheet of the reference video.", images=[str(reference_sheet)],
-                                      route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600)
+            raw, _usage = _retrying(lambda: chat_vision(DIRECT_GUIDE, user + "\n\nThe attached image is a frame-by-frame sheet of the reference video.", images=[str(reference_sheet)],
+                                                        route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600))
         direction = Direction.model_validate(raw)
     else:
         from creative import llm
         with _long_call(600, 12000):
-            direction = llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2)
+            direction = _retrying(lambda: llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2))
     if not _font_files(direction.theme.font):
         direction.theme.font = "doran" if _font_files("doran") else "ray"
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
@@ -333,7 +349,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     if not previous:
         parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
     with _long_call(600, 16000):
-        return llm.ask(ArtDraft, ART_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=16000, attempts=2).art_tsx
+        return _retrying(lambda: llm.ask(ArtDraft, ART_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=16000, attempts=2)).art_tsx
 
 
 def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "") -> str:
@@ -352,7 +368,7 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
         parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
     guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
     with _long_call(600, 14000):
-        code = llm.ask(SceneDraft, guide, "\n\n".join(parts), route=ROUTE, tokens=14000, attempts=2).components
+        code = _retrying(lambda: llm.ask(SceneDraft, guide, "\n\n".join(parts), route=ROUTE, tokens=14000, attempts=2)).components
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
     return code
 
@@ -516,8 +532,8 @@ def review(sheet: Path, reference_sheet: Path | None, direction: Direction) -> d
     from brain.llm import chat_vision
     images = [str(sheet)] + ([str(reference_sheet)] if reference_sheet and Path(reference_sheet).is_file() else [])
     with _long_call(300, 4000):
-        raw, _usage = chat_vision(REVIEW, json.dumps({"look": direction.look[:800], "scenes": [b.line for b in direction.beats]}, ensure_ascii=False),
-                                  images=images, route="visual_qc", return_json=True, max_tokens=4000, timeout_seconds=300)
+        raw, _usage = _retrying(lambda: chat_vision(REVIEW, json.dumps({"look": direction.look[:800], "scenes": [b.line for b in direction.beats]}, ensure_ascii=False),
+                                                    images=images, route="visual_qc", return_json=True, max_tokens=4000, timeout_seconds=300))
     problems = [p for p in (raw.get("problems") or []) if isinstance(p, dict)]
     return {"ok": bool(raw.get("ok", not problems)), "problems": problems[:14]}
 
