@@ -188,6 +188,11 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
               "voice_id": voice_id, "voice_style": voice_style, "music": music, "directive_notes": wanted.notes, "pronunciations": wanted.pronunciations, "rhythm": wanted.rhythm or ("balanced" if music and music.get("sync") and music.get("mode") in {"auto", "search", "generate"} else "speech_first"), "loudness": wanted.loudness or "social_video",
               "audio_plan": audio_plan.model_dump(), "audio_plan_notes": plan_notes,
               "music_gain_db": wanted.music_gain_db, "ducking_db": wanted.ducking_db}
+    try:
+        from creative import claude_motion
+        record["engine"] = "claude" if claude_motion.enabled() else "classic"
+    except Exception:
+        record["engine"] = "classic"
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -440,6 +445,23 @@ def _run(directory: Path, change: str) -> None:
     from creative import motion_graphic as mg
     record = load(directory)
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
+    if record.get("engine") == "claude" and not record.get("edit_pending"):
+        try:
+            if _run_claude(directory, record, change):
+                return
+        except _Cancelled:
+            raise
+        except Exception as exc:
+            if _cancelled(key):
+                raise _Cancelled()
+            log.exception("claude motion %s failed; the classic engine takes over", key)
+            _note(directory, "engine", f"موتور «موشن کلاد» این فیلم را کامل نکرد ({str(exc)[:90]})؛ موتور قبلی ادامه می‌دهد", "done")
+            with _lock(key):
+                record = load(directory)
+                record["engine"] = "classic"
+                save(directory, record)
+            if change and not _version(record):
+                change = ""
     previous = None
     current = _version(record)
     edit = record.get("edit_pending")
@@ -504,6 +526,61 @@ def _run(directory: Path, change: str) -> None:
     studio_narrator.narrate(cid, user, "motion_ready", {"title": page.title, "duration_seconds": page.duration, "format": page.format, "what_it_shows": page.summary,
                             "changes_applied": change or None, "notes_from_the_automatic_check": notes[:3], "person_can_now": "ask for changes to text, colour, timing or size"},
                             fallback=(page.summary or f"موشن‌گرافیک {page.duration:g} ثانیه‌ای آماده شد.") + " اگر چیزی را می‌خواهید عوض کنم (متن، رنگ، زمان‌بندی، اندازه)، همین‌جا بنویسید.")
+
+
+def _run_claude(directory: Path, record: dict, change: str) -> bool:
+    """The whole film by the Claude motion engine (creative/claude_motion): True when a version was saved or questions were asked."""
+    from creative import claude_motion
+    from creative import motion_graphic as mg
+    cid, user, key = record["conversation_id"], record["user_key"], record["id"]
+    if change and not (directory / "claude_motion.json").is_file():
+        return False                                  # a version made by the classic engine is revised by the classic engine
+
+    def progress(percent: int, message: str) -> None:
+        _progress(directory, "rendering" if percent >= 66 else "writing", percent, message, stage="rendering" if percent >= 66 else "writing")
+
+    hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
+                                progress=progress, cancelled=lambda: _cancelled(key))
+    _note(directory, "engine", "موتور «موشن کلاد»: یک مدل کل فیلم را یک‌جا کارگردانی و کدنویسی می‌کند", "done")
+    try:
+        result = claude_motion.build(directory, record, hooks, change=change, reference_sheet=directory.parent.parent / "reference" / "frame-table.jpg")
+    except claude_motion.Cancelled:
+        raise _Cancelled()
+    if result.get("questions"):
+        _ask(directory, record, result["questions"], change)
+        return True
+    direction, timeline = result["direction"], result["timing"]
+    shots = directory / "snapshots"
+    shutil.rmtree(shots, ignore_errors=True)
+    shots.mkdir(exist_ok=True)
+    items = []
+    finals = [(label, path) for label, path in result["stills"] if not label.endswith("a")]
+    for n, (label, path) in enumerate(finals, 1):
+        shutil.copy2(path, shots / f"{n}.jpg")
+        beat = direction.beats[n - 1] if n <= len(direction.beats) else None
+        items.append({"n": n, "headline": (beat.line if beat else label)[:80], "t": 0})
+    page = mg.MotionPage(title=direction.title, summary=direction.summary, format="vertical", duration=timeline["total"])
+    notes = list(result.get("notes") or [])
+    with _lock(key):
+        if _cancelled(key):
+            raise _Cancelled()
+        record = load(directory)
+        number = (record["versions"][-1]["n"] if record["versions"] else 0) + 1
+        target = directory / f"v{number}"
+        shutil.rmtree(target, ignore_errors=True)
+        (directory / "work").replace(target)
+        record["snapshots"] = items
+        record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_motion"], "engine": "claude",
+                                   **page.public(), "page": page.model_dump(exclude={"questions"})})
+        record["versions"] = record["versions"][-MAX_VERSIONS:]
+        record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None, eta_s=None, eta_at=None)
+        save(directory, record)
+    _emit(cid, "motion.completed", motion_id=key, version=number, duration=page.duration, format=page.format)
+    from app import studio_narrator
+    studio_narrator.narrate(cid, user, "motion_ready", {"title": page.title, "duration_seconds": page.duration, "format": page.format, "what_it_shows": page.summary,
+                            "changes_applied": change or None, "notes_from_the_automatic_check": notes[:3], "person_can_now": "ask for changes to text, colour, timing or size"},
+                            fallback=(page.summary or f"موشن‌گرافیک {page.duration:g} ثانیه‌ای آماده شد."))
+    return True
 
 
 def _ask(directory: Path, record: dict, questions: list[str], change: str = "") -> None:
