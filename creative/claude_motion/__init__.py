@@ -154,7 +154,8 @@ narration (there are no separate subtitles): every phrase and every illustration
  "beats": [{"line": "...", "plan": "..."}]}
 
 NARRATION (beats[].line, one sentence or two short ones per scene; 6-14 scenes; about 2.6 spoken words per second; 40-95 seconds in all unless asked otherwise):
-- Spoken Persian for text-to-speech: half-space (ZWNJ) in «می‌شه», «مرحله‌ی», «کسب‌وکار»; numbers WRITTEN IN WORDS («نود و پنج», «دو»); comma = short pause, «...» = dramatic pause.
+- Spoken Persian for text-to-speech, in the colloquial register a person speaks: half-space (ZWNJ) in «می‌شه», «مرحله‌ی», «کسب‌وکار»; kasre-ye ezafe (ِ) where it would be misread («سالِ نود و پنج», «پولِ اصلی»);
+  numbers WRITTEN IN WORDS («نود و پنج», «دو»); comma = short pause, «...» = dramatic pause, «؟» on questions. A speech editor refines this afterwards; do not rewrite the lines yourself later.
 - A hook in the first line, one idea per scene, a clear ending (a call to action when the subject asks for one). Never invent facts, numbers, names or research.
 - When the person gives a reference video and asks for the same content or topic, keep its thesis, beats and order (its transcript is given) in natural new wording,
   and keep the film about as long as the reference (its length is in the REFERENCE block: «N shots in Ts»): ±15 %, about 2.6 spoken words per second.
@@ -224,36 +225,104 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
     return direction
 
 
-# ── 2. timing from the voice take ────────────────────────────────────────────
+# ── 2. the voice: sentence by sentence, exactly as the reference film did it ──
 
-def timing(direction: Direction, take: dict) -> dict:
-    """timing.json for the kit: every scene's window and, per character of its line, when it is heard (seconds from the scene's start)."""
-    from creative import narration_take
-    fitted = narration_take.fit(take)
-    scenes = []
-    for i, beat in enumerate(direction.beats):
-        start, end = fitted["starts"][i], fitted["ends"][i]
-        text = beat.line
-        stamps = [None] * len(text)
-        cursor = 0
-        for cue in fitted["cues"][i]:
-            word = str(cue.get("word") or "").strip("،,.!؟?«»:؛ ")
-            if not word:
-                continue
-            found = text.find(word, cursor)
-            if found < 0:
-                continue
-            for k in range(found, found + len(word)):
-                stamps[k] = float(cue["t"])
-            cursor = found + len(word)
-        last = 0.0
-        starts = []
-        for k, value in enumerate(stamps):                      # characters between known words take the time of the word before them
-            last = value if value is not None else last
-            starts.append(round(last, 3))
-        scenes.append({"id": f"{i + 1:02d}", "text": text, "start": round(start, 3), "dur": round(end - start, 3), "al": {"chars": text, "starts": starts}})
-    total = round(fitted["duration"] + 1.2, 3)
-    return {"fps": FPS, "width": W, "height": H, "total": total, "scenes": scenes, "audio": fitted["audio"]}
+TEMPO = 1.12          # the reference film speeded every clip up (pitch kept) for reel rhythm
+LEAD, GAP, TAIL = 0.25, 0.22, 2.6
+_MARKS = re.compile(r"[\u064B-\u0652\u200c\u200d\u0640]")                       # diacritics, ZWNJ, kashida
+_PUNCT = re.compile(r"[\s،,.…!?؟:؛«»\"'()\-–—]")
+
+POLISH_GUIDE = """You are a Persian text-to-speech editor. Each line below is narration that an ElevenLabs v3 voice will read aloud, one sentence at a time. Return the SAME lines
+prepared for the voice, changing NO words, NO order and NO meaning (never rephrase, shorten or add content). What you do:
+- ZWNJ (half-space U+200C) inside every word that takes one: «می‌شه», «می‌خوام», «مرحله‌ی», «کسب‌وکار», «خونه‌ام», plural «ها» («آدم‌ها»).
+- Kasre-ye ezafe (ِ) on a noun/adjective that is joined to the next word and would otherwise be misread: «سالِ نود و پنج», «پولِ اصلی», «عکسِ غذا», «موجِ اینستاگرام»;
+  also the vowel marks that decide a word's reading when it is ambiguous (e.g. «دَرس» vs «درس», «مُدّت»). Not on every word: only where a native reader could stumble.
+- Numbers written in words («نود و پنج», «دو», «پنجاه میلیون»), never digits.
+- Pauses: a comma «،» for a short breath, «.» for a full stop, «...» for a dramatic pause, a question mark «؟» on questions. Break very long sentences with commas where a speaker would breathe.
+- Latin names or acronyms the voice would mispronounce: write them as Persian letters («هاروارد», «اینستاگرام», «دی‌اس‌ای‌آرز»).
+Return strict JSON {"lines": ["...", ...]} with exactly as many lines as given, in order."""
+
+
+def _bare(text: str) -> str:
+    return _PUNCT.sub("", _MARKS.sub("", text))
+
+
+def polish_speech(lines: list[str]) -> list[str]:
+    """The lines prepared for the voice (ZWNJ, ezafe, vowel marks, pauses, numbers in words); a line the editor changed beyond marks and punctuation is kept as it was."""
+    import difflib
+    from creative import llm
+
+    class Lines(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        lines: list[str] = Field(default_factory=list)
+
+    try:
+        with _long_call(180, 4000):
+            result = _retrying(lambda: llm.ask(Lines, POLISH_GUIDE, json.dumps(lines, ensure_ascii=False), route=ROUTE, tokens=4000, attempts=2), tries=3, waits=(10, 20))
+    except Exception as exc:
+        log.warning("speech polishing unavailable: %s", str(exc)[:160])
+        return lines
+    if len(result.lines) != len(lines):
+        return lines
+    out = []
+    for original, edited in zip(lines, result.lines):
+        same = difflib.SequenceMatcher(None, _bare(original), _bare(edited)).ratio() >= 0.92
+        out.append(edited.strip() if same and edited.strip() else original)
+    return out
+
+
+def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Path, dict]:
+    """One sentence with character timestamps (cached). The reference film's settings: eleven_v3, language fa, stability .5, similarity .8."""
+    import base64
+    import hashlib
+    import httpx
+    from brain.elevenlabs_transport import url as elevenlabs_url, api_key
+    folder.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(f"{voice}|{model}|{text}".encode()).hexdigest()[:12]
+    audio, stamps = folder / f"{name}-{digest}.mp3", folder / f"{name}-{digest}.json"
+    if audio.is_file() and stamps.is_file():
+        return audio, json.loads(stamps.read_text())
+    key = api_key()
+    if not key:
+        raise RuntimeError("ElevenLabs API key is not set")
+    response = httpx.post(elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"), params={"output_format": "mp3_44100_128"}, headers={"xi-api-key": key},
+                          json={"text": text, "model_id": model, "language_code": "fa", "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}},
+                          timeout=httpx.Timeout(300.0, connect=20.0))
+    if response.status_code == 402 or (response.status_code >= 400 and "quota" in response.text.lower()):
+        raise RuntimeError("ElevenLabs quota exceeded")
+    response.raise_for_status()
+    data = response.json()
+    raw = base64.b64decode(data["audio_base64"])
+    if len(raw) < 1000:
+        raise RuntimeError("the voice returned no audio")
+    audio.write_bytes(raw)                                       # the file only after a successful answer: an empty mp3 would be skipped as 'done' next time
+    stamps.write_text(json.dumps(data["alignment"], ensure_ascii=False))
+    return audio, data["alignment"]
+
+
+def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None) -> dict:
+    """timing.json of the reference film: every sentence read on its own (its own prosody and pauses), speeded 1.12x, placed one after the other; per scene the
+    character times of the sentence so `cue('word')` lands on the heard word. Returns the kit's timing plus the voice clips for the mix."""
+    from brain import localize
+    from creative.audio import persian
+    texts = [persian.speakable(b.line, {}).strip() for b in direction.beats]
+    voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
+    scenes, clips, cursor = [], [], LEAD
+    for i, text in enumerate(texts, 1):
+        audio, alignment = _retrying(lambda: _tts(text, voice, model, folder, f"{i:02d}"), tries=3, waits=(10, 25))
+        processed = folder / f"{i:02d}-{audio.stem.split('-')[-1]}.wav"
+        if not processed.is_file():
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(audio), "-af", f"atempo={TEMPO}", "-ar", "48000", "-ac", "2", str(processed)], check=True)
+        duration = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(processed)]))
+        chars = "".join(alignment["characters"])
+        starts = [round(x / TEMPO, 3) for x in alignment["character_start_times_seconds"]]
+        scenes.append({"id": f"{i:02d}", "text": chars, "start": round(cursor, 3), "dur": round(duration, 3), "al": {"chars": chars, "starts": starts}})
+        clips.append({"path": str(processed), "start": round(cursor, 3), "duration": round(duration, 3)})
+        if hooks:
+            _say(hooks, "voice", f"نریشن جمله {i} از {len(texts)} ساخته شد")
+        cursor += duration + GAP
+    total = round(cursor + TAIL - GAP, 3)
+    return {"fps": FPS, "width": W, "height": H, "total": total, "scenes": scenes, "audio": clips}
 
 
 # ── 3. the code ──────────────────────────────────────────────────────────────
@@ -789,8 +858,6 @@ class Hooks(BaseModel):
 
 def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", reference_sheet: Path | None = None) -> dict:
     """Make (or revise) the film into directory/work. Returns {"video", "direction", "timing", "stills", "notes"}; raises on failure (the caller falls back)."""
-    from creative import narration_take
-
     def check():
         if hooks.cancelled():
             raise Cancelled()
@@ -815,12 +882,22 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
                    detail="سبک: " + direction.look + "\n\n" + "\n".join(f"{i}. {b.line}\n   {b.plan}" for i, b in enumerate(direction.beats, 1)))
     check()
 
-    hooks.note("voice", "دارم نریشن را یک‌جا با زمان‌بندی حرف‌به‌حرف می‌سازم")
+    if not saved.get("polished") or not change:
+        hooks.note("speech", "دارم متن نریشن را برای گوینده آماده می‌کنم: نیم‌فاصله، کسرهٔ اضافه و اعراب جاهای مبهم، مکث‌ها و عددها با حروف")
+        hooks.progress(12, "دارم متن را برای تلفظ درست آماده می‌کنم.")
+        original = [b.line for b in direction.beats]
+        polished = polish_speech(original)
+        changed = sum(1 for a_, b_ in zip(original, polished) if a_ != b_)
+        for beat, line in zip(direction.beats, polished):
+            beat.line = line
+        hooks.note("speech", f"متن نریشن برای تلفظ آماده شد ({changed} جمله اصلاح شد)", "done", "\n".join(f"{i}. {l}" for i, l in enumerate(polished, 1)))
+    hooks.note("voice", "دارم نریشن را جمله‌به‌جمله با زمان‌بندی حرف‌به‌حرف می‌سازم (هر جمله جدا خوانده می‌شود، تا تلفظ و مکث‌ها درست بماند)")
     hooks.progress(14, "دارم نریشن را می‌سازم.")
-    texts = [b.line for b in direction.beats]
-    take = narration_take.voice({"narrator": record.get("voice_id", ""), "voice_style": record.get("voice_style", ""), "prompt": record["request"]}, texts, directory / "voice")
-    timeline = timing(direction, take)
-    hooks.note("voice", f"نریشن آماده شد: {timeline['total']:.1f} ثانیه، {len(texts)} جمله", "done")
+    timeline = voice_timeline(direction, directory / "voice", record, hooks)
+    # the lines are now exactly what the voice read (and what cue() searches)
+    for beat, scene in zip(direction.beats, timeline["scenes"]):
+        beat.line = scene["text"]
+    hooks.note("voice", f"نریشن آماده شد: {timeline['total']:.1f} ثانیه، {len(timeline['scenes'])} جمله", "done")
     check()
 
     previous = Film.model_validate(saved["film"]) if (saved.get("film") and change) else None
