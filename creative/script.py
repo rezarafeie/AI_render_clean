@@ -57,7 +57,9 @@ Craft rules
 - On-screen text (title) is 1-4 words that ADD to the narration (a number, a label, a contrast); it never repeats it.
 - Respect the speech budget: it is measured in real spoken seconds, not words. Prefer fewer, stronger lines to rushed ones.
 - If a reference style profile is given, carry its pacing, typography, motion language and composition into the scenes and name
-  the trait each scene carries in reference_trait. Never copy the reference's own content or wording.
+  the trait each scene carries in reference_trait. Never copy the reference's own wording. Its CONTENT is off limits too, EXCEPT when the person asked for the same topic/subject
+  as the reference («همین موضوع»): then the reference's speech transcript and frame texts are the source of the subject, argument and structure (cover its actual points in order,
+  for example its stages) in new words; never swap it for a different angle of your own and never invent advice, steps or facts that the reference does not contain.
 - If a verified asset catalog is given, a line that shows an asset must choose its index and match what the asset really shows.
 
 Return ONLY JSON:
