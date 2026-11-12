@@ -36,7 +36,7 @@ class CloudSettings(BaseSettings):
     max_gpu: int = Field(default=0, ge=0, le=10)
     max_wall_seconds: int = Field(default=1800, ge=60, le=21000)
     # How long a freshly created worker may stay silent (image pull, boot) before its pod is deleted and the render continues on the server.
-    startup_seconds: int = Field(default=300, ge=60, le=3600)
+    startup_seconds: int = Field(default=150, ge=60, le=3600)
     # A worker that reports but whose rendering progress does not move for this long is hung: same handling as a silent start.
     stall_seconds: int = Field(default=600, ge=60, le=3600)
     # Circuit breaker: this many worker-startup timeouts within this window and the next renders go straight to the server (no 5-minute wait each) until the window passes.
