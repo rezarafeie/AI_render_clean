@@ -66,7 +66,26 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
 _TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded|no complete FILE block", re.I)
 
 
-def _retrying(call, tries: int = 4, waits=(20, 45, 90)):
+def _say(hooks, key: str, text: str, state: str = "active", detail: str | None = None) -> None:
+    if hooks is not None:
+        try:
+            hooks.note(key, text, state, detail)
+        except Exception:
+            pass
+
+
+def _why(exc: Exception) -> str:
+    text = str(exc)
+    if re.search(r"\b502\b|Upstream AI gateway", text):
+        return "ارائه‌دهنده جواب نداد (۵۰۲)"
+    if "FILE block" in text:
+        return "جواب مدل ناقص بود"
+    if re.search(r"Timeout", text):
+        return "پاسخ به‌موقع نرسید"
+    return text[:70]
+
+
+def _retrying(call, tries: int = 4, waits=(20, 45, 90), on_retry=None):
     """The provider sometimes answers 502 'upstream unavailable' for a moment: the same call is tried again after a pause (an error that is not transient is raised at once)."""
     for attempt in range(tries):
         try:
@@ -76,6 +95,8 @@ def _retrying(call, tries: int = 4, waits=(20, 45, 90)):
                 raise
             wait = waits[min(attempt, len(waits) - 1)]
             log.warning("claude motion call failed (%s); retrying in %d s", str(exc)[:160], wait)
+            if on_retry:
+                on_retry(f"{_why(exc)}؛ بعد از {wait} ثانیه دوباره می‌فرستم (تلاش {attempt + 2} از {tries})")
             time.sleep(wait)
 
 
@@ -396,19 +417,21 @@ def _art_context(direction: Direction, timeline: dict, extra: list[str]) -> str:
                                                               "EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8")])
 
 
-def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2):
+def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None):
     """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
     try:
         with _long_call(300, tokens):
-            return _retrying(lambda: ask_text(guide, user, tokens=tokens), tries=tries, waits=(10,))
+            return _retrying(lambda: ask_text(guide, user, tokens=tokens), tries=tries, waits=(10,), on_retry=on_retry)
     except Exception as exc:
         if split is None or not _TRANSIENT.search(str(exc)):
             raise
         log.warning("claude motion call failed twice (%s); splitting it into smaller calls", str(exc)[:120])
+        if on_split:
+            on_split(f"{_why(exc)}؛ این بخش را به تماس‌های کوچک‌تر می‌شکنم")
         return split()
 
 
-def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "") -> str:
+def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "", notes=None) -> str:
     """art.tsx in short calls: the illustration list, the foundation, then the illustrations three at a time (all in parallel after the foundation)."""
     from concurrent.futures import ThreadPoolExecutor
     from creative import llm
@@ -421,28 +444,45 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
         extra.append("THE PERSON ASKS FOR THIS CHANGE (apply what concerns the art): " + change.strip()[:1500])
     if feedback:
         extra.append("FIX THIS:\n" + feedback.strip()[:5000])
+    _say(notes, "art-plan", "دارم فهرست تصویرسازی‌های این فیلم را از روی استوری‌بورد درمی‌آورم")
     with _long_call(120, 4000):
-        plan = _retrying(lambda: llm.ask(ArtPlan, ART_PLAN_GUIDE, "\n\n".join(_brief(direction, timeline) + extra), route=ROUTE, tokens=4000, attempts=2))
+        plan = _retrying(lambda: llm.ask(ArtPlan, ART_PLAN_GUIDE, "\n\n".join(_brief(direction, timeline) + extra), route=ROUTE, tokens=4000, attempts=2),
+                         on_retry=lambda t: _say(notes, "art-plan", "فهرست تصویرسازی‌ها: " + t))
     comps = [c for c in plan.components if isinstance(c, dict) and re.fullmatch(r"[A-Z]\w*", str(c.get("name", ""))) and c["name"] not in {"Backdrop", "Defs", "Svg", "Shadow"}][:18]
-    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 5000)
+    _say(notes, "art-plan", f"فهرست تصویرسازی‌ها آماده شد: {len(comps)} شیء", "done",
+         "\n".join(f"{c['name']}({c.get('props', '')}) — {c.get('what', '')}" for c in comps))
+    _say(notes, "art-base", "دارم پایهٔ تصویرسازی را می‌نویسم: پس‌زمینهٔ متحرک، گرادیان‌ها و سایه")
+    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 5000, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
+    _say(notes, "art-base", f"پایهٔ تصویرسازی نوشته شد ({len(foundation.splitlines())} خط)", "done")
     chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
 
-    def part(group: list[dict]) -> str:
+    def part(group: list[dict], index: int = 0) -> str:
+        names = "، ".join(c["name"] for c in group)
+        key = f"art-{index + 1}" if index >= 0 else "art-x"
         listing = "\n".join(f"- {c['name']}: props {{{c.get('props', '')}}} - {c.get('what', '')}" for c in group)
         user = _art_context(direction, timeline, [f"THE FOUNDATION ALREADY WRITTEN:\n{foundation}", f"WRITE THESE COMPONENTS NOW:\n{listing}"])
+        _say(notes, key, f"دارم تصویرسازی‌های {names} را می‌کشم", "active", listing)
 
         def split() -> str:
-            return "\n\n".join(part([c]) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 6000, None, tries=3)
+            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 6000, None, tries=3)
 
-        return _one_ask(ART_PARTS_GUIDE, user, 6000, split if len(group) > 1 else None)
+        code = _one_ask(ART_PARTS_GUIDE, user, 6000, split if len(group) > 1 else None, on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
+                        on_split=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t))
+        _say(notes, key, f"تصویرسازی‌های {names} آماده شد ({len(code.splitlines())} خط)", "done")
+        return code
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        bodies = list(pool.map(part, chunks))
+        bodies = list(pool.map(lambda pair: part(pair[1], pair[0]), enumerate(chunks)))
     return ART_IMPORTS + "\n" + foundation + "\n\n" + "\n\n".join(bodies) + "\n"
 
 
-def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "") -> str:
+def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "", notes=None) -> str:
     from creative import llm
+    beats = {sc["id"]: (sc, b) for sc, b in zip(timeline["scenes"], direction.beats)}
+    for i in ids:
+        sc, b = beats[i]
+        _say(notes, f"scene{int(i)}", f"دارم صحنهٔ {int(i)} را کدنویسی می‌کنم: «{sc['text'][:60]}»", "active",
+             f"صحنهٔ {int(i)} · {sc['start']:g} تا {sc['start'] + sc['dur']:g} ثانیه\nنریشن: {sc['text']}\nطرح: {b.plan}" + (f"\nاصلاح: {feedback[:300]}" if feedback else ""))
     parts = _brief(direction, timeline)
     parts.append(f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues).")
     parts.append("THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx)
@@ -458,11 +498,18 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
     user = "\n\n".join(parts)
 
-    def split() -> str:
-        return "\n\n".join(write_group(direction, timeline, art_tsx, [i], previous=previous, feedback=feedback, change=change) for i in ids)
+    def say_all(text: str) -> None:
+        for i in ids:
+            _say(notes, f"scene{int(i)}", f"صحنهٔ {int(i)}: {text}")
 
-    code = _one_ask(guide, user, 6500, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2)
+    def split() -> str:
+        return "\n\n".join(write_group(direction, timeline, art_tsx, [i], previous=previous, feedback=feedback, change=change, notes=notes) for i in ids)
+
+    code = _one_ask(guide, user, 6500, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all)
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
+    for i in ids:
+        mine = re.search(rf"\bconst\s+S{i}\b.*?(?=\bconst\s+S\d\d\b|\Z)", code, re.S)
+        _say(notes, f"scene{int(i)}", f"صحنهٔ {int(i)} کدنویسی شد: «{beats[i][0]['text'][:60]}»", "done", f"{len((mine.group(0) if mine else '').splitlines())} خط کد")
     return code
 
 
@@ -488,11 +535,11 @@ class Film(BaseModel):
 
 
 def write(direction: Direction, timeline: dict, *, previous: "Film | None" = None, change: str = "", art_feedback: str = "",
-          scene_feedback: dict[str, str] | None = None, redo_art: bool = True, redo: list[str] | None = None) -> Film:
+          scene_feedback: dict[str, str] | None = None, redo_art: bool = True, redo: list[str] | None = None, notes=None) -> Film:
     """Write (or rewrite) the film: the art first, then every group of scenes in parallel. `redo` limits the rewrite to the groups holding those scenes."""
     from concurrent.futures import ThreadPoolExecutor
     art = previous.art if (previous and not redo_art) else write_art(direction, timeline, previous=previous.art if previous else "",
-                                                                       feedback=art_feedback, change=change)
+                                                                       feedback=art_feedback, change=change, notes=notes)
     groups = groups_of(timeline)
     wanted = [g for g in groups if redo is None or any(i in redo for i in g)]
     blocks = dict(previous.blocks) if previous else {}
@@ -500,7 +547,7 @@ def write(direction: Direction, timeline: dict, *, previous: "Film | None" = Non
 
     def one(group):
         note = "\n".join(feedback[i] for i in group if i in feedback)
-        return group[0], write_group(direction, timeline, art, group, previous=blocks.get(group[0], "") if previous else "", feedback=note, change=change)
+        return group[0], write_group(direction, timeline, art, group, previous=blocks.get(group[0], "") if previous else "", feedback=note, change=change, notes=notes)
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         for first, code in pool.map(one, wanted):
@@ -715,6 +762,22 @@ def mix(voice: list[dict], music: Path, total: float, out: Path) -> Path:
 
 # ── the whole film ───────────────────────────────────────────────────────────
 
+def _error_phrase(error: str) -> str:
+    """One short Persian phrase for a bundler/runtime error (the technical text stays in the step's details)."""
+    if re.search(r"is not defined", error):
+        name = re.search(r"(\w+) is not defined", error)
+        return f"نامی تعریف نشده بود: {name.group(1)}" if name else "نامی تعریف نشده بود"
+    if re.search(r"Cannot read propert|undefined \(reading", error):
+        return "به مقداری تعریف‌نشده دسترسی شد"
+    if re.search(r"Unexpected token|SyntaxError|Expected|Unterminated|Transform failed|Build failed", error, re.I):
+        return "خطای نوشتاری در کد"
+    if re.search(r"is not exported|No matching export", error):
+        return "نام وارد‌شده از کتابخانه وجود ندارد"
+    if "timed out" in error:
+        return "ساخت بیش از حد طول کشید"
+    return error[:80]
+
+
 class Hooks(BaseModel):
     """Callbacks of the studio (notes in the chat, progress, cancel)."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -762,7 +825,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     previous = Film.model_validate(saved["film"]) if (saved.get("film") and change) else None
     hooks.note("code", f"دارم فیلم را کدنویسی می‌کنم: اول کتابخانهٔ تصویرسازی همین فیلم، بعد {len(timeline['scenes'])} صحنه در {len(groups_of(timeline))} گروه موازی، هر عنصر روی کلمهٔ گفته‌شده‌اش")
     hooks.progress(22, "دارم صحنه‌ها و تصویرسازی‌ها را کدنویسی می‌کنم.")
-    film = write(direction, timeline, previous=previous, change=change)
+    film = write(direction, timeline, previous=previous, change=change, notes=hooks)
     hooks.note("code", f"کد فیلم نوشته شد: {len(art_names(film.art))} تصویرسازی و {len(timeline['scenes'])} صحنه", "done")
     check()
 
@@ -771,10 +834,17 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     for attempt in range(4):
         if feedback:
             art_wrong, scenes_wrong = blame(feedback, film, timeline)
-            where = ("کتابخانهٔ تصویرسازی" if art_wrong else "") + (("، " if art_wrong and scenes_wrong else "") + "صحنه‌های " + "، ".join(scenes_wrong) if scenes_wrong else "")
-            hooks.note("build", f"ساخت فیلم خطا داد ({where}); خطا را به نویسنده برگرداندم تا همان بخش را اصلاح کند (تلاش {attempt + 1} از ۴)")
+            short = _error_phrase(feedback)
+            where = ("کتابخانهٔ تصویرسازی" if art_wrong else "") + (("، " if art_wrong and scenes_wrong else "") + "صحنه‌های " + "، ".join(str(int(i)) for i in scenes_wrong) if scenes_wrong else "")
+            hooks.note("build", f"ساخت فیلم خطا داد ({short}) در {where}؛ فقط همان بخش دوباره نوشته می‌شود (تلاش {attempt + 1} از ۴)", "active", feedback[:1200])
+            for i in scenes_wrong:
+                hooks.note(f"scene{int(i)}", f"صحنهٔ {int(i)} در ساخت خطا داد ({short}؛ دارم همین صحنه را اصلاح می‌کنم (تلاش {attempt + 1} از ۴)", "active", feedback[:1200])
+            if art_wrong:
+                hooks.note("art-fix", f"کتابخانهٔ تصویرسازی در ساخت خطا داد ({short}); دارم آن را اصلاح می‌کنم", "active", feedback[:1200])
             film = write(direction, timeline, previous=film, redo_art=art_wrong, art_feedback=feedback if art_wrong else "",
-                         scene_feedback={i: feedback for i in scenes_wrong}, redo=scenes_wrong)
+                         scene_feedback={i: feedback for i in scenes_wrong}, redo=scenes_wrong, notes=hooks)
+            if art_wrong:
+                hooks.note("art-fix", "کتابخانهٔ تصویرسازی اصلاح شد", "done")
             check()
         project(work, direction, timeline, film.code(timeline))
         hooks.note("build", "دارم پروژه را می‌سازم و از هر صحنه عکس می‌گیرم")
@@ -782,6 +852,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         ok, detail, built = stills(work, timeline)
         if ok and built:
             hooks.note("build", f"پروژه ساخته شد و از {len(built)} لحظه عکس گرفته شد", "done")
+            hooks.note("snapshots", f"عکس {len([1 for label, _ in built if not label.endswith('a')])} صحنه آماده شد", "done")
             break
         feedback = "The project failed to build or render. Error output:\n" + detail
         log.warning("claude motion build failed (attempt %d): %s", attempt + 1, detail[:300])
@@ -798,7 +869,8 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         log.warning("claude motion review unavailable: %s", str(exc)[:160])
         verdict = {"ok": True, "problems": []}
     for problem in verdict["problems"]:
-        hooks.note(f"review-{problem.get('scene', '')}-{len(notes)}", f"صحنهٔ {problem.get('scene', '?')}: {str(problem.get('what', ''))[:160]}", "done")
+        hooks.note(f"review-{problem.get('scene', '')}-{len(notes)}", f"طراح ارشد دربارهٔ صحنهٔ {str(problem.get('scene', '?')).lstrip('0') or '?'}: {str(problem.get('what', ''))[:160]}", "done",
+                   f"پیشنهاد: {problem.get('fix', '')}")
         notes.append(f"صحنهٔ {problem.get('scene', '?')}: {problem.get('what', '')}")
     if not verdict["ok"] and verdict["problems"]:
         hooks.note("revise", f"دارم {len(verdict['problems'])} ایراد طراح ارشد را در کد اصلاح می‌کنم")
@@ -863,6 +935,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
 def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hooks) -> dict:
     """work/out/video.mp4 (rendered here or elsewhere) + the music bed and whooshes ducked under the voice -> work/motion.mp4 and thumb.jpg."""
     hooks.note("render", "رندر تمام شد؛ دارم صدا و موسیقی را میکس می‌کنم", "active")
+    hooks.note("music", "دارم موسیقی زمینه و صدای گذار صحنه‌ها را می‌سازم و زیر نریشن می‌گذارم")
     bed = music_bed(timeline["total"], [s["start"] for s in timeline["scenes"]], work / "out" / "music.wav")
     audio = mix(timeline["audio"], bed, timeline["total"], work / "out" / "audio.wav")
     final = work / "motion.mp4"
@@ -871,5 +944,6 @@ def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hoo
     finals = [path for label, path in built if not label.endswith("a")]
     if finals:
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(finals[0]), "-vf", "scale=540:-2", str(work / "thumb.jpg")], check=False)
+    hooks.note("music", "موسیقی و صدای گذار ساخته و زیر نریشن میکس شد (۱۴- LUFS)", "done")
     hooks.note("render", "ویدیو آماده شد", "done")
     return {"video": final}

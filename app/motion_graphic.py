@@ -537,7 +537,8 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
         return False                                  # a version made by the classic engine is revised by the classic engine
 
     def progress(percent: int, message: str) -> None:
-        _progress(directory, "rendering" if percent >= 66 else "writing", percent, message, stage="rendering" if percent >= 66 else "writing")
+        status = "rendering" if percent >= 66 else "checking" if percent >= 40 else "writing"
+        _progress(directory, status, percent, message, stage=status)
 
     hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
                                 progress=progress, cancelled=lambda: _cancelled(key))
