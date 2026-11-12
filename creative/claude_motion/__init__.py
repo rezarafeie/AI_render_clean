@@ -200,6 +200,41 @@ def _font_files(font_id: str) -> list[tuple[str, Path]]:
     return out
 
 
+PREFERRED_FONT = os.environ.get("CLAUDE_MOTION_FONT", "doran")
+
+
+def _weights(files: list[tuple[str, Path]]) -> list[int]:
+    out = []
+    for weight, _path in files:
+        parts = [int(x) for x in re.findall(r"\d+", weight)] or [400]
+        out += parts
+    return out
+
+
+def _usable_for_text(font_id: str) -> bool:
+    """A font that can set small body text: a variable face or a static face of regular/medium weight (a heavy-only face would turn every small line heavy)."""
+    files = _font_files(font_id)
+    if not files:
+        return False
+    return any(" " in w or int(re.findall(r"\d+", w)[0] if re.findall(r"\d+", w) else 400) <= 500 for w, _ in files)
+
+
+def choose_font(request: str, chosen: str) -> str:
+    """Doran unless the person's request names another font of the studio's library; a font that cannot set body text is never used alone."""
+    from creative import font_catalog
+    named = ""
+    lowered = request.lower()
+    for font in font_catalog.load():
+        names = {str(font.get("id", "")).lower(), str(font.get("label", "")).lower(), str(font.get("family", "")).lower()}
+        if any(n and n in lowered for n in names) and _font_files(font["id"]):
+            named = font["id"]
+            break
+    for candidate in (named, PREFERRED_FONT, chosen):
+        if candidate and _font_files(candidate) and _usable_for_text(candidate):
+            return candidate
+    return "ray" if _font_files("ray") else chosen
+
+
 def direct(request: str, *, context: str = "", style: str = "", reference_sheet: Path | None = None, answers: list[str] | None = None) -> Direction:
     parts = [f"REQUEST:\n{request.strip()[:4000]}"]
     if answers:
@@ -227,8 +262,7 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
         from creative import llm
         with _long_call(600, 12000):
             direction = _retrying(lambda: llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2))
-    if not _font_files(direction.theme.font):
-        direction.theme.font = "doran" if _font_files("doran") else "ray"
+    direction.theme.font = choose_font(request, direction.theme.font)
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
     return direction
 
@@ -361,6 +395,9 @@ headline to a width, measureText), @remotion/transitions. Nothing else; no npm p
 SPEED (it renders in software on a CPU, so heavy frames make the film take an hour): never put an SVG feGaussianBlur or CSS filter on a large layer that is
 on screen all the time; draw ground shadows as an ellipse filled with a radialGradient (dark centre to transparent), glows as radial gradients; keep the
 Backdrop cheap (CSS gradients and at most ~80 SVG elements); blur only during an entrance (the kit already drops its filters once settled).
+
+FONT: the film has ONE font family, FONT (from the kit). Use `fontFamily: FONT` for every text (headline and small text alike, weights 100-900 are available);
+never write another font-family name in code.
 
 RULES THAT BREAK FILMS (from the studio's QA):
 - Persian: direction rtl; NEVER letterSpacing on Persian text; keep the half-space; digits on screen through fa(); the narration words on screen may be a
@@ -663,11 +700,20 @@ def project(work: Path, direction: Direction, timeline: dict, code: Code) -> Pat
     fonts = work / "public" / "fonts"
     fonts.mkdir(parents=True, exist_ok=True)
     files = _font_files(direction.theme.font)
-    weight, source = files[0]
-    shutil.copy2(source, fonts / source.name)
+    faces = []
+    for weight, source in files:
+        shutil.copy2(source, fonts / source.name)
+        faces.append({"file": source.name, "weight": weight if " " in weight else weight.split()[0]})
     theme = direction.theme.model_dump()
     family = {"doran": "Doran"}.get(direction.theme.font, direction.theme.font.capitalize())
-    theme.update(font=family, fontFile=source.name, fontWeights=weight if " " in weight else "100 900")
+    from creative import font_catalog
+    aliases = set()
+    for font in font_catalog.load():                      # code that names any other font of the library still gets THIS film's font
+        for name in [font.get("id", ""), font.get("family", ""), *(font.get("css_families") or [])]:
+            for variant in (str(name), str(name).lower(), str(name).capitalize()):
+                if variant and variant != family and re.fullmatch(r"[A-Za-z][\w -]{0,40}", variant):
+                    aliases.add(variant)
+    theme.update(font=family, faces=faces, aliases=sorted(aliases))
     (src / "theme.ts").write_text("export const THEME = " + json.dumps(theme, ensure_ascii=False, indent=1) + ";\n", encoding="utf-8")
     (src / "timing.json").write_text(json.dumps({k: v for k, v in timeline.items() if k != "audio"}, ensure_ascii=False), encoding="utf-8")
     (src / "art.tsx").write_text(code.art_tsx, encoding="utf-8")

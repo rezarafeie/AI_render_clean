@@ -26,7 +26,9 @@ const makeCue = (text: string, dur: number, al: Al) => (s: string, occ = 0, offs
 	return Math.max(0, (idx / Math.max(1, src.length)) * dur + offset);
 };
 
-const fontCss = `@font-face{font-family:'${THEME.font}';font-weight:${THEME.fontWeights};src:url('${staticFile('fonts/' + THEME.fontFile)}') format('truetype');}`;
+// The film's font under its own name AND under every other font name a writer may have used in the code ('hasti', 'doran'...): one consistent family, never a silent fallback to a system font.
+const fontNames = [THEME.font, ...(((THEME as any).aliases as string[] | undefined) ?? [])];
+const fontCss = fontNames.flatMap((name) => (THEME.faces as {file: string; weight: string}[]).map((f) => `@font-face{font-family:'${name}';font-weight:${f.weight};src:url('${staticFile('fonts/' + f.file)}') format('truetype');}`)).join('');
 
 const SceneWrap: React.FC<{dur: number; children: React.ReactNode; last: boolean}> = ({dur, children, last}) => {
 	const f = useCurrentFrame();
