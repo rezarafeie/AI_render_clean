@@ -18,6 +18,22 @@ from app import lm_store as store
 from . import lm_adapters as adapters
 
 log = logging.getLogger(__name__)
+
+# A caller that makes very long generations (a whole film's code) sets this for its calls: {"timeout": seconds, "max_tokens": n, "providers": ["jarvis"]}.
+# "providers" limits direct mode to those providers, so a weaker fallback model never answers in their place: the call fails instead.
+call_policy = contextvars.ContextVar("lm_call_policy", default=None)
+
+
+def _with_policy(cfg):
+    policy = call_policy.get()
+    if not policy or not cfg:
+        return cfg
+    cfg = dict(cfg)
+    if policy.get("timeout"):
+        cfg["timeout"] = max(float(cfg.get("timeout") or 0), float(policy["timeout"]))
+    if policy.get("max_tokens"):
+        cfg["max_tokens"] = max(int(cfg.get("max_tokens") or 0), int(policy["max_tokens"]))
+    return cfg
 user_context = contextvars.ContextVar("ai_user", default=None)
 job_context = contextvars.ContextVar("ai_job", default=None)
 route_context = contextvars.ContextVar("ai_route", default=None)
@@ -282,8 +298,10 @@ def _direct_fallback(route, endpoint, messages, cfg, candidates, tokens, extra, 
         return None
     from . import lm_direct
     try:
+        policy = call_policy.get() or {}
         found = lm_direct.try_fallback(messages, candidates=list(candidates), tokens=min(tokens or cfg["max_tokens"], cfg["max_tokens"]),
-                                       temperature=cfg["temperature"], timeout=cfg["timeout"], extra=extra, attempts=attempts, validate=validate)
+                                       temperature=cfg["temperature"], timeout=cfg["timeout"], extra=extra, attempts=attempts, validate=validate,
+                                       only=policy.get("providers"), cap=None if policy.get("timeout") else 120)
     except Exception:
         log.exception("direct fallback crashed")
         return None
@@ -304,8 +322,10 @@ def _complete_direct(route, endpoint, messages, cfg, candidates, tokens, extra, 
     limit = min(tokens or cfg["max_tokens"], cfg["max_tokens"])
     try:
         if endpoint == "chat":
+            policy = call_policy.get() or {}
             found = lm_direct.try_fallback(messages, candidates=list(candidates), tokens=limit, temperature=cfg["temperature"],
-                                           timeout=cfg["timeout"], extra=extra, attempts=attempts, validate=validate)
+                                           timeout=cfg["timeout"], extra=extra, attempts=attempts, validate=validate,
+                                           only=policy.get("providers"), cap=None if policy.get("timeout") else 120)
             if not found:
                 last = next((a for a in reversed(attempts) if a.get("error")), {})
                 raise GatewayError("Direct mode: no provider answered" + (f" ({last.get('model')}: {str(last.get('error'))[:160]})" if last else " (none has a key)"), 502)
@@ -334,7 +354,7 @@ from app.studio_activity import observe_request
 
 @observe_request
 def complete(route, messages, *, required=None, tokens=None, extra=None, endpoint=None, model_override=None, probe=False, validate_response=None, stream=False):
-    cfg = defaults().get(route)
+    cfg = _with_policy(defaults().get(route))
     if not cfg or not gateway_settings()["enabled"] or (not cfg["enabled"] and not probe):
         raise GatewayError("This AI route is disabled", 503)
     endpoint = endpoint or cfg["endpoint"]
@@ -359,7 +379,7 @@ def complete(route, messages, *, required=None, tokens=None, extra=None, endpoin
             if not probe and not required.issubset(capabilities(item)): continue
             retries = 0 if is_media or probe or mid.startswith("auto") or mid == "fusion" else cfg["max_retries"]
             for attempt in range(retries+1):
-                if time.monotonic()-started > min(300, cfg["timeout"]*2): break
+                if time.monotonic()-started > (cfg["timeout"] * 2 if call_policy.get() else min(300, cfg["timeout"]*2)): break
                 request_extra = dict(extra or {})
                 if validate_response is not None and "structured" in capabilities(item):
                     request_extra.setdefault("response_format", {"type": "json_object"})
@@ -367,7 +387,7 @@ def complete(route, messages, *, required=None, tokens=None, extra=None, endpoin
                     temperature=cfg["temperature"], extra=request_extra)
                 tick = time.monotonic()
                 try:
-                    remaining = min(300, cfg["timeout"]*2) - (time.monotonic()-started)
+                    remaining = (cfg["timeout"] * 2 if call_policy.get() else min(300, cfg["timeout"]*2)) - (time.monotonic()-started)
                     wire = _wire_chat_stream if stream else _wire
                     response, hdr, status = wire(endpoint, body, max(1, min(cfg["timeout"], remaining)))
                     if validate_response is not None:

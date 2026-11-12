@@ -46,6 +46,21 @@ class Cancelled(Exception):
     pass
 
 
+from contextlib import contextmanager
+
+
+@contextmanager
+def _long_call(seconds: float = 900, tokens: int = 32000):
+    """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
+    from brain.lm_gateway import call_policy
+    providers = [p.strip() for p in os.environ.get("CLAUDE_MOTION_PROVIDERS", "jarvis").split(",") if p.strip()]
+    token = call_policy.set({"timeout": seconds, "max_tokens": tokens, "providers": providers})
+    try:
+        yield
+    finally:
+        call_policy.reset(token)
+
+
 # ── 1. direction ─────────────────────────────────────────────────────────────
 
 class Theme(BaseModel):
@@ -90,7 +105,8 @@ narration (there are no separate subtitles): every phrase and every illustration
 NARRATION (beats[].line, one sentence or two short ones per scene; 6-14 scenes; about 2.6 spoken words per second; 40-95 seconds in all unless asked otherwise):
 - Spoken Persian for text-to-speech: half-space (ZWNJ) in «می‌شه», «مرحله‌ی», «کسب‌وکار»; numbers WRITTEN IN WORDS («نود و پنج», «دو»); comma = short pause, «...» = dramatic pause.
 - A hook in the first line, one idea per scene, a clear ending (a call to action when the subject asks for one). Never invent facts, numbers, names or research.
-- When the person gives a reference video and asks for the same content or topic, keep its thesis, beats and order (its transcript is given) in natural new wording.
+- When the person gives a reference video and asks for the same content or topic, keep its thesis, beats and order (its transcript is given) in natural new wording,
+  and keep the film about as long as the reference (its length is in the REFERENCE block: «N shots in Ts»): ±15 %, about 2.6 spoken words per second.
 
 LOOK (look, backdrop, theme): decide THIS film's own visual language. When a REFERENCE is given, match it: its ground (light paper, black, colour), palette (use its
 measured colours; a black-and-white reference stays black-and-white), type scale and weight, art language (line art, flat volume, paper cut, 3D-ish, photo-like),
@@ -143,12 +159,14 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
     user = "\n\n".join(parts)
     if reference_sheet and Path(reference_sheet).is_file():
         from brain.llm import chat_vision
-        raw, _usage = chat_vision(DIRECT_GUIDE, user + "\n\nThe attached image is a frame-by-frame sheet of the reference video.", images=[str(reference_sheet)],
-                                  route=ROUTE, return_json=True, max_tokens=9000, timeout_seconds=300)
+        with _long_call(600, 12000):
+            raw, _usage = chat_vision(DIRECT_GUIDE, user + "\n\nThe attached image is a frame-by-frame sheet of the reference video.", images=[str(reference_sheet)],
+                                      route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600)
         direction = Direction.model_validate(raw)
     else:
         from creative import llm
-        direction = llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=9000, attempts=2)
+        with _long_call(600, 12000):
+            direction = llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2)
     if not _font_files(direction.theme.font):
         direction.theme.font = "doran" if _font_files("doran") else "ray"
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
@@ -266,7 +284,8 @@ def write(direction: Direction, timeline: dict, *, feedback: str = "", previous:
     if previous is None:
         parts.append("EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8"))
         parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
-    return llm.ask(Code, CODE_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=32000, attempts=2)
+    with _long_call(900, 32000):
+        return llm.ask(Code, CODE_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=32000, attempts=2)
 
 
 # ── 4. the project ───────────────────────────────────────────────────────────
@@ -367,8 +386,9 @@ REVIEW = ("You are the art director of a motion studio checking stills of a film
 def review(sheet: Path, reference_sheet: Path | None, direction: Direction) -> dict:
     from brain.llm import chat_vision
     images = [str(sheet)] + ([str(reference_sheet)] if reference_sheet and Path(reference_sheet).is_file() else [])
-    raw, _usage = chat_vision(REVIEW, json.dumps({"look": direction.look[:800], "scenes": [b.line for b in direction.beats]}, ensure_ascii=False),
-                              images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=180)
+    with _long_call(300, 4000):
+        raw, _usage = chat_vision(REVIEW, json.dumps({"look": direction.look[:800], "scenes": [b.line for b in direction.beats]}, ensure_ascii=False),
+                                  images=images, route="visual_qc", return_json=True, max_tokens=4000, timeout_seconds=300)
     problems = [p for p in (raw.get("problems") or []) if isinstance(p, dict)]
     return {"ok": bool(raw.get("ok", not problems)), "problems": problems[:14]}
 
@@ -568,6 +588,10 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     check()
 
     state_file.write_text(json.dumps({"direction": direction.model_dump(), "code": code.model_dump()}, ensure_ascii=False))
+    (work / "pending.json").write_text(json.dumps({"timing": timeline, "stills": [[label, str(path)] for label, path in built], "notes": notes}, ensure_ascii=False, default=str))
+    if os.environ.get("CLAUDE_MOTION_RENDER", "server").strip().lower() == "defer":
+        hooks.note("render", "پروژه آماده است؛ رندر بیرون از این سرور انجام می‌شود", "active")
+        return {"deferred": True, "direction": direction, "timing": timeline, "stills": built, "notes": notes}
     hooks.note("render", f"دارم {timeline['total']:.1f} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
     hooks.progress(66, "دارم ویدیو را رندر می‌کنم.")
     (work / "out").mkdir(exist_ok=True)
@@ -584,6 +608,11 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     if not ok:
         raise RuntimeError("render failed: " + detail[:300])
     check()
+    return finish(work, timeline, built, hooks) | {"direction": direction, "timing": timeline, "stills": built, "notes": notes}
+
+
+def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hooks) -> dict:
+    """work/out/video.mp4 (rendered here or elsewhere) + the music bed and whooshes ducked under the voice -> work/motion.mp4 and thumb.jpg."""
     hooks.note("render", "رندر تمام شد؛ دارم صدا و موسیقی را میکس می‌کنم", "active")
     bed = music_bed(timeline["total"], [s["start"] for s in timeline["scenes"]], work / "out" / "music.wav")
     audio = mix(timeline["audio"], bed, timeline["total"], work / "out" / "audio.wav")
@@ -594,4 +623,4 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     if finals:
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(finals[0]), "-vf", "scale=540:-2", str(work / "thumb.jpg")], check=False)
     hooks.note("render", "ویدیو آماده شد", "done")
-    return {"video": final, "direction": direction, "timing": timeline, "stills": built, "notes": notes}
+    return {"video": final}

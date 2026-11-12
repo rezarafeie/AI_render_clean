@@ -549,18 +549,48 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
     if result.get("questions"):
         _ask(directory, record, result["questions"], change)
         return True
-    direction, timeline = result["direction"], result["timing"]
+    if result.get("deferred"):
+        with _lock(key):
+            latest = load(directory)
+            latest.update(status="rendering", stage="rendering", progress=66, message="پروژه آماده است؛ رندر بیرون از سرور انجام می‌شود.", claude_pending=change or True)
+            save(directory, latest)
+        return True
+    _save_claude_version(directory, result["direction"], result["timing"], result["stills"], list(result.get("notes") or []), change)
+    return True
+
+
+def finish_claude_external(directory: Path, video: Path) -> None:
+    """A Claude-motion film whose video was rendered outside this server (RunPod or a workstation): mix its sound and save it as the next version."""
+    from creative import claude_motion
+    record = load(directory)
+    work = directory / "work"
+    pending = json.loads((work / "pending.json").read_text())
+    (work / "out").mkdir(exist_ok=True)
+    shutil.copy2(video, work / "out" / "video.mp4")
+    hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
+                                progress=lambda percent, message: _progress(directory, "rendering", percent, message, stage="rendering"),
+                                cancelled=lambda: False)
+    built = [(label, Path(path)) for label, path in pending["stills"]]
+    claude_motion.finish(work, pending["timing"], built, hooks)
+    direction = claude_motion.Direction.model_validate(json.loads((directory / "claude_motion.json").read_text())["direction"])
+    change = record.get("claude_pending")
+    _save_claude_version(directory, direction, pending["timing"], built, list(pending.get("notes") or []), change if isinstance(change, str) else "")
+
+
+def _save_claude_version(directory: Path, direction, timeline: dict, stills: list, notes: list[str], change: str) -> None:
+    from creative import motion_graphic as mg
+    record = load(directory)
+    cid, user, key = record["conversation_id"], record["user_key"], record["id"]
     shots = directory / "snapshots"
     shutil.rmtree(shots, ignore_errors=True)
     shots.mkdir(exist_ok=True)
     items = []
-    finals = [(label, path) for label, path in result["stills"] if not label.endswith("a")]
+    finals = [(label, path) for label, path in stills if not label.endswith("a")]
     for n, (label, path) in enumerate(finals, 1):
         shutil.copy2(path, shots / f"{n}.jpg")
         beat = direction.beats[n - 1] if n <= len(direction.beats) else None
         items.append({"n": n, "headline": (beat.line if beat else label)[:80], "t": 0})
     page = mg.MotionPage(title=direction.title, summary=direction.summary, format="vertical", duration=timeline["total"])
-    notes = list(result.get("notes") or [])
     with _lock(key):
         if _cancelled(key):
             raise _Cancelled()
@@ -573,14 +603,14 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
         record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_motion"], "engine": "claude",
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
         record["versions"] = record["versions"][-MAX_VERSIONS:]
-        record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None, eta_s=None, eta_at=None)
+        record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None,
+                      eta_s=None, eta_at=None, claude_pending=None)
         save(directory, record)
     _emit(cid, "motion.completed", motion_id=key, version=number, duration=page.duration, format=page.format)
     from app import studio_narrator
     studio_narrator.narrate(cid, user, "motion_ready", {"title": page.title, "duration_seconds": page.duration, "format": page.format, "what_it_shows": page.summary,
                             "changes_applied": change or None, "notes_from_the_automatic_check": notes[:3], "person_can_now": "ask for changes to text, colour, timing or size"},
                             fallback=(page.summary or f"موشن‌گرافیک {page.duration:g} ثانیه‌ای آماده شد."))
-    return True
 
 
 def _ask(directory: Path, record: dict, questions: list[str], change: str = "") -> None:

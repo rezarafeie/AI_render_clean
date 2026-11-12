@@ -493,9 +493,11 @@ def media_request(endpoint: str, candidates: list[str], body: dict, *, timeout: 
 
 
 def try_fallback(messages: list[dict], *, candidates: list[str], tokens: int, temperature, timeout: float, extra,
-                 attempts: list[dict], validate=None) -> tuple[dict, str, str] | None:
+                 attempts: list[dict], validate=None, only: list[str] | None = None, cap: float | None = 120) -> tuple[dict, str, str] | None:
     """Walk enabled providers with keys, in order. Returns (response, provider_id, model) or None. Appends to `attempts`."""
     for provider in usable(google_first=any(str(c).startswith("google:") for c in candidates[:1])):
+        if only and provider["id"] not in only:
+            continue                                   # the caller allows only these providers (no weaker model answers in their place)
         model = model_for(provider, candidates)
         started = time.monotonic()
         try:
@@ -503,7 +505,7 @@ def try_fallback(messages: list[dict], *, candidates: list[str], tokens: int, te
             # A structured caller wants JSON: Gemini and OpenAI are asked for JSON mode (OpenAI's plain answer was refused as "invalid structured output").
             if validate is not None and (provider['format']=='gemini' or provider['id']=='openai') and not (extra or {}).get('response_format'):
                 provider_extra={**(extra or {}),'response_format':{'type':'json_object'}}
-            response = call(provider, messages, model=model, tokens=tokens, temperature=temperature, timeout=min(timeout, 120), extra=provider_extra)
+            response = call(provider, messages, model=model, tokens=tokens, temperature=temperature, timeout=min(timeout, cap) if cap else timeout, extra=provider_extra)
             if validate is not None:
                 # Structured callers (JSON plans): an answer that does not parse is no answer; ask the next provider instead.
                 try:
