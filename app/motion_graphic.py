@@ -790,14 +790,14 @@ def _soft_note(directory: Path, key: str, text: str, state: str = "active", deta
 
 
 def _snapshot_scenes(directory: Path, work: Path, plan) -> None:
-    """One still per scene (at 60 % of the scene, where its text and motion are in place) from the checked page, so the person sees the design
+    """One still per scene (at 86 % of the scene, where every element has entered and none has left) from the checked page, so the person sees the design
     while the video renders. Bounded, never costs the build, and never uses the vision-model description."""
     try:
         from engine.hyperframes.cli import cli_command
         scenes = list(getattr(plan, "scenes", None) or [])
         if not scenes:
             return
-        times = [round(min(scene.start + (scene.end - scene.start) * 0.6, plan.duration - 0.1), 2) for scene in scenes]
+        times = [round(min(scene.start + (scene.end - scene.start) * 0.86, plan.duration - 0.1), 2) for scene in scenes]
         shots = directory / "snapshots"
         raw = work / ".snapshots"
         shutil.rmtree(raw, ignore_errors=True); shots.mkdir(exist_ok=True); raw.mkdir(parents=True)

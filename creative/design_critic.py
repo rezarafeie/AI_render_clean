@@ -64,6 +64,14 @@ RUBRIC = (
 )
 
 
+REFERENCE_NOTE = (
+    "\n\nA REFERENCE IMAGE IS ATTACHED: its look is the standard for this film. Judge every point above RELATIVE to the reference. Thin, dim lines, small light text, a black "
+    "ground, much empty space and a low density are CORRECT when the reference has them: never lower a score for faintness, small titles, low contrast of drawn lines or empty space "
+    "that the reference itself shares. Each tile is a still taken near the END of its scene, when every element is in place. Lower a score only for: a different look from the "
+    "reference (colour, type scale, picture language), real collisions or cut-off text, an unreadable caption, or a scene whose drawing does not match its headline."
+)
+
+
 def _sheet(stills: dict[int, Path], headlines: dict[int, str], out: Path) -> Path:
     from PIL import Image, ImageDraw, ImageOps
     tile_w, tile_h, label = 300, 533, 22
@@ -93,7 +101,7 @@ def critique(stills: dict[int, Path], headlines: dict[int, str], work: Path, *, 
         if ask is None:
             from brain.llm import chat_vision
             images = [str(sheet)] + ([str(reference)] if reference and Path(reference).is_file() else [])
-            raw, _usage = chat_vision(RUBRIC, context, images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
+            raw, _usage = chat_vision(RUBRIC + (REFERENCE_NOTE if len(images) > 1 else ""), context, images=images, route="visual_qc", return_json=True, max_tokens=2500, timeout_seconds=150)
         else:
             raw = ask(RUBRIC, context, sheet)
         verdicts = Verdicts.model_validate(raw)
