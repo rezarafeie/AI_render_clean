@@ -150,6 +150,9 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
     elif spec.engine == 'mlt':
         from engine.render import render
         render(entry, output, on_progress=on_progress, **spec.mlt_options.model_dump())
+    elif spec.engine == 'claude_motion':
+        from engine.claude_motion_renderer import render
+        render(workspace, output, timeout=spec.timeout_seconds, on_progress=on_progress)
     else:
         from engine.remotion_renderer import render
         # Remotion has a hard subprocess deadline; supervisor handles cancellation

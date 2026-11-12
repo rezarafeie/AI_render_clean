@@ -90,6 +90,46 @@ def hyperframes(project, output, *, engine, timeout, on_progress=None, should_ca
                            features=features, audio_required=audio)
 
 
+def claude_motion(project, output, *, timeout=5400, on_progress=None, should_cancel=None, user=None, project_id=None, owned_roots=(), on_stage=None, on_detail=None):
+    """A Claude-motion film's Remotion project (creative/claude_motion) rendered on a worker: the project without node_modules is sent, the muted video comes back."""
+    if not enabled():
+        return False
+    who = identity.get()
+    if user is None and who:
+        user, project_id, owned_roots = who[:3]
+        if len(who) > 3 and should_cancel is None:
+            should_cancel = who[3]
+        if len(who) > 4 and on_stage is None:
+            on_stage = who[4]
+        if len(who) > 5 and on_detail is None:
+            on_detail = who[5]
+    if not user:
+        return False
+    from .settings import CloudSettings
+    if not CloudSettings().effective().admin(user):
+        return False
+    import shutil
+    project = Path(project)
+    try:
+        timing = json.loads((project / 'src' / 'timing.json').read_text())
+        duration, width, height, fps = float(timing['total']), int(timing['width']), int(timing['height']), int(timing['fps'])
+    except (OSError, ValueError, KeyError):
+        return False
+    from .service import render_prepared
+    with tempfile.TemporaryDirectory(prefix='editorgpt-claude-motion-') as directory:
+        staged = Path(directory) / 'project'
+        staged.mkdir()
+        for name in ('src', 'public'):
+            if (project / name).is_dir():
+                shutil.copytree(project / name, staged / name, symlinks=False)
+        for name in ('render.mjs', 'tsconfig.json'):
+            if (project / name).is_file():
+                shutil.copy2(project / name, staged / name)
+        return render_prepared(staged, output, user=user, project_id=project_id, engine='claude_motion', duration=duration, width=width, height=height, fps=fps,
+                               timeout=timeout, on_progress=on_progress, should_cancel=should_cancel, owned_roots=owned_roots, on_stage=on_stage, on_detail=on_detail,
+                               entrypoint='src/index.ts', features=['claude-motion', 'muted'], audio_required=False, lock_root=project)
+
+
 def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
     if not eligible():
         return False

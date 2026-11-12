@@ -998,12 +998,16 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
 
     state_file.write_text(json.dumps({"direction": direction.model_dump(), "film": film.model_dump()}, ensure_ascii=False))
     (work / "pending.json").write_text(json.dumps({"timing": timeline, "stills": [[label, str(path)] for label, path in built], "notes": notes}, ensure_ascii=False, default=str))
+    (work / "out").mkdir(exist_ok=True)
+    hooks.note("render", f"دارم {timeline['total']:.1f} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
+    hooks.progress(66, "دارم ویدیو را رندر می‌کنم.")
+    if _cloud_render(work, hooks):
+        check()
+        return finish(work, timeline, built, hooks) | {"direction": direction, "timing": timeline, "stills": built, "notes": notes}
     if os.environ.get("CLAUDE_MOTION_RENDER", "server").strip().lower() == "defer":
         hooks.note("render", "پروژه آماده است؛ رندر بیرون از این سرور انجام می‌شود", "active")
         return {"deferred": True, "direction": direction, "timing": timeline, "stills": built, "notes": notes}
-    hooks.note("render", f"دارم {timeline['total']:.1f} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
-    hooks.progress(66, "دارم ویدیو را رندر می‌کنم.")
-    (work / "out").mkdir(exist_ok=True)
+    hooks.note("render", "رندر ابری در دسترس نبود؛ این ویدیو روی خود سرور رندر می‌شود", "active")
 
     def on_line(line: str) -> None:
         if line.startswith("PROGRESS"):
@@ -1018,6 +1022,25 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         raise RuntimeError("render failed: " + detail[:300])
     check()
     return finish(work, timeline, built, hooks) | {"direction": direction, "timing": timeline, "stills": built, "notes": notes}
+
+
+def _cloud_render(work: Path, hooks: Hooks) -> bool:
+    """The film's video on a RunPod worker when the studio's cloud profile for this engine exists and the cloud is up: True when work/out/video.mp4 was made there."""
+    if os.environ.get("CLAUDE_MOTION_CLOUD", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return False
+    try:
+        from app.render_cloud import hooks as cloud
+        if not cloud.eligible():
+            return False
+        target = work / "out" / "video.mp4"
+        done = cloud.claude_motion(work, target, timeout=3600, on_progress=lambda p: hooks.progress(66 + int(p * 0.28), f"رندر ابری: {p}٪"))
+        return bool(done) and target.is_file() and target.stat().st_size > 1000
+    except Exception as exc:
+        if exc.__class__.__name__ == "InterruptedError":
+            raise
+        log.warning("claude motion cloud render failed: %s", str(exc)[:200])
+        hooks.note("render", f"رندر ابری انجام نشد ({str(exc)[:80]})؛ ادامه روی خود سرور", "active")
+        return False
 
 
 def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hooks) -> dict:
