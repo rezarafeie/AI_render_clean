@@ -1433,6 +1433,15 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
         saved_plan.write_text(json.dumps(saved, ensure_ascii=False))
         count = len(plan.scenes)
         _note(directory, "plan", f"طرح آماده شد: {count} صحنه، {plan.duration:g} ثانیه", "done", detail=_plan_detail(brief, plan))
+        try:
+            pictures = [i for i, sc in enumerate(plan.scenes, 1) if getattr(sc, "visual", "code") == "image"]
+            reasons = "\n".join(f"صحنهٔ {i}: {'تصویر' if getattr(sc, 'visual', 'code') == 'image' else 'کد'} — {getattr(sc, 'visual_why', '') or '—'}" for i, sc in enumerate(plan.scenes, 1))
+            _note(directory, "visuals", (f"موتور هر صحنه: صحنه‌های {'، '.join(map(str, pictures))} با تصویر (کشیده‌شدن خط‌به‌خط)، بقیه با کد" if pictures else "موتور هر صحنه: همه با کد (هیچ صحنه‌ای تصویر لازم نداشت یا بودجهٔ تصویر اجازه نداد)"),
+                  "done", detail=reasons)
+        except _Cancelled:
+            raise
+        except Exception:
+            log.info("visual engine note failed", exc_info=True)
         from creative import captions as _caption_design
         _look = _caption_design.choose_style(getattr(plan, "caption_style", ""), (plan.title or "") + "|" + (plan.signature or ""))
         _note(directory, "captions", f"زیرنویس نریشن: سبک «{_look}»، با فونت متن فیلم", "done")
@@ -1509,6 +1518,19 @@ def _plan_and_build(directory: Path, record: dict, brief: str, used: list[str], 
             _progress(directory, "writing", 8 + int(24 * (done + finished) / count), f"صحنهٔ {n} در حال اصلاح است.", stage="writing",
                       eta=_remaining(left, plan.duration, extra=(mg.SCENE_ATTEMPTS - attempt + 1) * stats["scene_s"] * 0.7))
 
+        if getattr(scene, "visual", "code") == "image":
+            try:
+                from creative import image_scene
+                _note(directory, f"scene{n}", f"دارم تصویر صحنهٔ {n} را می‌سازم و ترتیب کشیدن خط‌هایش را تعیین می‌کنم: «{scene.headline}»",
+                      request=f"چرا تصویر: {scene.visual_why or '—'}\nدستور تصویر: {scene.image_prompt}\nمدت: {scene.end - scene.start:.1f} ثانیه")
+                draft = image_scene.make_draft(plan, n, directory)
+                _learn("scene_s", (time.monotonic() - started))
+                return n, draft, False
+            except _Cancelled:
+                raise
+            except Exception as exc:
+                log.warning("picture for scene %d of %s failed, designing it with code: %s", n, key, str(exc)[:200])
+                _note(directory, f"scene{n}", f"ساخت تصویر صحنهٔ {n} انجام نشد ({str(exc)[:70]})؛ این صحنه با طراحی کد ساخته می‌شود")
         try:
             draft = mg.author_scene(plan, n, brief, context=context, used=used, on_retry=retry, style=style)
             _learn("scene_s", (time.monotonic() - started) / tries[0])
@@ -1827,7 +1849,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
         # An art director's pass: a vision model scores every scene's still; the weakest are designed again from its concrete fixes and kept only if the same eye scores them higher.
         try:
             count = len(build.plan.scenes)
-            protected = {n for n, sc in enumerate(build.plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None)}
+            protected = {n for n, sc in enumerate(build.plan.scenes, 1) if sc.native_component or getattr(sc, "shotcraft_component", None) or getattr(build.drafts.get(n), "image_clip", None)}
 
             def critic_stills():
                 nonlocal shots_of
@@ -1864,7 +1886,7 @@ def _prepare_and_render(directory: Path, page, brief: str, change: str, used: li
             _note(directory, "critic", "طراح ارشد (مدل بینایی) دارد عکس صحنه‌ها را از نظر زیبایی، خوانایی و سلسله‌مراتب می‌سنجد")
             verdict = design_critic.refine(drafts=build.drafts, headlines={n: sc.headline for n, sc in enumerate(build.plan.scenes, 1)}, protected=protected, stills=critic_stills,
                                            author=critic_author, rebuild=critic_rebuild, restore=critic_restore, work=work / "critic", brief=brief, style_note=build.plan.design_direction,
-                                           note=lambda text: (notes.append(text), _note(directory, f"critic-{len(notes)}", text, "done")), replaceable=protected,
+                                           note=lambda text: (notes.append(text), _note(directory, f"critic-{len(notes)}", text, "done")), replaceable={n for n in protected if not getattr(build.drafts.get(n), "image_clip", None)},
                                            reference=(directory.parent.parent / "reference" / "frame-table.jpg"), look=mg.reference_look(build.style))
             if verdict["before"]:
                 scores = "، ".join(f"{n}:{v}" for n, v in sorted(verdict["before"].items()))

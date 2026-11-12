@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -54,6 +55,7 @@ class MotionPage(BaseModel):
     resource_receipts: list[dict] = Field(default_factory=list)
     native_components: list[dict] = Field(default_factory=list)
     shotcraft_components: list[ShotcraftMount] = Field(default_factory=list)
+    image_clips: list[dict] = Field(default_factory=list)       # picture scenes: {"instance", "source", "start", "duration"}; copied to assets/ by write_project
 
     @field_validator("questions")
     @classmethod
@@ -381,6 +383,11 @@ def write_project(directory: Path, page: MotionPage, *, on_component_progress=No
         source = Path(str(clip["path"]))
         if source.is_file():
             shutil.copy2(source, assets / f"{clip['role'] if clip.get('role') in ('music', 'master') else f'vo{i}'}{source.suffix or '.wav'}")
+    for clip in page.image_clips:
+        source = Path(str(clip["source"]))
+        if not source.is_file():
+            raise ValueError("a picture scene's drawing video is missing: " + source.name)
+        shutil.copy2(source, assets / f"{clip['instance']}.mp4")
     if page.native_components:
         from .native_motion import materialize
         receipts = [materialize(directory, NativeMotion.model_validate(e["spec"]), e["instance"], e["duration"])
@@ -570,10 +577,27 @@ class ScenePlan(BaseModel):
     native_component: NativeMotion | None = None
     shotcraft_component: NativeSpec | None = None
     transition: str = ""               # how this scene enters (a key of ENTRANCE_LIBRARY); empty or unknown = chosen from the film's style
+    visual: str = "code"                               # "code" = a designed page (default) or "image" = a generated picture drawn on screen stroke by stroke (creative/image_scene.py)
+    visual_why: str = ""                               # one short sentence: why this scene is a picture / code
+    visual_priority: int = 3                           # 1-5: how much this scene deserves a picture when the budget is short (hook and climax high)
+    image_prompt: str = ""                             # English: what the picture shows (no style words, no text), for visual == "image"
     cues: list[dict] = Field(default_factory=list)     # {"word", "t"}: when each spoken word is heard, in seconds from this scene's start (from the real voice take)
     beats: list[float] = Field(default_factory=list)   # the music's strong beats that fall inside this scene, in seconds from its start (empty without synced music)
     accent: float | None = None                        # the music's drop / accent inside this scene, in seconds from its start
     beat_s: float = 0.0                                # seconds between two beats of the music
+
+    @field_validator("visual", mode="before")
+    @classmethod
+    def _visual(cls, value):
+        return "image" if str(value or "").strip().lower() == "image" else "code"
+
+    @field_validator("visual_priority", mode="before")
+    @classmethod
+    def _priority(cls, value):
+        try:
+            return min(5, max(1, int(value)))
+        except (TypeError, ValueError):
+            return 3
 
     @model_validator(mode="after")
     def one_native_source(self):
@@ -605,6 +629,7 @@ class MotionPlan(BaseModel):
     caption_style: str = ""            # how the narration is typeset on screen: plate|marker|bar|pop|outline|minimal (creative/captions.py); empty = chosen from the film's title
     skills: list[str] = Field(default_factory=list)   # up to two craft-skill ids (creative/skills_library.py) the scene designers read for this film
     design_direction: str = Field(default="", max_length=2500)
+    image_style: str = ""              # English: ONE style sentence prefixed to every picture prompt of the film (line weight, colours, ground), so all pictures look alike
     scenes: list[ScenePlan] = Field(default_factory=list)
 
     @classmethod
@@ -657,19 +682,26 @@ class SceneDraft(BaseModel):
     update_js: str = ""
     native_component: NativeMotion | None = None
     shotcraft_component: NativeSpec | None = None
+    image_clip: dict | None = None     # a picture scene: {"instance", "source" (the drawing video), "picture", "prompt"}; mounted as a clip by assemble_scenes
 
 
 PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics studio. A person describes a short clip in chat. Plan it so that
 scene designers can build each scene on their own. Return ONE JSON object and nothing else:
 {"questions": [], "title": "...", "summary": "...", "format": "vertical|horizontal|square", "duration": 15,
  "palette": {"bg": "#RRGGBB", "surface": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "accent2": "#RRGGBB"},
- "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "caption_style": "plate|marker|bar|pop|outline|minimal", "skills": [], "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
+ "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "caption_style": "plate|marker|bar|pop|outline|minimal", "skills": [], "image_style": "...", "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4, "visual": "code|image", "visual_why": "...", "visual_priority": 3, "image_prompt": "..."}]}
 
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
 you should decide, use short generic wording and placeholders without any invented number, price, date, address or name of a real thing. If the
 request gives a topic and you can write honest copy from it, do NOT ask. When the request says the clip is about the SAME TOPIC as a reference video («همین موضوع», "the same subject") and a REFERENCE SPEECH transcript and/or REFERENCE CONTENT block is supplied, THAT is the topic (the speech first, the frame texts second; read ALL of it, not only the opening): work out the subject from it AND KEEP ITS THESIS AND STRUCTURE (the claim it makes and the stages/steps/points it lists, in its order; state the thesis in `summary`; do not generalise it into advice of your own), make every scene serve that subject (not the visual metaphor of the reference's first seconds), write the clip on that subject in your own words (state the subject you understood in `summary`), and do NOT ask what the topic is. Ask only if the block is empty or says nothing about a subject. Never invent statistics, prices, dates, testimonials or claims: use only facts
 in the request or in the page content provided. Defaults: vertical, 15-20 seconds.
+VISUAL ENGINE (decide for EVERY scene: "code" = a page designed with SVG and motion; "image" = one generated picture drawn on screen stroke by stroke; a picture costs 2-3 times a code scene, so choose it only where it earns that):
+- "code" for: numbers, charts, comparisons, lists, timelines, cards and interface mockups, text-led scenes, anything that must show exact Persian text, scenes shorter than 3 s, repeated structures. DEFAULT.
+- "image" for: figurative illustration (people, rooms, objects, a character, a metaphor, an emotional moment) and the film's hook or peak when it is figurative. A reference that is itself illustrated (drawn people and places, not diagrams) points to pictures for its figurative beats; a reference made of diagrams, numbers or type points to code.
+- At most about 40 % of the scenes may be "image" (the studio drops the lowest visual_priority ones beyond that). visual_priority 1-5: hook and peak 5, ordinary figurative 3.
+- For an "image" scene write image_prompt in ENGLISH: only what the picture SHOWS (subjects, composition, one idea); never colours or line style (image_style carries them), never any text or numbers in the picture. Words are typeset by the studio, never drawn.
+- image_style: ONE English sentence for the whole film (line weight, colours, ground, density, lighting), for example "Minimal line illustration on a pure black background, thin glowing white lines only, soft light bloom, lots of empty space, flat pictogram style". Pictures need a DARK ground; when the palette is light, use code. Empty when no scene is an image.
 CAPTION_STYLE (how the spoken narration is typeset on screen, one choice for the whole film, set in the film's body font): plate = rounded card (calm, corporate, soft); marker = highlighter bar that follows the spoken word (educational, explainer); bar = full-width editorial lower third with an accent rule (news, serious, data); pop = one huge word at a time in the title font (viral, energetic, short punchy lines); outline = bold outlined words without a box (story, social, busy backgrounds); minimal = small light text with a progress line (luxury, quiet, poster-like). Pick the one that fits this film's tone and design; never leave it empty. Use plate only for a calm, corporate or soft film; a poster-like, editorial, story or energetic film should use marker, bar, pop or outline.
 
 PLAN
@@ -1031,7 +1063,39 @@ def film_language(brief: str) -> str:
     return "fa" if is_persian(brief or "") else "en"
 
 
-def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2, fonts: str = "", advice: dict | None = None) -> MotionPlan:
+def _is_dark(code: str) -> bool:
+    try:
+        r, g, b = (int(code[i:i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return True
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 90
+
+
+def enforce_image_budget(plan_: MotionPlan, mode: str | None = None) -> MotionPlan:
+    """The studio's budget rule for picture scenes: only scenes with a prompt, no ready-made components, a dark film, and at most the mode's share (highest priority first)."""
+    from . import image_scene
+    if not any(sc.visual == "image" for sc in plan_.scenes):
+        return plan_
+    mode = mode or os.environ.get("MOTION_IMAGE_BUDGET", "balanced")
+    limit = image_scene.share_for(mode, len(plan_.scenes)) if image_scene.enabled() else 0
+    if not _is_dark(plan_.palette.bg):
+        limit = 0
+    eligible = [i for i, sc in enumerate(plan_.scenes) if sc.visual == "image" and sc.image_prompt.strip() and not sc.native_component and not sc.shotcraft_component]
+    keep = set(sorted(eligible, key=lambda i: (-plan_.scenes[i].visual_priority, i))[:limit])
+    scenes = []
+    for i, sc in enumerate(plan_.scenes):
+        if sc.visual == "image" and i not in keep:
+            sc = sc.model_copy(update={"visual": "code", "visual_why": (sc.visual_why + " " if sc.visual_why else "") + "(به‌دلیل بودجهٔ تصویر یا شرایط فیلم، با کد ساخته می‌شود)"})
+        scenes.append(sc)
+    return plan_.model_copy(update={"scenes": scenes})
+
+
+def plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2, fonts: str = "", advice: dict | None = None,
+         image_mode: str | None = None) -> MotionPlan:
+    return enforce_image_budget(_plan(brief, context=context, brand=brand, style=style, used=used, repairs=repairs, fonts=fonts, advice=advice), image_mode)
+
+
+def _plan(brief: str, *, context: str = "", brand: str = "", style: str = "", used: list[str] | None = None, repairs: int = 2, fonts: str = "", advice: dict | None = None) -> MotionPlan:
     """The plan (or the questions to ask first). A plan that does not tile the duration is sent back with the reasons."""
     from . import handoff
     approved = handoff.parse(brief)
@@ -1424,6 +1488,7 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
     width, height = FORMATS[plan.format]
     palette = plan.palette
     html, css, build, update, native, shotcraft = [], [], [], [], [], []
+    images: list[dict] = []
     page_direction = direction_of(sc.narration for sc in plan.scenes)
     from . import captions as caption_design
     caption_look = caption_design.choose_style(getattr(plan, "caption_style", ""), (plan.title or "") + "|" + (plan.signature or ""))
@@ -1450,6 +1515,12 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
             if n < len(plan.scenes):
                 build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
             continue
+        if draft.image_clip:
+            clip = draft.image_clip
+            video = (f'<video id="{clip["instance"]}" class="clip" src="assets/{clip["instance"]}.mp4" data-start="{scene.start:g}" data-duration="{round(scene.end - scene.start, 3):g}" '
+                     'data-track-index="2" muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"></video>')
+            draft = draft.model_copy(update={"html": draft.html.replace(f'<div id="s{n}-image-slot"></div>', video)})
+            images.append({**clip, "start": scene.start, "duration": round(scene.end - scene.start, 3)})
         captions = captions_layer(scene, n, palette, width, height, style=caption_look, font=caption_body, display_font=caption_title)
         if captions:
             draft = draft.model_copy(update={"html": draft.html + captions[0], "css": draft.css + "\n" + captions[1], "build_js": draft.build_js + "\n" + captions[2]})
@@ -1478,4 +1549,4 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
                  "integration": "reference-guided-authoring", "native_remotion_execution": False}
                 for n, scene in enumerate(plan.scenes, 1) if scene.shotcraft_id and not (scene.native_component or scene.shotcraft_component)]
     return MotionPage(title=plan.title, summary=plan.summary, format=plan.format, duration=plan.duration, direction=direction_of(sc.narration for sc in plan.scenes),
-                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts, native_components=native,shotcraft_components=shotcraft)
+                      scenes_html="\n".join(html), css="\n".join(css), build_js="\n".join(build), update_js="\n".join(update), audio=list(audio or []), resource_receipts=receipts, native_components=native, image_clips=images, shotcraft_components=shotcraft)
