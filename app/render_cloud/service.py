@@ -29,6 +29,18 @@ class CloudRenderError(RuntimeError):
     """Never reinterpret as a creative/layout error or silently start another render."""
 
 
+def _pod_snapshot(provider, pod_id) -> str:
+    """What RunPod says about a pod that never reported (assigned to a machine? running? when did its status change?): the evidence of WHY it was silent. Never raises, never secrets."""
+    try:
+        for row in provider.list():
+            if row.get('id') == pod_id:
+                keep = ('desiredStatus', 'lastStatusChange', 'lastStartedAt', 'machineId', 'uptimeSeconds', 'runtime', 'lastError', 'costPerHr', 'cpuFlavorId', 'vcpuCount', 'memoryInGb', 'containerDiskInGb')
+                return json.dumps({k: row.get(k) for k in keep if k in row}, default=str)[:700]
+        return 'pod not listed (already gone)'
+    except Exception as exc:
+        return 'snapshot unavailable: ' + type(exc).__name__
+
+
 class WorkerStartupTimeout(CloudRenderError):
     """The worker never reported (its pod did not boot or pull its image in time): the pod is deleted, the render may continue on the server."""
 
@@ -166,7 +178,8 @@ def await_result(spec, output, *, ledger, store, provider, on_progress=None, on_
         current = ledger.get(spec.job_id, spec.user_id)
         if (startup_seconds and not heard and current['state'] in {'queued', 'provisioning'} and not candidate
                 and time.time() - float(current['created']) > startup_seconds):
-            log.warning('cloud worker %s silent for %.0f s; its pod is deleted', spec.job_id, time.time() - float(current['created']))
+            log.warning('cloud worker %s silent for %.0f s; its pod is deleted | pod as RunPod reports it: %s', spec.job_id, time.time() - float(current['created']),
+                        _pod_snapshot(provider, current.get('pod_id')))
             raise WorkerStartupTimeout('Cloud worker did not start in time')
         if stall_seconds and rendering_since is not None and not candidate and time.time() - progress_since > stall_seconds:
             log.warning('cloud worker %s made no progress for %.0f s (stuck at %s); its pod is deleted', spec.job_id, time.time() - progress_since, progress_mark)
