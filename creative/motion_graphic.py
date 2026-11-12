@@ -602,6 +602,7 @@ class MotionPlan(BaseModel):
     title_font: str = ""               # a font-library id (headlines, big numbers); empty = the studio default
     body_font: str = ""                # a font-library id (labels, callouts, small text)
     font_why: str = ""                 # one sentence: what in the letter shapes fits this film
+    caption_style: str = ""            # how the narration is typeset on screen: plate|marker|bar|pop|outline|minimal (creative/captions.py); empty = chosen from the film's title
     skills: list[str] = Field(default_factory=list)   # up to two craft-skill ids (creative/skills_library.py) the scene designers read for this film
     design_direction: str = Field(default="", max_length=2500)
     scenes: list[ScenePlan] = Field(default_factory=list)
@@ -662,13 +663,14 @@ PLAN_GUIDE = """You are the creative director of a Persian-first motion-graphics
 scene designers can build each scene on their own. Return ONE JSON object and nothing else:
 {"questions": [], "title": "...", "summary": "...", "format": "vertical|horizontal|square", "duration": 15,
  "palette": {"bg": "#RRGGBB", "surface": "#RRGGBB", "ink": "#RRGGBB", "accent": "#RRGGBB", "accent2": "#RRGGBB"},
- "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "skills": [], "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
+ "signature": "...", "title_font": "<font id>", "body_font": "<font id>", "font_why": "...", "caption_style": "plate|marker|bar|pop|outline|minimal", "skills": [], "scenes": [{"headline": "...", "narration": "...", "idea": "...", "start": 0, "end": 4}]}
 
 WHEN TO ASK: only if the request lacks something you cannot responsibly invent: the topic itself, or hard facts the clip must state (names, prices,
 dates, numbers, links, offers). Then return {"questions": ["..."]} (at most 3, short, in the user's language) and nothing else. If the person answers that
 you should decide, use short generic wording and placeholders without any invented number, price, date, address or name of a real thing. If the
 request gives a topic and you can write honest copy from it, do NOT ask. When the request says the clip is about the SAME TOPIC as a reference video («همین موضوع», "the same subject") and a REFERENCE SPEECH transcript and/or REFERENCE CONTENT block is supplied, THAT is the topic (the speech first, the frame texts second; read ALL of it, not only the opening): work out the subject from it, make every scene serve that subject (not the visual metaphor of the reference's first seconds), write the clip on that subject in your own words (state the subject you understood in `summary`), and do NOT ask what the topic is. Ask only if the block is empty or says nothing about a subject. Never invent statistics, prices, dates, testimonials or claims: use only facts
 in the request or in the page content provided. Defaults: vertical, 15-20 seconds.
+CAPTION_STYLE (how the spoken narration is typeset on screen, one choice for the whole film, set in the film's body font): plate = rounded card (calm, corporate, soft); marker = highlighter bar that follows the spoken word (educational, explainer); bar = full-width editorial lower third with an accent rule (news, serious, data); pop = one huge word at a time in the title font (viral, energetic, short punchy lines); outline = bold outlined words without a box (story, social, busy backgrounds); minimal = small light text with a progress line (luxury, quiet, poster-like). Pick the one that fits this film's tone and design; never leave it empty.
 
 PLAN
 - 2-6 scenes that tile the whole duration without gaps (the first starts at 0, each starts where the previous ends, the last ends at duration), each
@@ -1338,6 +1340,10 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
     palette = plan.palette
     html, css, build, update, native, shotcraft = [], [], [], [], [], []
     page_direction = direction_of(sc.narration for sc in plan.scenes)
+    from . import captions as caption_design
+    caption_look = caption_design.choose_style(getattr(plan, "caption_style", ""), (plan.title or "") + "|" + (plan.signature or ""))
+    caption_body = (font_catalog.get(font_catalog.resolve(plan.body_font, font_catalog.DEFAULT_BODY)) or {}).get("family") or "Ray"
+    caption_title = (font_catalog.get(font_catalog.resolve(plan.title_font, font_catalog.DEFAULT_TITLE)) or {}).get("family") or caption_body
     chosen: list[str] = []
     corners = [(width / 2, height / 2), (width * .85, height * .75), (width * .15, height * .25), (width / 2, height * .9), (width * .85, height * .2), (width * .2, height * .8)]
     for n, (scene, draft) in enumerate(zip(plan.scenes, drafts), 1):
@@ -1359,7 +1365,7 @@ def assemble_scenes(plan: MotionPlan, drafts: list[SceneDraft], audio: list[dict
             if n < len(plan.scenes):
                 build.append(f'tl.set("#s{n}", {{opacity:0}}, {scene.end:g});')
             continue
-        captions = captions_layer(scene, n, palette, width, height)
+        captions = captions_layer(scene, n, palette, width, height, style=caption_look, font=caption_body, display_font=caption_title)
         if captions:
             draft = draft.model_copy(update={"html": draft.html + captions[0], "css": draft.css + "\n" + captions[1], "build_js": draft.build_js + "\n" + captions[2]})
         html.append(f'<section class="hm-scene" id="s{n}">{draft.html}</section>')
