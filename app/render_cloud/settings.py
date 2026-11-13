@@ -94,7 +94,8 @@ class CloudSettings(BaseSettings):
         return Flags(**{name: getattr(self, name) for name in Flags.__dataclass_fields__})
 
     def admin(self, user):
-        return bool(user and str(user) in {v.strip() for v in self.admin_user_ids.split(',') if v.strip()})
+        allowed = {v.strip() for v in self.admin_user_ids.split(',') if v.strip()}
+        return bool(user and ('*' in allowed or str(user) in allowed))      # '*' = every signed-in person
 
     def image_for(self, engine):
         from .socketless import ENGINES

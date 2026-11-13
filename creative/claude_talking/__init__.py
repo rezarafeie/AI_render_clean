@@ -653,6 +653,13 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
             video_out.unlink(missing_ok=True)
             ok = bool(render_cloud(work, video_out))
             if not ok:
+                try:
+                    from app.render_cloud import hooks as cloud
+                    meant = bool(cloud.eligible())
+                except Exception:
+                    meant = False
+                if meant:                                 # the cloud IS meant for this person but gave nothing (budget, capacity, a worker that never started)
+                    raise RuntimeError("the cloud render service did not take the video (budget, capacity or worker start)")
                 return False                              # the cloud is not meant for this person: the server renders
             if not video_out.is_file():
                 raise RuntimeError("the cloud render produced no video")
