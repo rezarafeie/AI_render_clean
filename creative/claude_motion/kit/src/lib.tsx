@@ -1,5 +1,5 @@
 import React from 'react';
-import {interpolate, spring, useCurrentFrame, useVideoConfig, Easing} from 'remotion';
+import {interpolate, spring, useCurrentFrame, useVideoConfig, Easing, Img, staticFile} from 'remotion';
 
 import {THEME} from './theme';
 
@@ -254,3 +254,24 @@ export const Pop: React.FC<{at: number; children: React.ReactNode; style?: React
 };
 
 export const fa = (n: number | string) => String(n).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+
+
+/* A real photograph from public/photos (the files named in the brief). Fills its box (cover) or fits inside it (contain), with a slow push-in over the scene and an
+   optional rounded frame. `at` = seconds when it enters (fade + scale). Never stretches the picture. */
+export const Photo: React.FC<{
+  src: string; x?: number; y?: number; w: number; h: number; at?: number; radius?: number; fit?: 'cover' | 'contain';
+  zoom?: [number, number]; pan?: [number, number]; shadow?: boolean; style?: React.CSSProperties; focus?: string;
+}> = ({src, x = 540, y = 960, w, h, at = 0, radius = 36, fit = 'cover', zoom = [1, 1.08], pan = [0, 0], shadow = true, style, focus = '50% 50%'}) => {
+  const {dur} = useScene();
+  const t = useT();
+  const enter = prog(t, at, 0.7);
+  const life = clamp(t / Math.max(0.1, dur));
+  const scale = zoom[0] + (zoom[1] - zoom[0]) * life;
+  return (
+    <div style={{position: 'absolute', left: x - w / 2, top: y - h / 2, width: w, height: h, borderRadius: radius, overflow: 'hidden', opacity: enter,
+      transform: `scale(${0.94 + 0.06 * enter})`, boxShadow: shadow ? '0 30px 80px rgba(0,0,0,0.35)' : 'none', ...style}}>
+      <Img src={staticFile(src)} style={{width: '100%', height: '100%', objectFit: fit, objectPosition: focus,
+        transform: `scale(${scale}) translate(${pan[0] * life}px, ${pan[1] * life}px)`}} />
+    </div>
+  );
+};

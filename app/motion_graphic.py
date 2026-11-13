@@ -151,7 +151,8 @@ def _spoken_words(path: str) -> str:
 
 # ── records ──────────────────────────────────────────────────────────────────
 
-def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "", *, attachments: list[dict] | None = None) -> dict:
+def create(conversation_id: str, user_key: str, request: str, context: str = "", style: str = "", voice_id: str = "", voice_style: str = "", *, attachments: list[dict] | None = None,
+           photos: list[dict] | None = None) -> dict:
     from creative import directives
     request, wanted = directives.parse(request)
     if wanted.narrator is not None: voice_id = wanted.narrator
@@ -198,6 +199,9 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
         from creative import ui_images
         record['ui_images']=ui_images.stage(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
+    shots = [{"file": str(directory / "inputs" / Path(row["asset"]).name), "alt": "the person's own picture"} for row in record.get("ui_images", [])] + list(photos or [])
+    if shots and record["engine"] == "claude":
+        record["photos"] = shots[:16]                # real pictures for the Claude engine (product photos from the linked page, the person's own pictures)
     return save(directory, record)
 
 

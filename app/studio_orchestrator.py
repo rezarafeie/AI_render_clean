@@ -916,6 +916,8 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         if intent == "discover":
             _start_discovery(conversation_id, user_key, conversation, attachments, text)
             return
+        if intent == "motion" and not completed_manual and _claude_product_ad(sources, attachments):
+            intent = "motion_graphic"      # a product ad with real pictures is made by the Claude motion engine (CLAUDE_MOTION_PRODUCT=0 keeps the storyboard engine)
         if intent == "motion_graphic":
             _start_motion_graphic(conversation_id, user_key, conversation, text, attachments, sources)
             return
@@ -1295,6 +1297,19 @@ def _reference_style(profile) -> str:
     return "\n".join(parts)
 
 
+def _claude_product_ad(sources: "Sources | None", attachments: list[dict] | None) -> bool:
+    """A «motion» request (an ad of a product, place or service) goes to the Claude motion engine when there are real pictures to show (the linked page's or the person's own)."""
+    if os.environ.get("CLAUDE_MOTION_PRODUCT", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return False
+    try:
+        from creative import claude_motion
+        if not claude_motion.enabled():
+            return False
+    except Exception:
+        return False
+    return bool((sources and sources.images) or any(item.get("kind") == "image" for item in attachments or []))
+
+
 def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dict, text: str, attachments: list[dict] | None = None,
                           sources: "Sources | None" = None) -> None:
     from app import motion_graphic
@@ -1311,7 +1326,14 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
     image_args={'attachments':attachments} if any(item.get('kind') in ('image','audio') for item in attachments or []) else {}
     from app import style_bridge
     own_style = sources.style or style_bridge.motion_notes(user_key)                     # a reference video in the chat wins; else what the person taught the studio
-    record = motion_graphic.create(conversation_id, user_key, text, sources.context, own_style, voice_id, state.get("voice_style", ""),**image_args)
+    page_photos = []
+    for page in sources.pages:
+        for image in (page.get("page") or {}).get("images", []):
+            if image.get("file"):
+                page_photos.append({"file": image["file"], "alt": image.get("alt", "")})
+    known = {item["file"] for item in page_photos}
+    page_photos += [{"file": str(path), "alt": ""} for path in sources.images if str(path) not in known]
+    record = motion_graphic.create(conversation_id, user_key, text, sources.context, own_style, voice_id, state.get("voice_style", ""), photos=page_photos, **image_args)
     run(repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), "motion": {"motion_id": record["id"]}}))
     basis = " و ".join(part for part in ("سبک رفرنس" if sources.style else "", "محتوای صفحه" if sources.pages else "") if part)
     _assistant(conversation_id, user_key, "شروع کردم: اول طرح و صحنه‌ها را از روی درخواست" + (f" و {basis}" if basis else "")

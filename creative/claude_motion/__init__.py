@@ -149,6 +149,7 @@ class Direction(BaseModel):
     backdrop: str = ""                     # the film-wide background layer (grid, grain, glow, paper...) and how it moves
     theme: Theme = Field(default_factory=Theme)
     beats: list[Beat] = Field(default_factory=list)
+    photos: list[dict] = Field(default_factory=list)       # the real pictures this film may show (creative/claude_motion/photos.py rows)
 
 
 DIRECT_GUIDE = """You are the creative director of a Persian motion-graphics studio. Your films are vertical 1080x1920 explainers/reels where kinetic typography IS the
@@ -242,7 +243,8 @@ def choose_font(request: str, chosen: str) -> str:
     return "ray" if _font_files("ray") else chosen
 
 
-def direct(request: str, *, context: str = "", style: str = "", reference_sheet: Path | None = None, answers: list[str] | None = None) -> Direction:
+def direct(request: str, *, context: str = "", style: str = "", reference_sheet: Path | None = None, answers: list[str] | None = None,
+           photos: list[dict] | None = None, photo_sheet: Path | None = None) -> Direction:
     parts = [f"REQUEST:\n{request.strip()[:4000]}"]
     if answers:
         parts.append("ANSWERS OF THE PERSON:\n" + "\n".join(answers))
@@ -251,15 +253,25 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
     if context:
         parts.append("FACTS the person linked (the only facts besides the request):\n" + context.strip()[:6000])
     parts.append(_fonts_block())
+    sheets: list[str] = []
+    if photos:
+        from . import photos as _photos
+        parts.append(PHOTO_RULES + "\nFILES (under public/):\n" + _photos.listing(photos))
+        if photo_sheet and Path(photo_sheet).is_file():
+            sheets.append(str(photo_sheet))
     user = "\n\n".join(parts)
     if reference_sheet and Path(reference_sheet).is_file():
+        sheets.append(str(reference_sheet))
+    if sheets:
         from brain.llm import chat_vision
         attempts = {"n": 0}
 
         def ask_once():
             attempts["n"] += 1
             hint = "" if attempts["n"] == 1 else "\n\nYour previous answer was not valid JSON. Answer again with ONE valid JSON object only: «» for quotes inside strings, no straight double quotes inside strings, no line breaks inside strings, no trailing commas, nothing before or after the object."
-            return chat_vision(DIRECT_GUIDE, user + "\n\nThe attached image is a frame-by-frame sheet of the reference video." + hint, images=[str(reference_sheet)],
+            note = ("\n\nImage 1 is a numbered sheet of the real photos." if photos and photo_sheet else "") + \
+                   ("\n\nThe last attached image is a frame-by-frame sheet of the reference video." if reference_sheet and Path(reference_sheet).is_file() else "")
+            return chat_vision(DIRECT_GUIDE, user + note + hint, images=sheets,
                                route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600)
 
         with _long_call(600, 12000):
@@ -271,6 +283,7 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
             direction = _retrying(lambda: llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2))
     direction.theme.font = choose_font(request, direction.theme.font)
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
+    direction.photos = list(photos or [])
     return direction
 
 
@@ -390,7 +403,8 @@ def _kit_api() -> str:
 COMMON = """THE KIT (src/lib.tsx, already written; read its source below): THEME tokens G (accent), GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT; useT() seconds in the scene;
 prog(t, at, dur, ease) 0..1; useSpr(at, damping, mass) spring 0..1; easeOut, easeInOut, clamp; useScene() -> {dur, cue}; Txt (one line rising in with blur),
 Words (headline revealed word by word, `hl` words in the accent), Pill (dark chip; <Hl> part in accentLight; `light` variant), Badge (label chip; active/strike/dim),
-Abs (absolute block at x,y with anchor center|right|left), Pop (spring scale-in wrapper), useFloat(amp, speed, phase) idle float, fa(n) Persian digits.
+Abs (absolute block at x,y with anchor center|right|left), Pop (spring scale-in wrapper), useFloat(amp, speed, phase) idle float, fa(n) Persian digits,
+Photo (a REAL photo from public/photos, only when the brief lists photos: <Photo src="photos/photo1.jpg" x y w h at radius fit zoom pan/>).
 cue('word', occurrence = 0, offset = 0) = seconds from the scene start at which that word of the scene's line is HEARD. Every element's `at` comes from cue
 (offset -0.1 to -0.25 so the text lands just before the word); only the very first element may use a small number.
 
@@ -492,7 +506,7 @@ import {noise2D, noise3D} from '@remotion/noise';
 import {fitText, measureText} from '@remotion/layout-utils';
 import * as L from './lib';
 import * as A from './art';
-const {G, GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT, clamp, easeOut, easeInOut, useT, prog, useSpr, useScene, Txt, Words, Pill, Hl, Badge, Abs, useFloat, Pop, fa} = L;
+const {G, GL, GD, INK, MUTED, PILL_BG, PILL_INK, FONT, clamp, easeOut, easeInOut, useT, prog, useSpr, useScene, Txt, Words, Pill, Hl, Badge, Abs, useFloat, Pop, fa, Photo} = L;
 """
 
 GROUP = 2                                  # scenes written per call: every call must finish well inside the provider's ~200 s ceiling (about 6k output tokens)
@@ -518,9 +532,24 @@ def header(art_tsx: str) -> str:
     return SCENES_HEADER + (f"const {{{', '.join(names)}}} = A;\n" if names else "")
 
 
+PHOTO_RULES = """REAL PICTURES (photos): this film has real photographs (below, also in the sheet image). They are the hero of the film: show them, never redraw or invent
+the subject in vector art. In a scene, write <Photo src="photos/photo1.jpg" .../> (kit component; see its props in lib.tsx): big, in a rounded frame or full-bleed,
+with a slow push-in or pan, entering on the spoken word that names what it shows, and exchanged between scenes so the viewer sees every picture. In each beat's
+`plan` name the photo (photo1...) and what it does. Use ONLY these files (no other image path, no network). Keep the product undistorted (fit cover/contain, never stretch).
+Text over a photo needs a scrim or a pill behind it so it stays readable. This is an advertisement: state only the facts in FACTS (name, benefits, price, offer),
+never invent numbers, claims or reviews; end with a clear call to action."""
+
+
+def _photos_block(direction: Direction) -> list[str]:
+    if not direction.photos:
+        return []
+    from . import photos as _photos
+    return [PHOTO_RULES + "\nFILES (under public/):\n" + _photos.listing(direction.photos)]
+
+
 def _brief(direction: Direction, timeline: dict) -> list[str]:
     beats = [{"scene": s["id"], "line": s["text"], "seconds": s["dur"], "plan": b.plan} for s, b in zip(timeline["scenes"], direction.beats)]
-    return [f"THE FILM: {direction.title}\n{direction.summary}",
+    return [f"THE FILM: {direction.title}\n{direction.summary}", *_photos_block(direction),
             f"LOOK: {direction.look}\nBACKDROP: {direction.backdrop}\nTHEME (already in theme.ts): {direction.theme.model_dump_json()}",
             "TIMING + STORYBOARD (`line` is exactly the text cue() searches):\n" + json.dumps(beats, ensure_ascii=False, indent=1)]
 
@@ -711,6 +740,12 @@ def project(work: Path, direction: Direction, timeline: dict, code: Code) -> Pat
     for weight, source in files:
         shutil.copy2(source, fonts / source.name)
         faces.append({"file": source.name, "weight": weight if " " in weight else weight.split()[0]})
+    if direction.photos:
+        shots = work / "public" / "photos"
+        shots.mkdir(parents=True, exist_ok=True)
+        for row in direction.photos:
+            if Path(row.get("source", "")).is_file():
+                shutil.copy2(row["source"], shots / row["name"])
     theme = direction.theme.model_dump()
     family = {"doran": "Doran"}.get(direction.theme.font, direction.theme.font.capitalize())
     from creative import font_catalog
@@ -937,7 +972,14 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     else:
         hooks.note("direct", "کارگردان (Opus) دارد رفرنس و درخواست را می‌خواند و متن نریشن، سبک بصری این فیلم و استوری‌بورد را می‌نویسد")
         hooks.progress(6, "دارم ایده، متن و سبک فیلم را می‌نویسم.")
-        direction = direct(brief, context=record.get("context", ""), style=record.get("style", ""), reference_sheet=reference_sheet)
+        staged = []
+        if record.get("photos"):
+            from . import photos as _photos
+            staged = _photos.stage(record["photos"], directory / "photos")
+            if staged:
+                hooks.note("photos", f"{len(staged)} عکس واقعی برای فیلم آماده شد", "done")
+        direction = direct(brief, context=record.get("context", ""), style=record.get("style", ""), reference_sheet=reference_sheet,
+                           photos=staged, photo_sheet=(_photos.sheet(staged, directory / "photos" / "sheet.jpg") if staged else None))
         if direction.questions and not direction.beats:
             return {"questions": direction.questions}
         hooks.note("direct", f"طرح فیلم آماده شد: «{direction.title}»، {len(direction.beats)} صحنه", "done",
