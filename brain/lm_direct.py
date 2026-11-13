@@ -278,9 +278,18 @@ def _prepare(provider: dict, messages: list[dict], *, model: str, tokens: int, t
     return key, f"{base}/chat/completions", headers, body
 
 
+def _policy_streams() -> bool:
+    """A caller that makes very long generations (call_policy {"stream": True}) gets SSE from every provider: a synchronous reply of several minutes is cut by the gateway's ~200 s ceiling, a stream is not."""
+    try:
+        from .lm_gateway import call_policy
+        return bool((call_policy.get() or {}).get("stream"))
+    except Exception:
+        return False
+
+
 def call(provider: dict, messages: list[dict], *, model: str, tokens: int, temperature=None, timeout: float = 90, extra=None) -> dict:
     """One request to one provider. Returns an OpenAI-shaped chat response or raises DirectError."""
-    if provider.get("prefer_stream") and provider["format"] == "openai" and not any((extra or {}).get(k) for k in ("tools", "tool_choice", "functions", "function_call")):
+    if (provider.get("prefer_stream") or _policy_streams()) and provider["format"] == "openai" and not any((extra or {}).get(k) for k in ("tools", "tool_choice", "functions", "function_call")):
         # Jarvis's tested transport accepts SSE while synchronous responses can
         # disconnect before headers. Collect SSE without replaying the request or
         # changing the selected provider/model; callers still validate the result.

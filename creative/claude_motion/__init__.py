@@ -55,9 +55,16 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
     from brain.lm_adapters import text as adapter_text
     response, _record = complete(route, [{"role": "system", "content": system}, {"role": "user", "content": user}], tokens=tokens)
     reply = adapter_text("chat", response)
+    try:
+        finish = str((response.get("choices") or [{}])[0].get("finish_reason") or "").lower()
+    except Exception:
+        finish = ""
     found = re.search(r"=====FILE=====\s*\n(.*?)\n\s*=====END=====", reply, re.S)
+    if not found and finish in {"stop", "end_turn"}:
+        # The model finished on its own but forgot the closing marker: the code is complete, so it is taken (a cut-off reply says "length" or nothing).
+        found = re.search(r"=====FILE=====\s*\n(.*?)\s*(?:=====END=?=*)?\s*$", reply, re.S)
     if not found:
-        raise RuntimeError("the model's reply had no complete FILE block (cut off or wrongly formatted): " + reply[-200:].replace("\n", " "))
+        raise RuntimeError(f"the model's reply had no complete FILE block (cut off or wrongly formatted; finish={finish or '?'}): " + reply[-200:].replace("\n", " "))
     body = found.group(1).strip()
     body = re.sub(r"^```[a-z]*\n|\n```$", "", body)
     return body
@@ -105,7 +112,7 @@ def _long_call(seconds: float = 900, tokens: int = 32000):
     """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
     from brain.lm_gateway import call_policy
     providers = [p.strip() for p in os.environ.get("CLAUDE_MOTION_PROVIDERS", "jarvis").split(",") if p.strip()]
-    token = call_policy.set({"timeout": seconds, "max_tokens": tokens, "providers": providers})
+    token = call_policy.set({"timeout": seconds, "max_tokens": tokens, "providers": providers, "stream": True})
     try:
         yield
     finally:
