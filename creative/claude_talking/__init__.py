@@ -120,11 +120,9 @@ def cut_video(video: Path, segs: list[list[float]], work: Path) -> tuple[Path, P
     fc.append("".join(f"[v{k}][a{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[vc][ac]")
     fc.append(f"[vc]fps={FPS},tpad=stop_mode=clone:stop_duration={TAIL}[v]")
     fc.append(f"[ac]apad=pad_dur={TAIL}[a]")
-    script = work / "cut_fc.txt"
-    script.write_text(";".join(fc))
     (work / "public").mkdir(parents=True, exist_ok=True)
     cut, voice = work / "public" / "cut.mp4", work / "voice.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-filter_complex_script", str(script), "-map", "[v]", "-an", "-c:v", "libx264",
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-filter_complex", ";".join(fc), "-map", "[v]", "-an", "-c:v", "libx264",
                     "-crf", "18", "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(cut),
                     "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], check=True, timeout=3600)
     return cut, voice
@@ -523,9 +521,7 @@ def mix(voice: Path, music: Path | None, sfx: list[dict], total: float, out: Pat
         parts.append("[sfx]")
     fc.append("".join(parts) + f"amix=inputs={len(parts)}:normalize=0:dropout_transition=0,alimiter=limit=0.95[mixed]")
     fc.append(f"[mixed]atrim=0:{total:.3f},loudnorm=I=-14:TP=-1.2:LRA=9[out]")
-    script = out.with_suffix(".fc.txt")
-    script.write_text(";\n".join(fc))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex_script", str(script), "-map", "[out]", "-ar", "48000", str(out)], check=True, timeout=900)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", ";".join(fc), "-map", "[out]", "-ar", "48000", str(out)], check=True, timeout=900)
     return out
 
 
