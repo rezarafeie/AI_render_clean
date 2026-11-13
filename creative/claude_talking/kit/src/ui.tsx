@@ -11,8 +11,8 @@ export const MUTED = '#6A6763';
 export const GREEN = '#1FA463';
 export const MONEY = '#3BE37A';
 export const GOLD = '#F5B83D';
-export const FA = 'Vazirmatn';
-export const NASKH = 'Noto Naskh Arabic';
+export const FA = 'Doran';            // the studio's Persian face (variable 100-900)
+export const NASKH = 'Doran';         // key words: the same face, heavier (the person wants Doran everywhere)
 export const SERIF = 'Playfair Display';
 
 export const clamp = (x: number) => Math.max(0, Math.min(1, x));

@@ -288,7 +288,7 @@ heard; dur = the beat's length in seconds. useT() = seconds since the beat start
 the word). Coordinates: a "split" graphic draws in the top 1080x1010 area (keep content inside x 60-1020, y 90-900; the caption sits at y 940 and the speaker
 window starts at 1010); a "graphic" draws on the full 1080x1920 frame (keep y 160-1380; the caption sits around y 1500).
 STYLE (the reference reel; see the EXAMPLE file, which is exactly the quality wanted): white Card (radius 44-90, soft shadow) on a light background, vector
-icons drawn inline in SVG, CORAL accents (coralText for big Persian words in NASKH), INK text in FA (Vazirmatn) 600-900, Tag pills, Pop entries with a small
+icons drawn inline in SVG, CORAL accents (coralText for big Persian words in NASKH), INK text in FA (the Doran face, 500-900; key words NASKH = Doran 800-900), Tag pills, Pop entries with a small
 rotation, useFloat idle drift, springs (useSp), numbers in Persian digits via fa(). Persian text needs direction:'rtl' and whiteSpace:'nowrap' (size it to
 fit). Never use images, fonts, network or packages beyond the header. Keep it light to render (no huge blur, at most ~120 svg elements per graphic).
 Every name you use must be imported in the header or defined by you; give helper components a G_<name>_ prefix so graphics never clash.
@@ -443,6 +443,11 @@ def project(work: Path, data: dict, graphics_tsx: str) -> Path:
     fonts.mkdir(parents=True, exist_ok=True)
     for font in (KIT / "fonts").glob("*.woff2"):
         shutil.copy2(font, fonts / font.name)
+    from creative import font_catalog
+    doran = next((font_catalog.DIR / f["file"] for f in (font_catalog.get("doran") or {}).get("faces", []) if (font_catalog.DIR / f["file"]).is_file()), None)
+    if doran is None:
+        raise RuntimeError("the Doran font file is missing from the font library")
+    shutil.copy2(doran, fonts / "doran.ttf")
     (src / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     (src / "timing.json").write_text(json.dumps({"total": data["total"], "fps": FPS, "width": W, "height": H}), encoding="utf-8")
     (src / "graphics.tsx").write_text(graphics_tsx, encoding="utf-8")
@@ -612,19 +617,25 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
             fixes[graphic] = (fixes.get(graphic, "") + f" {item.get('what', '')} FIX: {item.get('fix', '')}").strip()
     if fixes:
         note("review", f"{len(fixes)} گرافیک ایراد عینی داشت ({', '.join(fixes)})؛ اصلاح می‌کنم", "active", json.dumps(verdict["problems"], ensure_ascii=False)[:1500])
-        revised = write_graphics(p, words, previous=code, only=set(fixes), feedback=fixes, note=note)
         trial = work.parent / (work.name + "-trial")
+        asked, fixed = dict(fixes), False
+        for round_ in range(2):                                          # a fix that does not build gets one more try, with its build error
+            revised = write_graphics(p, words, previous=code, only=set(asked), feedback=asked, note=note)
+            shutil.rmtree(trial, ignore_errors=True)
+            shutil.copytree(work, trial, symlinks=True, ignore=shutil.ignore_patterns("stills", "out", "qa"))
+            source = graphics_file(p, revised)
+            project(trial, data, source)
+            ok, detail, trial_built = stills(trial, data)
+            if ok and trial_built:
+                code, built, fixed = revised, trial_built, True
+                (work / "src" / "graphics.tsx").write_text(source, encoding="utf-8")
+                break
+            broken = [n for n in (blame(detail, source, list(asked)) or list(asked)) if n in asked]
+            asked = {n: asked[n] + " -- YOUR FIX DID NOT BUILD: " + detail[:1500] for n in broken}
+            if round_ == 0:
+                note("review", "اصلاح ساخته نشد؛ با خطای ساخت یک بار دیگر می‌نویسم", "active", detail[:800])
         shutil.rmtree(trial, ignore_errors=True)
-        shutil.copytree(work, trial, symlinks=True, ignore=shutil.ignore_patterns("stills", "out", "qa"))
-        project(trial, data, graphics_file(p, revised))
-        ok, _detail, trial_built = stills(trial, data)
-        if ok and trial_built:
-            code, built = revised, trial_built
-            (work / "src" / "graphics.tsx").write_text(graphics_file(p, code), encoding="utf-8")
-            note("review", "اصلاح انجام شد", "done")
-        else:
-            note("review", "نسخهٔ اصلاح‌شده ساخته نشد؛ همان نسخهٔ سالم قبلی می‌ماند", "done")
-        shutil.rmtree(trial, ignore_errors=True)
+        note("review", "اصلاح انجام شد" if fixed else "اصلاح ساخته نشد؛ همان نسخهٔ سالم قبلی می‌ماند", "done")
     else:
         note("review", "ایراد عینی پیدا نشد", "done")
     shutil.copy2(sheet, work / "sheet.jpg")

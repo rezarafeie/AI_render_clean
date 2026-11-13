@@ -146,11 +146,11 @@ const Captions: React.FC = () => {
 			{c.words.map((w, i) => {
 				const lat = isLatin(w.t);
 				const style: React.CSSProperties = w.money
-					? {color: MONEY, fontFamily: lat ? SERIF : NASKH, fontWeight: 700, fontSize: base * 1.3, textShadow: '0 0 30px rgba(59,227,122,0.55), 0 6px 18px rgba(0,0,0,0.6), 0 0 3px rgba(0,0,0,0.9)', WebkitTextStroke: dark ? '2px rgba(0,0,0,0.55)' : undefined}
+					? {color: MONEY, fontFamily: lat ? SERIF : NASKH, fontWeight: 900, fontSize: base * 1.3, textShadow: '0 0 30px rgba(59,227,122,0.55), 0 6px 18px rgba(0,0,0,0.6), 0 0 3px rgba(0,0,0,0.9)', WebkitTextStroke: dark ? '2px rgba(0,0,0,0.55)' : undefined}
 					: w.key
 						? dark
-							? {color: '#fff', fontFamily: lat ? SERIF : NASKH, fontStyle: lat ? 'italic' : 'normal', fontWeight: lat ? 900 : 700, fontSize: base * 1.25, textShadow: '0 6px 22px rgba(0,0,0,0.6)'}
-							: {...coralText, fontFamily: lat ? SERIF : NASKH, fontStyle: lat ? 'italic' : 'normal', fontWeight: lat ? 900 : 700, fontSize: base * 1.25, filter: 'drop-shadow(0 4px 10px rgba(232,112,90,0.25))'}
+							? {color: '#fff', fontFamily: lat ? SERIF : NASKH, fontStyle: lat ? 'italic' : 'normal', fontWeight: 900, fontSize: base * 1.25, textShadow: '0 6px 22px rgba(0,0,0,0.6)'}
+							: {...coralText, fontFamily: lat ? SERIF : NASKH, fontStyle: lat ? 'italic' : 'normal', fontWeight: 900, fontSize: base * 1.25, filter: 'drop-shadow(0 4px 10px rgba(232,112,90,0.25))'}
 						: {color: dark ? '#fff' : INK, fontFamily: lat ? SERIF : FA, fontStyle: lat ? 'italic' : 'normal', fontWeight: 900, fontSize: base, textShadow: dark ? '0 4px 18px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.8)' : 'none'};
 				return (
 					<span key={i} style={{lineHeight: 1.2, whiteSpace: 'nowrap', ...style}}>
@@ -170,6 +170,7 @@ const FACES = [
 	...[600, 700, 800, 900].map((w) => face('Vazirmatn', w, `vazirmatn-arabic-${w}-normal.woff2`, AR)),
 	...[600, 700, 800, 900].map((w) => face('Vazirmatn', w, `vazirmatn-latin-${w}-normal.woff2`, LA)),
 	face('Noto Naskh Arabic', 700, 'noto-naskh-arabic-arabic-700-normal.woff2'),
+	`@font-face{font-family:'Doran';font-weight:100 900;src:url('${staticFile('fonts/doran.ttf')}') format('truetype');}`,
 	face('Playfair Display', 800, 'playfair-display-latin-800-italic.woff2', 'font-style:italic;'),
 	face('Playfair Display', 900, 'playfair-display-latin-900-italic.woff2', 'font-style:italic;'),
 ].join('\n');
@@ -178,8 +179,9 @@ export const Edit: React.FC = () => {
 	const [h] = React.useState(() => delayRender('fonts'));
 	React.useEffect(() => {
 		Promise.all([
-			document.fonts.load('900 40px Vazirmatn', 'سلام'),
-			document.fonts.load('700 40px Vazirmatn', 'سلام'),
+			document.fonts.load('900 40px Doran', 'سلام'),
+			document.fonts.load('700 40px Doran', 'سلام'),
+			document.fonts.load('600 40px Doran', 'سلام'),
 			document.fonts.load('700 40px "Noto Naskh Arabic"', 'سلام'),
 			document.fonts.load('italic 900 40px "Playfair Display"', 'SaaS'),
 			document.fonts.load('italic 800 40px "Playfair Display"', 'SaaS'),
