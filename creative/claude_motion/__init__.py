@@ -70,7 +70,7 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
     return body
 
 
-_TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded|no complete FILE block|invalid structured output", re.I)
+_TRANSIENT = re.compile(r"\b(502|503|504|529)\b|Upstream AI gateway is unavailable|ReadTimeout|ConnectTimeout|RemoteProtocolError|overloaded|stream error|stream deadline|no complete FILE block|invalid structured output", re.I)
 
 
 def _say(hooks, key: str, text: str, state: str = "active", detail: str | None = None) -> None:
