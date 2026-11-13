@@ -20,6 +20,8 @@ try {
     let last = -1;
     await renderMedia({composition, serveUrl, codec: 'h264', crf: 18, pixelFormat: 'yuv420p', muted: true, outputLocation: rest[0] || 'out/video.mp4', browserExecutable,
       concurrency: Number(process.env.REMOTION_CONCURRENCY || 2),
+      // Remotion sizes its video cache from the HOST's memory, not the container's limit: on a small worker pod that gets the render killed (out-of-memory). Fixed caps keep it inside the pod.
+      offthreadVideoCacheSizeInBytes: Number(process.env.REMOTION_VIDEO_CACHE_MB || 320) * 1024 * 1024, mediaCacheSizeInBytes: 256 * 1024 * 1024, offthreadVideoThreads: 1,
       onProgress: ({progress}) => { const p = Math.floor(progress * 20) * 5; if (p !== last) { last = p; console.log('PROGRESS', p); } }});
     console.log('DONE');
   }
