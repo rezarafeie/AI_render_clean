@@ -451,6 +451,7 @@ def project(work: Path, data: dict, graphics_tsx: str) -> Path:
         raise RuntimeError("the Doran font file is missing from the font library")
     shutil.copy2(doran, fonts / "doran.ttf")
     (src / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    (src / "Scenes.tsx").write_text("export {};\n", encoding="utf-8")        # the cloud worker's Claude-motion renderer insists the project has this file; the talking project's scenes live in Edit.tsx
     (src / "timing.json").write_text(json.dumps({"total": data["total"], "fps": FPS, "width": W, "height": H}), encoding="utf-8")
     (src / "graphics.tsx").write_text(graphics_tsx, encoding="utf-8")
     link = work / "node_modules"
