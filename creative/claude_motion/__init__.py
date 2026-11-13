@@ -39,7 +39,7 @@ W, H = 1080, 1920
 
 
 def enabled() -> bool:
-    return os.environ.get("CLAUDE_MOTION", "0").strip().lower() not in {"0", "false", "off", "no"}
+    return os.environ.get("CLAUDE_MOTION", "1").strip().lower() not in {"0", "false", "off", "no"}
 
 
 class Cancelled(Exception):
