@@ -202,6 +202,8 @@ app.include_router(fonts.router)
 app.include_router(fonts.legacy_router)
 app.include_router(localize.router)
 app.include_router(studio.router)
+from app.routers.telegram_studio import router as telegram_studio_router
+app.include_router(telegram_studio_router)
 from app import dns_cache as _dns_cache
 _dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
@@ -239,6 +241,7 @@ async def auth_middleware(request: Request, call_next):
     # are protected by loopback checks, one-time pairing codes, and the
     # operation-scoped bearer token validated by premiere_bridge itself.
     if path in {
+        "/integrations/telegram/webhook",
         "/integrations/premiere/bridge/pending",
         "/integrations/premiere/bridge/pair",
     } or re.fullmatch(r"/jobs/[0-9a-f]{12}/premiere/bridge/receipt", path):
