@@ -143,7 +143,7 @@ def test_a_worker_still_inside_its_startup_window_is_waited_for(monkeypatch):
 
 def test_the_startup_timeout_is_a_cloud_render_error_and_a_setting():
     from app.render_cloud.settings import CloudSettings
-    assert issubclass(service.WorkerStartupTimeout, service.CloudRenderError) and CloudSettings().startup_seconds == 420
+    assert issubclass(service.WorkerStartupTimeout, service.CloudRenderError) and CloudSettings().startup_seconds == 900
 
 
 def test_the_circuit_breaker_counts_only_recent_startup_timeouts(tmp_path):
