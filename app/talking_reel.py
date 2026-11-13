@@ -818,6 +818,16 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     _stage(job_dir, "loading transcript" if (job_dir / "transcript.json").is_file() else "transcribing", progress=5)
     transcript = transcript_for(job_dir, video)
     note(job_dir, f"گفتار آماده است: {len(transcript.get('sentences') or [])} جمله، {float(transcript.get('duration') or 0):.0f} ثانیه", stage="transcript", done=True)
+    from creative import claude_talking
+    if claude_talking.enabled():
+        try:
+            _run_claude_talking(job_dir, video, transcript)
+            return
+        except (TaskCanceled, InterruptedError, claude_talking.Cancelled):
+            raise TaskCanceled()
+        except Exception as exc:
+            log.exception("claude talking failed for %s; the previous talking 5 engine takes over", job_dir.name)
+            note(job_dir, "موتور تاکینگ کلاد به خطا خورد (" + str(exc)[:120] + ")؛ موتور قبلی صحبتی ۵ ادامه می‌دهد", stage="engine", done=True)
     state = load(job_dir)
     decisions = state.get("decisions")
     if not decisions:
@@ -850,6 +860,46 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     _apply_effects(job_dir, out, settings)
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(plan.duration, 2), shots=len(plan.shots))
+    save(job_dir, state)
+
+
+def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
+    """«صحبتی ۵» by the Claude talking engine (creative/claude_talking): the person's Claude-made reference reel, rebuilt as an engine."""
+    from creative import claude_talking
+    from app.render_cloud import hooks as cloud
+    key = str(job_dir)
+    state = load(job_dir)
+
+    def cancelled() -> bool:
+        with _lock:
+            event = _cancel_events.get(key)
+        return bool(event and event.is_set())
+
+    def talk(step: str, text: str, state_: str = "active", detail: str | None = None) -> None:
+        note(job_dir, text, stage=step, done=state_ == "done", detail=detail or "")
+
+    def progress(percent: int, message: str) -> None:
+        _stage(job_dir, "claude talking", progress=int(percent), message=message)
+
+    def music(_feel: str, _total: float) -> Optional[Path]:
+        chosen = state.get("music")
+        if chosen and chosen != DEFAULT_MUSIC:
+            picked = resolve_music(chosen)
+            if picked:
+                return picked
+        if state.get("music_chosen") and not chosen:
+            return None                                   # the person chose no music
+        return claude_talking.KIT / "music.mp3"            # the reference reel's own bed
+
+    def cloud_render(work: Path, out: Path) -> bool:
+        return bool(cloud.claude_motion(work, out, timeout=5400))
+
+    out = _next_output(job_dir)
+    result = claude_talking.make(video, transcript, job_dir / "talking_reel_work" / "claude", out, note=talk, progress=progress, cancelled=cancelled,
+                                 render_cloud=cloud_render, music=music, context=str(state.get("request") or ""))
+    state = load(job_dir)
+    state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(float(result["duration"]), 2),
+                 shots=int(result["beats"]), engine="claude_talking")
     save(job_dir, state)
 
 

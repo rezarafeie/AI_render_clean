@@ -581,6 +581,17 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
         return split()
 
 
+KIT_NAMES = ("G", "GD", "GL", "INK", "MUTED", "PILL_BG", "PILL_INK", "FONT", "useT", "prog", "clamp", "easeInOut", "easeOut", "useSpr", "useFloat", "fa")
+
+
+def art_imports(body: str) -> str:
+    """The art header: the lib names the code uses and does not declare itself (an art file that used FONT without importing it failed to build)."""
+    declared = set(re.findall(r"\b(?:const|let|var|function)\s+([A-Za-z_]\w*)", body))
+    used = [n for n in KIT_NAMES if n not in declared and re.search(rf"(?<![\w.]){n}\b", body)]
+    base = ART_IMPORTS.replace("import {G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut} from './lib';\n", "")
+    return base + (f"import {{{', '.join(used)}}} from './lib';\n" if used else "")
+
+
 def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "", notes=None) -> str:
     """art.tsx in short calls: the illustration list, the foundation, then the illustrations three at a time (all in parallel after the foundation)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -602,7 +613,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     _say(notes, "art-plan", f"فهرست تصویرسازی‌ها آماده شد: {len(comps)} شیء", "done",
          "\n".join(f"{c['name']}({c.get('props', '')}) — {c.get('what', '')}" for c in comps))
     _say(notes, "art-base", "دارم پایهٔ تصویرسازی را می‌نویسم: پس‌زمینهٔ متحرک، گرادیان‌ها و سایه")
-    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 7000, tries=4, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
+    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 16000, tries=4, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
     _say(notes, "art-base", f"پایهٔ تصویرسازی نوشته شد ({len(foundation.splitlines())} خط)", "done")
     chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
 
@@ -614,16 +625,17 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
         _say(notes, key, f"دارم تصویرسازی‌های {names} را می‌کشم", "active", listing)
 
         def split() -> str:
-            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 6000, None, tries=3)
+            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 14000, None, tries=3)
 
-        code = _one_ask(ART_PARTS_GUIDE, user, 6500, split if len(group) > 1 else None, tries=3, on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
+        code = _one_ask(ART_PARTS_GUIDE, user, 14000, split if len(group) > 1 else None, tries=3, on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
                         on_split=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t))
         _say(notes, key, f"تصویرسازی‌های {names} آماده شد ({len(code.splitlines())} خط)", "done")
         return code
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         bodies = list(pool.map(lambda pair: part(pair[1], pair[0]), enumerate(chunks)))
-    return ART_IMPORTS + "\n" + foundation + "\n\n" + "\n\n".join(bodies) + "\n"
+    body = foundation + "\n\n" + "\n\n".join(bodies)
+    return art_imports(body) + "\n" + body + "\n"
 
 
 def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[str], *, previous: str = "", feedback: str = "", change: str = "", notes=None) -> str:
@@ -655,7 +667,7 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     def split() -> str:
         return "\n\n".join(write_group(direction, timeline, art_tsx, [i], previous=previous, feedback=feedback, change=change, notes=notes) for i in ids)
 
-    code = _one_ask(guide, user, 6500, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all)
+    code = _one_ask(guide, user, 14000, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all)
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
     for i in ids:
         mine = re.search(rf"\bconst\s+S{i}\b.*?(?=\bconst\s+S\d\d\b|\Z)", code, re.S)
