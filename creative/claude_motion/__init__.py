@@ -107,6 +107,31 @@ def _retrying(call, tries: int = 4, waits=(20, 45, 90), on_retry=None):
             time.sleep(wait)
 
 
+def local_fallback_allowed() -> bool:
+    """A video the cloud could not render is NOT rendered on the server (its memory is too small: the compositor is killed) unless this is switched on."""
+    return os.environ.get("CLAUDE_RENDER_LOCAL_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def cloud_retry(call, note=None, tries: int = 3, waits=(30, 90)):
+    """The same cloud render again on a fresh worker when an attempt fails (a worker that never started, a pod killed, a dropped upload); a cancel is never retried.
+    The last failure is raised: the caller decides whether the server may take over (it normally may not)."""
+    for attempt in range(tries):
+        try:
+            return call()
+        except InterruptedError:
+            raise
+        except Exception as exc:
+            if exc.__class__.__name__ in {"Cancelled", "TaskCanceled"}:
+                raise
+            if attempt == tries - 1:
+                raise
+            wait = waits[min(attempt, len(waits) - 1)]
+            log.warning("cloud render attempt %d failed (%s); again in %d s", attempt + 1, str(exc)[:160], wait)
+            if note:
+                note(f"رندر ابری انجام نشد ({str(exc)[:70]})؛ بعد از {wait} ثانیه دوباره روی کارگر تازه امتحان می‌کنم (تلاش {attempt + 2} از {tries})")
+            time.sleep(wait)
+
+
 @contextmanager
 def _long_call(seconds: float = 900, tokens: int = 32000):
     """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
@@ -1141,22 +1166,36 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
 
 
 def _cloud_render(work: Path, hooks: Hooks) -> bool:
-    """The film's video on a RunPod worker when the studio's cloud profile for this engine exists and the cloud is up: True when work/out/video.mp4 was made there."""
+    """The film's video on a RunPod worker when the studio's cloud profile for this engine exists and the cloud is up: True when work/out/video.mp4 was made there.
+    False only when the cloud is not meant for this person or film (the server renders it then). A cloud render that fails is retried on the cloud; it does not
+    fall back to the server (CLAUDE_RENDER_LOCAL_FALLBACK=1 brings that back)."""
     if os.environ.get("CLAUDE_MOTION_CLOUD", "1").strip().lower() in {"0", "false", "off", "no"}:
         return False
     try:
         from app.render_cloud import hooks as cloud
         if not cloud.eligible():
             return False
-        target = work / "out" / "video.mp4"
+    except Exception:
+        return False
+    target = work / "out" / "video.mp4"
+
+    def once() -> bool:
+        target.unlink(missing_ok=True)
         done = cloud.claude_motion(work, target, timeout=3600, on_progress=lambda p: hooks.progress(66 + int(p * 0.28), f"رندر ابری: {p}٪"))
-        return bool(done) and target.is_file() and target.stat().st_size > 1000
+        if not (bool(done) and target.is_file() and target.stat().st_size > 1000):
+            raise RuntimeError("the cloud render produced no video")
+        return True
+
+    try:
+        return cloud_retry(once, lambda text: hooks.note("render", text, "active"))
     except Exception as exc:
         if exc.__class__.__name__ == "InterruptedError":
             raise
         log.warning("claude motion cloud render failed: %s", str(exc)[:200])
-        hooks.note("render", f"رندر ابری انجام نشد ({str(exc)[:80]})؛ ادامه روی خود سرور", "active")
-        return False
+        if local_fallback_allowed():
+            hooks.note("render", f"رندر ابری انجام نشد ({str(exc)[:80]})؛ ادامه روی خود سرور", "active")
+            return False
+        raise RuntimeError("cloud render failed after 3 tries: " + str(exc)[:300])
 
 
 def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hooks) -> dict:

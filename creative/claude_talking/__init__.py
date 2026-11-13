@@ -649,10 +649,22 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     video_out.unlink(missing_ok=True)
     rendered = False
     if render_cloud:
+        def once() -> bool:
+            video_out.unlink(missing_ok=True)
+            ok = bool(render_cloud(work, video_out))
+            if not ok:
+                return False                              # the cloud is not meant for this person: the server renders
+            if not video_out.is_file():
+                raise RuntimeError("the cloud render produced no video")
+            return True
         try:
-            rendered = bool(render_cloud(work, video_out)) and video_out.is_file()
+            rendered = cm.cloud_retry(once, lambda text: note("render", text))
+        except (InterruptedError, Cancelled):
+            raise
         except Exception as exc:
             log.warning("claude talking cloud render failed: %s", str(exc)[:200])
+            if not cm.local_fallback_allowed():
+                raise RuntimeError("cloud render failed after 3 tries: " + str(exc)[:300])
         if rendered:
             note("render", "رندر ابری (RunPod) انجام شد", "done")
     if not rendered:
