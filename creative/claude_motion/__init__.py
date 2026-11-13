@@ -567,10 +567,10 @@ def _art_context(direction: Direction, timeline: dict, extra: list[str]) -> str:
                                                               "EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8")])
 
 
-def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None):
+def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300):
     """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
     try:
-        with _long_call(300, tokens):
+        with _long_call(seconds, tokens):
             return _retrying(lambda: ask_text(guide, user, tokens=tokens), tries=tries, waits=(10,), on_retry=on_retry)
     except Exception as exc:
         if split is None or not _TRANSIENT.search(str(exc)):

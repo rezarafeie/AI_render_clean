@@ -339,7 +339,7 @@ def write_graphics(p: Plan, words: list[dict], *, feedback: dict[str, str] | Non
         def split() -> str:
             return "\n\n".join(ask([g]) for g in group)
 
-        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3)
+        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780)
 
     def one(group: list[GraphicSpec]) -> dict[str, str]:
         if note:
