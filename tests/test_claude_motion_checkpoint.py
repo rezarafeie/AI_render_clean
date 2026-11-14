@@ -82,3 +82,17 @@ def test_a_changed_request_starts_over(tmp_path, monkeypatch):
     with pytest.raises(Stop):
         cm.build(tmp_path, other, hooks())
     assert asked, "a different request must not reuse the old plan"
+
+
+def test_a_finished_build_whose_render_failed_is_rendered_again_not_rebuilt(tmp_path, monkeypatch):
+    film = cm.Film(art="export const A = () => null;", blocks={"01": "const S01: React.FC = () => null;\nconst S02: React.FC = () => null;"})
+    (tmp_path / "claude_motion.json").write_text(json.dumps({"direction": direction().model_dump(), "film": film.model_dump()}))
+    seen = {}
+    monkeypatch.setattr(cm, "direct", never("direct"))
+    monkeypatch.setattr(cm, "polish_speech", never("polish_speech"))
+    monkeypatch.setattr(cm, "write", never("write"))
+    monkeypatch.setattr(cm, "voice_timeline", lambda *a, **k: TIMELINE)
+    monkeypatch.setattr(cm, "project", lambda work, d, t, code: (seen.setdefault("art", code.art_tsx), (_ for _ in ()).throw(Stop("build stops")))[1])
+    with pytest.raises(Stop, match="build stops"):
+        cm.build(tmp_path, record(), hooks())
+    assert seen["art"] == film.art

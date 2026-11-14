@@ -448,10 +448,8 @@ def _public_error(exc: Exception) -> str:
 
 
 def _claude_film_written(directory: Path) -> bool:
-    try:
-        return bool(json.loads((directory / "checkpoint.json").read_text()).get("final"))
-    except (OSError, ValueError):
-        return False
+    """True once the Claude engine finished BUILDING the film (code written, built, reviewed; its state is saved just before the render starts)."""
+    return (directory / "claude_motion.json").is_file()
 
 
 def _run(directory: Path, change: str) -> None:

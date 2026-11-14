@@ -21,9 +21,9 @@ def make(tmp_path, monkeypatch, engine="claude"):
     return d
 
 
-def test_render_failure_after_the_code_is_written_does_not_fall_back(tmp_path, monkeypatch):
+def test_render_failure_after_the_film_was_built_does_not_fall_back(tmp_path, monkeypatch):
     d = make(tmp_path, monkeypatch)
-    (d / "checkpoint.json").write_text(json.dumps({"fp": "x", "direction": {}, "film": {}, "final": True}))
+    (d / "claude_motion.json").write_text(json.dumps({"direction": {}, "film": {}}))
     monkeypatch.setattr(mg, "_run_claude", lambda *a, **k: (_ for _ in ()).throw(Boom("cloud render failed after 3 tries")))
     with pytest.raises(Boom):
         mg._run(d, "")
@@ -31,7 +31,7 @@ def test_render_failure_after_the_code_is_written_does_not_fall_back(tmp_path, m
 
 def test_a_film_whose_code_never_built_may_still_fall_back(tmp_path, monkeypatch):
     d = make(tmp_path, monkeypatch)
-    (d / "checkpoint.json").write_text(json.dumps({"fp": "x", "direction": {}, "film": {}, "final": True}))
+    (d / "claude_motion.json").write_text(json.dumps({"direction": {}, "film": {}}))
     monkeypatch.setattr(mg, "_run_claude", lambda *a, **k: (_ for _ in ()).throw(Boom("the film's code did not build after four attempts: x")))
     switched = []
     monkeypatch.setattr(mg, "_note", lambda directory, key, *a, **k: switched.append(key))

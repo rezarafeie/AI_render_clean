@@ -640,7 +640,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     _say(notes, "art-plan", f"فهرست تصویرسازی‌ها آماده شد: {len(comps)} شیء", "done",
          "\n".join(f"{c['name']}({c.get('props', '')}) — {c.get('what', '')}" for c in comps))
     _say(notes, "art-base", "دارم پایهٔ تصویرسازی را می‌نویسم: پس‌زمینهٔ متحرک، گرادیان‌ها و سایه")
-    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 16000, tries=4, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
+    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 28000, tries=4, seconds=720, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
     _say(notes, "art-base", f"پایهٔ تصویرسازی نوشته شد ({len(foundation.splitlines())} خط)", "done")
     chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
 
@@ -1024,6 +1024,9 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         except OSError:
             log.warning("claude motion checkpoint could not be saved", exc_info=True)
 
+    if not change and not ckpt and saved.get("direction") and saved.get("film"):
+        # A build that finished (code written, built, reviewed) but whose render or sound failed: a plain retry renders THAT film, it does not make another one.
+        ckpt = {"direction": saved["direction"], "film": saved["film"], "final": True}
     if saved.get("direction") and change:
         direction = Direction.model_validate(saved["direction"])
     elif ckpt:
