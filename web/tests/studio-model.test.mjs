@@ -248,6 +248,13 @@ test('a project that started rendering shows the render card even while its stag
   assert.ok(!buildTimeline({ messages: [], events: [], projects: [waiting], processing: true }).some(item => item.kind === 'render'));
 });
 
+test('the Claude talking engine shows no render card while it plans, cuts and draws; only when it renders', () => {
+  const editing = { id: 'p1', engine: 'talking', status: 'running', title: 't', updated_at: '2026-01-01T00:00:10Z', state: { render_started: true, last_observed: { stage: 'claude talking', progress: 18 } } };
+  assert.ok(!buildTimeline({ messages: [], events: [], projects: [editing], processing: true }).some(item => item.kind === 'render'));
+  const rendering = { ...editing, state: { render_started: true, last_observed: { stage: 'rendering', progress: 70 } } };
+  assert.ok(buildTimeline({ messages: [], events: [], projects: [rendering], processing: true }).some(item => item.kind === 'render' && item.projectId === 'p1'));
+});
+
 test('a running render card is the last item and its clock starts at the latest request', () => {
   const running = { id: 'p1', engine: 'talking', status: 'running', title: 't', updated_at: at(1), state: { render_started: true, last_observed: { stage: 'rendering', progress: 74 } } };
   const messages = [msg(1, 'user', 0), msg(2, 'assistant', 2), msg(3, 'user', 100), msg(4, 'assistant', 101, 'پذیرفته شد')];

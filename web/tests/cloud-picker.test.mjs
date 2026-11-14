@@ -30,7 +30,7 @@ async function mount(providers, files) {
 test('a disconnected Drive sends the person to Settings instead of listing files', async () => {
   const view = await mount([{ id: 'googledrive', name: 'Google Drive', enabled: true, connected: false, status: 'NOT_CONNECTED', capabilities: {} }], []);
   try {
-    assert.match(view.document.body.textContent, /Google Drive is not connected/);
+    assert.match(view.document.body.textContent, /گوگل درایو وصل نیست/);
     assert.ok(view.document.querySelector('a[href="/settings#integrations"]'));
     assert.equal(view.document.querySelectorAll('input[type=checkbox]').length, 0);
   } finally { view.cleanup(); }
@@ -44,15 +44,18 @@ test('only media files can be selected, and the chosen files are handed over for
   ];
   const view = await mount([{ id: 'googledrive', name: 'Google Drive', enabled: true, connected: true, status: 'ACTIVE', capabilities: {} }], files);
   try {
-    const boxes = view.document.querySelectorAll('input[type=checkbox]');
+    const boxes = view.document.querySelectorAll('.cloud-row input[type=checkbox]');
     assert.equal(boxes.length, 1);                       // the folder and the Google document have none
-    assert.match(view.document.body.textContent, /Google document · cannot be imported/);
-    const importButton = [...view.document.querySelectorAll('button')].find(button => /^Import/.test(button.textContent));
+    assert.equal(view.document.querySelectorAll('.cloud-selectbar input[type=checkbox]').length, 1);       // «select all» is one box above the list
+    [...view.document.querySelectorAll('button')].find(button => /فایل‌های قابل‌وارد‌کردن‌نشده/.test(button.textContent)).click();   // the unsupported files are folded away until asked for
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.match(view.document.body.textContent, /سند گوگل؛ قابل‌وارد‌کردن نیست/);
+    const importButton = [...view.document.querySelectorAll('button')].find(button => /^وارد کردن/.test(button.textContent));
     assert.equal(importButton.disabled, true);
     boxes[0].click();
     await new Promise(resolve => setTimeout(resolve, 20));
-    assert.equal([...view.document.querySelectorAll('button')].find(button => /^Import/.test(button.textContent)).disabled, false);
-    [...view.document.querySelectorAll('button')].find(button => /^Import/.test(button.textContent)).click();
+    assert.equal([...view.document.querySelectorAll('button')].find(button => /^وارد کردن/.test(button.textContent)).disabled, false);
+    [...view.document.querySelectorAll('button')].find(button => /^وارد کردن/.test(button.textContent)).click();
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.deepEqual(view.imported.map(file => file.id), ['v1']);
   } finally { view.cleanup(); }

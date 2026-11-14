@@ -17,6 +17,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
@@ -24,6 +26,24 @@ from typing import Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from creative import claude_motion as cm
+
+
+def _waiting(progress, percent: int, message: str, call, every: float = 15.0):
+    """A long model call with no output of its own: the step's line shows the minutes passed («… (2:15)») so a quiet step is visibly alive, not frozen."""
+    stop, started = threading.Event(), time.monotonic()
+
+    def beat():
+        while not stop.wait(every):
+            seconds = int(time.monotonic() - started)
+            try:
+                progress(percent, f"{message}… ({seconds // 60}:{seconds % 60:02d})")
+            except Exception:
+                return
+    threading.Thread(target=beat, daemon=True).start()
+    try:
+        return call()
+    finally:
+        stop.set()
 
 log = logging.getLogger(__name__)
 
@@ -546,7 +566,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     note("engine", "موتور «تاکینگ کلاد»: برش پرش‌دار، کادر روی صورت، زیرنویس کلمه‌به‌کلمه و موشن‌گرافیک‌هایی که این ویدیو لازم دارد", "done")
     note("plan", f"تدوینگر (Opus) دارد متن {len(words)} کلمه‌ای را می‌خواند و beatها، چیدمان‌ها، کلمه‌های کلیدی و گرافیک‌های لازم را تعیین می‌کند")
     progress(18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم.")
-    p = plan(words, context)
+    p = _waiting(progress, 18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم", lambda: plan(words, context))
     drops = set(p.drop) | auto_drops(words)
     note("plan", f"برنامه آماده شد: {len(p.beats)} beat، {len(p.graphics)} گرافیک، {len(drops)} کلمهٔ اضافه حذف می‌شود", "done",
          "\n".join(f"{b.at}: {b.layout}{' · ' + b.graphic if b.graphic else ''} — {' '.join(w['t'] for w in words[b.at:b.at + 6])}" for b in p.beats))
@@ -565,7 +585,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
         face, face_y = face_track(cut_file, cut["total"] + TAIL, size, work / "faces.json")
         note("face", "صورت گوینده ردیابی شد" if face else "صورتی پیدا نشد؛ کادر وسط تصویر می‌ماند", "done")
         progress(32, "دارم گرافیک‌ها را کدنویسی می‌کنم.")
-        code = drawing.result()
+        code = _waiting(progress, 32, "دارم گرافیک‌ها را کدنویسی می‌کنم", drawing.result)
     check()
 
     names = [g.name for g in p.graphics]
@@ -604,7 +624,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     note("review", "دارم عکس beatها را برای خطاهای عینی (متن بریده، حروف جدا، هم‌پوشانی) بررسی می‌کنم")
     progress(56, "دارم صحنه‌ها را بررسی می‌کنم.")
     try:
-        verdict = review(sheet, data)
+        verdict = _waiting(progress, 56, "دارم صحنه‌ها را بررسی می‌کنم", lambda: review(sheet, data))
     except Exception as exc:
         log.warning("claude talking review skipped: %s", str(exc)[:200])
         verdict = {"ok": True, "problems": []}

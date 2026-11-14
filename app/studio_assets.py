@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 SERVABLE = {".jpg", ".jpeg", ".png", ".webp", ".mp3", ".wav", ".m4a", ".mp4", ".webm"}
@@ -107,6 +108,15 @@ def review_frames(job_dir: Path, report: dict | None) -> list[dict]:
 def render_stage(message) -> str:
     """The stage a running render job is really in, from the job's own message: only frame rendering is a render card; designing, subtitles and the checks are steps of the chat."""
     text = str(message or "").strip().lower()
+    if re.search(r"[\u0600-\u06ff]", text):
+        # The Claude engines write their own Persian messages: only «رندر» is frame rendering. Planning, cutting, graphics, checks and the sound mix are steps of the chat, never the render card.
+        if "رندر" in text:
+            return "rendering"
+        for needle, stage in (("برنامه‌ریزی", "planning the edit"), ("برنامه ریزی", "planning the edit"), ("برش", "cutting the video"), ("گرافیک", "designing motion scenes"),
+                              ("بررسی", "reviewing creative output"), ("میکس", "mixing sound"), ("زیرنویس", "adding subtitles")):
+            if needle in text:
+                return stage
+        return "preparing the edit"
     if text.startswith("designing"):
         return "designing motion scenes"
     if text.startswith("adding subtitles"):

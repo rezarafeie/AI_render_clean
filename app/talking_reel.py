@@ -879,7 +879,7 @@ def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
         note(job_dir, text, stage=step, done=state_ == "done", detail=detail or "")
 
     def progress(percent: int, message: str) -> None:
-        _stage(job_dir, "claude talking", progress=int(percent), message=message)
+        _stage(job_dir, "rendering" if "رندر" in message else "claude talking", progress=int(percent), message=message)
 
     def music(_feel: str, _total: float) -> Optional[Path]:
         chosen = state.get("music")

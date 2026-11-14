@@ -2134,10 +2134,10 @@ async def approve_plan(project_id: str, user_key: str, version_id: str) -> dict:
     state.update(workflow="production", render_started=True, last_observed={})
     project = await repo.update_project(project_id, user_key, status="running", state=state, source="approval")
     version = creative_plan.current(state)
-    await repo.emit(project["conversation_id"], "tool.started", {"project_id": project_id, "tool": "render",
-                    "message": f"برنامهٔ نسخهٔ {version['n']} تأیید شد؛ رندر شروع شد."})
+    await repo.emit(project["conversation_id"], "tool.started", {"project_id": project_id, "tool": "edit",
+                    "message": f"برنامهٔ نسخهٔ {version['n']} تأیید شد؛ تدوین شروع شد."})
     await repo.add_message(project["conversation_id"], user_key, "assistant",
-                           f"برنامهٔ نسخهٔ {version['n']} تأیید شد و رندر شروع شد. نسخه‌های قبلی ویدیو دست‌نخورده می‌مانند.")
+                           f"برنامهٔ نسخهٔ {version['n']} تأیید شد و تدوین شروع شد؛ رندر نهایی بعد از آماده‌شدن صحنه‌ها انجام می‌شود. نسخه‌های قبلی ویدیو دست‌نخورده می‌مانند.")
     return project
 
 

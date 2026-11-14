@@ -25,11 +25,11 @@ test('connected apps requires server setup and never asks for browser credential
   try {
     flushSync(()=>root.render(React.createElement(mod.exports.IntegrationsSettings)));
     await new Promise(resolve=>setTimeout(resolve,30));
-    assert.match(document.body.textContent,/Server setup required/);
+    assert.match(document.body.textContent,/نیاز به تنظیم سرور/);
     // Nothing can be connected until the server is configured, and no credential is asked for outside the optional advanced block.
-    assert.ok(![...document.querySelectorAll('button')].some(button=>/Connect|Reconnect/.test(button.textContent)&&!button.disabled));
+    assert.ok(![...document.querySelectorAll('button')].some(button=>/^اتصال|اتصال دوباره|قطع اتصال|تغییر حساب/.test(button.textContent)&&!button.disabled));
     assert.equal(document.querySelectorAll('section > input, .set-row input[type=password]').length,0);
-    assert.match(document.body.textContent,/Publishing and messaging stay disabled/);
+    assert.match(document.body.textContent,/انتشار و پیام‌دهی در این مرحله غیرفعال‌اند/);
   } finally {
     flushSync(()=>root.unmount()); dom.window.close(); Object.assign(globalThis,previous);
   }

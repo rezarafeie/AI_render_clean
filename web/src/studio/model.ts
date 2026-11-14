@@ -398,7 +398,9 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     const view = renderView(project);
     // A failure with no render stage is already shown as a failed step; don't relabel it "rendering".
     // A queued project that has started rendering (preparing the source, subtitles, ...) is a live render: the chat shows the same card as the tabs.
-    const started = view.phase === "queued" && project.status === "running" && Boolean(project.state?.render_started);
+    // The Claude talking engine plans, cuts, draws and checks before it renders: until its stage says rendering, those are steps in the chat, not a render card.
+    const claudeEditing = String((project.state as any)?.last_observed?.stage || "").trim().toLowerCase() === "claude talking";
+    const started = view.phase === "queued" && project.status === "running" && Boolean(project.state?.render_started) && !claudeEditing;
     if (view.phase === "idle" || (view.phase === "queued" && !started) || view.phase === "failed") continue;
     items.push({ kind: "render", id: `r-${project.id}`, projectId: project.id, startedAt: parseTime(project.updated_at) });
   }
