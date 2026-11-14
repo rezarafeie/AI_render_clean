@@ -78,7 +78,8 @@ def test_a_person_cannot_pay_someone_elses_order_or_an_unpriced_package(pay):
 def test_webhook_and_return_only_name_an_order_the_gateway_decides(pay):
     started = order()
     class Req:
-        async def json(self): return {"payment_id": "rp_pay_abc123456789", "status": "verified", "amount_toman": 1}      # claims are ignored
+        headers = {}
+        async def body(self): return b'{"payment_id": "rp_pay_abc123456789", "status": "verified", "amount_toman": 1}'      # claims are ignored
     assert asyncio.run(hook.webhook(Req())).status_code == 200
     assert asyncio.run(credits.account("7"))["balance"] == 1_000_000                                     # the gateway says pending
     pay["status"] = "verified"
@@ -97,3 +98,18 @@ def test_config_comes_from_the_environment_or_a_private_file(tmp_path, monkeypat
     assert rafieipay.config() is None and not rafieipay.enabled()
     (tmp_path / "rafieipay.json").write_text('{"api_key": "k", "api_secret": "s"}')
     assert rafieipay.config() == {"api_key": "k", "api_secret": "s", "base_url": "https://pay.rafiei.co"}
+
+
+def test_webhook_signature_follows_the_documented_scheme(tmp_path, monkeypatch):
+    import time
+    from app.config import settings
+    monkeypatch.setattr(settings, "JOBS_DIR", str(tmp_path))
+    (tmp_path / "rafieipay.json").write_text('{"api_key": "k", "api_secret": "sec"}')
+    body = b'{"event":"payment.paid"}'
+    ts = str(int(time.time()))
+    good = rafieipay.sign("sec", ts, body.decode())
+    assert rafieipay.webhook_signature_ok(body, ts, good)
+    assert not rafieipay.webhook_signature_ok(body, ts, "0" * 64)
+    assert not rafieipay.webhook_signature_ok(body + b" ", ts, good)
+    assert not rafieipay.webhook_signature_ok(body, str(int(time.time()) - 5000), rafieipay.sign("sec", str(int(time.time()) - 5000), body.decode()))
+    assert not rafieipay.webhook_signature_ok(body, None, good)

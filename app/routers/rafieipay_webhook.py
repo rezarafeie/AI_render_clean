@@ -29,8 +29,14 @@ def _ids(body) -> list[str]:
 
 @router.post("")
 async def webhook(request: Request):
+    raw = await request.body()
+    from app import rafieipay
+    signed = rafieipay.webhook_signature_ok(raw, request.headers.get("X-Rafiei-Timestamp"), request.headers.get("X-Rafiei-Signature"))
+    if not signed:
+        log.warning("rafieipay webhook without a valid signature (%s): the order is still only settled by asking the gateway", "present" if request.headers.get("X-Rafiei-Signature") else "absent")
     try:
-        body = await request.json()
+        import json as _json
+        body = _json.loads(raw or b"{}")
     except ValueError:
         body = {}
     for ident in _ids(body):

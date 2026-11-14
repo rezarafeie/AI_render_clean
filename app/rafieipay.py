@@ -92,3 +92,16 @@ async def get_payment(payment_id: str) -> dict:
     data = await _call("GET", "/functions/v1/payments-get", query={"id": payment_id})
     body = data.get("body") if isinstance(data.get("body"), dict) else data
     return body.get("payment") if isinstance(body.get("payment"), dict) else body
+
+
+def webhook_signature_ok(raw: bytes, timestamp: str | None, signature: str | None, *, tolerance: int = 600) -> bool:
+    """X-Rafiei-Signature = hex(HMAC_SHA256(api_secret, "<X-Rafiei-Timestamp>.<raw body>")), timestamp within `tolerance` seconds."""
+    cfg = config()
+    if cfg is None or not timestamp or not signature:
+        return False
+    try:
+        if abs(time.time() - int(timestamp)) > tolerance:
+            return False
+    except ValueError:
+        return False
+    return hmac.compare_digest(sign(cfg["api_secret"], timestamp, raw.decode("utf-8", "replace")), signature.strip().lower())
