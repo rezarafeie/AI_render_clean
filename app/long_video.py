@@ -381,7 +381,7 @@ def _hear_with_elevenlabs(directory: Path, source: Path, analysis: dict, on_even
                 on_event("transcription.segment.completed", {"segments": sentences})
             _set(directory, progress={"processed_s": round(heard["s"], 1), "duration_s": round(duration, 1), "percent": round(percent, 1), "eta_s": round(left) if left is not None else None})
             on_event("transcription.progress", {"processed_s": round(heard["s"], 1), "duration_s": round(duration, 1), "percent": round(percent, 1), "eta_s": round(left) if left is not None else None, "language": None})
-            note = f"{round(percent)}٪ · تکه {heard['pieces']} از {data['pieces']}" + (f" · {_eta_text(left)}" if left is not None and percent < 100 else "")
+            note = f"تکه {heard['pieces']} از {data['pieces']}" + (f" · {_eta_text(left)}" if left is not None and percent < 100 else "")
             _step(directory, "transcribe", "active", progress=percent, note=note, log=f"تکه {data['index'] + 1} از {data['pieces']} برگشت: {len(sentences)} جمله"
                   + (" (از قبل ذخیره بود)" if data.get("cached") else f" در {data.get('seconds', 0):g} ثانیه") + ".")
 
@@ -457,7 +457,7 @@ def _run(directory: Path) -> None:
             if kind == "transcription.progress":
                 _set(directory, progress={k: data[k] for k in ("processed_s", "duration_s", "percent", "eta_s")}, language=data.get("language"))
                 if prefs["engine"] != "elevenlabs":
-                    _step(directory, "transcribe", "active", progress=data["percent"], note=f"{round(data['percent'])}٪" + (f" · {_eta_text(data['eta_s'])}" if data["percent"] < 100 else ""))
+                    _step(directory, "transcribe", "active", progress=data["percent"], note=_eta_text(data["eta_s"]) if data["percent"] < 100 else "")
 
         if prefs["engine"] == "elevenlabs":
             raw = _hear_with_elevenlabs(directory, source, analysis, on_event, enhancer, stopper, digest)
