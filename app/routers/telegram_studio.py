@@ -307,8 +307,12 @@ async def _updates(request, db, token, tg, conversation):
     events = await studio.repo.events(conversation, user, after, limit=60)
     timeline_key = cursor_key + ":timeline"
     lines = json.loads(await db.get(timeline_key) or "[]")
+    active = (await db.get(timeline_key + ":busy")) == "1"
     for event in events:
         kind, data, seq = event["type"], event["data"], event["seq"]
+        if kind == "work.state" and isinstance(data.get("busy"), bool):
+            active = data["busy"]
+            await db.set(timeline_key + ":busy", "1" if active else "0", ex=30 * 86400)
         if kind == "narration.ready" and type(data.get("event_seq")) is int:
             try:
                 media = await studio.event_audio(request, conversation, data["event_seq"])
@@ -324,7 +328,7 @@ async def _updates(request, db, token, tg, conversation):
                 [{"text": "دیدن برنامه", "web_app": {"url": base + "/studio/" + conversation}}],
                 [{"text": "تأیید و شروع رندر", "callback_data": "studio:plan:" + action}],
             ])
-            lines = [*lines, "برنامه آمادهٔ بررسی است"][-12:]
+            lines = [*lines, "برنامه آمادهٔ بررسی است"]
             await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         elif kind == "question.required" and isinstance(data.get("choices"), list):
             choices = [choice for choice in data["choices"] if isinstance(choice, str) and choice.strip()][:8]
@@ -341,11 +345,10 @@ async def _updates(request, db, token, tg, conversation):
         else:
             line = _activity(event)
             if line and (not lines or lines[-1] != line):
-                if lines and kind in {"tool.progress", "motion.progress"} and lines[-1].rsplit(" · ", 1)[0] == line.rsplit(" · ", 1)[0]:
+                if lines and kind in {"tool.progress", "motion.progress"} and line.endswith("٪") and lines[-1].endswith("٪") and lines[-1].rsplit(" · ", 1)[0] == line.rsplit(" · ", 1)[0]:
                     lines[-1] = line
                 else:
                     lines.append(line)
-                lines = lines[-12:]
                 await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         await db.set(cursor_key, seq, ex=30 * 86400)
     chat = await studio.repo.get_conversation(conversation, user)
@@ -365,20 +368,27 @@ async def _updates(request, db, token, tg, conversation):
             sent += 1
         has_reply = True
     if has_reply and lines:
-        text = _timeline_text(lines)
-        delivered = cursor_key + ":timeline-delivered"
-        if await db.get(delivered) != text:
-            await _timeline(db, token, tg, cursor_key, text)
-            await db.set(delivered, text, ex=30 * 86400)
+        page_size = 18
+        for offset in range(0, len(lines), page_size):
+            page = cursor_key if not offset else f"{cursor_key}:page:{offset // page_size}"
+            page_lines = lines[offset:offset + page_size]
+            is_last = offset + page_size >= len(lines)
+            text = _timeline_text(page_lines, active=active and is_last, archived=not is_last)
+            delivered = page + ":timeline-delivered"
+            if await db.get(delivered) != text:
+                await _timeline(db, token, tg, page, text)
+                await db.set(delivered, text, ex=30 * 86400)
     return len(events) + sent
 
 
-def _timeline_text(lines):
-    recent = list(dict.fromkeys(reversed(lines)))[:3]
-    current = recent[0]
-    history = "\n".join("• " + escape(line[:110]) for line in reversed(recent[1:]))
-    text = "<b>روند کار</b>\n" + escape(current[:120])
-    return text + ("\n\n<b>مراحل اخیر</b>\n" + history if history else "")
+def _timeline_text(lines, *, active=False, archived=False):
+    heading = "⏳ <b>در حال انجام</b>" if active else "<b>روند کار</b>"
+    if archived:
+        heading = "<b>مراحل قبلی</b>"
+    rows = ["├─ " + escape(line[:110]) for line in lines[:-1]]
+    current = escape(lines[-1][:120])
+    rows.append("└─ <b>" + current + "</b>" if active else "└─ " + current)
+    return heading + "\n\n" + "\n".join(rows)
 
 
 async def _timeline(db, token, tg, key, text):
