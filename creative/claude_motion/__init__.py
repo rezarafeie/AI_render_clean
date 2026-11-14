@@ -490,6 +490,8 @@ Write exactly the components you were given, each as `export const Name: React.F
 the scenes drive; positions and sizes are props). Use the foundation's Svg / Defs / Shadow / helpers by name (do not redefine them). A component may add its own
 <defs> inside its svg; prefix those ids with the component's name. Craft: real objects with volume (2-3 tone gradients, a highlight, a soft ground shadow, one
 light direction) - or the reference's own art language when the LOOK says so (for example thin glowing white lines on black). Never a generic placeholder.
+ROBUST PROPS (a crash here fails EVERY scene that uses the component): give every prop a default in the destructuring (`items = []`, `n = 0`, `label = ''`), and never call
+.length, .map, .forEach, Object.keys or Array.from on a prop without a fallback (`(items ?? [])`); a scene may pass a prop late, spelled differently, or not at all.
 About 40-90 lines per component. Imports available: React, interpolate/random/Easing from 'remotion', evolvePath/getLength, noise2D/noise3D, and from './lib'
 G, GD, GL, INK, MUTED, useT, prog, clamp, easeInOut.
 
