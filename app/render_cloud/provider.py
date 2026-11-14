@@ -92,7 +92,7 @@ class RunPod:
             raise ValueError('Invalid managed Pod identity')
         return f'editorgpt-{deployment}-{job_id}'
 
-    def create(self, *, name, image, compute, hardware_ids, env, disk_gb=40, vcpu=8):
+    def create(self, *, name, image, compute, hardware_ids, env, disk_gb=40, vcpu=8, data_centers=()):
         if (compute not in {'CPU', 'GPU'} or not hardware_ids
                 or not re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}', image)
                 or not re.fullmatch(r'[a-zA-Z0-9_-]{1,200}', name)):
@@ -105,6 +105,11 @@ class RunPod:
                    'ports': [], 'env': env}
         if self.registry_auth_id:
             payload['containerRegistryAuthId'] = self.registry_auth_id
+        if data_centers:
+            if (not isinstance(data_centers, (list, tuple)) or len(data_centers) > 12
+                    or not all(isinstance(d, str) and re.fullmatch(r'[A-Z0-9-]{3,12}', d) for d in data_centers)):
+                raise ValueError('Invalid data center list')
+            payload['dataCenterIds'] = list(data_centers)
         if compute == 'CPU':
             payload.update(cpuFlavorIds=hardware_ids, vcpuCount=vcpu)
         else:

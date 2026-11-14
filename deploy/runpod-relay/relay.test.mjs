@@ -69,6 +69,10 @@ test('relay refuses unauthorized traffic, arbitrary paths, and never returns ups
     payload: { ...payload, containerRegistryAuthId: 'https://invalid' } }))[0], 403);
   assert.deepEqual(await call({ method: 'POST', path: 'pods', payload }),
     [200, { upstream_status: 201, result: { id: 'created' } }]);
+  for (const bad of [[], 'EU-RO-1', ['eu-ro-1'], ['https://x'], Array(13).fill('EU-RO-1'), [1]])
+    assert.equal((await call({ method: 'POST', path: 'pods', payload: { ...payload, dataCenterIds: bad } }))[0], 403);
+  assert.deepEqual(await call({ method: 'POST', path: 'pods', payload: { ...payload, dataCenterIds: ['EU-RO-1', 'US-TX-3'] } }),
+    [200, { upstream_status: 201, result: { id: 'created' } }]);
   assert.deepEqual(await call({ method: 'GET', path: 'canary/cpus' }),
     [200, { upstream_status: 200, result: [{ id: 'cpu3c', availability: 'HIGH', securePerVcpu: .04 }] }]);
   const name = 'editorgpt-containment-0123456789abcdef';

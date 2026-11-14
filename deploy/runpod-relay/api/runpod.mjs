@@ -5,7 +5,7 @@ const catalog = 'https://api.runpod.io/v2/';
 const canaryName = /^editorgpt-containment-[a-f0-9]{16}$/;
 const podFields = ['id', 'name', 'image', 'imageName', 'costPerHr', 'adjustedCostPerHr', 'memoryInGb', 'vcpuCount'];
 const createFields = ['name', 'imageName', 'computeType', 'cloudType', 'interruptible', 'containerDiskInGb',
-  'volumeInGb', 'ports', 'env', 'cpuFlavorIds', 'vcpuCount', 'gpuTypeIds', 'gpuCount', 'containerRegistryAuthId'];
+  'volumeInGb', 'ports', 'env', 'cpuFlavorIds', 'vcpuCount', 'gpuTypeIds', 'gpuCount', 'containerRegistryAuthId', 'dataCenterIds'];
 const fields = (value, keys) => Object.fromEntries(keys.filter(k =>
   ['string', 'number'].includes(typeof value?.[k])).map(k => [k, value[k]]));
 
@@ -53,6 +53,8 @@ function upstreamRequest(input) {
       Object.keys(payload).every(key => createFields.includes(key)) &&
       (payload.containerRegistryAuthId === undefined ||
         (typeof payload.containerRegistryAuthId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(payload.containerRegistryAuthId))) &&
+      (payload.dataCenterIds === undefined || (!canary && Array.isArray(payload.dataCenterIds) && payload.dataCenterIds.length >= 1 &&
+        payload.dataCenterIds.length <= 12 && payload.dataCenterIds.every(id => typeof id === 'string' && /^[A-Z0-9-]{3,12}$/.test(id)))) &&
       typeof payload.name === 'string' && /^editorgpt-[\w-]{1,190}$/.test(payload.name) &&
       typeof payload.imageName === 'string' && /^[^\s]+@sha256:[a-f0-9]{64}$/.test(payload.imageName) &&
       ['CPU', 'GPU'].includes(payload.computeType) && payload.cloudType === 'SECURE' &&

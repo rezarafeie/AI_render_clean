@@ -373,6 +373,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                       limits=limits, image=image,
                       hardware_ids=[profile.hardware_id],
                       deployment=config.deployment, vcpu=config.vcpu, disk_gb=config.disk_gb,
+                      data_centers=[d.strip() for d in config.data_centers.split(',') if d.strip()],
                       storage_hosts=config.storage_hosts,max_hourly_usd=profile.hourly_usd,min_memory_gb=profile.min_memory_gb,
                       bootstrap=lambda token: store.bootstrap(spec, root, token, time.time() + config.max_wall_seconds, ledger,
                                                               local_output=output.resolve()))

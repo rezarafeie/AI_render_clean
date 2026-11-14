@@ -26,7 +26,7 @@ class Limits:
 
 def provision(spec, *, ledger, provider: RunPod, flags: Flags, admin: bool,
               backend: str, estimate: float, limits: Limits, image: str,
-              hardware_ids: list[str], deployment: str, bootstrap, vcpu=8, disk_gb=40, storage_hosts='', max_hourly_usd=None,min_memory_gb=0):
+              hardware_ids: list[str], deployment: str, bootstrap, vcpu=8, disk_gb=40, storage_hosts='', max_hourly_usd=None,min_memory_gb=0,data_centers=()):
     """Persist intent, call create ONCE, retain uncertain resources for the reaper.
 
     bootstrap(token) must persist an expiring private worker envelope and return
@@ -65,7 +65,7 @@ def provision(spec, *, ledger, provider: RunPod, flags: Flags, admin: bool,
         pod = provider.create(name=name, image=image,
                               compute='CPU' if backend == 'runpod_cpu' else 'GPU',
                               hardware_ids=hardware_ids, env={'EDITOR_RENDER_BOOTSTRAP_URL': url, 'RENDER_STORAGE_HOSTS': storage_hosts},
-                              vcpu=vcpu, disk_gb=disk_gb)
+                              vcpu=vcpu, disk_gb=disk_gb, data_centers=data_centers)
     except (ProviderRejected, ValueError):
         ledger.finish(spec.job_id,spec.user_id,'failed','provisioning_rejected')
         ledger.rejected_create(spec.job_id,spec.user_id)
