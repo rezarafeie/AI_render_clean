@@ -16,6 +16,7 @@ const paths = {
   templates: <><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></>,
   settings: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></>,
   menu: <path d="M4 7h16M4 12h16M4 17h10"/>,
+  wallet: <><path d="M4 7.5V6a2 2 0 0 1 2-2h11v3.5"/><rect x="3" y="7.5" width="18" height="12.5" rx="2.5"/><path d="M16 13.8h2.5"/></>,
   home: <><path d="m3.5 11 8.5-7.5 8.5 7.5"/><path d="M5.5 9.7V20h4.5v-5.5h4V20h4.5V9.7"/></>,
   close: <path d="m6 6 12 12M18 6 6 18"/>,
   user: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
