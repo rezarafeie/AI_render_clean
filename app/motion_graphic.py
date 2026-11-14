@@ -442,7 +442,16 @@ def _public_error(exc: Exception) -> str:
         return "سرویس هوش مصنوعی در دسترس نبود."
     if "timed out" in text:
         return "رندر بیشتر از زمان مجاز طول کشید."
+    if re.search(r"cloud render|Cloud render|delayRender|render failed|CloudRenderError", text):
+        return "رندر فیلم کامل نشد؛ طرح و کد فیلم ذخیره شده است و «تلاش دوباره» از همان‌جا ادامه می‌دهد."
     return text[:220] or "خطای ناشناخته"
+
+
+def _claude_film_written(directory: Path) -> bool:
+    try:
+        return bool(json.loads((directory / "checkpoint.json").read_text()).get("final"))
+    except (OSError, ValueError):
+        return False
 
 
 def _run(directory: Path, change: str) -> None:
@@ -458,6 +467,11 @@ def _run(directory: Path, change: str) -> None:
         except Exception as exc:
             if _cancelled(key):
                 raise _Cancelled()
+            if _claude_film_written(directory) and not str(exc).startswith("the film's code did not build"):
+                # The Claude engine already wrote the film's code (and saved it in checkpoint.json): only a later step (render, mix) failed. The film stays on
+                # the Claude engine and fails visibly; retry continues from the saved code instead of restarting on the classic engine.
+                log.exception("claude motion %s failed after its code was written; no fallback to the classic engine", key)
+                raise
             log.exception("claude motion %s failed; the classic engine takes over", key)
             _note(directory, "engine-switch", "── ساخت اول (موتور موشن کلاد) کامل نشد؛ از اینجا همه‌چیز از اول با موتور دوم ساخته می‌شود. پیام‌های بالای این خط مربوط به تلاش اول‌اند ──", "done", detail=f"علت: {str(exc)[:600]}")
             _progress(directory, "writing", 5, "ساخت اول کامل نشد؛ دارم از اول با موتور دوم می‌سازم.", stage="writing")
