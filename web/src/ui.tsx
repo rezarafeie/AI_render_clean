@@ -59,6 +59,7 @@ export function ToastHost() {
 /** Keep operational details in logs while giving people a useful next step. */
 export function friendlyError(error: unknown, action = "complete this action"): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/^402 /.test(message) && /اعتبار/.test(message)) return "اعتبار شما تمام شده است. برای ادامه، اعتبار بخرید یا افزایش دهید.";
   if (/^409 Provider lm_gateway is not configured/.test(message)) return "ادامهٔ تولید انجام نشد: مسیر تولید تصویر (photorealistic_image) در تنظیمات AI فعال نیست یا کلید Gateway در دسترس نیست. کلید مدل متنی به‌تنهایی کافی نیست. استوری‌بورد شما حفظ شده است؛ مسیر تصویر را تنظیم کنید یا از تصاویر واقعی محصول استفاده کنید.";
   if (/^503 EditorGPT Medium/.test(message)) return "EditorGPT Medium در این نصب در دسترس نیست. برای ادامه، خودتان EditorGPT Lite را از منوی کنار + انتخاب کنید؛ موتور خودکار تغییر نکرده است.";
   if (/^409 Medium در همین گفتگو/.test(message)) return "Medium در این گفتگو اجرای ناتمام دارد. برنامهٔ قبلی را تأیید، ادامه یا لغو کنید؛ انتخاب موتور پیام بعدی محفوظ است.";

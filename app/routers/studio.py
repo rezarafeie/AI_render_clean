@@ -158,6 +158,9 @@ async def resume_agent(request: Request, run_id: str, body: AgentResume):
     from app.agents import store
     from app.agents.dispatcher import dispatch, ensure_available
     user = _user(request)
+    if body.decision != "cancel":
+        from app import credits
+        await credits.gate(user)
     try:
         record = await store.get_run(run_id, user)
         if record["agent_mode"] != "medium" and not record["data"].get("agent"): raise HTTPException(409, "This run is not an agent run")
@@ -404,6 +407,8 @@ async def get_attachment(request: Request, conversation_id: str, attachment_id: 
 @router.post("/conversations/{conversation_id}/messages", status_code=202)
 async def send_message(request: Request, conversation_id: str, body: MessageCreate):
     user_key = _user(request)
+    from app import credits
+    await credits.gate(user_key)                      # a new request needs credit; work already running is never cut
     try:
         conversation = await repo.get_conversation(conversation_id, user_key)
         agent_mode = body.agent_mode or ("medium" if (conversation.get("state") or {}).get("agent_mode") == "medium" else "lite")
@@ -750,6 +755,8 @@ async def browser_render_output(request: Request, project_id: str, revision: str
 @router.post('/projects/{project_id}/resume')
 async def resume_stopped_project(request: Request, project_id: str, body: ResumeRequest | None = None):
     confirmed=bool(body and body.retry_confirmed)
+    from app import credits
+    await credits.gate(_user(request))
     try: return await asyncio.to_thread(resume_project, project_id, _user(request),retry_confirmed=confirmed)
     except KeyError: raise HTTPException(404, 'project not found')
     except ValueError as exc: raise HTTPException(409, str(exc))
@@ -1329,6 +1336,8 @@ async def discovery_transcript(request: Request, analysis_id: str, offset: int =
 async def discovery_resume(request: Request, analysis_id: str):
     from app import long_video
     directory = _discovery_dir(request, analysis_id)
+    from app import credits
+    await credits.gate(_user(request))
     long_video.start(directory)
     return {"resumed": True}
 
@@ -1530,6 +1539,8 @@ async def motion_retry(request: Request, motion_id: str):
     record = await asyncio.to_thread(motion_graphic.load, directory)
     if record["status"] in motion_graphic.ACTIVE:
         raise HTTPException(409, "already running")
+    from app import credits
+    await credits.gate(_user(request))
     await asyncio.to_thread(motion_graphic.start, directory, change=record.get("pending_change") or "")
     return {"ok": True}
 
@@ -1541,5 +1552,76 @@ async def motion_revise(request: Request, motion_id: str, body: MotionChange):
     record = await asyncio.to_thread(motion_graphic.load, directory)
     if record["status"] in motion_graphic.ACTIVE:
         raise HTTPException(409, "already running")
+    from app import credits
+    await credits.gate(_user(request))
     await asyncio.to_thread(motion_graphic.revise, directory, body.change)
     return {"ok": True}
+
+
+# ── credits: the person's own balance, usage and purchase orders ─────────────────────────────────────
+
+@router.get("/credits")
+async def credits_me(request: Request):
+    from app import credits
+    state = await credits.account(_user(request))
+    settings = credits.settings()
+    return {**state, "enforce": settings["enforce"], "initial_grant": settings["initial_grant"],
+            "exhausted": bool(state["tracked"] and not state["unlimited"] and state["balance"] <= 0),
+            "packages": await credits.packages(active_only=True)}
+
+
+@router.get("/credits/usage")
+async def credits_usage(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200), kind: str | None = Query(None, max_length=16)):
+    """The person's ledger (newest first) plus the totals per chat and per project/video, with titles."""
+    from app import credits
+    from sqlalchemy import select
+    from app.database import AsyncSessionLocal
+    from app.models import StudioConversation, StudioProject
+    user = _user(request)
+    await credits.account(user)
+    chats, projects, ledger = await asyncio.gather(credits.usage_by(user, "conversation_id"), credits.usage_by(user, "project_id"),
+                                                  credits.ledger(user, page, size, kind))
+    async with AsyncSessionLocal() as db:
+        titles = {r.id: r.title for r in (await db.execute(select(StudioConversation).where(StudioConversation.user_key == user,
+                  StudioConversation.id.in_([c["id"] for c in chats] or ["-"])))).scalars()}
+        names = {}
+        for r in (await db.execute(select(StudioProject).where(StudioProject.user_key == user))).scalars():
+            names[r.id] = r.title
+            if r.external_ref: names[r.external_ref] = r.title
+    for item in chats: item["title"] = titles.get(item["id"])
+    for item in projects:
+        item["title"] = names.get(item["id"])
+        if not item["title"] and item["kind"] == "motion":
+            try:
+                from app import motion_graphic
+                item["title"] = (motion_graphic.load(_motion_dir(request, item["id"])).get("title") or "")[:80] or None
+            except Exception:
+                item["title"] = None
+    return {"chats": chats, "projects": projects, **ledger}
+
+
+@router.get("/credits/projects/{project_id}")
+async def credits_project(request: Request, project_id: str):
+    from app import credits
+    return await credits.project_breakdown(_user(request), project_id)
+
+
+class CreditOrderBody(BaseModel):
+    package_id: str = Field(min_length=1, max_length=32)
+
+
+@router.post("/credits/orders", status_code=201)
+async def credits_order(request: Request, body: CreditOrderBody):
+    """Start buying a package. No payment gateway is connected yet, so the order waits (pending) until an administrator confirms the payment."""
+    from app import credits
+    try:
+        order = await credits.create_order(_user(request), body.package_id)
+    except KeyError:
+        raise HTTPException(404, "این بسته پیدا نشد.")
+    return {**order, "payment": "manual", "message": "سفارش ثبت شد. پرداخت آنلاین هنوز فعال نیست؛ پس از تأیید پرداخت توسط مدیر، اعتبار به حساب شما اضافه می‌شود."}
+
+
+@router.get("/credits/orders")
+async def credits_orders(request: Request):
+    from app import credits
+    return {"items": await credits.orders(_user(request))}

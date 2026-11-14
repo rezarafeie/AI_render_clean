@@ -577,6 +577,15 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
             _stage(job_dir, str(load(job_dir).get('stage') or 'cloud rendering'), message=text)
         cloud_token = identity.set((str(owner_id) if owner_id else None, job_dir.name, (job_dir,),
                                     cloud_cancelled, cloud_stage, cloud_detail))
+        if owner_id is None:
+            try:
+                from app import jobs as owner_jobs
+                owner_id = getattr(owner_jobs.get(job_dir.name), 'user_id', None)
+            except Exception:
+                owner_id = None
+        from brain.lm_gateway import work_scope
+        usage_scope = work_scope('talking', job_dir.name, user=owner_id)       # model calls of this reel are billed to its owner and shown under it
+        usage_scope.__enter__()
         try:
             started = time.time()
             _run(job_dir, raw_video, regenerate=regenerate)
@@ -590,6 +599,7 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
             save(job_dir, current)
         finally:
             identity.reset(cloud_token)
+            usage_scope.__exit__(None, None, None)
             with _lock:
                 _running.discard(key)
                 _cancel_events.pop(key, None); _pause_events.pop(key, None)

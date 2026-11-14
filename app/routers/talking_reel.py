@@ -96,6 +96,8 @@ def edit(request: Request, job_id: str, body: ReelEdit):
 @router.post("/render")
 def render(request: Request, job_id: str, regenerate: bool = False):
     job = _job(request, job_id)
+    from app import credits
+    credits.gate_sync(request.state.user.id)
     try:
         return store.public(store.start(job.dir, job.dir / "raw" / job.raw_name, regenerate=regenerate))
     except ValueError as exc:
@@ -105,6 +107,8 @@ def render(request: Request, job_id: str, regenerate: bool = False):
 @router.post("/analyze")
 def analyze(request: Request, job_id: str, style: Optional[str] = None):
     job = _job(request, job_id)
+    from app import credits
+    credits.gate_sync(request.state.user.id)
     try:
         return store.public(store.analyze(
             job.dir, job.dir / "raw" / job.raw_name, style=style,

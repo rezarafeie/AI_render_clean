@@ -327,3 +327,64 @@ class StudioAgentRun(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("conversation_id", "message_id", name="uq_studio_agent_message"),)
+
+
+class CreditAccount(Base):
+    """A person's credit balance, in weighted tokens (see app/credits.py). The balance may dip below zero: a running job is never cut."""
+    __tablename__ = "credit_accounts"
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    balance: Mapped[int] = mapped_column(BigInteger, default=0)
+    granted_total: Mapped[int] = mapped_column(BigInteger, default=0)
+    used_total: Mapped[int] = mapped_column(BigInteger, default=0)
+    unlimited: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[str] = mapped_column(String(40))
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class CreditLedger(Base):
+    """Every change of a balance: usage (negative) of one model call, or a grant / purchase / admin change / refund (positive or negative)."""
+    __tablename__ = "credit_ledger"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True)            # usage | initial | grant | purchase | admin | refund
+    amount: Mapped[int] = mapped_column(BigInteger)                      # signed: usage is negative
+    balance_after: Mapped[int] = mapped_column(BigInteger)
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)   # the ai_request_logs row
+    route: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    conversation_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    project_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    project_kind: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    job_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    input_tokens: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    output_tokens: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    cache_tokens: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    actor: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class CreditPackage(Base):
+    __tablename__ = "credit_packages"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120))
+    credits: Mapped[int] = mapped_column(BigInteger)
+    price: Mapped[int] = mapped_column(BigInteger, default=0)            # in the currency's smallest shown unit (e.g. toman)
+    currency: Mapped[str] = mapped_column(String(8), default="IRT")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CreditOrder(Base):
+    __tablename__ = "credit_orders"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    package_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    credits: Mapped[int] = mapped_column(BigInteger)
+    price: Mapped[int] = mapped_column(BigInteger, default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="IRT")
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)   # pending | paid | cancelled
+    gateway: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    gateway_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[str] = mapped_column(String(40))
+    paid_at: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)

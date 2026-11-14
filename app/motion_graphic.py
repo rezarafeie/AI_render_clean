@@ -368,6 +368,9 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
     _local.run = run_id if run_id is not None else int(load(directory).get("run") or 0)
     from app.render_cloud.hooks import identity
     owned = load(directory)
+    from brain.lm_gateway import work_scope
+    usage_scope = work_scope("motion", key, user=owned.get("user_key"), conversation=owned.get("conversation_id"))
+    usage_scope.__enter__()                              # every model call of this film (and of the threads it starts) is billed to its owner and shows this film
     from brain import localize as _localize
     _localize.narration_brief(owned.get("request", "") + "".join(" " + a for a in owned.get("answers", [])))   # «با صدای خانم» decides the narrator's gender for this run
     def cloud_stage(stage):
@@ -406,6 +409,7 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
         _assistant(record["conversation_id"], record["user_key"], f"ساخت موشن‌گرافیک کامل نشد: {message} می‌توانید دوباره امتحان کنید یا درخواست را ساده‌تر بنویسید.")
     finally:
         identity.reset(cloud_token)
+        usage_scope.__exit__(None, None, None)
         if _RUNNING.get(key) is threading.current_thread():
             _RUNNING.pop(key, None)
             try:

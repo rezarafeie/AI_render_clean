@@ -5,6 +5,7 @@ import { templates } from "../templateData";
 import { formatBytes } from "../format";
 import { AgentMode } from "../api";
 import { AgentModeSelector } from "./AgentMode";
+import { Link } from "react-router-dom";
 
 export type PendingFile = { key: string; file: File; progress: number; attachmentId?: string; url: string; localId?: string; localNote?: string;
   /** Imported server-side from cloud storage: nothing is on this device, so the file is only a label. */
@@ -64,7 +65,7 @@ export function Composer(props: ComposerProps) {
     <div className="composer-box" data-dragging={dragging || undefined}
       onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
       onDrop={event => { event.preventDefault(); setDragging(false); void onFiles(Array.from(event.dataTransfer.files)); }}>
-      {error ? <div className="notice composer-error" data-tone="error" role="alert"><span className="grow">{error}</span><button className="icon-btn" style={{ ["--size" as string]: "24px" }} onClick={onDismissError} aria-label="Dismiss error"><Icon name="close" size={14}/></button></div> : null}
+      {error ? <div className="notice composer-error" data-tone="error" role="alert"><span className="grow">{error}{/اعتبار شما تمام/.test(error) ? <> <Link to="/credits" className="credits-buy-link">خرید / افزایش اعتبار</Link></> : null}</span><button className="icon-btn" style={{ ["--size" as string]: "24px" }} onClick={onDismissError} aria-label="Dismiss error"><Icon name="close" size={14}/></button></div> : null}
       {files.length ? <ul className="attach-row" aria-label="Attachments">{files.map((item, index) => <li key={item.key} className="attach-chip">
         {item.file.type.startsWith("image/") && item.url ? <img src={item.url} alt=""/> : <span className="attach-icon"><Icon name={item.file.type.startsWith("video/") ? "video" : "music"} size={18}/></span>}
         <span className="attach-meta"><b className="wrap-safe">{item.file.name}</b><small>{item.attachmentId ? formatBytes(item.cloud?.size || item.file.size) : item.cloud ? `Importing from Google Drive${item.progress > 0 ? ` · ${Math.round(item.progress)}%` : ""}` : item.progress < 0 ? `On this device · ${formatBytes(item.file.size)}` : `Uploading ${Math.round(item.progress)}%`}</small>{item.localNote ? <small>{item.localNote}</small> : null}</span>

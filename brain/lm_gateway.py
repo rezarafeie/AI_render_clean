@@ -38,6 +38,60 @@ user_context = contextvars.ContextVar("ai_user", default=None)
 job_context = contextvars.ContextVar("ai_job", default=None)
 route_context = contextvars.ContextVar("ai_route", default=None)
 conversation_context = contextvars.ContextVar("ai_conversation", default=None)
+# What the call is for: ("motion" | "talking" | "long_video" | "project" | ..., id). Every audited call carries it next to the user and the chat.
+work_context = contextvars.ContextVar("ai_work", default=None)
+_ATTRIBUTION = (user_context, job_context, route_context, conversation_context, work_context)
+
+
+def _snapshot():
+    return [(var, var.get()) for var in _ATTRIBUTION]          # unset ones too: a pooled worker must not keep the previous task's owner
+
+
+def _bound(snapshot, function):
+    """Run `function` under the attribution of the thread that submitted it (a new thread starts with an empty context)."""
+    @functools.wraps(function)
+    def run(*args, **kwargs):
+        tokens = [(var, var.set(value)) for var, value in snapshot]
+        try: return function(*args, **kwargs)
+        finally:
+            for var, token in reversed(tokens): var.reset(token)
+    return run
+
+
+def _propagate_to_threads():
+    """threading.Thread and ThreadPoolExecutor do not copy contextvars, so a film built in a worker thread would be billed to nobody.
+    Both now carry the user / chat / work attribution (only these variables) from the thread that starts them."""
+    import concurrent.futures
+    if getattr(threading.Thread, "_attribution_patched", False): return
+    start, run, submit = threading.Thread.start, threading.Thread.run, concurrent.futures.ThreadPoolExecutor.submit
+    def patched_start(self):
+        if getattr(self._target, "__module__", "") != "concurrent.futures.thread":        # pool workers are bound per task (patched_submit), not per lifetime
+            self._attribution = _snapshot()
+        return start(self)
+    def patched_run(self):
+        snapshot = getattr(self, "_attribution", None)
+        if not snapshot: return run(self)
+        return _bound(snapshot, lambda: run(self))()
+    def patched_submit(self, function, /, *args, **kwargs):
+        return submit(self, _bound(_snapshot(), function), *args, **kwargs)
+    threading.Thread.start, threading.Thread.run, threading.Thread._attribution_patched = patched_start, patched_run, True
+    concurrent.futures.ThreadPoolExecutor.submit = patched_submit
+
+
+class work_scope:
+    """`with work_scope("motion", motion_id, user=..., conversation=...):` — everything inside (including threads it starts) is billed to that work."""
+    def __init__(self, kind, ident, *, user=None, conversation=None):
+        self.values = [(work_context, (kind, str(ident))), (job_context, str(ident))]
+        if user is not None: self.values.append((user_context, str(user)))
+        if conversation is not None: self.values.append((conversation_context, str(conversation)))
+    def __enter__(self):
+        self.tokens = [(var, var.set(value)) for var, value in self.values]; return self
+    def __exit__(self, *exc):
+        for var, token in reversed(self.tokens): var.reset(token)
+        return False
+
+
+_propagate_to_threads()
 _slots = threading.BoundedSemaphore(4)
 ROUTES = {
     "general_chat": ("General Chat", "chat"), "editing_agent": ("Video Editing Agent", "chat"),
@@ -220,6 +274,10 @@ def _wire(endpoint, data, timeout):
 
 
 def _audit(record):
+    try:
+        from app import credits
+        credits.charge(record)           # fills record["credits"] etc. and takes them from the user's balance; never raises
+    except Exception: log.exception("Credit charge failed request=%s", record.get("id"))
     try: store.log(record)
     except Exception: log.exception("AI audit persistence failed request=%s", record["id"])
 
@@ -261,6 +319,28 @@ def _wire_chat_stream(endpoint, data, timeout):
         raise GatewayError(f"LM API {type(exc).__name__}", 504, True) from exc
 
 
+def _chars(value):
+    if value is None: return 0
+    if isinstance(value, str): return len(value)
+    try: return len(json.dumps(value, ensure_ascii=False))
+    except (TypeError, ValueError): return len(str(value))
+
+
+def _estimate_missing(usage, endpoint, request, response, error):
+    """A stream (or a provider) that reports no usage still cost tokens: estimate them from the text (about 3 characters per token) and say so."""
+    if endpoint not in ("chat", "responses", "messages") or usage.get("input_tokens") is not None or usage.get("output_tokens") is not None:
+        return usage
+    answer = response.get("output_text") if isinstance(response, dict) else None
+    if not answer and isinstance(response, dict):
+        try: answer = adapters.text(endpoint, response)
+        except Exception: answer = None
+    prompt = request.get("messages", request.get("input")) if isinstance(request, dict) else request
+    sent, got = _chars(prompt), _chars(answer)
+    if not sent and not got: return usage
+    if error and not got: return usage                       # a call that failed before any answer is not billed by guesswork
+    return {**usage, "input_tokens": -(-sent // 3), "output_tokens": -(-got // 3), "usage_estimated": True}
+
+
 def _record(route, endpoint, requested, started, attempts, response=None, hdr=None, error=None, request=None):
     cfg = gateway_settings(); response = response or {}; hdr = hdr or {}
     usage = adapters.usage(response)
@@ -274,9 +354,12 @@ def _record(route, endpoint, requested, started, attempts, response=None, hdr=No
             from .media_archive import images
             media=images(response)
         except Exception: log.exception('Could not archive media response')
+    usage = _estimate_missing(usage, endpoint, request, response, error)
+    work = work_context.get() or (None, None)
     return {"id": str(uuid.uuid4()), "media":media, "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": user_context.get(), "job_id": job_context.get(), "route": route,
         "conversation_id": conversation_context.get(), "task_id":route,
+        "project_kind": work[0], "project_id": work[1],
         "endpoint": adapters.PATHS[endpoint], "requested_model": requested, "actual_model": actual,
         "provider": unquote(hdr.get("x-provider", "")) or routed.partition("/")[0] or None,
         "routed_via": routed or None,
@@ -763,9 +846,9 @@ def job_scope(function):
 def conversation_scope(function):
     @functools.wraps(function)
     def wrapped(conversation_id, user_key, *args, **kwargs):
-        user=user_context.set(str(user_key)); conversation=conversation_context.set(conversation_id)
+        user=user_context.set(str(user_key)); conversation=conversation_context.set(conversation_id); work=work_context.set(None)
         try:return function(conversation_id,user_key,*args,**kwargs)
-        finally:user_context.reset(user);conversation_context.reset(conversation)
+        finally:user_context.reset(user);conversation_context.reset(conversation);work_context.reset(work)
     return wrapped
 
 
@@ -789,6 +872,7 @@ def observe_specialized(route, provider, endpoint=None):
                 except Exception: cfg={"capture_messages":False,"log_char_limit":256}
                 _audit({"id":str(uuid.uuid4()),"timestamp":datetime.now(timezone.utc).isoformat(),
                     "user_id":user_context.get(),"job_id":job_context.get(),"conversation_id":conversation_context.get(),
+                    "project_kind":(work_context.get() or (None,None))[0],"project_id":(work_context.get() or (None,None))[1],
                     "route":route,"endpoint":endpoint or ("v1/text-to-speech" if is_audio else "chat/completions"),
                     "requested_model":model,"actual_model":None,"provider":provider,"transport":"preserved-specialist",
                     "status":"failed" if error else "success","latency_ms":round((time.monotonic()-started)*1000),

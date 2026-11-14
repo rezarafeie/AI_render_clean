@@ -225,6 +225,12 @@ def _heartbeat(directory: Path, key: str, done: threading.Event) -> None:
 
 def _guard(directory: Path) -> None:
     analysis = load(directory)
+    from brain.lm_gateway import work_scope
+    with work_scope("long_video", analysis["id"], user=analysis.get("user_key"), conversation=analysis.get("conversation_id")):
+        _guarded(directory, analysis)
+
+
+def _guarded(directory: Path, analysis: dict) -> None:
     finished = threading.Event()
     threading.Thread(target=_heartbeat, args=(directory, analysis["id"], finished), daemon=True, name=f"discovery-beat-{analysis['id']}").start()
     try:

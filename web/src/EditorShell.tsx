@@ -17,8 +17,27 @@ import { isLocalDevelopment } from "./auth";
 import { displayTitle, parseTime } from "./format";
 import PaneSkeleton from "./components/PaneSkeleton";
 import { preloadEditor, preloadHermes } from "./routeLoaders";
+import "./styles/credits.css";
 
 const SIDEBAR_BOUNDS = { min: 200, max: 420 };
+
+/** The person's credit balance (weighted tokens); links to the usage and purchase page. Refreshed every minute and when a chat finishes work. */
+function CreditsChip() {
+  const [state, setState] = React.useState<{ balance: number; unlimited: boolean; exhausted: boolean; initial_grant: number } | null>(null);
+  const location = useLocation();
+  React.useEffect(() => {
+    let live = true;
+    const load = () => { void api.creditsMe().then(value => { if (live) setState(value); }).catch(() => {}); };
+    load();
+    const timer = window.setInterval(load, 60000);
+    window.addEventListener("credits:refresh", load);
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener("credits:refresh", load); };
+  }, [location.pathname]);
+  if (!state) return null;
+  const low = !state.unlimited && state.balance > 0 && state.balance < state.initial_grant * 0.1;
+  return <NavLink to="/credits" className="credits-chip" data-low={low || undefined} data-empty={state.exhausted || undefined} title="اعتبار و مصرف">
+    <span>اعتبار</span><b>{state.unlimited ? "نامحدود" : state.balance.toLocaleString("fa-IR")}</b></NavLink>;
+}
 
 // Kept so older screens that import { Icon } from "./EditorShell" keep working.
 export { Icon } from "./components/Icon";
@@ -188,6 +207,7 @@ export default function EditorShell() {
         <div className="sb-spacer"/>
 
         <div className="sb-foot">
+          {authenticated && !hermesMode && !isLocalDevelopment ? <CreditsChip/> : null}
           {hermesMode ? <NavLink to="/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
           {authenticated ? <div className="account">
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>

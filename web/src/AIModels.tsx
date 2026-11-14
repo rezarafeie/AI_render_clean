@@ -3,11 +3,12 @@ import { AuthenticatedMedia } from './AuthenticatedMedia';
 import { aiAdminRequest as request, aiAdminCsv } from "./api";
 import "./ai-models.css";
 import DirectFallbacks from "./AIDirectFallbacks";
+import AICredits from "./AICredits";
 import { movePriority, logQuery } from "./ai-models-utils";
 
 type Model = {id:string; name:string; provider:string|null; enabled:boolean; available:boolean; status:string; declared:string[]; verified:string[]; test_latency_ms?:number; last_error?:string};
 type Route = {id:string; title:string; capability:string; models:string[]; endpoint:string; enabled:boolean; timeout:number; max_retries:number; temperature:number|null; max_tokens:number; streaming:boolean; automatic_fallback:boolean; specialized_fallback:boolean};
-type Log = {id:string; timestamp:string; user_id:string|null; job_id:string|null; route:string; requested_model:string; actual_model:string|null; provider:string|null; status:string; latency_ms:number; input_tokens:number|null; output_tokens:number|null; cost:number|null; [key:string]:unknown};
+type Log = {id:string; timestamp:string; user_id:string|null; job_id:string|null; route:string; requested_model:string; actual_model:string|null; provider:string|null; status:string; latency_ms:number; input_tokens:number|null; output_tokens:number|null; cost:number|null; credits?:number|null; [key:string]:unknown};
 type Stats = {requests:number; successful:number; failed:number; average_latency_ms:number|null; tokens:number|null; cost:number|null; cost_reported_requests:number; total_matching:number; truncated:boolean; models:({id:string}&Stats)[]; daily:{date:string; requests:number; failed:number}[]};
 type Config = {enabled:boolean; capture_messages:boolean; log_char_limit:number; direct_mode:boolean; direct_ready:boolean; configured:boolean; base_url:string; concurrency_per_worker:number};
 const options = ["chat","vision","reasoning","image","video","speech","transcription","embeddings","structured","tools","streaming"];
@@ -22,6 +23,18 @@ function LogMedia({value}:{value:unknown}) {
     if (!['image','audio','video'].includes(kind)) return null;
     return <AuthenticatedMedia key={item.id} as={kind==='image'?'img':kind as 'audio'|'video'} src={item.url} alt="Generated media" controls={kind!=='image'} style={{maxWidth:'100%',maxHeight:420}}/>;
   })}</>;
+}
+
+/** Who and what a request belonged to, and what it took from the user's credit (Persian: this is the part the owner reads). */
+function CreditSummary({log}:{log:Log}) {
+  const n=(v:unknown)=>typeof v==="number"?Math.round(v).toLocaleString("fa-IR"):"—";
+  const kinds:Record<string,string>={motion:"موشن‌گرافیک",talking:"تالکینگ",long_video:"تحلیل ویدیوی بلند",project:"پروژه"};
+  const b=(log.credit_breakdown||{}) as Record<string,unknown>;
+  return <div className="ai-alert" dir="rtl" style={{textAlign:"right"}}>
+    <p><b>کاربر:</b> {log.user_id?`#${log.user_id}`:"بدون کاربر (کار پس‌زمینه)"} · <b>چت:</b> {String(log.conversation_id||"—")} · <b>{log.project_kind?kinds[String(log.project_kind)]||String(log.project_kind):"ویدیو / پروژه"}:</b> {String(log.project_id||log.job_id||"—")}</p>
+    <p><b>توکن:</b> ورودی {n(log.input_tokens)} · خروجی {n(log.output_tokens)} · کش‌خوانده {n(log.cache_read_tokens)} · کش‌نوشته {n(log.cache_write_tokens)}{log.usage_estimated?" (تخمینی؛ مدل مصرف را گزارش نکرد)":""}</p>
+    <p><b>اعتبار کسرشده:</b> {n(log.credits)} · <b>مانده بعد از این درخواست:</b> {n(log.credits_balance_after)}{b.weights?<> · <b>ضریب مدل:</b> <code>{String(b.weights)}</code></>:null}</p>
+  </div>;
 }
 
 function Pager({page,total,size,onChange}:{page:number;total:number;size:number;onChange:(page:number)=>void}) {
@@ -45,7 +58,7 @@ export default function AIModels() {
   if(allowed===null) return <main className="eg-page" role="status">{error||"Checking access…"}</main>;
   return <main className="eg-page ai-panel">
     <header className="eg-page-header"><span className="eg-eyebrow">Administration</span><h1>AI Models &amp; Logs</h1><p>One gateway. Exact model IDs. Verified capabilities.</p></header>
-    <nav className="ai-tabs" aria-label="AI administration tabs">{["Models","Routing","Direct fallbacks","Request Logs","Analytics"].map(name=><button key={name} aria-pressed={tab===name} onClick={()=>setTab(name)}>{name}</button>)}</nav>
+    <nav className="ai-tabs" aria-label="AI administration tabs">{["Models","Routing","Direct fallbacks","Request Logs","Analytics","Credits"].map(name=><button key={name} aria-pressed={tab===name} onClick={()=>setTab(name)}>{name==="Credits"?"اعتبار":name}</button>)}</nav>
     {error&&<div role="alert" className="ai-alert">{error}</div>}{notice&&<p role="status">{notice}</p>}
     {busy&&<p role="status">Working… Model probes may take up to the configured timeout.</p>}
     {tab==="Models"&&<Models refresh={refresh} busy={busy} action={action}/>}
@@ -53,6 +66,7 @@ export default function AIModels() {
     {tab==="Direct fallbacks"&&<DirectFallbacks/>}
     {tab==="Request Logs"&&<Logs action={action}/>}
     {tab==="Analytics"&&<Analytics refresh={refresh}/>}
+    {tab==="Credits"&&<AICredits/>}
   </main>;
 }
 
@@ -123,8 +137,8 @@ function Logs({action}:{action:Actions["action"]}) {
   React.useEffect(()=>{if(!auto)return;const timer=setInterval(()=>setTick(t=>t+1),5000);return()=>clearInterval(timer);},[auto]);
   React.useEffect(()=>{const ctrl=new AbortController();request<{items:Log[];total:number}>(`/logs?${query}&page=${page}`,{signal:ctrl.signal}).then(r=>{setRows(r.items);setTotal(r.total);setError("");}).catch(e=>{if(!ctrl.signal.aborted)setError(String(e));});return()=>ctrl.abort();},[page,query,tick]);
   return <section><div className="ai-toolbar">{([['id','Request ID'],['model','Exact model ID'],['user_id','User ID'],['since','From (UTC)'],['until','Through (UTC)']] as const).map(([key,label])=><label key={key}>{label}<input type={key==="since"||key==="until"?"date":"text"} value={filters[key]} onChange={e=>{setPage(1);setFilters({...filters,[key]:e.target.value});}}/></label>)}<select aria-label="Request status" value={filters.status} onChange={e=>{setPage(1);setFilters({...filters,status:e.target.value});}}><option value="">All statuses</option><option value="success">Successful</option><option value="failed">Failed</option></select><label><input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)}/>Auto refresh</label><button onClick={()=>void action(()=>aiAdminCsv(query),"CSV downloaded")}>Export CSV</button></div>
-    {error&&<p role="alert">{error}</p>}<div className="ai-table-wrap"><table><thead><tr>{["Time","User / Route","Requested → Actual","Provider","Status","Latency","Input / Output tokens","Cost"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><button className="ai-text-button" onClick={()=>setDetail(r)}>{new Date(r.timestamp).toLocaleString()}</button><small>{r.id}</small></td><td>{r.user_id||"Background"}<small>{r.route}</small></td><td>{r.requested_model}<small>→ {r.actual_model||"Not reported"}</small></td><td>{r.provider||"Not reported"}</td><td>{r.status}</td><td>{r.latency_ms} ms</td><td>{display(r.input_tokens)} / {display(r.output_tokens)}</td><td>{display(r.cost)}</td></tr>)}</tbody></table></div><Pager page={page} total={total} size={50} onChange={setPage}/>
-    {detail&&<div className="ai-sheet-shade" onClick={()=>setDetail(null)}><section className="ai-sheet" role="dialog" aria-modal="true" aria-label="Request details" onClick={e=>e.stopPropagation()}><button className="ai-close" aria-label="Close request details" onClick={()=>setDetail(null)}>×</button><h2>Request details</h2><LogMedia value={detail.media}/><h3>Request</h3><pre dir="auto">{display(detail.request_message)||'Not retained'}</pre><h3>Response</h3><pre dir="auto">{display(detail.response_message)||'Not retained'}</pre>{Object.entries(detail).filter(([key])=>!['request_message','response_message','media'].includes(key)).map(([key,value])=><div key={key} className="ai-log-detail"><b>{key.replace(/_/g," ")}</b><pre dir="auto">{typeof value==="object"&&value!==null?JSON.stringify(value,null,2):display(value)}</pre></div>)}</section></div>}
+    {error&&<p role="alert">{error}</p>}<div className="ai-table-wrap"><table><thead><tr>{["Time","User / Route","Requested → Actual","Provider","Status","Latency","Input / Output tokens","Credits","Cost"].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><button className="ai-text-button" onClick={()=>setDetail(r)}>{new Date(r.timestamp).toLocaleString()}</button><small>{r.id}</small></td><td>{r.user_id||"Background"}<small>{r.route}{r.project_kind?` · ${r.project_kind}`:""}</small></td><td>{r.requested_model}<small>→ {r.actual_model||"Not reported"}</small></td><td>{r.provider||"Not reported"}</td><td>{r.status}</td><td>{r.latency_ms} ms</td><td>{display(r.input_tokens)} / {display(r.output_tokens)}{r.usage_estimated?<small>تخمینی</small>:null}</td><td>{display(r.credits)}</td><td>{display(r.cost)}{r.cost_estimated?<small>تخمینی</small>:null}</td></tr>)}</tbody></table></div><Pager page={page} total={total} size={50} onChange={setPage}/>
+    {detail&&<div className="ai-sheet-shade" onClick={()=>setDetail(null)}><section className="ai-sheet" role="dialog" aria-modal="true" aria-label="Request details" onClick={e=>e.stopPropagation()}><button className="ai-close" aria-label="Close request details" onClick={()=>setDetail(null)}>×</button><h2>Request details</h2><CreditSummary log={detail}/><LogMedia value={detail.media}/><h3>Request</h3><pre dir="auto">{display(detail.request_message)||'Not retained'}</pre><h3>Response</h3><pre dir="auto">{display(detail.response_message)||'Not retained'}</pre>{Object.entries(detail).filter(([key])=>!['request_message','response_message','media'].includes(key)).map(([key,value])=><div key={key} className="ai-log-detail"><b>{key.replace(/_/g," ")}</b><pre dir="auto">{typeof value==="object"&&value!==null?JSON.stringify(value,null,2):display(value)}</pre></div>)}</section></div>}
   </section>;
 }
 

@@ -253,7 +253,7 @@ def export_logs(model: str="", status: str="", user_id: str="", route: str="", i
     query = filters(model,status,user_id,route,id,since,until)
     if store.logs(query,size=1)["total"] > 10000: raise HTTPException(422,"Narrow the export date range to 10,000 requests or fewer")
     result = store.logs(query,size=10000)
-    fields = ["timestamp","id","job_id","user_id","route","requested_model","actual_model","provider","status","latency_ms","input_tokens","output_tokens","cost"]
+    fields = ["timestamp","id","job_id","user_id","route","requested_model","actual_model","provider","status","latency_ms","input_tokens","output_tokens","cache_read_tokens","cache_write_tokens","credits","conversation_id","project_kind","project_id","cost"]
     output=io.StringIO(); writer=csv.DictWriter(output,fieldnames=fields,extrasaction="ignore"); writer.writeheader()
     for row in result["items"]:
         # CSV formula injection protection for model/user-controlled values.
@@ -374,3 +374,115 @@ def direct_test(provider: str, request: Request):
         return lm_direct.probe(provider)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+# ── credits (token credit system): balances, the weights table, packages and orders ──────────────────
+
+class CreditAdjust(Strict):
+    amount: int = Field(ge=-10**12, le=10**12)
+    note: str = Field(default="", max_length=300)
+
+
+class CreditUnlimited(Strict):
+    unlimited: bool
+
+
+class CreditWeight(Strict):
+    model_config = ConfigDict(extra="forbid")
+    in_: float = Field(alias="in", ge=0, le=10000)
+    out: float = Field(ge=0, le=10000)
+    cache: float = Field(ge=0, le=10000)
+    write: float = Field(ge=0, le=10000)
+
+
+class CreditSettings(Strict):
+    initial_grant: int = Field(ge=0, le=10**12)
+    enforce: bool = True
+    weights: dict[str, CreditWeight] = Field(max_length=200)
+    default: CreditWeight
+    per_call: dict[str, int] = Field(max_length=30)
+
+
+class CreditPackageBody(Strict):
+    id: str = Field(min_length=1, max_length=32, pattern="^[A-Za-z0-9_-]+$")
+    title: str = Field(min_length=1, max_length=120)
+    credits: int = Field(gt=0, le=10**12)
+    price: int = Field(default=0, ge=0, le=10**12)
+    currency: str = Field(default="IRT", max_length=8)
+    active: bool = True
+    sort: int = Field(default=0, ge=0, le=1000)
+
+
+def _weights_dump(value):
+    return {k: {"in": v.in_, "out": v.out, "cache": v.cache, "write": v.write} for k, v in value.items()}
+
+
+@router.get("/credits/users")
+async def credit_users(query: str = Query("", max_length=100)):
+    from app import credits
+    return {"items": await credits.users_overview(query), "initial_grant": credits.settings()["initial_grant"]}
+
+
+@router.get("/credits/users/{user_id}")
+async def credit_user(user_id: str, page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200)):
+    from app import credits
+    return {"account": await credits.account(user_id), "chats": await credits.usage_by(user_id, "conversation_id"),
+            "projects": await credits.usage_by(user_id, "project_id"), **await credits.ledger(user_id, page, size)}
+
+
+@router.post("/credits/users/{user_id}/adjust")
+async def credit_adjust(request: Request, user_id: str, body: CreditAdjust):
+    """Add (positive) or take away (negative) credits by hand; the change is a ledger row with the administrator's id."""
+    from app import credits
+    if body.amount == 0: raise HTTPException(422, "The amount cannot be zero")
+    await credits.account(user_id)
+    await credits.apply(user_id, body.amount, "admin", fields={"note": body.note or None, "actor": str(request.state.user.id)})
+    return await credits.account(user_id)
+
+
+@router.put("/credits/users/{user_id}/unlimited")
+async def credit_unlimited(user_id: str, body: CreditUnlimited):
+    from app import credits
+    return await credits.set_unlimited(user_id, body.unlimited)
+
+
+@router.get("/credits/settings")
+def credit_settings():
+    from app import credits
+    return credits.settings(fresh=True)
+
+
+@router.put("/credits/settings")
+def credit_settings_save(body: CreditSettings):
+    from app import credits
+    return credits.save_settings({"initial_grant": body.initial_grant, "enforce": body.enforce, "weights": _weights_dump(body.weights),
+                                  "default": {"in": body.default.in_, "out": body.default.out, "cache": body.default.cache, "write": body.default.write},
+                                  "per_call": body.per_call})
+
+
+@router.get("/credits/packages")
+async def credit_packages():
+    from app import credits
+    return {"items": await credits.packages(active_only=False)}
+
+
+@router.put("/credits/packages")
+async def credit_package_save(body: CreditPackageBody):
+    from app import credits
+    return await credits.save_package(body.model_dump())
+
+
+@router.get("/credits/orders")
+async def credit_orders(user_id: str | None = Query(None, max_length=64)):
+    from app import credits
+    return {"items": await credits.orders(user_id, limit=200)}
+
+
+@router.post("/credits/orders/{order_id}/paid")
+async def credit_order_paid(request: Request, order_id: str):
+    """The administrator confirms an order was paid: its credits are added once (a second confirmation changes nothing)."""
+    from app import credits
+    try:
+        return await credits.mark_paid(order_id, gateway="manual", actor=str(request.state.user.id))
+    except KeyError:
+        raise HTTPException(404, "Order not found")

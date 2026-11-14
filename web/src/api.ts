@@ -361,7 +361,7 @@ async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
     const t = await r.text().catch(() => "");
     let msg = t;
-    try { const d = JSON.parse(t).detail; msg = typeof d === "string" ? d : JSON.stringify(d); } catch { /* raw text */ }
+    try { const d = JSON.parse(t).detail; msg = typeof d === "string" ? d : (d && typeof d.message === "string" ? d.message : JSON.stringify(d)); } catch { /* raw text */ }
     throw new Error(`${r.status}${msg ? ` ${msg}` : ` ${r.statusText || "Request failed"}`}`);
   }
   if (r.status === 204) return undefined as T;
@@ -1347,6 +1347,11 @@ export const api = {
     const form = new FormData(); form.append("file", file);
     return uploadWithProgress(`${BASE}/studio/conversations/${id}/attachments`, form, onProgress);
   },
+  async creditsMe(): Promise<CreditsState> { return j(await authFetch(`${BASE}/studio/credits`)); },
+  async creditsUsage(page = 1, size = 30): Promise<CreditsUsage> { return j(await authFetch(`${BASE}/studio/credits/usage?page=${page}&size=${size}`)); },
+  async creditsProject(id: string): Promise<CreditsBreakdown> { return j(await authFetch(`${BASE}/studio/credits/projects/${encodeURIComponent(id)}`)); },
+  async creditsOrder(packageId: string): Promise<CreditOrder & { message: string }> { return j(await authFetch(`${BASE}/studio/credits/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ package_id: packageId }) })); },
+  async creditsOrders(): Promise<{ items: CreditOrder[] }> { return j(await authFetch(`${BASE}/studio/credits/orders`)); },
   async sendStudioMessage(id: string, content: string, attachment_ids: string[], options: { execution_mode?: "auto" | "manual"; manual_question_id?: string; render_target?: "server" | "browser"; agent_mode?: AgentMode } = {}): Promise<StudioMessage> {
     return j(await authFetch(`${BASE}/studio/conversations/${id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content, attachment_ids, ...options }) }));
   },
@@ -1501,3 +1506,11 @@ export const api = {
     return j(await authFetch(`${BASE}/studio/conversations/${id}/event-history?after=${after}${before === undefined ? "" : `&before=${before}`}`, {signal}));
   },
 };
+
+export type CreditPackage = { id: string; title: string; credits: number; price: number; currency: string; active: boolean; sort: number };
+export type CreditsState = { user_id: string; balance: number; used_total: number; granted_total: number; unlimited: boolean; tracked: boolean; enforce: boolean; initial_grant: number; exhausted: boolean; packages: CreditPackage[] };
+export type CreditOrder = { id: string; user_id: string; package_id: string | null; credits: number; price: number; currency: string; status: "pending" | "paid" | "cancelled"; gateway: string | null; created_at: string; paid_at: string | null };
+export type CreditEntry = { id: number; at: string; kind: string; amount: number; balance_after: number; request_id: string | null; route: string | null; model: string | null; conversation_id: string | null; project_id: string | null; project_kind: string | null; input_tokens: number | null; output_tokens: number | null; cache_tokens: number | null; note: string | null; actor: string | null };
+export type CreditGroup = { id: string; title?: string | null; kind?: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; last_at: string };
+export type CreditsUsage = { chats: CreditGroup[]; projects: CreditGroup[]; items: CreditEntry[]; total: number };
+export type CreditsBreakdown = { by_model: { key: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; cache_tokens: number }[]; by_route: { key: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; cache_tokens: number }[]; total: number };

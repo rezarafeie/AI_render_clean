@@ -769,6 +769,9 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         attachments = run(repo.get_attachments(attachment_ids, conversation_id, user_key))
         current_id = (conversation.get("state") or {}).get("current_project_id")
         current = run(repo.get_project(current_id, user_key)) if current_id else None
+        if current_id:                                    # the usage ledger shows which project this turn's model calls belong to
+            from brain.lm_gateway import work_context
+            work_context.set(("project", str(current_id)))
         from app import lite_agent
         waiting_plan = lite_agent.waiting_approval(conversation_id, user_key)
         if waiting_plan:

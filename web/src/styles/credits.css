@@ -1,0 +1,22 @@
+.credits-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 8px 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-subtle, rgba(128,128,128,.25)); font-size: 12.5px; text-decoration: none; color: inherit; background: var(--surface, transparent); }
+.credits-chip b { font-variant-numeric: tabular-nums; font-size: 13px; }
+.credits-chip[data-low="true"] { border-color: #d98a00; }
+.credits-chip[data-empty="true"] { border-color: #d33; color: #d33; }
+.credits-buy-link { text-decoration: underline; font-weight: 600; white-space: nowrap; }
+.credits-page { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 20px; direction: rtl; text-align: right; }
+.credits-page h1 { margin: 0; font-size: 24px; }
+.credits-page h2 { margin: 0 0 10px; font-size: 17px; }
+.credits-page .credits-card { border: 1px solid var(--border-subtle, rgba(128,128,128,.25)); border-radius: 14px; padding: 16px; background: var(--surface, transparent); }
+.credits-balance { display: flex; flex-wrap: wrap; gap: 24px; align-items: baseline; }
+.credits-balance .big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.credits-balance small { display: block; opacity: .7; }
+.credits-alert { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #d33; color: #d33; }
+.credits-packages { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.credits-packages .credits-card b { display: block; font-size: 16px; }
+.credits-table-wrap { overflow-x: auto; }
+.credits-page table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.credits-page th, .credits-page td { padding: 7px 8px; border-bottom: 1px solid var(--border-subtle, rgba(128,128,128,.2)); text-align: right; vertical-align: top; }
+.credits-page td.num, .credits-page th.num { text-align: left; direction: ltr; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.credits-page small { opacity: .7; display: block; }
+.credits-page .linkish { background: none; border: 0; padding: 0; font: inherit; text-decoration: underline; cursor: pointer; color: inherit; text-align: right; }
+.credits-pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 10px; }
