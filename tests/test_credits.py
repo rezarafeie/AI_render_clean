@@ -200,3 +200,13 @@ def test_weights_table_is_editable_and_changes_the_cost(tmp_path, monkeypatch):
     assert saved["initial_grant"] == 250000 and saved["weights"]["claude_opus"]["in"] == 2.0 and "claude_sonnet" in saved["weights"]
     assert credits.compute(record(input_tokens=1000, output_tokens=100))["credits"] == 3000
     credits._cache.update(at=0.0, value=None)
+
+
+def test_tables_are_created_on_first_use_without_a_migration(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/empty.db", poolclass=NullPool)
+    monkeypatch.setattr(credits, "AsyncSessionLocal", async_sessionmaker(engine, expire_on_commit=False))
+    monkeypatch.setattr(credits, "DB_AVAILABLE", True)
+    monkeypatch.setattr(credits, "_schema_ready", False)
+    monkeypatch.setattr(credits, "settings", lambda fresh=False: {**credits.DEFAULT_SETTINGS})
+    assert asyncio.run(credits.account("5"))["balance"] == 1_000_000
+    assert asyncio.run(credits.packages())[0]["id"] == "p1"

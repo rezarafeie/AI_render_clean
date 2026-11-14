@@ -28,7 +28,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import AsyncSessionLocal, DB_AVAILABLE
-from app.models import CreditAccount, CreditLedger, CreditOrder, CreditPackage
+from contextlib import asynccontextmanager
+
+from app.models import Base, CreditAccount, CreditLedger, CreditOrder, CreditPackage
 
 log = logging.getLogger(__name__)
 
@@ -169,6 +171,32 @@ def compute(record: dict, table: dict | None = None) -> dict:
 
 # ── persistence ──────────────────────────────────────────────────────────────
 
+_TABLES = [CreditAccount.__table__, CreditLedger.__table__, CreditPackage.__table__, CreditOrder.__table__]
+_schema_ready = False
+
+
+@asynccontextmanager
+async def _session():
+    """A database session; the four credit tables are created on first use (CREATE TABLE IF NOT EXISTS, safe from every process and
+    safe to roll the app back: no Alembic revision is recorded, so an older image still starts)."""
+    global _schema_ready
+    if not _schema_ready:
+        async with AsyncSessionLocal() as db:
+            try:
+                connection = await db.connection()
+                await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=_TABLES, checkfirst=True))
+                await db.commit()
+            except Exception:               # another process created them at the same moment
+                await db.rollback()
+                async with AsyncSessionLocal() as again:
+                    connection = await again.connection()
+                    await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=_TABLES, checkfirst=True))
+                    await again.commit()
+        _schema_ready = True
+    async with AsyncSessionLocal() as db:
+        yield db
+
+
 def _run(coro):
     return asyncio.run(coro)
 
@@ -196,7 +224,7 @@ async def apply(user_id: str, amount: int, kind: str, *, fields: dict | None = N
     """Change a balance atomically and write the ledger row. Returns the balance after the change."""
     assert kind in KINDS
     user_id = str(user_id); amount = int(amount)
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         await _ensure(db, user_id)
         values = {"balance": CreditAccount.balance + amount, "updated_at": now()}
         if kind == "usage":
@@ -238,7 +266,7 @@ def charge(record: dict) -> None:
 async def account(user_id: str) -> dict:
     if not _usable(user_id):
         return {"user_id": str(user_id), "balance": 0, "used_total": 0, "granted_total": 0, "unlimited": True, "tracked": False}
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         row = await _ensure(db, str(user_id))
         return {"user_id": row.user_id, "balance": int(row.balance), "used_total": int(row.used_total), "granted_total": int(row.granted_total),
                 "unlimited": bool(row.unlimited), "tracked": True}
@@ -286,7 +314,7 @@ def _package(row: CreditPackage) -> dict:
 async def packages(active_only: bool = True) -> list[dict]:
     if not DB_AVAILABLE:
         return [p for p in DEFAULT_PACKAGES if p["active"] or not active_only]
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         rows = (await db.execute(select(CreditPackage).order_by(CreditPackage.sort, CreditPackage.id))).scalars().all()
         if not rows:
             db.add_all([CreditPackage(**p) for p in DEFAULT_PACKAGES])
@@ -296,7 +324,7 @@ async def packages(active_only: bool = True) -> list[dict]:
 
 
 async def save_package(item: dict) -> dict:
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         row = await db.get(CreditPackage, item["id"])
         if row is None:
             row = CreditPackage(id=item["id"], title=item["title"], credits=item["credits"])
@@ -314,7 +342,7 @@ def _order(row: CreditOrder) -> dict:
 
 async def create_order(user_id: str, package_id: str) -> dict:
     """A pending order for a package. No payment gateway is connected yet: an administrator marks it paid (see mark_paid)."""
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         package = await db.get(CreditPackage, package_id)
         if package is None or not package.active:
             raise KeyError(package_id)
@@ -327,7 +355,7 @@ async def create_order(user_id: str, package_id: str) -> dict:
 
 async def mark_paid(order_id: str, *, gateway: str = "manual", gateway_ref: str | None = None, actor: str | None = None) -> dict:
     """Idempotent: the credits of an order are granted once, whatever number of times (or processes) call this."""
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         claimed = (await db.execute(update(CreditOrder).where(CreditOrder.id == order_id, CreditOrder.status == "pending")
                                     .values(status="paid", paid_at=now(), gateway=gateway, gateway_ref=gateway_ref).returning(CreditOrder.id))).scalar_one_or_none()
         await db.commit()
@@ -340,7 +368,7 @@ async def mark_paid(order_id: str, *, gateway: str = "manual", gateway_ref: str 
 
 
 async def orders(user_id: str | None = None, limit: int = 100) -> list[dict]:
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         query = select(CreditOrder).order_by(CreditOrder.created_at.desc()).limit(limit)
         if user_id is not None:
             query = query.where(CreditOrder.user_id == str(user_id))
@@ -356,7 +384,7 @@ def _entry(r: CreditLedger) -> dict:
 
 
 async def ledger(user_id: str, page: int = 1, size: int = 50, kind: str | None = None) -> dict:
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         cond = [CreditLedger.user_id == str(user_id)] + ([CreditLedger.kind == kind] if kind else [])
         total = await db.scalar(select(func.count()).select_from(CreditLedger).where(*cond))
         rows = (await db.execute(select(CreditLedger).where(*cond).order_by(CreditLedger.id.desc()).offset((page - 1) * size).limit(size))).scalars()
@@ -366,7 +394,7 @@ async def ledger(user_id: str, page: int = 1, size: int = 50, kind: str | None =
 async def usage_by(user_id: str, column: str, limit: int = 50) -> list[dict]:
     """Total credits used per chat (`conversation_id`) or per project/video (`project_id`)."""
     col = getattr(CreditLedger, column)
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         rows = (await db.execute(select(col, func.sum(-CreditLedger.amount), func.count(), func.sum(CreditLedger.input_tokens), func.sum(CreditLedger.output_tokens),
                                         func.max(CreditLedger.created_at), func.max(CreditLedger.project_kind))
                                  .where(CreditLedger.user_id == str(user_id), CreditLedger.kind == "usage", col.is_not(None))
@@ -376,7 +404,7 @@ async def usage_by(user_id: str, column: str, limit: int = 50) -> list[dict]:
 
 async def project_breakdown(user_id: str, project_id: str) -> dict:
     """What one video cost: per model and per step (route), with the raw tokens."""
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         out = {}
         for name, col in (("by_model", CreditLedger.model), ("by_route", CreditLedger.route)):
             rows = (await db.execute(select(col, func.sum(-CreditLedger.amount), func.count(), func.sum(CreditLedger.input_tokens), func.sum(CreditLedger.output_tokens),
@@ -391,7 +419,7 @@ async def project_breakdown(user_id: str, project_id: str) -> dict:
 async def users_overview(query: str = "", limit: int = 300) -> list[dict]:
     """Administrator: every user with their balance (users without an account yet show the initial grant they will get)."""
     from app.models import UserModel
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         stmt = select(UserModel).order_by(UserModel.id)
         if query.strip():
             like = f"%{query.strip().lower()}%"
@@ -409,7 +437,7 @@ async def users_overview(query: str = "", limit: int = 300) -> list[dict]:
 
 
 async def set_unlimited(user_id: str, value: bool) -> dict:
-    async with AsyncSessionLocal() as db:
+    async with _session() as db:
         await _ensure(db, str(user_id))
         await db.execute(update(CreditAccount).where(CreditAccount.user_id == str(user_id)).values(unlimited=bool(value), updated_at=now()))
         await db.commit()
