@@ -35,6 +35,8 @@ class CloudSettings(BaseSettings):
     data_centers: str = ''
     # A data center whose Pod never reported is left out for this long; the next Pod goes to another one.
     data_center_cooldown_seconds: int = Field(default=1800, ge=60, le=86400)
+    # A data center whose hosts refuse the sandbox's namespaces will keep refusing: leave it out much longer.
+    data_center_denied_cooldown_seconds: int = Field(default=21600, ge=60, le=604800)
     disk_gb: int = Field(default=40, ge=10, le=200)
     max_workers: int = Field(default=1, ge=1, le=20)
     max_gpu: int = Field(default=0, ge=0, le=10)

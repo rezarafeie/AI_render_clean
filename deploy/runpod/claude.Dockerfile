@@ -11,6 +11,14 @@ FROM node:22-bookworm-slim AS motion
 WORKDIR /motion
 COPY remotion/package*.json ./
 RUN npm ci
+# The worker's native sandbox (app/render_cloud/native_loopback.py) is used only when this headless browser exists at /opt/editorgpt-headless; without it the worker falls back to
+# `unshare --user --net`, which many RunPod hosts refuse. Remotion's own pinned headless shell is placed there (and removed from node_modules so there is only one copy).
+RUN node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))" \
+    && mkdir /opt/editorgpt-headless \
+    && browser="$(find /motion/node_modules/.remotion -type f -name chrome-headless-shell -print -quit)" \
+    && test -x "$browser" \
+    && cp -a "$(dirname "$browser")/." /opt/editorgpt-headless/ \
+    && rm -rf /motion/node_modules/.remotion
 
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=pyenv /opt/venv /opt/venv
 COPY --from=motion /usr/local/bin/node /usr/local/bin/node
 COPY --from=motion /motion/node_modules /app/remotion/node_modules
+COPY --from=motion /opt/editorgpt-headless /opt/editorgpt-headless
 COPY remotion/package*.json /app/remotion/
 COPY app/render_cloud /app/app/render_cloud
 COPY engine/claude_motion_renderer.py /app/engine/claude_motion_renderer.py

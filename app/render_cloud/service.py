@@ -425,6 +425,21 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                     except Exception:
                         pass
                 return False
+            reason = getattr(failure, 'reason', '') or ''
+            if chosen_dc and 'unshare' in reason and 'not permitted' in reason:
+                # The Pod started but its host does not allow the user/network namespaces the sandbox needs: that is a property of the host's data center, not a passing glitch.
+                ledger.finish(spec.job_id, spec.user_id, 'failed', 'host_isolation_denied')
+                ledger.dc_mark_bad(chosen_dc, config.data_center_denied_cooldown_seconds)
+                rest = [d for d in ledger.dc_order(listed) if d != chosen_dc]
+                will_retry = bool(getattr(_STATE, 'retry_allowed', False)) and bool(rest)
+                if on_stage:
+                    try:
+                        on_stage('cloud unavailable', f'دیتاسنتر {chosen_dc} اجازهٔ جداسازی امن رندر را نمی‌دهد؛ ' + (f'یک سرور تازه در {rest[0]} امتحان می‌شود' if rest else 'این دیتاسنتر کنار گذاشته شد'))
+                    except Exception:
+                        pass
+                if will_retry:
+                    _STATE.timed_out = True
+                    return False
             ledger.finish(spec.job_id, spec.user_id, 'failed', 'cloud_execution_failed')
             if isinstance(failure, (CloudRenderError, ValueError)):       # our own checks, never a provider response with a URL in it
                 log.warning('cloud render %s failed: %s', spec.job_id, str(failure)[:200])
