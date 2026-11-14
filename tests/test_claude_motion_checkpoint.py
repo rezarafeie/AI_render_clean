@@ -154,3 +154,25 @@ def test_a_saved_film_with_a_duplicate_name_builds_with_it_defined_once():
     film = cm.Film(art=art, blocks={"01": "const S01: React.FC = () => null;\nconst S02: React.FC = () => null;"})
     code = film.code(TIMELINE)
     assert code.art_tsx.count("export const Matchi") == 1 and "two" not in code.art_tsx
+
+
+def test_a_voice_only_request_is_recognised():
+    assert cm.voice_only_change("صدا را خانم کن")
+    assert cm.voice_only_change("فقط صدای نریشن را با صدای خانم بساز.")
+    assert not cm.voice_only_change("رنگ پس‌زمینه را سبز کن")
+    assert not cm.voice_only_change("صدا را خانم کن و تصویر صحنه ۳ را عوض کن")
+    assert not cm.voice_only_change("")
+
+
+def test_a_voice_only_change_keeps_the_films_code(tmp_path, monkeypatch):
+    film = cm.Film(art="export const A = () => null;", blocks={"01": "const S01: React.FC = () => null;\nconst S02: React.FC = () => null;"})
+    (tmp_path / "claude_motion.json").write_text(json.dumps({"direction": direction().model_dump(), "film": film.model_dump()}))
+    seen = {}
+    monkeypatch.setattr(cm, "direct", never("direct"))
+    monkeypatch.setattr(cm, "polish_speech", never("polish_speech"))
+    monkeypatch.setattr(cm, "write", never("write"))
+    monkeypatch.setattr(cm, "voice_timeline", lambda *a, **k: (seen.setdefault("voiced", True), TIMELINE)[1])
+    monkeypatch.setattr(cm, "project", lambda work, d, t, code: (seen.setdefault("art", code.art_tsx), (_ for _ in ()).throw(Stop("build stops")))[1])
+    with pytest.raises(Stop, match="build stops"):
+        cm.build(tmp_path, record(), hooks(), change="صدا را خانم کن")
+    assert seen["voiced"] and seen["art"] == film.art

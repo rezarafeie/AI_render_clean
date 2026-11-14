@@ -625,6 +625,15 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
         return split()
 
 
+_VOICE_WORDS = re.compile(r"نریشن|نریشین|روایت|گوینده|راوی|لحن|صدا|voice|narrat|speaker|tts", re.I)
+_VISUAL_WORDS = re.compile(r"تصویر|صحنه|رنگ|انیمیشن|فونت|سبک|عنوان|زیرنویس|پس‌?زمینه|لوگو|عکس|اندازه|scene|colou?r|font|style|image|title|caption|background|logo|animation|size", re.I)
+
+
+def voice_only_change(change: str) -> bool:
+    """A request that is only about the voice («صدا را خانم کن»): the film's code does not change, only the narration (and so the timing) and the render."""
+    return bool(change and _VOICE_WORDS.search(change) and not _VISUAL_WORDS.search(change))
+
+
 KIT_NAMES = ("G", "GD", "GL", "INK", "MUTED", "PILL_BG", "PILL_INK", "FONT", "useT", "prog", "clamp", "easeInOut", "easeOut", "useSpr", "useFloat", "fa")
 
 
@@ -1069,6 +1078,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     if not change and not ckpt and saved.get("direction") and saved.get("film"):
         # A build that finished (code written, built, reviewed) but whose render or sound failed: a plain retry renders THAT film, it does not make another one.
         ckpt = {"direction": saved["direction"], "film": saved["film"], "final": True}
+    revoice = bool(change and saved.get("film") and saved.get("direction") and voice_only_change(change))
     if saved.get("direction") and change:
         direction = Direction.model_validate(saved["direction"])
     elif ckpt:
@@ -1092,7 +1102,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         checkpoint(direction=direction.model_dump())
     check()
 
-    if (not saved.get("polished") or not change) and not ckpt.get("final"):
+    if (not saved.get("polished") or not change) and not ckpt.get("final") and not revoice:
         hooks.note("speech", "دارم متن نریشن را برای گوینده آماده می‌کنم: نیم‌فاصله، کسرهٔ اضافه و اعراب جاهای مبهم، مکث‌ها و عددها با حروف")
         hooks.progress(12, "دارم متن را برای تلفظ درست آماده می‌کنم.")
         original = [b.line for b in direction.beats]
@@ -1113,7 +1123,10 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     previous = Film.model_validate(saved["film"]) if (saved.get("film") and change) else None
     hooks.note("code", f"دارم فیلم را کدنویسی می‌کنم: اول کتابخانهٔ تصویرسازی همین فیلم، بعد {len(timeline['scenes'])} صحنه در {len(groups_of(timeline))} گروه موازی، هر عنصر روی کلمهٔ گفته‌شده‌اش")
     hooks.progress(22, "دارم صحنه‌ها و تصویرسازی‌ها را کدنویسی می‌کنم.")
-    if ckpt.get("final") and ckpt.get("film"):
+    if revoice:
+        film = Film.model_validate(saved["film"])
+        hooks.note("code", "فقط صدا عوض می‌شود؛ کد تصویرها و صحنه‌ها همان می‌ماند", "done")
+    elif ckpt.get("final") and ckpt.get("film"):
         film = Film.model_validate(ckpt["film"])
         hooks.note("code", "کد فیلم از ساخت قبلی برداشته شد؛ دوباره نوشته نمی‌شود", "done")
     else:
