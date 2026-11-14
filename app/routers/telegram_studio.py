@@ -608,7 +608,7 @@ async def webhook(request: Request):
                     async with db.pipeline(transaction=True) as pipe:
                         await pipe.set(PREFIX + "file:" + str(update_id), json.dumps(job), ex=86400).zadd(
                             WORK, {str(update_id): time.time()}).execute()
-                    await _send(token, tg, "فایل دریافت شد و دانلود به Studio در صف است.", buttons=_menu(base, conversation_id))
+                    await _send(token, tg, "فایل دریافت شد و دانلود به Studio در صف است.")
                     return {"ok": True}
                 await studio.send_message(request, conversation_id, studio.MessageCreate(
                     content=content[:12000], render_target="server", agent_mode=mode))
