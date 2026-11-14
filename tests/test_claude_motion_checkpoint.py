@@ -126,3 +126,31 @@ def test_a_fast_transient_failure_is_still_retried(monkeypatch):
     monkeypatch.setattr(cm, "ask_text", flaky)
     monkeypatch.setattr(cm.time, "sleep", lambda s: None)
     assert cm._one_ask("g", "u", 16000, split=lambda: "split-result", tries=3) == "ok" and len(calls) == 2
+
+
+def test_a_component_defined_twice_keeps_the_first_definition():
+    body = (
+        "export const Svg = () => null;\n\n"
+        "export const Matchi: React.FC<{p?: number}> = ({p = 0}) => {\n  return <g>{p}</g>;\n};\n\n"
+        "const {a, b} = helpers;\n"
+        "export function Loupe() {\n  return null;\n}\n\n"
+        "export const Matchi: React.FC = () => {\n  return <g>second</g>;\n};\n\n"
+        "export const Stopwatch = () => <g/>;\n"
+    )
+    fixed, dropped = cm.dedupe_art(body)
+    assert dropped == ["Matchi"]
+    assert fixed.count("export const Matchi") == 1 and "second" not in fixed and "{p}" in fixed
+    for kept in ("export const Svg", "export function Loupe", "const {a, b} = helpers;", "export const Stopwatch"):
+        assert kept in fixed
+
+
+def test_distinct_components_are_left_alone():
+    body = "export const A = () => null;\nexport const B = () => null;\n"
+    assert cm.dedupe_art(body) == (body, [])
+
+
+def test_a_saved_film_with_a_duplicate_name_builds_with_it_defined_once():
+    art = "export const Matchi = () => <g>one</g>;\n\nexport const Matchi = () => <g>two</g>;\n"
+    film = cm.Film(art=art, blocks={"01": "const S01: React.FC = () => null;\nconst S02: React.FC = () => null;"})
+    code = film.code(TIMELINE)
+    assert code.art_tsx.count("export const Matchi") == 1 and "two" not in code.art_tsx

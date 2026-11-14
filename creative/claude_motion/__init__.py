@@ -636,6 +636,27 @@ def art_imports(body: str) -> str:
     return base + (f"import {{{', '.join(used)}}} from './lib';\n" if used else "")
 
 
+_DECL = re.compile(r"^(?:export\s+)?(?:const|let|var|function|class)\b\s*([A-Za-z_]\w*)?", re.M)
+
+
+def dedupe_art(body: str) -> tuple[str, list[str]]:
+    """Illustrators write in parallel, so two of them can both define the same component (esbuild: 'Multiple exports with the same name'): the first definition stays,
+    a later one with the same name is dropped. A top-level statement runs from its first line to the next one; statements without a name (destructuring) are never dropped."""
+    starts = [(m.start(), m.group(1)) for m in _DECL.finditer(body)]
+    if not starts:
+        return body, []
+    kept, seen, dropped = [body[:starts[0][0]]], set(), []
+    for i, (position, name) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(body)
+        if name and name in seen:
+            dropped.append(name)
+            continue
+        if name:
+            seen.add(name)
+        kept.append(body[position:end])
+    return "".join(kept), dropped
+
+
 def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedback: str = "", change: str = "", notes=None) -> str:
     """art.tsx in short calls: the illustration list, the foundation, then the illustrations three at a time (all in parallel after the foundation)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -679,6 +700,9 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     with ThreadPoolExecutor(max_workers=3) as pool:
         bodies = list(pool.map(lambda pair: part(pair[1], pair[0]), enumerate(chunks)))
     body = foundation + "\n\n" + "\n\n".join(bodies)
+    body, dropped = dedupe_art(body)
+    if dropped:
+        _say(notes, "art-dedupe", "نام تکراری در تصویرسازی‌ها (دو تصویرساز یک نام نوشته بودند)؛ تعریف دوم حذف شد: " + "، ".join(dict.fromkeys(dropped)), "done")
     return art_imports(body) + "\n" + body + "\n"
 
 
@@ -731,13 +755,14 @@ class Film(BaseModel):
     blocks: dict[str, str] = Field(default_factory=dict)        # first scene id of the group -> its code
 
     def code(self, timeline: dict) -> "Code":
+        art, _ = dedupe_art(self.art)                              # a name two illustrators both wrote stays defined once (also in films saved before this check)
         ids = [s["id"] for s in timeline["scenes"]]
         body = "\n\n".join(self.blocks[g[0]] for g in groups_of(timeline) if g[0] in self.blocks)
         missing = [i for i in ids if not re.search(rf"\bconst\s+S{i}\b", body)]
         for i in missing:                                           # a scene its author forgot still renders (empty) instead of breaking the film
             body += f"\nconst S{i}: React.FC = () => null;\n"
-        scenes = header(self.art) + "\n" + body + "\n\nexport const SCENES: React.FC[] = [" + ", ".join("S" + i for i in ids) + "];\n"
-        return Code(art_tsx=self.art, scenes_tsx=scenes)
+        scenes = header(art) + "\n" + body + "\n\nexport const SCENES: React.FC[] = [" + ", ".join("S" + i for i in ids) + "];\n"
+        return Code(art_tsx=art, scenes_tsx=scenes)
 
 
 def write(direction: Direction, timeline: dict, *, previous: "Film | None" = None, change: str = "", art_feedback: str = "",
