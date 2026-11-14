@@ -33,6 +33,8 @@ class CloudSettings(BaseSettings):
     vcpu: int = Field(default=8, ge=1, le=64)
     # Optional comma-separated RunPod data-center ids a Pod may be placed in (empty = RunPod chooses). Used to steer away from a data center whose hosts never start Pods.
     data_centers: str = ''
+    # A data center whose Pod never reported is left out for this long; the next Pod goes to another one.
+    data_center_cooldown_seconds: int = Field(default=1800, ge=60, le=86400)
     disk_gb: int = Field(default=40, ge=10, le=200)
     max_workers: int = Field(default=1, ge=1, le=20)
     max_gpu: int = Field(default=0, ge=0, le=10)

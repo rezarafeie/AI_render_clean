@@ -55,6 +55,7 @@ class Ledger:
                 category TEXT NOT NULL, usd REAL NOT NULL, measured INTEGER NOT NULL,
                 updated REAL NOT NULL, PRIMARY KEY(job_id,source,reference,category))''')
             db.execute('CREATE TABLE IF NOT EXISTS cloud_render_policy (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS cloud_render_dcs (dc TEXT PRIMARY KEY, bad_until REAL NOT NULL DEFAULT 0, last_ok REAL NOT NULL DEFAULT 0, fails INTEGER NOT NULL DEFAULT 0)')
 
     @contextmanager
     def transaction(self):
@@ -192,6 +193,38 @@ class Ledger:
             return sum(1 for r in rows if json.loads(r['details'] or '{}').get('error_code') in codes)
         except Exception:
             return 0
+
+    def dc_mark_bad(self, dc: str, cooldown_seconds: float) -> None:
+        """A Pod placed in this data center never reported: keep new Pods out of it for a while (never raises)."""
+        try:
+            with self.transaction() as db:
+                db.execute('INSERT INTO cloud_render_dcs(dc,bad_until,fails) VALUES(?,?,1) ON CONFLICT(dc) DO UPDATE SET bad_until=excluded.bad_until, fails=fails+1',
+                           (dc, time.time() + cooldown_seconds))
+        except Exception:
+            pass
+
+    def dc_mark_ok(self, dc: str) -> None:
+        """A Pod placed in this data center started and rendered: it is preferred again and its cooldown ends (never raises)."""
+        try:
+            with self.transaction() as db:
+                db.execute('INSERT INTO cloud_render_dcs(dc,last_ok) VALUES(?,?) ON CONFLICT(dc) DO UPDATE SET last_ok=excluded.last_ok, bad_until=0, fails=0',
+                           (dc, time.time()))
+        except Exception:
+            pass
+
+    def dc_order(self, candidates: list[str]) -> list[str]:
+        """The candidate data centers best first: ones that worked most recently, then unknown ones in the configured order; ones in cooldown are left out
+        unless every candidate is in cooldown (then the one whose cooldown ends first comes first). Never raises."""
+        now = time.time()
+        try:
+            with self.transaction() as db:
+                rows = {r['dc']: (r['bad_until'], r['last_ok']) for r in db.execute('SELECT dc,bad_until,last_ok FROM cloud_render_dcs').fetchall()}
+        except Exception:
+            rows = {}
+        good = [(dc, i) for i, dc in enumerate(candidates) if rows.get(dc, (0, 0))[0] <= now]
+        if good:
+            return [dc for dc, i in sorted(good, key=lambda x: (-rows.get(x[0], (0, 0))[1], x[1]))]
+        return sorted(candidates, key=lambda dc: rows.get(dc, (0, 0))[0])
 
     def record_event(self, job_id, user, token, sequence, observation):
         """Authenticate scoped, expiring worker observations with replay protection."""

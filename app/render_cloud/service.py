@@ -348,6 +348,15 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                 except Exception:
                     pass
             return False
+        # One data center per Pod, chosen from the configured list by what has worked lately: a Pod that never starts then marks its data center bad
+        # and the next Pod (the fresh one tried below, the retries above) goes elsewhere; the timeline says where each Pod was placed.
+        listed = [d.strip() for d in config.data_centers.split(',') if d.strip()]
+        chosen_dc = ledger.dc_order(listed)[0] if listed else None
+        if chosen_dc and on_stage:
+            try:
+                on_stage('cloud placement', f'کارگر ابری در دیتاسنتر {chosen_dc} ساخته می‌شود')
+            except Exception:
+                pass
         fingerprint = hashlib.sha256(spec.model_dump_json().encode()).hexdigest()
         marker = (marker_root or project) / '.cloud-render-job.json'
         job_id = None
@@ -373,13 +382,15 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                       limits=limits, image=image,
                       hardware_ids=[profile.hardware_id],
                       deployment=config.deployment, vcpu=config.vcpu, disk_gb=config.disk_gb,
-                      data_centers=[d.strip() for d in config.data_centers.split(',') if d.strip()],
+                      data_centers=[chosen_dc] if chosen_dc else [],
                       storage_hosts=config.storage_hosts,max_hourly_usd=profile.hourly_usd,min_memory_gb=profile.min_memory_gb,
                       bootstrap=lambda token: store.bootstrap(spec, root, token, time.time() + config.max_wall_seconds, ledger,
                                                               local_output=output.resolve()))
             await_result(spec, output, ledger=ledger, store=store, provider=provider,
                          on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail,
                          startup_seconds=config.startup_seconds, stall_seconds=config.stall_seconds)
+            if chosen_dc:
+                ledger.dc_mark_ok(chosen_dc)
             return True
         except InterruptedError:
             ledger.cancel(spec.job_id, spec.user_id)
@@ -401,9 +412,16 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
                 ledger.finish(spec.job_id, spec.user_id, 'failed', 'worker_stalled' if isinstance(failure, WorkerStalled) else 'worker_startup_timeout')      # the pod is deleted by the reconcile below; nothing else bills
                 will_retry = bool(getattr(_STATE, 'retry_allowed', False)) and not isinstance(failure, WorkerStalled)
                 _STATE.timed_out = will_retry
+                nxt = None
+                if chosen_dc and not isinstance(failure, WorkerStalled):      # only a Pod that never reported blames its data center; a hung render does not
+                    ledger.dc_mark_bad(chosen_dc, config.data_center_cooldown_seconds)
+                    rest = [d for d in ledger.dc_order(listed) if d != chosen_dc]
+                    nxt = rest[0] if rest else None
+                where = f' (دیتاسنتر {chosen_dc})' if chosen_dc else ''
                 if on_stage:
                     try:
-                        on_stage('cloud unavailable', 'سرور ابری اول بالا نیامد؛ یک سرور تازه امتحان می‌شود' if will_retry else 'سرور رندر ابری به‌موقع بالا نیامد یا متوقف شد؛ این ویدیو روی سرور رندر می‌شود')
+                        on_stage('cloud unavailable', (f'سرور ابری{where} به‌موقع بالا نیامد؛ دیتاسنتر عوض می‌شود و یک سرور تازه در {nxt} امتحان می‌شود' if nxt else f'سرور ابری{where} بالا نیامد؛ یک سرور تازه امتحان می‌شود')
+                                 if will_retry else f'سرور رندر ابری{where} به‌موقع بالا نیامد یا متوقف شد؛ این ویدیو روی سرور رندر می‌شود')
                     except Exception:
                         pass
                 return False
