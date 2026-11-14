@@ -863,6 +863,15 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     save(job_dir, state)
 
 
+CLAUDE_TALKING_STEPS = (24, 32, 45, 56, 66, 95)     # where the engine's steps start (plan 18, cut 24, graphics 32, build 45, review 56, render 66, mix 95)
+
+
+def step_label(percent: int) -> str:
+    """«مرحلهٔ ۴ از ۷»: how far along the Claude talking engine is, so a long quiet step is never an unknown."""
+    number = 1 + sum(int(percent) >= start for start in CLAUDE_TALKING_STEPS)
+    return f"مرحلهٔ {number} از {len(CLAUDE_TALKING_STEPS) + 1}"
+
+
 def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
     """«صحبتی ۵» by the Claude talking engine (creative/claude_talking): the person's Claude-made reference reel, rebuilt as an engine."""
     from creative import claude_talking
@@ -879,7 +888,7 @@ def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
         note(job_dir, text, stage=step, done=state_ == "done", detail=detail or "")
 
     def progress(percent: int, message: str) -> None:
-        _stage(job_dir, "rendering" if "رندر" in message else "claude talking", progress=int(percent), message=message)
+        _stage(job_dir, "rendering" if "رندر" in message else "claude talking", progress=int(percent), message=f"{message} ({step_label(percent)})")
 
     def music(_feel: str, _total: float) -> Optional[Path]:
         chosen = state.get("music")
