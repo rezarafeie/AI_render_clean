@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
-from starlette.datastructures import UploadFile
+from starlette.datastructures import Headers, UploadFile
 from contextlib import asynccontextmanager
 
 import httpx
@@ -147,8 +147,7 @@ async def _relay_download(request, conversation_id, file, size):
                 session = response.headers.get("x-telegram-session") or session
                 download.write(block)
         download.seek(0)
-        return await studio.upload_attachment(request, conversation_id, UploadFile(
-            download, filename=file.get("file_name") or "telegram-video.mp4"))
+        return await _ingest(request, conversation_id, file, download)
 
 
 async def _send(token, chat, text, *, buttons=None, choices=None):
@@ -225,6 +224,26 @@ async def _send_file(token, chat, path, kind):
     raise HTTPException(502, "ارسال فایل به تلگرام انجام نشد.")
 
 
+async def _ingest(request, conversation, file, download):
+    mime = str(file.get("mime_type") or "application/octet-stream")
+    name = str(file.get("file_name") or "")
+    if not studio.kind_of(name):
+        import mimetypes
+        extension = mimetypes.guess_extension(mime)
+        if extension and studio.kind_of("media" + extension):
+            name = "telegram" + extension
+        elif mime.startswith("video/") or not name:
+            name = "telegram.mp4"
+    try:
+        return await studio.upload_attachment(request, conversation, UploadFile(
+            download, filename=name, headers=Headers({"content-type": mime})))
+    except HTTPException as exc:
+        original = exc.__context__
+        log.warning("Telegram ingest rejected: status=%s, cause=%s, suffix=%s", exc.status_code,
+                    type(original).__name__ if original else str(exc.detail)[:120], Path(name).suffix)
+        raise
+
+
 async def _attach(request, token, conversation_id, file):
     size = file.get("file_size", 0)
     limit = 20 * 1024**2
@@ -246,8 +265,7 @@ async def _attach(request, token, conversation_id, file):
                             raise HTTPException(413, "این فایل را از بخش آپلود Studio بفرستید.")
                         download.write(block)
                 download.seek(0)
-                return await studio.upload_attachment(request, conversation_id, UploadFile(
-                    download, filename=file.get("file_name") or Path(path).name))
+                return await _ingest(request, conversation_id, {**file, "file_name": file.get("file_name") or Path(path).name}, download)
         except (httpx.HTTPError, KeyError, ValueError):
             raise HTTPException(502, "دریافت فایل تلگرام انجام نشد.")
 
@@ -372,14 +390,14 @@ async def _run_upload(db, token, job_id):
         await studio.send_message(request, job["conversation"], studio.MessageCreate(
             content=job["content"], attachment_ids=[attachment_id], render_target="server", agent_mode=job["mode"]))
     except HTTPException as exc:
-        log.warning("Telegram file rejected: %s", exc.status_code)
+        log.warning("Telegram file rejected: %s (%s)", exc.status_code, str(exc.detail)[:120])
         await _send(token, tg, str(exc.detail)[:500])
     else:
         await _send(token, tg, "فایل به گفتگو اضافه شد. روند کار همین‌جا نمایش داده می‌شود.")
     finally:
         user_context.reset(ctx)
     await db.zrem(WORK, job_id)
-    await db.delete(PREFIX + "file:" + job_id)
+    await db.expire(PREFIX + "file:" + job_id, 900)
 
 
 async def telegram_loop():
