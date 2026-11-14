@@ -43,9 +43,18 @@ export default function CreditsPage() {
     void api.creditsOrders().then(r => setOrders(r.items)).catch(() => {});
   }, [page]);
   React.useEffect(load, [load]);
+  // Back from the payment gateway: the server asks the gateway itself (the address is only a hint) and adds the credits if the payment is verified.
+  React.useEffect(() => {
+    const query = new URLSearchParams(window.location.search); const order = query.get("order");
+    if (!query.get("pay") || !order) return;
+    void api.creditsCheck(order).then(result => {
+      setNotice(result.status === "paid" ? "پرداخت تأیید شد و اعتبار به حساب شما اضافه شد." : "پرداخت هنوز تأیید نشده است. اگر پول از حساب شما کم شده، چند دقیقه بعد همین صفحه را دوباره باز کنید.");
+      window.history.replaceState(null, "", "/credits"); load();
+    }).catch(e => setError(friendlyError(e, "check the payment")));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   async function order(id: string) {
     setError(""); setNotice("");
-    try { const created = await api.creditsOrder(id); setNotice(created.message); load(); } catch (e) { setError(friendlyError(e, "create the order")); }
+    try { const created = await api.creditsOrder(id); setNotice(created.message); if (created.payment_url) { window.location.href = created.payment_url; return; } load(); } catch (e) { setError(friendlyError(e, "create the order")); }
   }
   return <main className="eg-page credits-page">
     <header><h1>اعتبار و مصرف</h1><small>هر درخواست به مدل هوش مصنوعی از اعتبار شما کم می‌کند. واحد اعتبار «توکن وزن‌دار» است: توکن خروجی گران‌تر از ورودی حساب می‌شود و هر مدل ضریب خودش را دارد.</small></header>
@@ -59,7 +68,7 @@ export default function CreditsPage() {
     {state?.packages.length ? <section><h2>خرید / افزایش اعتبار</h2><div className="credits-packages">{state.packages.map(p => <div className="credits-card" key={p.id}>
       <b>{p.title}</b><div>{fmt(p.credits)} اعتبار</div><small>{p.price > 0 ? `${p.price.toLocaleString("fa-IR")} ${p.currency === "IRT" ? "تومان" : p.currency}` : "قیمت به‌زودی اعلام می‌شود"}</small>
       <button className="btn btn-sm btn-primary" style={{ marginTop: 8 }} onClick={() => void order(p.id)}>ثبت سفارش</button></div>)}</div>
-      <small>پرداخت آنلاین هنوز فعال نیست؛ سفارش ثبت می‌شود و پس از تأیید پرداخت توسط مدیر، اعتبار اضافه می‌شود.</small></section> : null}
+      <small>پرداخت از طریق درگاه رفیعی‌پی انجام می‌شود و پس از تأیید خودکار، اعتبار اضافه می‌شود. بسته‌هایی که قیمت ندارند فقط با تأیید مدیر شارژ می‌شوند.</small></section> : null}
     {usage ? <>
       <Groups rows={usage.projects} title="مصرف به‌تفکیک ویدیو / پروژه" project/>
       <Groups rows={usage.chats} title="مصرف به‌تفکیک چت"/>

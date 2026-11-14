@@ -202,6 +202,8 @@ app.include_router(fonts.router)
 app.include_router(fonts.legacy_router)
 app.include_router(localize.router)
 app.include_router(studio.router)
+from app.routers.rafieipay_webhook import router as rafieipay_webhook_router
+app.include_router(rafieipay_webhook_router)
 from app import dns_cache as _dns_cache
 _dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
@@ -233,7 +235,7 @@ async def auth_middleware(request: Request, call_next):
         finally: user_context.reset(token)
 
     path = request.url.path
-    if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/"):
+    if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/") or path == "/webhook/rafieipay" or path == "/webhook/rafieipay/return":
         return await call_next(request)
     # The CEP panel cannot hold the user's web-app JWT. These protocol routes
     # are protected by loopback checks, one-time pairing codes, and the

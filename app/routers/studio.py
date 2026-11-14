@@ -1612,13 +1612,33 @@ class CreditOrderBody(BaseModel):
 
 @router.post("/credits/orders", status_code=201)
 async def credits_order(request: Request, body: CreditOrderBody):
-    """Start buying a package. No payment gateway is connected yet, so the order waits (pending) until an administrator confirms the payment."""
-    from app import credits
+    """Start buying a package. With Rafiei Pay configured and a priced package the answer carries `payment_url` (send the browser there);
+    otherwise the order waits (pending) until an administrator confirms the payment."""
+    from app import credits, rafieipay
+    user = _user(request)
     try:
-        order = await credits.create_order(_user(request), body.package_id)
+        order = await credits.create_order(user, body.package_id)
     except KeyError:
         raise HTTPException(404, "این بسته پیدا نشد.")
-    return {**order, "payment": "manual", "message": "سفارش ثبت شد. پرداخت آنلاین هنوز فعال نیست؛ پس از تأیید پرداخت توسط مدیر، اعتبار به حساب شما اضافه می‌شود."}
+    if rafieipay.enabled() and order["price"] > 0:
+        try:
+            started = await credits.start_payment(order["id"], user, "https://editor.rafiei.co")
+        except (rafieipay.PayError, ValueError) as exc:
+            log.warning("could not start the payment of order %s: %s", order["id"], exc)
+            raise HTTPException(502, "اتصال به درگاه پرداخت برقرار نشد؛ کمی بعد دوباره امتحان کنید.")
+        return {**started, "payment": "rafieipay", "message": "در حال انتقال به درگاه پرداخت…"}
+    return {**order, "payment": "manual", "message": "سفارش ثبت شد. پرداخت آنلاین برای این بسته فعال نیست؛ پس از تأیید پرداخت توسط مدیر، اعتبار به حساب شما اضافه می‌شود."}
+
+
+@router.post("/credits/orders/{order_id}/check")
+async def credits_order_check(request: Request, order_id: str):
+    """After the return from the gateway: the server asks Rafiei Pay and adds the credits if (and only if) the payment is verified."""
+    from app import credits
+    user = _user(request)
+    mine = [o for o in await credits.orders(user) if o["id"] == order_id]
+    if not mine:
+        raise HTTPException(404, "سفارش پیدا نشد.")
+    return await credits.settle_order(order_id)
 
 
 @router.get("/credits/orders")

@@ -367,6 +367,63 @@ async def mark_paid(order_id: str, *, gateway: str = "manual", gateway_ref: str 
     return _order(row)
 
 
+async def start_payment(order_id: str, user_id: str, return_base: str) -> dict:
+    """Send an order of this person to Rafiei Pay. Returns the order plus {"payment_url"} to redirect to."""
+    from app import rafieipay
+    async with _session() as db:
+        row = await db.get(CreditOrder, order_id)
+        if row is None or row.user_id != str(user_id) or row.status != "pending":
+            raise KeyError(order_id)
+        if row.price <= 0:
+            raise ValueError("این بسته هنوز قیمت ندارد.")
+        price, credits_, currency = int(row.price), int(row.credits), row.currency
+    if currency != "IRT":
+        raise ValueError("پرداخت آنلاین فقط برای قیمت به تومان فعال است.")
+    paid = await rafieipay.request_payment(amount_toman=price, order_id=order_id, description=f"خرید {credits_:,} اعتبار EditorGPT",
+                                           callback_url=f"{return_base}/api/webhook/rafieipay/return?order_id={order_id}", metadata={"app": "editorgpt", "credits": credits_})
+    async with _session() as db:
+        await db.execute(update(CreditOrder).where(CreditOrder.id == order_id, CreditOrder.status == "pending").values(gateway="rafieipay", gateway_ref=paid["payment_id"]))
+        await db.commit()
+    return {**(await _order_by_id(order_id)), "payment_url": paid["url"]}
+
+
+async def order_id_for(ident: str) -> str | None:
+    """An order id, or the gateway's payment id of an order, to our order id (None when it is neither)."""
+    async with _session() as db:
+        row = await db.get(CreditOrder, ident)
+        if row is None:
+            row = (await db.execute(select(CreditOrder).where(CreditOrder.gateway_ref == ident))).scalars().first()
+        return row.id if row else None
+
+
+async def _order_by_id(order_id: str) -> dict:
+    async with _session() as db:
+        row = await db.get(CreditOrder, order_id)
+        if row is None:
+            raise KeyError(order_id)
+        return _order(row)
+
+
+async def settle_order(order_id: str) -> dict:
+    """Ask Rafiei Pay (server to server) whether the order was paid; if so add its credits exactly once.
+    The amount Rafiei Pay reports must equal the order's price: a mismatch is never fulfilled. Safe to call any number of times."""
+    from app import rafieipay
+    order = await _order_by_id(order_id)
+    if order["status"] != "pending" or order["gateway"] != "rafieipay" or not order["gateway_ref"]:
+        return order
+    try:
+        payment = await rafieipay.get_payment(order["gateway_ref"])
+    except rafieipay.PayError:
+        log.warning("could not check payment of order %s", order_id, exc_info=True)
+        return order
+    if str(payment.get("status")) == "verified":
+        if int(payment.get("amount_toman") or -1) != int(order["price"]):
+            log.error("payment amount mismatch for order %s: paid %s, expected %s", order_id, payment.get("amount_toman"), order["price"])
+            return order
+        return await mark_paid(order_id, gateway="rafieipay", gateway_ref=str(payment.get("ref_id") or order["gateway_ref"]), actor="rafieipay")
+    return order
+
+
 async def orders(user_id: str | None = None, limit: int = 100) -> list[dict]:
     async with _session() as db:
         query = select(CreditOrder).order_by(CreditOrder.created_at.desc()).limit(limit)

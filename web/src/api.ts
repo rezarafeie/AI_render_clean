@@ -1350,7 +1350,8 @@ export const api = {
   async creditsMe(): Promise<CreditsState> { return j(await authFetch(`${BASE}/studio/credits`)); },
   async creditsUsage(page = 1, size = 30): Promise<CreditsUsage> { return j(await authFetch(`${BASE}/studio/credits/usage?page=${page}&size=${size}`)); },
   async creditsProject(id: string): Promise<CreditsBreakdown> { return j(await authFetch(`${BASE}/studio/credits/projects/${encodeURIComponent(id)}`)); },
-  async creditsOrder(packageId: string): Promise<CreditOrder & { message: string }> { return j(await authFetch(`${BASE}/studio/credits/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ package_id: packageId }) })); },
+  async creditsOrder(packageId: string): Promise<CreditOrder & { message: string; payment_url?: string; payment?: string }> { return j(await authFetch(`${BASE}/studio/credits/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ package_id: packageId }) })); },
+  async creditsCheck(id: string): Promise<CreditOrder> { return j(await authFetch(`${BASE}/studio/credits/orders/${encodeURIComponent(id)}/check`, { method: "POST" })); },
   async creditsOrders(): Promise<{ items: CreditOrder[] }> { return j(await authFetch(`${BASE}/studio/credits/orders`)); },
   async sendStudioMessage(id: string, content: string, attachment_ids: string[], options: { execution_mode?: "auto" | "manual"; manual_question_id?: string; render_target?: "server" | "browser"; agent_mode?: AgentMode } = {}): Promise<StudioMessage> {
     return j(await authFetch(`${BASE}/studio/conversations/${id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content, attachment_ids, ...options }) }));
