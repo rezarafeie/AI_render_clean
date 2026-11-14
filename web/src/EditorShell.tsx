@@ -22,6 +22,12 @@ import "./styles/credits.css";
 const SIDEBAR_BOUNDS = { min: 200, max: 420 };
 
 /** The person's credit balance (weighted tokens); links to the usage and purchase page. Refreshed every minute and when a chat finishes work. */
+function shortCredits(value: number): string {
+  const n = Math.abs(value), sign = value < 0 ? "-" : "";
+  if (n >= 1_000_000) return sign + (Math.round(n / 100_000) / 10).toLocaleString("fa-IR") + " میلیون";
+  if (n >= 10_000) return sign + Math.round(n / 1000).toLocaleString("fa-IR") + " هزار";
+  return sign + Math.round(n).toLocaleString("fa-IR");
+}
 function CreditsChip() {
   const [state, setState] = React.useState<{ balance: number; unlimited: boolean; exhausted: boolean; initial_grant: number } | null>(null);
   const location = useLocation();
@@ -36,7 +42,7 @@ function CreditsChip() {
   if (!state) return null;
   const low = !state.unlimited && state.balance > 0 && state.balance < state.initial_grant * 0.1;
   return <NavLink to="/credits" className="credits-chip" data-low={low || undefined} data-empty={state.exhausted || undefined} title="اعتبار و مصرف">
-    <span>اعتبار</span><b>{state.unlimited ? "نامحدود" : state.balance.toLocaleString("fa-IR")}</b></NavLink>;
+    <span>اعتبار</span><b>{state.unlimited ? "نامحدود" : shortCredits(state.balance)}</b></NavLink>;
 }
 
 // Kept so older screens that import { Icon } from "./EditorShell" keep working.
