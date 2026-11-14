@@ -1,5 +1,5 @@
 /** Pure helpers for the long-video discovery panel (unit-tested with `node --test`). */
-import type { CandidateStatus, DiscoveryCandidate, StudioEvent } from "../api";
+import type { CandidateStatus, DiscoveryCandidate, DiscoveryStepRecord, StudioEvent } from "../api";
 
 export const STATUS_LABEL: Record<CandidateStatus, string> = {
   discovered: "پیشنهاد جدید", selected: "تدوین شروع شد", editing: "در حال تدوین", rendering: "در حال رندر", completed: "تکمیل شد", failed: "ناموفق",
@@ -8,7 +8,7 @@ export const STATUS_TONE: Record<CandidateStatus, "success" | "error" | "warning
   discovered: undefined, selected: "warning", editing: "warning", rendering: "working", completed: "success", failed: "error",
 };
 export const STAGE_LABEL: Record<string, string> = {
-  queued: "در صف", transcribing: "گوش دادن و تبدیل گفتار به متن", enhancing: "اصلاح و بهبود متن", understanding: "فهمیدن ساختار کل ویدیو",
+  queued: "در صف", preparing: "بررسی فایل", audio: "استخراج صدا", transcribing: "گوش دادن و تبدیل گفتار به متن", enhancing: "اصلاح و بهبود متن", understanding: "فهمیدن ساختار کل ویدیو",
   finding: "جست‌وجوی محتوای مستقل", validating: "بازبینی پیشنهادها", done: "تمام شد", stopped: "متوقف شد", failed: "ناموفق", interrupted: "قطع شده",
 };
 
@@ -42,15 +42,48 @@ export function categoriesOf(items: DiscoveryCandidate[]): { name: string; count
   return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 }
 
-/** Real transcript lines: what the server saved at the end of each chunk, then the segments published since (nothing is typed out). */
-export function liveLines(tail: { id: string; start: number; end: number; text: string }[], events: Pick<StudioEvent, "type" | "data">[], analysisId: string, limit = 6) {
+/** Real transcript lines: what the server holds (the sentences heard so far), plus the ones published after that, newest last (nothing is typed out).
+ * An event's sentence that is not later than what the server already returned is the same sentence, whatever id it had. */
+export function liveLines(tail: { id: string; start: number; end: number; text: string }[], events: Pick<StudioEvent, "type" | "data">[], analysisId: string, limit = 12) {
   const byId = new Map<string, { id: string; start: number; end: number; text: string }>();
   for (const line of tail) byId.set(line.id, line);
+  const known = tail.length ? Math.max(...tail.map(line => line.start)) : -1;
   for (const event of events) {
     if (event.type !== "transcription.segment.completed" || event.data.analysis_id !== analysisId) continue;
-    for (const line of event.data.segments ?? []) byId.set(line.id, line);
+    for (const line of event.data.segments ?? []) if (line.start > known || byId.has(line.id)) byId.set(line.id, line);
   }
   return [...byId.values()].sort((a, b) => a.start - b.start).slice(-limit);
+}
+
+export type StepStatus = "active" | "done" | "failed" | "stopped" | "interrupted";
+export interface StepView {
+  key: string; label: string; status: StepStatus; elapsedMs: number; percent?: number; note: string; narration: string;
+  log: { at: number; text: string }[];
+}
+
+/** The server's stored steps as what the chat shows: a step still "active" on the server is live only while somebody is really working on it
+ * (the cards' previews are made in the background, after the analysis itself has ended). A step left active by a dead worker says «قطع شده». */
+export function discoverySteps(steps: DiscoveryStepRecord[] | undefined, ctx: { running: boolean; interrupted: boolean; mediaPending: boolean }, nowMs: number): StepView[] {
+  return (steps ?? []).map(step => {
+    const live = step.state === "active" && (step.key === "cards" ? ctx.running || ctx.mediaPending : ctx.running && !ctx.interrupted);
+    const status: StepStatus = step.state === "active" ? (live ? "active" : "interrupted") : step.state;
+    const started = step.at * 1000;
+    const lastSeen = Math.max(started, ...(step.log ?? []).map(line => line.at * 1000));
+    const ended = live ? nowMs : step.done_at ? step.done_at * 1000 : lastSeen;
+    return { key: step.key, label: step.label, status, elapsedMs: Math.max(0, ended - started), percent: live || step.state === "done" ? step.progress : undefined,
+      note: step.note ?? "", narration: step.narration ?? "", log: step.log ?? [] };
+  });
+}
+
+/** One log line as text: «12:04:31  تکه ۲ از ۸ تمام شد». */
+export function logText(log: { at: number; text: string }[], locale = "fa-IR"): string {
+  const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  return log.map(line => `${time.format(new Date(line.at * 1000))}  ${line.text}`).join("\n");
+}
+
+/** The steps' own summary once everything has ended: «۷ مرحله انجام شد». */
+export function stepsSummary(views: StepView[]): { done: number; total: number; failed: boolean; ms: number } {
+  return { done: views.filter(step => step.status === "done").length, total: views.length, failed: views.some(step => step.status === "failed"), ms: views.reduce((sum, step) => sum + step.elapsedMs, 0) };
 }
 
 export function isActive(status: CandidateStatus): boolean { return status === "selected" || status === "editing" || status === "rendering"; }

@@ -5,7 +5,8 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { friendlyError } from "../ui";
-import { STAGE_LABEL, STATUS_LABEL, STATUS_TONE, SortKey, categoriesOf, clock, etaText, isActive, liveLines, parseRange, rangeText, visibleCandidates } from "./discoveryModel";
+import { faNumber, formatDuration } from "../format";
+import { STAGE_LABEL, STATUS_LABEL, STATUS_TONE, SortKey, StepView, categoriesOf, clock, discoverySteps, etaText, isActive, liveLines, logText, parseRange, rangeText, stepsSummary, visibleCandidates } from "./discoveryModel";
 
 /** Refresh while something is running: not while the tab is hidden, and less and less often the longer nothing new comes (a preview that never becomes ready must not keep the server busy). */
 function usePoll(active: boolean, refresh: () => unknown, base: number, reset: unknown) {
@@ -35,6 +36,43 @@ export function useDiscoveryActive(analysisId: string | undefined, events: Studi
   return active;
 }
 
+/** One step of the work: its state, the time it took (live while it runs), its percentage and short note, the one-line narration, and (on a click) the log. */
+function DiscoveryStepRow({ step }: { step: StepView }) {
+  const [open, setOpen] = React.useState(false);
+  const active = step.status === "active";
+  const mark = active ? <span className="spinner"/> : <Icon name={step.status === "done" ? "check" : step.status === "failed" ? "alert" : step.status === "stopped" ? "stop" : "clock"} size={14}/>;
+  const body = <>
+    <span className="mg-step-mark" aria-hidden="true">{mark}</span>
+    <div className="mg-step-body">
+      <div className="mg-step-line"><span className={active ? "act-shimmer" : undefined} dir="auto">{step.label}</span>
+        {step.elapsedMs >= 1000 ? <span className="mg-step-time" dir="ltr">{formatDuration(step.elapsedMs, true)}</span> : null}
+        {active && typeof step.percent === "number" ? <span className="mg-step-time" dir="ltr">{faNumber(step.percent)}٪</span> : null}
+        {step.status === "stopped" ? <span className="mg-step-time">متوقف شد</span> : step.status === "interrupted" ? <span className="mg-step-time">قطع شده</span> : step.status === "failed" ? <span className="mg-step-time">خطا</span> : null}
+        {step.log.length ? <Icon name="chevronDown" size={14} className={`act-chevron${open ? " is-open" : ""}`}/> : null}</div>
+      {active && typeof step.percent === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.percent}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(step.percent)} aria-label={step.label}><span/></div> : null}
+      {step.note ? <span className="mg-step-note" dir="auto">{step.note}</span> : null}
+      {step.narration ? <p className="mg-step-summary" dir="auto">{step.narration}</p> : null}
+      {open && step.log.length ? <pre className="mg-step-detail" dir="auto">{logText(step.log)}</pre> : null}
+    </div>
+  </>;
+  return <li className="mg-step" data-status={step.status}>
+    {step.log.length ? <button type="button" className="mg-step-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{body}</button> : <div className="mg-step-row">{body}</div>}
+  </li>;
+}
+
+/** The stages of the analysis, all visible from the first second; once everything has ended they fold into one summary line (the log of each stays one click away). */
+function DiscoverySteps({ steps, folded }: { steps: StepView[]; folded: boolean }) {
+  const [open, setOpen] = React.useState<boolean | null>(null);
+  const summary = stepsSummary(steps);
+  const expanded = open ?? !folded;
+  return <div className="dv-steps">
+    {folded ? <button type="button" className="act-summary" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
+      <Icon name="check" size={14}/><span>{faNumber(summary.done)} مرحله انجام شد{summary.ms >= 1000 ? ` · ${formatDuration(summary.ms, true)}` : ""}</span><Icon name="chevronDown" size={14} className={`act-chevron${expanded ? " is-open" : ""}`}/>
+    </button> : null}
+    {expanded ? <ol className="mg-steps" aria-label="مراحل تحلیل ویدیو">{steps.map(step => <DiscoveryStepRow key={step.key} step={step}/>)}</ol> : null}
+  </div>;
+}
+
 /** The parent chat's workspace: live transcription, progress, and one card per independent piece of content found in the long video. */
 export function DiscoveryPanel({ analysisId, events }: { analysisId: string; events: StudioEvent[] }) {
   const [analysis, setAnalysis] = React.useState<DiscoveryAnalysis | null>(null);
@@ -47,11 +85,20 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
   const [busy, setBusy] = React.useState("");
   const mine = React.useMemo(() => events.filter(e => e.data?.analysis_id === analysisId), [events, analysisId]);
   const lastEvent = mine.length ? mine[mine.length - 1].seq : 0;
+  const [now, setNow] = React.useState(() => Date.now());
+  const liveRef = React.useRef<HTMLOListElement>(null);
 
   const refresh = React.useCallback(() => api.discoveryView(analysisId).then(setAnalysis).catch(e => setError(friendlyError(e, "load the analysis"))), [analysisId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
   const active = analysis ? (analysis.running || analysis.interrupted || analysis.candidates.some(c => isActive(c.status) || (!c.hidden && c.preview_ready === false))) : true;
   usePoll(active, refresh, 3000, lastEvent);
+
+  const mediaPending = Boolean(analysis?.candidates.some(c => !c.hidden && c.preview_ready === false));
+  const ticking = Boolean(analysis && (analysis.running || mediaPending));
+  React.useEffect(() => { if (!ticking) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [ticking]);
+  const newest = analysis ? liveLines(analysis.transcript_tail, mine, analysisId).length : 0;
+  const newestEnd = analysis?.transcript_tail.length ? analysis.transcript_tail[analysis.transcript_tail.length - 1].id : "";
+  React.useEffect(() => { const box = liveRef.current; if (box) box.scrollTop = box.scrollHeight; }, [newest, newestEnd, lastEvent]);
 
   if (!analysis) return <section className="dv" dir="rtl">{error ? <div className="notice" data-tone="error" role="alert">{error}</div> : <div className="tl-loading" role="status"><span className="spinner"/>در حال بارگذاری…</div>}</section>;
 
@@ -60,6 +107,8 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
     try { await action(); await refresh(); } catch (e) { setError(friendlyError(e, name)); } finally { setBusy(""); }
   };
   const lines = liveLines(analysis.transcript_tail, mine, analysisId);
+  const stepViews = discoverySteps(analysis.steps, { running: analysis.running, interrupted: analysis.interrupted, mediaPending }, now);
+  const stepsEnded = stepViews.length > 0 && stepViews.every(step => step.status === "done");
   const transcribing = analysis.transcription_status === "running";
   const working = analysis.running && analysis.discovery_status !== "completed";
   const failed = analysis.stage === "failed" || Boolean(analysis.error);
@@ -85,9 +134,11 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
       {failed && analysis.error ? <div className="notice" data-tone="error" role="alert">{analysis.error}</div> : null}
     </div> : null}
 
+    {stepViews.length ? <DiscoverySteps steps={stepViews} folded={stepsEnded && !working}/> : null}
+
     {lines.length && (transcribing || working || !analysis.candidates.length) ? <div className="dv-live" aria-live="polite">
       <b>{transcribing ? "متن زنده" : "آخرین بخش متن"}</b>
-      <ol>{lines.map(line => <li key={line.id}><time dir="ltr">{clock(line.start)}</time><span className="bidi" dir="auto">{line.text}</span></li>)}</ol>
+      <ol ref={liveRef}>{lines.map(line => <li key={line.id}><time dir="ltr">{clock(line.start)}</time><span className="bidi" dir="auto">{line.text}</span></li>)}</ol>
     </div> : null}
 
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}

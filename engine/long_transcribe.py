@@ -173,6 +173,7 @@ def transcribe_long(video: Path, work: Path, *, language: Optional[str] = None, 
     emit = on_event or (lambda kind, data: None)
     work.mkdir(parents=True, exist_ok=True)
     (work / "chunks").mkdir(exist_ok=True)
+    emit("transcription.audio", {"phase": "started"})
     duration = extract_audio(video, work / "audio.wav")
     if duration < 1:
         raise RuntimeError("no audio in the video")
@@ -186,6 +187,7 @@ def transcribe_long(video: Path, work: Path, *, language: Optional[str] = None, 
         for old in (work / "chunks").glob("*.json"):      # a different model/language invalidates earlier chunks
             old.unlink()
         plan_path.write_text(json.dumps(plan))
+    emit("transcription.audio", {"phase": "done", "duration_s": duration})
     chunks = [tuple(c) for c in plan["chunks"]]
     done_audio = 0.0
     language_hint = language

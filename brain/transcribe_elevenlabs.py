@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -129,8 +129,15 @@ def transcribe_elevenlabs(
     language: Optional[str] = None,
     file_digest: str,
     keyterms: Optional[list[str]] = None,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
+    chunk_s: Optional[int] = None,
 ) -> tuple[dict, float]:
     """Transcribe using ElevenLabs Scribe. Returns (transcript_dict, cost_usd).
+
+    ``on_event`` (optional) hears what is happening: ``audio.started``, ``audio.done``, ``cached``, and for long audio ``piece.started`` /
+    ``piece.done`` (with that piece's sentences, already on the whole recording's clock) as each piece comes back. ``should_stop`` is checked
+    between pieces; pieces that were already heard are kept on disk, so a stopped run continues without paying for them again.
 
     Raises RuntimeError on API failure (caller should fall back to Whisper).
     """
@@ -145,17 +152,22 @@ def transcribe_elevenlabs(
         cached = json.loads(archive.read_text())
         cost = None if cached.get('engine')=='lm_gateway_stt' else cached.get("duration", 0) * COST_PER_SECOND
         log.info("elevenlabs cache hit for %s (%s)", video.name, key)
+        _tell(on_event, "cached", {"duration_s": cached.get("duration", 0)})
         return cached, round(cost, 6) if cost is not None else None
 
+    _tell(on_event, "audio.started", {})
+    began = time.monotonic()
     wav = _extract_audio(video, out_dir)
     try:
         from engine.probe import probe_duration
         total = probe_duration(wav)
     except Exception:
         total = 0.0
-    if total > CHUNK_SECONDS * 1.5:
+    _tell(on_event, "audio.done", {"duration_s": total, "seconds": round(time.monotonic() - began, 1)})
+    piece_s = int(chunk_s or CHUNK_SECONDS)
+    if total > piece_s * 1.5:
         try:
-            return _transcribe_in_chunks(wav, total, out_dir, key, file_digest, language, keyterms, api_key)
+            return _transcribe_in_chunks(wav, total, out_dir, key, file_digest, language, keyterms, api_key, on_event=on_event, should_stop=should_stop, piece_s=piece_s)
         finally:
             wav.unlink(missing_ok=True)
     try:
@@ -215,28 +227,54 @@ def transcribe_elevenlabs(
         wav.unlink(missing_ok=True)
 
 
+def _tell(on_event, kind: str, data: dict) -> None:
+    if on_event:
+        try:
+            on_event(kind, data)
+        except Exception:
+            log.debug("elevenlabs event %s could not be delivered", kind, exc_info=True)
+
+
 def _transcribe_in_chunks(wav: Path, total: float, out_dir: Path, key: str, file_digest: str, language: Optional[str],
-                          keyterms: Optional[list[str]], api_key: str) -> tuple[dict, float]:
+                          keyterms: Optional[list[str]], api_key: str, *, on_event=None, should_stop=None, piece_s: int = CHUNK_SECONDS) -> tuple[dict, float]:
     """Scribe on consecutive pieces of the audio, their word times moved to the whole recording's clock. Any piece that fails fails the whole attempt
-    (the caller then tries the next provider): a transcript with a hole in it would cut and caption the wrong places."""
+    (the caller then tries the next provider): a transcript with a hole in it would cut and caption the wrong places.
+
+    Every piece that comes back is announced at once (``piece.done``, with its sentences) and saved next to the others, so the person sees text
+    as it arrives and a stopped or interrupted run does not hear (or pay for) those pieces again."""
     import httpx as _httpx
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
     from types import SimpleNamespace
     from elevenlabs import ElevenLabs
     from brain.elevenlabs_transport import base_url
 
-    pieces = [(i, start) for i, start in enumerate(range(0, int(total) + 1, CHUNK_SECONDS)) if start < total]
+    pieces = [(i, start) for i, start in enumerate(range(0, int(total) + 1, piece_s)) if start < total]
     folder = out_dir / "asr_chunks"
     folder.mkdir(exist_ok=True)
+    saved = out_dir / "asr_pieces"
+    saved.mkdir(exist_ok=True)
     kwargs: dict = {"model_id": SCRIBE_MODEL, "language_code": language or "fa", "tag_audio_events": False, "diarize": False, "timestamps_granularity": "word"}
     if keyterms:
         kwargs["keyterms"] = keyterms[:1000]
 
+    def remembered(index: int, start: int):
+        path = saved / f"{key}-{piece_s}-{index:03d}.json"
+        if path.is_file():
+            try:
+                return json.loads(path.read_text())
+            except (OSError, ValueError):
+                pass
+        return None
+
     def one(piece: tuple[int, int]):
         index, start = piece
+        if should_stop and should_stop():
+            return index, start, None
         part = folder / f"part{index:03d}.mp3"
+        began = time.monotonic()
+        _tell(on_event, "piece.started", {"index": index, "pieces": len(pieces), "start": start, "end": min(total, start + piece_s)})
         try:
-            subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(CHUNK_SECONDS), "-i", str(wav), "-c", "copy", str(part)],
+            subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(piece_s), "-i", str(wav), "-c", "copy", str(part)],
                            capture_output=True, check=True, timeout=300)
             client = ElevenLabs(api_key=api_key, base_url=base_url(), timeout=_httpx.Timeout(_READ_TIMEOUT, connect=_CONNECT_TIMEOUT))
             with open(part, "rb") as handle:
@@ -244,28 +282,70 @@ def _transcribe_in_chunks(wav: Path, total: float, out_dir: Path, key: str, file
                     resp = client.speech_to_text.convert(file=handle, request_options={'max_retries': 0}, **kwargs)
                 except Exception as err:
                     raise RuntimeError(f"ElevenLabs STT failed on part {index + 1} of {len(pieces)}") from err
-            return start, resp
+            words = [{"type": w.type, "text": w.text, "logprob": getattr(w, "logprob", None), "start": w.start + start, "end": w.end + start} for w in (resp.words or [])]
+            data = {"index": index, "start": start, "language": getattr(resp, "language_code", None), "words": words, "seconds": round(time.monotonic() - began, 1)}
+            path = saved / f"{key}-{piece_s}-{index:03d}.json"
+            temporary = path.with_suffix(".part")
+            temporary.write_text(json.dumps(data, ensure_ascii=False))
+            temporary.replace(path)
+            return index, start, data
         finally:
             part.unlink(missing_ok=True)
 
-    log.info("elevenlabs: %.0f s of audio in %d pieces", total, len(pieces))
+    def sentences_of(data: dict) -> list[dict]:
+        mapped = _map_response(SimpleNamespace(words=[SimpleNamespace(**w) for w in data["words"]], language_code=data.get("language")), file_digest, key, language, total)
+        return [{"id": f"p{data['index']:03d}-{n:03d}", "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(mapped["sentences"])]
+
+    log.info("elevenlabs: %.0f s of audio in %d pieces of %d s", total, len(pieces), piece_s)
+    results: dict[int, dict] = {}
+    todo = []
+    for piece in pieces:
+        data = remembered(*piece)
+        if data is not None:
+            results[piece[0]] = data
+            _tell(on_event, "piece.done", {"index": piece[0], "pieces": len(pieces), "start": piece[1], "end": min(total, piece[1] + piece_s), "cached": True,
+                                           "sentences": sentences_of(data), "heard": len(results)})
+        else:
+            todo.append(piece)
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            results = list(pool.map(one, pieces))
+            pending = {pool.submit(one, piece) for piece in todo}
+            try:
+                while pending:
+                    finished, pending = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+                    for future in finished:
+                        index, start, data = future.result()
+                        if data is None:
+                            continue
+                        results[index] = data
+                        _tell(on_event, "piece.done", {"index": index, "pieces": len(pieces), "start": start, "end": min(total, start + piece_s), "cached": False,
+                                                       "sentences": sentences_of(data), "heard": len(results), "seconds": data["seconds"]})
+                    if should_stop and should_stop():
+                        for future in pending:
+                            future.cancel()
+                        raise _StoppedByCaller("stopped")
+            finally:
+                for future in pending:
+                    future.cancel()
     finally:
         shutil.rmtree(folder, ignore_errors=True)
     words = []
     language_code = None
-    for start, resp in results:
-        language_code = language_code or getattr(resp, "language_code", None)
-        for w in (resp.words or []):
-            words.append(SimpleNamespace(type=w.type, text=w.text, logprob=getattr(w, "logprob", None), start=w.start + start, end=w.end + start))
+    for index in sorted(results):
+        data = results[index]
+        language_code = language_code or data.get("language")
+        words.extend(SimpleNamespace(type=w["type"], text=w["text"], logprob=w.get("logprob"), start=w["start"], end=w["end"]) for w in data["words"])
     transcript = _map_response(SimpleNamespace(words=words, language_code=language_code), file_digest, key, language, total)
     cost = round(total * COST_PER_SECOND * (1.2 if keyterms else 1), 6)
     archive = out_dir / "transcripts" / f"{key}.json"
     archive.parent.mkdir(exist_ok=True)
     archive.write_text(json.dumps(transcript, indent=2, ensure_ascii=False))
+    shutil.rmtree(saved, ignore_errors=True)
     return transcript, cost
+
+
+class _StoppedByCaller(RuntimeError):
+    """The caller asked the run to stop between pieces (the pieces already heard stay on disk)."""
 
 
 def transcribe_gateway(video, out_dir, *, provider, language, file_digest):

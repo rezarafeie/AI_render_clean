@@ -92,8 +92,8 @@ def analysis(store, tmp_path, monkeypatch):
 def test_whole_flow_streams_transcribes_enhances_finds_and_dedupes(analysis, monkeypatch):
     monkeypatch.setattr(discovery, "WINDOW_S", 100.0)
     long_video._run(analysis.directory)
-    kinds = [k for k, _ in analysis.events]
-    assert kinds[0] == "transcription.started" and "transcription.segment.completed" in kinds and "transcription.completed" in kinds
+    kinds = [k for k, _ in analysis.events if k != "content.step"]
+    assert kinds[0] == "transcription.audio" and kinds[1] == "transcription.audio" and kinds[2] == "transcription.started" and "transcription.segment.completed" in kinds and "transcription.completed" in kinds
     assert kinds.index("transcription.completed") < kinds.index("content.discovery.started") < kinds.index("content.candidate.found") < kinds.index("content.discovery.completed")
     state = long_video.load(analysis.directory)
     assert state["transcription_status"] == "completed" and state["discovery_status"] == "completed" and state["language"] == "fa" and state["transcript_version"]

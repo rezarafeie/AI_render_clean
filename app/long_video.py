@@ -190,6 +190,7 @@ def stop(analysis_id: str) -> None:
                 if analysis.get(field) in {"running", "queued"}:
                     changes[field] = "stopped"
             _set(directory, **changes)
+            _close_steps(directory, "stopped", "شما متوقف کردید.")
             _emit(analysis["conversation_id"], "job.failed", analysis_id=analysis_id, message=changes["message"], resumable=True, stopped=True)
 
 
@@ -240,6 +241,7 @@ def _guard(directory: Path) -> None:
         if analysis["discovery_status"] == "running":
             analysis["discovery_status"] = "stopped" if stopped else "failed"
         save(directory, analysis)
+        _close_steps(directory, "stopped" if stopped else "failed", "شما متوقف کردید؛ پیشرفت تا اینجا نگه داشته شد." if stopped else f"خطا: {message}")
         _emit(analysis["conversation_id"], "job.failed", analysis_id=analysis["id"], message=message, resumable=True, stopped=stopped)
     finally:
         finished.set()
@@ -253,18 +255,142 @@ def _guard(directory: Path) -> None:
 
 
 def _set(directory: Path, **changes: Any) -> dict:
-    analysis = load(directory)
-    analysis.update(changes)
-    return save(directory, analysis)
+    with _lock(directory.name):                    # read-modify-write as one: the worker, the enhancer and the media threads all write this record
+        analysis = load(directory)
+        analysis.update(changes)
+        return save(directory, analysis)
 
 
-def _hear_with_elevenlabs(directory: Path, source: Path, analysis: dict, on_event, enhancer) -> dict:
-    """The person chose ElevenLabs: it hears the whole video (in pieces, minutes, billed by the hour of audio), and the result is shaped like local pieces."""
-    from brain.transcribe import file_hash
+# ── the steps the chat shows (stored in the record, so a refreshed page rebuilds exactly what was seen) ──────────────────────────
+
+STEP_LABEL = {
+    "file": "آماده‌سازی فایل ویدیو", "audio": "استخراج صدا", "transcribe": "رونویسی گفتار", "enhance": "بهبود متن",
+    "outline": "فهمیدن ساختار کل ویدیو", "find": "پیدا کردن کاندیداهای پست", "cards": "ساخت کارت‌ها، تصویر کوچک و پیش‌نمایش",
+}
+TERMINAL = {"done", "failed", "stopped"}
+
+
+def _step(directory: Path, key: str, state: str = "active", *, label: Optional[str] = None, narration: Optional[str] = None, note: Optional[str] = None,
+          progress: Optional[float] = None, log: Optional[str] = None) -> None:
+    """One step of the work: its state (active/done/failed/stopped), a one-line narration, a short live note, a percentage and log lines.
+    Changing nothing changes nothing (no write, no event); a step that is started again (a resume, a second search) begins a new clock and keeps its log."""
+    now = time.time()
+    with _lock(directory.name):
+        analysis = load(directory)
+        steps = analysis.setdefault("steps", [])
+        step = next((x for x in steps if x["key"] == key), None)
+        before = json.dumps(step, sort_keys=True) if step else ""
+        if step is None:
+            step = {"key": key, "label": label or STEP_LABEL.get(key, key), "state": state, "at": now, "log": []}
+            steps.append(step)
+        elif state == "active" and step["state"] != "active":
+            step.update(at=now, progress=0 if progress is None else progress, note="")
+            step.pop("done_at", None)
+        if label:
+            step["label"] = label
+        if state in TERMINAL and step["state"] not in TERMINAL:
+            step["done_at"] = now
+        step["state"] = state
+        if narration is not None:
+            step["narration"] = narration
+        if note is not None:
+            step["note"] = note
+        if progress is not None:
+            step["progress"] = round(max(0.0, min(100.0, progress)), 1)
+        elif state == "done":
+            step["progress"] = 100
+        if log:
+            step["log"].append({"at": now, "text": log})
+            del step["log"][:-300]
+        if json.dumps(step, sort_keys=True) == before:
+            return
+        save(directory, analysis)
+        conversation_id = analysis["conversation_id"]
+        text, shown_note = step["label"], step.get("note", "")
+    _emit(conversation_id, "content.step", analysis_id=directory.name, key=key, state=state, text=text, note=shown_note)
+
+
+def _close_steps(directory: Path, state: str, message: str) -> None:
+    """The run ended (stopped, failed): every step that was still working says so, with the reason in its log."""
+    try:
+        for step in [x for x in load(directory).get("steps", []) if x["state"] == "active"]:
+            _step(directory, step["key"], state, log=message, note="" if state == "stopped" else message[:200])
+    except Exception:
+        log.warning("steps of %s could not be closed", directory.name, exc_info=True)
+
+
+def _live_add(directory: Path, segments: list[dict]) -> None:
+    """Sentences as they are heard (the page's «متن زنده»): kept in a small file, so a refreshed page shows them too, not only the page that was open."""
+    path = directory / "live.json"
+    with _lock(directory.name + ":live"):
+        try:
+            items = {s["id"]: s for s in json.loads(path.read_text())}
+        except (OSError, ValueError, KeyError):
+            items = {}
+        for seg in segments:
+            items[seg["id"]] = {"id": seg["id"], "start": seg["start"], "end": seg["end"], "text": seg["text"]}
+        kept = sorted(items.values(), key=lambda x: x["start"])[-60:]
+        temporary = path.with_suffix(".part")
+        temporary.write_text(json.dumps(kept, ensure_ascii=False))
+        temporary.replace(path)
+
+
+def _eta_text(seconds: Optional[float]) -> str:
+    if seconds is None:
+        return ""
+    return f"حدود {max(1, round(seconds))} ثانیه مانده" if seconds < 90 else f"حدود {round(seconds / 60)} دقیقه مانده"
+
+
+def _hear_with_elevenlabs(directory: Path, source: Path, analysis: dict, on_event, enhancer, stopper, digest: str) -> dict:
+    """The person chose ElevenLabs: it hears the whole video in 5-minute pieces (two at a time, billed by the hour of audio). Every piece that comes back is
+    shown at once, and the result is shaped like local pieces."""
     from brain.transcribe_elevenlabs import transcribe_elevenlabs
     from engine import long_transcribe as lt
-    on_event("transcription.started", {"duration_s": analysis["duration"], "chunks": 1, "model": "elevenlabs", "resumed": False})
-    transcript, cost = transcribe_elevenlabs(source, directory, language="fa", file_digest=file_hash(source))
+    duration = float(analysis["duration"])
+    began = time.monotonic()
+    heard = {"s": 0.0, "fresh_s": 0.0, "pieces": 0}
+
+    def hear(kind: str, data: dict) -> None:
+        if kind == "audio.started":
+            _set(directory, stage="audio", message="در حال استخراج صدا از ویدیو")
+            _step(directory, "audio", "active", narration="صدای ویدیو را جدا می‌کنم تا فقط گفتار را برای رونویسی بفرستم.", log="استخراج صدا با ffmpeg (تک‌کاناله، ۱۶ کیلوهرتز) شروع شد.")
+        elif kind == "audio.done":
+            _step(directory, "audio", "done", narration=f"صدا آماده است ({_clock(data.get('duration_s') or duration)}).", note=f"{data.get('seconds', 0):g} ثانیه",
+                  log=f"صدا آماده شد؛ مدت {_clock(data.get('duration_s') or duration)}، {data.get('seconds', 0):g} ثانیه طول کشید.")
+            _set(directory, stage="transcribing", message="در حال رونویسی با ElevenLabs")
+            on_event("transcription.started", {"duration_s": duration, "chunks": 0, "model": "elevenlabs", "resumed": False})
+            _step(directory, "transcribe", "active", label="رونویسی با ElevenLabs", note="در انتظار اولین تکه",
+                  narration="گفتار را تکه‌تکه (هر تکه حدود ۵ دقیقه) به ElevenLabs می‌دهم؛ هر تکه که برگشت، جمله‌هایش همین‌جا زنده اضافه می‌شود.")
+        elif kind == "cached":
+            _step(directory, "audio", "done", narration="این ویدیو قبلاً رونویسی شده بود؛ از همان متن استفاده می‌کنم.", log="رونویسی ذخیره‌شدهٔ این فایل پیدا شد.")
+            _step(directory, "transcribe", "active", label="رونویسی با ElevenLabs", narration="متن ذخیره‌شده را می‌خوانم.")
+        elif kind == "piece.started":
+            _step(directory, "transcribe", "active", log=f"تکه {data['index'] + 1} از {data['pieces']} ({_clock(data['start'])}–{_clock(data['end'])}) به ElevenLabs رفت.")
+        elif kind == "piece.done":
+            span = data["end"] - data["start"]
+            heard["s"] += span
+            heard["pieces"] += 1
+            if not data.get("cached"):
+                heard["fresh_s"] += span
+            percent = min(100.0, 100 * heard["s"] / max(1.0, duration))
+            elapsed = time.monotonic() - began
+            left = elapsed / heard["fresh_s"] * max(0.0, duration - heard["s"]) if heard["fresh_s"] > 0 else None
+            sentences = data["sentences"]
+            if sentences:
+                _live_add(directory, sentences)
+                on_event("transcription.segment.completed", {"segments": sentences})
+            _set(directory, progress={"processed_s": round(heard["s"], 1), "duration_s": round(duration, 1), "percent": round(percent, 1), "eta_s": round(left) if left is not None else None})
+            on_event("transcription.progress", {"processed_s": round(heard["s"], 1), "duration_s": round(duration, 1), "percent": round(percent, 1), "eta_s": round(left) if left is not None else None, "language": None})
+            note = f"{round(percent)}٪ · تکه {heard['pieces']} از {data['pieces']}" + (f" · {_eta_text(left)}" if left is not None and percent < 100 else "")
+            _step(directory, "transcribe", "active", progress=percent, note=note, log=f"تکه {data['index'] + 1} از {data['pieces']} برگشت: {len(sentences)} جمله"
+                  + (" (از قبل ذخیره بود)" if data.get("cached") else f" در {data.get('seconds', 0):g} ثانیه") + ".")
+
+    try:
+        transcript, cost = transcribe_elevenlabs(source, directory, language="fa", file_digest=digest, on_event=hear, should_stop=stopper, chunk_s=300)
+    except RuntimeError:
+        if stopper():
+            raise lt.Stopped("stopped")
+        raise
     raw = lt.from_transcript(transcript, directory)
     enhancer.skip = True
     on_event("transcription.progress", {"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0, "language": raw["language"]})
@@ -277,46 +403,95 @@ def _run(directory: Path) -> None:
     analysis = load(directory)
     conversation_id, key = analysis["conversation_id"], analysis["id"]
     source = Path(analysis["source_path"])
+    stopper = lambda: _stopped(key, directory)
+    media = analysis["media"]
+
+    # 0. the file: it is checked before anything is spent on it
+    _set(directory, stage="preparing", message="در حال بررسی فایل ویدیو")
+    _step(directory, "file", "active", narration="اول فایل ویدیو را بررسی می‌کنم: وجود فایل، مدت، حجم و اینکه صدا دارد یا نه.", log=f"فایل: {analysis['filename']}")
     if not source.is_file():
         raise RuntimeError("فایل ویدیوی اصلی پیدا نشد")
-    if not analysis["media"]["has_audio"]:
+    if not media["has_audio"]:
         raise RuntimeError("این ویدیو صدا ندارد؛ بدون گفتار نمی‌توان محتوا را پیدا کرد.")
-    stopper = lambda: _stopped(key, directory)
+    from app import transcribe_prefs
+    prefs = transcribe_prefs.get(analysis.get("user_key"))
+    megabytes = round(media.get("size_bytes", 0) / 1e6)
+    _step(directory, "file", "active", log=f"مدت {_clock(analysis['duration'])} · {megabytes} مگابایت" + (f" · {media['width']}×{media['height']}" if media.get("width") else "") + f" · صدا: {media.get('audio_codec') or 'دارد'}")
+    digest = ""
+    if prefs["engine"] == "elevenlabs" and not (directory / "raw.json").is_file():
+        from brain.transcribe import file_hash
+        _step(directory, "file", "active", log="در حال ساختن شناسهٔ فایل (برای ذخیره و ازسرگیری رونویسی)…")
+        digest = file_hash(source)
+    _step(directory, "file", "done", narration=f"فایل آماده است: {_clock(analysis['duration'])}، {megabytes} مگابایت، دارای صدا.", note="", log="فایل آمادهٔ تحلیل است.")
+    if stopper():
+        raise lt.Stopped("stopped")
 
     # 1. live transcription; finished chunks are corrected by the model while the next one is still being heard
     enhancer = _Enhancer(directory)
     raw_path = directory / "raw.json"
     if analysis["transcription_status"] != "completed" or not raw_path.is_file():
         _set(directory, transcription_status="running", stage="transcribing", message="در حال گوش دادن به ویدیو", error=None)
+        engine_name = "ElevenLabs" if prefs["engine"] == "elevenlabs" else "Whisper"
 
         def on_event(kind: str, data: dict) -> None:
             _emit(conversation_id, kind, analysis_id=key, **data)
+            if kind == "transcription.audio":
+                if data.get("phase") == "started":
+                    _set(directory, stage="audio", message="در حال استخراج صدا از ویدیو")
+                    _step(directory, "audio", "active", narration="صدای ویدیو را جدا می‌کنم تا مدل گفتار فقط روی صدا کار کند.", log="استخراج صدا با ffmpeg شروع شد.")
+                else:
+                    _step(directory, "audio", "done", narration=f"صدا آماده است ({_clock(data.get('duration_s') or analysis['duration'])}).", log="صدا و نقطه‌های سکوت (برای برش تکه‌ها) آماده شد.")
+            if kind == "transcription.started" and prefs["engine"] != "elevenlabs":
+                _set(directory, stage="transcribing", message="در حال گوش دادن به ویدیو")
+                _step(directory, "audio", "done", narration=f"صدا آماده است ({_clock(data['duration_s'])}).")
+                _step(directory, "transcribe", "active", label=f"رونویسی با Whisper (مدل {data['model']})", note=f"{data['chunks']} تکه", progress=0,
+                      narration=f"گفتار را تکه‌تکه روی همین سرور رونویسی می‌کنم ({data['chunks']} تکه)؛ جمله‌ها همین‌جا زنده اضافه می‌شوند.",
+                      log=f"{data['chunks']} تکه با مدل {data['model']}" + (" (ادامه از تکه‌های قبلی)" if data.get("resumed") else "") + ".")
+            if kind == "transcription.chunk.started":
+                _step(directory, "transcribe", "active", log=f"تکه {data['index'] + 1} از {data['chunks']} ({_clock(data['start'])}–{_clock(data['end'])}) شروع شد.")
+            if kind == "transcription.segment.completed":
+                _live_add(directory, data["segments"])
+            if kind == "transcription.chunk.completed":
+                _step(directory, "transcribe", "active", log=f"تکه {data['index'] + 1} از {data['chunks']} تمام شد: {data['segments']} جمله" + (" (از قبل ذخیره بود)" if data.get("cached") else "") + ".")
+                enhancer.submit(data["index"])
             if kind == "transcription.progress":
                 _set(directory, progress={k: data[k] for k in ("processed_s", "duration_s", "percent", "eta_s")}, language=data.get("language"))
-            if kind == "transcription.chunk.completed":
-                enhancer.submit(data["index"])
+                if prefs["engine"] != "elevenlabs":
+                    _step(directory, "transcribe", "active", progress=data["percent"], note=f"{round(data['percent'])}٪" + (f" · {_eta_text(data['eta_s'])}" if data["percent"] < 100 else ""))
 
-        from app import transcribe_prefs
-        prefs = transcribe_prefs.get(analysis.get("user_key"))
         if prefs["engine"] == "elevenlabs":
-            raw = _hear_with_elevenlabs(directory, source, analysis, on_event, enhancer)
+            raw = _hear_with_elevenlabs(directory, source, analysis, on_event, enhancer, stopper, digest)
         else:
             raw = lt.transcribe_long(source, directory, model_name=prefs["whisper_model"] or None, on_event=on_event, should_stop=stopper)
         version = raw["version"]
         _set(directory, transcription_status="completed", language=raw["language"], transcript_version=version,
              progress={"processed_s": raw["duration"], "duration_s": raw["duration"], "percent": 100, "eta_s": 0})
+        _step(directory, "audio", "done")
+        _step(directory, "transcribe", "done", label=f"رونویسی با {engine_name}", note=f"{len(raw['segments'])} جمله · {raw.get('word_count', 0)} واژه",
+              narration=f"گفتار کل ویدیو شنیده شد: {len(raw['segments'])} جمله، زبان {_language_name(raw['language'])}.",
+              log=f"رونویسی تمام شد: {len(raw['segments'])} جمله، {raw.get('word_count', 0)} واژه، زبان {_language_name(raw['language'])}.")
     else:
         raw = json.loads(raw_path.read_text())
         enhancer.skip = raw.get("model") == "elevenlabs"
+        for step_key, text in (("audio", "صدا از قبل استخراج شده بود."), ("transcribe", f"رونویسی از قبل کامل بود ({len(raw['segments'])} جمله).")):
+            _step(directory, step_key, "done", log=text)
         for index in range(len(list((directory / "chunks").glob("*.json")))):
             enhancer.submit(index)
 
     # 2. wait for the corrected text, then keep both versions side by side
     _set(directory, stage="enhancing", message="در حال اصلاح و بهبود متن")
+    if enhancer.skip:
+        _step(directory, "enhance", "active", narration="متن ElevenLabs از پیش دقیق است؛ بازنویسی با مدل زبانی لازم نیست.", log="این مرحله برای ElevenLabs لازم نیست؛ متن همان‌طور که شنیده شد می‌ماند.")
+    else:
+        _step(directory, "enhance", "active", narration="هر تکه را مدل زبانی بازخوانی می‌کند و غلط‌های املایی و واژه‌های اشتباه را درست می‌کند؛ متن اصلی دست‌نخورده کنارش می‌ماند.", log="بازخوانی تکه‌ها با مدل زبانی.")
     enhancer.finish(stopper)
     segments = enhancer.assemble(raw)
     (directory / "transcript.json").write_text(json.dumps({"version": raw["version"], "language": raw["language"], "segments": segments}, ensure_ascii=False))
-    _emit(conversation_id, "transcription.enhancement.completed", analysis_id=key, changed=sum(1 for s in segments if s.get("changed")), segments=len(segments))
+    changed = sum(1 for s in segments if s.get("changed"))
+    _emit(conversation_id, "transcription.enhancement.completed", analysis_id=key, changed=changed, segments=len(segments))
+    _step(directory, "enhance", "done", note="نیاز نبود" if enhancer.skip else f"{changed} جمله اصلاح شد",
+          narration="متن آمادهٔ تحلیل است." if enhancer.skip else f"متن اصلاح شد: {changed} جمله از {len(segments)} جمله بهتر شد.",
+          log="متن نهایی ذخیره شد." if enhancer.skip else f"{changed} جمله از {len(segments)} اصلاح شد.")
     if stopper():
         raise lt.Stopped("stopped")
     if not segments:
@@ -324,6 +499,10 @@ def _run(directory: Path) -> None:
 
     # 3. discovery
     _discover(directory, segments, stopper)
+
+
+def _language_name(code: Optional[str]) -> str:
+    return {"fa": "فارسی", "fas": "فارسی", "en": "انگلیسی", "ar": "عربی", "tr": "ترکی"}.get(str(code or ""), str(code or "نامشخص"))
 
 
 class _Enhancer:
@@ -364,6 +543,9 @@ class _Enhancer:
                 self.done.add(index)
                 total = len(list((self.directory / "chunks").glob("*.json")))
                 _set(self.directory, message=f"در حال اصلاح و بهبود متن ({len(self.done)} از {total})")
+                if not self.skip:
+                    _step(self.directory, "enhance", "active", progress=100 * len(self.done) / max(1, total), note=f"{len(self.done)} از {total} تکه",
+                          log=f"تکه {index + 1} اصلاح شد ({len(self.done)} از {total}).")
             except Exception as exc:
                 log.warning("enhancement of chunk %s failed: %s", index, exc)
                 self.errors.append(index)
@@ -419,22 +601,35 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
     index = {s["id"]: i for i, s in enumerate(segments)}
 
     outline_path = directory / "outline.json"
+    _step(directory, "outline", "active", narration="کل متن را از اول تا آخر می‌خوانم و نقشهٔ موضوعی ویدیو را می‌سازم تا هر پیشنهاد را با دید کل ویدیو بسنجم.",
+          log=f"متن {len(segments)} جمله‌ای برای فهم ساختار خوانده می‌شود.")
     if outline_path.is_file():
         outline = discovery.Outline.model_validate_json(outline_path.read_text())
+        _step(directory, "outline", "active", log="نقشهٔ موضوعی از قبل ساخته شده بود.")
     else:
-        outline = discovery.build_outline(segments, on_progress=lambda n: _set(directory, message=f"ساختار موضوعی ویدیو: بخش {n}"))
+        def outline_progress(n: int) -> None:
+            _set(directory, message=f"ساختار موضوعی ویدیو: بخش {n}")
+            _step(directory, "outline", "active", note=f"بخش {n}", log=f"بخش {n} از متن بررسی شد.")
+        outline = discovery.build_outline(segments, on_progress=outline_progress)
         outline_path.write_text(outline.model_dump_json())
     _emit(conversation_id, "content.outline.completed", analysis_id=key, topics=[{"title": t.title, "start": t.start, "end": t.end} for t in outline.topics][:60])
+    _step(directory, "outline", "done", note=f"{len(outline.topics)} موضوع", narration=f"ساختار ویدیو روشن شد: {len(outline.topics)} موضوع اصلی.",
+          log="موضوع‌ها: " + "؛ ".join(f"{t.title} ({_clock(t.start)})" for t in outline.topics[:12]) + ("…" if len(outline.topics) > 12 else ""))
 
     (directory / "windows").mkdir(exist_ok=True)
     tag = FINDER_VERSION + ("-more-" + re.sub(r"\W+", "", focus)[:12] if focus else "-w")          # answers of an older prompt are not reused
     accepted = list(analysis["candidates"])
     before = len(accepted)
     wins = discovery.windows(segments)
+    find_label = f"پیدا کردن کاندیداهای پست: «{focus[:40]}»" if focus else STEP_LABEL["find"]
+    _step(directory, "find", "active", label=find_label, progress=0, note=f"0 از {len(wins)} بخش",
+          narration="متن را بخش‌به‌بخش می‌گردم و هر قسمتی را که به‌تنهایی برای یک پست اینستاگرام ارزش دارد پیشنهاد می‌دهم؛ بعد هر پیشنهاد را با دید کل ویدیو بازبینی می‌کنم.",
+          log=f"{len(wins)} بخش برای جست‌وجو" + (f" · تمرکز: {focus}" if focus else "") + ".")
     for number, window in enumerate(wins):
         if stopper():
             raise lt.Stopped("stopped")
         _set(directory, stage="finding", message=f"جست‌وجوی محتوای مستقل: بخش {number + 1} از {len(wins)}")
+        _step(directory, "find", "active", progress=100 * number / max(1, len(wins)), note=f"بخش {number + 1} از {len(wins)} · {len(accepted)} پیشنهاد تا اینجا")
         cache = directory / "windows" / f"{tag}-{number:03d}.json"
         if cache.is_file():
             raws = [discovery.RawCandidate.model_validate(r) for r in json.loads(cache.read_text())]
@@ -447,11 +642,16 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
             cache.write_text(json.dumps([r.model_dump(by_alias=False) for r in raws], ensure_ascii=False, default=str))
         fresh = _prepare(raws, segments, index, key)
         if not fresh:
+            _step(directory, "find", "active", log=f"بخش {number + 1} از {len(wins)}: پیشنهاد قابل‌استفاده‌ای نبود.")
             continue
         _set(directory, stage="validating", message=f"بازبینی {len(fresh)} پیشنهاد با دید کل ویدیو")
+        _step(directory, "find", "active", note=f"بازبینی {len(fresh)} پیشنهاد (بخش {number + 1} از {len(wins)})", log=f"بخش {number + 1} از {len(wins)}: {len(fresh)} پیشنهاد؛ در حال بازبینی با دید کل ویدیو.")
+        kept = 0
         for cand in _validated(fresh, segments, outline):
             if any(discovery.same_content(cand, other) for other in accepted):
                 continue
+            kept += 1
+            _step(directory, "find", "active", log=f"پذیرفته شد: «{cand['title']}» ({_clock(cand['ranges'][0][0])}–{_clock(cand['ranges'][-1][1])}، امتیاز {cand['score']:g}).")
             accepted.append(cand)
             accepted.sort(key=lambda c: c["ranges"][0][0])
             analysis = load(directory)
@@ -459,9 +659,15 @@ def _discover(directory: Path, segments: list[dict], stopper, focus: str = "") -
             save(directory, analysis)
             _emit(conversation_id, "content.candidate.found", analysis_id=key, candidate=public_candidate(cand))
             prepare_media_in_background(directory, cand, Path(analysis["source_path"]))
+        if len(fresh) != kept:
+            _step(directory, "find", "active", log=f"بخش {number + 1}: {len(fresh) - kept} پیشنهاد در بازبینی رد شد یا تکراری بود و کنار رفت.")
     analysis = load(directory)
     analysis.update(discovery_status="completed", stage="done", message=f"{len(accepted)} محتوای مستقل پیدا شد", candidates=accepted)
     save(directory, analysis)
+    _step(directory, "find", "done", note=f"{len(accepted)} کاندیدا" + (f" ({len(accepted) - before} تازه)" if before else ""),
+          narration=(f"{len(accepted)} محتوای مستقل برای پست پیدا شد." if accepted else "بخشی که به‌تنهایی ارزش انتشار داشته باشد پیدا نشد."),
+          log=f"جست‌وجو تمام شد: {len(accepted)} کاندیدا.")
+    _cards_progress(directory, started=True)
     _emit(conversation_id, "content.discovery.completed", analysis_id=key, count=len(accepted))
     new = len(accepted) - before
     if focus and before:
@@ -632,6 +838,33 @@ def preview(directory: Path, cand: dict, source: Path) -> Path:
     return target
 
 
+_MEDIA_FAILED: set[str] = set()
+
+
+def _cards_progress(directory: Path, started: bool = False) -> None:
+    """The last step: every card gets a thumbnail and a light preview. It is made in the background, so this step reports how many are ready."""
+    try:
+        analysis = load(directory)
+        if analysis.get("discovery_status") != "completed":
+            return
+        cards = [c for c in analysis["candidates"] if not c.get("hidden")]
+        if not cards:
+            return
+        ready = sum(1 for c in cards if _preview_target(directory, c).is_file())
+        lost = sum(1 for c in cards if c["id"] in _MEDIA_FAILED and not _preview_target(directory, c).is_file())
+        pending = len(cards) - ready - lost
+        if pending > 0:
+            _step(directory, "cards", "active", progress=100 * ready / len(cards), note=f"{ready} از {len(cards)} کارت آماده",
+                  narration="برای هر کارت یک تصویر کوچک و یک پیش‌نمایش سبک می‌سازم تا بدون دانلود فایل بزرگ ببینید.",
+                  log=f"{ready} از {len(cards)} پیش‌نمایش آماده است." if ready or not started else f"ساخت تصویر و پیش‌نمایش {len(cards)} کارت شروع شد.")
+        else:
+            _step(directory, "cards", "failed" if lost else "done", progress=100 * ready / len(cards), note=f"{ready} از {len(cards)} کارت" + (f" · {lost} ناموفق" if lost else ""),
+                  narration=("همهٔ کارت‌ها آماده‌اند؛ هرکدام را پیش‌نمایش کنید و «شروع تدوین» را بزنید." if not lost else f"{lost} کارت پیش‌نمایش نگرفت؛ با پخش کردن دوباره امتحان می‌شود."),
+                  log=f"پیش‌نمایش {ready} از {len(cards)} کارت آماده شد." + (f" {lost} کارت ناموفق بود." if lost else ""))
+    except Exception:
+        log.warning("cards step of %s could not be updated", directory.name, exc_info=True)
+
+
 def prepare_media_in_background(directory: Path, cand: dict, source: Path) -> None:
     """Make the thumbnail and the light preview of a card as soon as it is found, one card at a time and at low priority, so that pressing play finds them ready
     (on a busy server the first request used to wait minutes for an encode)."""
@@ -647,7 +880,9 @@ def prepare_media_in_background(directory: Path, cand: dict, source: Path) -> No
                     step()
                     log.info("card media for %s ready in %.0f s", cand.get("id"), time.monotonic() - started)
                 except Exception:
+                    _MEDIA_FAILED.add(cand["id"])
                     log.warning("card media could not be prepared for %s", cand.get("id"), exc_info=True)
+            _cards_progress(directory)
     threading.Thread(target=work, daemon=True, name=f"discovery-media-{cand.get('id')}").start()
 
 
@@ -931,7 +1166,7 @@ def refresh_statuses(directory: Path) -> dict:
     return analysis
 
 
-def view(directory: Path, tail: int = 12) -> dict:
+def view(directory: Path, tail: int = 14) -> dict:
     """What the chat panel shows: progress, the newest transcript lines and every card."""
     analysis = refresh_statuses(directory)
     if is_stale(analysis):
@@ -939,7 +1174,13 @@ def view(directory: Path, tail: int = 12) -> dict:
     segments = []
     enhanced = sorted((directory / "enhanced").glob("*.json")) if (directory / "enhanced").is_dir() else []
     chunks = sorted((directory / "chunks").glob("*.json"))
-    if chunks:
+    live = directory / "live.json"
+    if analysis.get("transcription_status") != "completed" and live.is_file():          # sentences as they are heard, not only when a whole piece is saved
+        try:
+            segments = json.loads(live.read_text())[-tail:]
+        except (OSError, ValueError):
+            pass
+    if not segments and chunks:
         try:
             last = json.loads(chunks[-1].read_text())["segments"][-tail:]
             segments = [{"id": s["id"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in last]

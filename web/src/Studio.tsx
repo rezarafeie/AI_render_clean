@@ -404,7 +404,7 @@ export default function Studio() {
     return kept;
   }, [items, renderLive]);
   const step = activeStep(shown);
-  const thinking = processing && !step && !renderLive ? thinkingLabel(events, messages) : undefined;
+  const thinking = processing && !step && !renderLive && !discoveryActive ? thinkingLabel(events, messages) : undefined;      // the long-video card shows its own steps
   const showConversation = Boolean(activeId) || Boolean(pending);
   const title = conversation?.title ? displayTitle(conversation.title, 60) : "New edit";
   useTopbarTitle(showConversation ? title : "");

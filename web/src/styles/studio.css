@@ -493,6 +493,7 @@ button.act-row:hover { color: var(--text-2); }
 .dv-live { border-inline-start: 2px solid var(--border); padding: 2px 12px; display: grid; gap: 6px; }
 .dv-live > b { font-size: 12.5px; color: var(--text-3); font-weight: 500; }
 .dv-live ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.dv-live ol { max-height: 260px; overflow-y: auto; scroll-behavior: smooth; }
 .dv-live li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; font-size: 14px; line-height: 1.7; }
 .dv-live time { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 3px; }
 .dv-toolbar { display: grid; gap: 10px; }
@@ -572,6 +573,9 @@ button.mg-step-row:focus-visible { outline: 2px solid var(--focus, currentColor)
 .mg-step-time { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-3); }
 .mg-step-tools { display: flex; flex-wrap: wrap; gap: 4px; }
 .mg-tool { font-size: 11px; padding: 1px 7px; border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-2); }
+.mg-step-note { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.dv-steps { display: grid; gap: 8px; }
+.mg-step[data-status="stopped"] .mg-step-mark, .mg-step[data-status="interrupted"] .mg-step-mark { color: var(--text-3); }
 .mg-step-summary { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
 .mg-step-ready { padding-top: 4px; border-top: 1px solid var(--border-subtle); }
 .mg-album { list-style: none; margin: 0; padding: 2px 0 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }

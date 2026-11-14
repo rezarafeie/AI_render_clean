@@ -57,7 +57,8 @@ def test_chunked_run_streams_real_segments_and_resumes_without_redoing_chunks(vi
     monkeypatch.setattr(lt, "plan_chunks", lambda d, s, target=50.0, window=lt.SNAP_WINDOW_S: [(0.0, 50.0), (50.0, 100.0), (100.0, 130.0)])
     events, model = [], FakeModel()
     raw = lt.transcribe_long(video, tmp_path, language="fa", model_name="base", on_event=lambda k, d: events.append((k, d)), model=model)
-    kinds = [k for k, _ in events]
+    kinds = [k for k, _ in events if k != "transcription.audio"]
+    assert [d["phase"] for k, d in events if k == "transcription.audio"] == ["started", "done"]
     assert kinds[0] == "transcription.started" and kinds[-1] == "transcription.completed" and model.calls == 3
     assert kinds.count("transcription.chunk.completed") == 3 and "transcription.segment.completed" in kinds
     progress = [d["percent"] for k, d in events if k == "transcription.progress"]

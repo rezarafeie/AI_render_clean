@@ -244,6 +244,12 @@ export interface DiscoveryAnalysis {
   estimate: { model: string; transcription_s: number; total_s: number } | null; media: { width?: number; height?: number; has_audio: boolean };
   running: boolean; interrupted: boolean; transcript_tail: { id: string; start: number; end: number; text: string }[]; chunks: number; enhanced_chunks: number;
   candidates: DiscoveryCandidate[];
+  /** The steps of the work (server-stored, so a refreshed page shows exactly what was seen). */
+  steps?: DiscoveryStepRecord[];
+}
+export interface DiscoveryStepRecord {
+  key: string; label: string; state: "active" | "done" | "failed" | "stopped"; at: number; done_at?: number; narration?: string; note?: string; progress?: number;
+  log: { at: number; text: string }[];
 }
 
 /** Plain-language Creative Plan built by the backend from the real analysis (app/creative_plan.py). */
