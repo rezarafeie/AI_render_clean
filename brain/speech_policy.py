@@ -36,6 +36,18 @@ def languages(row: dict) -> set[str]:
     return result
 
 
+_FEMALE_ASKED = re.compile(r"(?:صدای|صدا|گوینده|راوی|نریشن|نریشین|voice|narrator)\s*(?:ی|ای)?\s*[:：-]?\s*(?:با\s+)?(?:یک\s+|یه\s+)?(?:صدای\s+)?(?:خانم|زن|زنانه|female|woman)")
+_MALE_ASKED = re.compile(r"(?:صدای|صدا|گوینده|راوی|نریشن|نریشین|voice|narrator)\s*(?:ی|ای)?\s*[:：-]?\s*(?:با\s+)?(?:یک\s+|یه\s+)?(?:صدای\s+)?(?:آقا|مرد|مردانه|male|man)(?!\w)")
+
+
+def explicit_gender(text: str) -> str:
+    """'female' / 'male' when the request names the narrator's gender outright («با صدای خانم», «گوینده مرد», 'female voice'), else ''."""
+    text = str(text or "").casefold()
+    female = bool(_FEMALE_ASKED.search(text) or re.search(r"\b(?:female|woman'?s?|feminine)\s+(?:voice|narrator|narration|speaker)", text))
+    male = bool(_MALE_ASKED.search(text) or re.search(r"\b(?:male|man'?s?|masculine)\s+(?:voice|narrator|narration|speaker)", text))
+    return "female" if female and not male else "male" if male and not female else ""
+
+
 def choose_voice(voices: list[dict], context: str = "", preferred: str = "") -> str:
     """Rank native Persian voices by explicit use-case metadata; never by name."""
     eligible = [v for v in voices if languages(v) & FA and (v.get("voice_id") or v.get("id"))
@@ -53,6 +65,13 @@ def choose_voice(voices: list[dict], context: str = "", preferred: str = "") -> 
     male_cues = ("مرد", "آقا", "صنعتی", "ابزار", "موتور", "خودرو", "فرز", "دریل", "مکانیک", "ماشین", "کارگاه")
     # A product of a workshop is not sold in a woman's voice by default: the narrator is male unless the brief says female or is plainly a woman's product.
     wanted_gender = "female" if (any(c in raw_context for c in female_cues) and not any(c in raw_context for c in male_cues)) else "male"
+    # The person asked for a gender in so many words («با صدای خانم»): that beats the studio's preferred voice, which would otherwise outrank any gender match.
+    asked = explicit_gender(raw_context)
+    if asked:
+        wanted_gender = asked
+        preferred_gender = next((str((v.get("labels") or {}).get("gender", "")).lower() for v in eligible if (v.get("voice_id") or v.get("id")) == preferred), "")
+        if preferred_gender and preferred_gender != asked:
+            preferred = ""
 
     def score(v):
         labels = v.get("labels") or {}

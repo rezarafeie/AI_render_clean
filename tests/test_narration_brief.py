@@ -40,3 +40,22 @@ def test_cast_passes_the_brief_to_the_casting(monkeypatch):
     finally:
         localize._BRIEF.reset(token)
     assert "با صدای خانم" in seen["context"]
+
+
+def test_an_explicit_gender_beats_the_studios_preferred_voice():
+    voices = [{"voice_id": "m1", "languages": ["fa"], "labels": {"gender": "male"}},
+              {"voice_id": "f1", "languages": ["fa"], "labels": {"gender": "female"}}]
+    assert speech_policy.choose_voice(voices, "این را با صدای خانم بساز narration educational", "m1") == "f1"
+    assert speech_policy.choose_voice(voices, "گوینده مرد باشد narration educational", "f1") == "m1"
+    # no explicit request: the preferred voice still wins, as before
+    assert speech_policy.choose_voice(voices, "یک فیلم دربارهٔ تغذیه narration educational", "m1") == "m1"
+    assert speech_policy.choose_voice(voices, "یک فیلم narration educational", "f1") == "f1"
+
+
+def test_explicit_gender_is_read_from_plain_words():
+    assert speech_policy.explicit_gender("موشن را با صدای خانم بساز") == "female"
+    assert speech_policy.explicit_gender("گوینده زن") == "female"
+    assert speech_policy.explicit_gender("با صدای آقا") == "male"
+    assert speech_policy.explicit_gender("female voice please") == "female"
+    assert speech_policy.explicit_gender("برای خانم‌ها محصول آرایشی") == ""
+    assert speech_policy.explicit_gender("") == ""
