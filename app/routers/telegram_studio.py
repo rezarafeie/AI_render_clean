@@ -6,6 +6,9 @@ import logging
 import time
 from types import SimpleNamespace
 
+from html import escape
+import re
+
 import hashlib
 import hmac
 import json
@@ -282,11 +285,17 @@ EVENT_LABELS = {
 def _activity(event):
     label = EVENT_LABELS.get(event["type"])
     data = event["data"]
-    if not label:
+    if not label or data.get("thinking") or event["type"] == "agent.thinking_summary":
         return None
     message = next((data[k] for k in ("message", "text", "stage") if isinstance(data.get(k), str) and data[k]), "")
     progress = data.get("progress")
     percent = f" · {progress}٪" if type(progress) in (int, float) and 0 <= progress <= 100 else ""
+    message = " ".join(message.split())
+    message = re.split(r"\s*\(موضوع\s*:", message, maxsplit=1)[0].strip()
+    if message.rstrip(".…") in {"در حال کار", "دارم کار می‌کنم", "در حال پردازش"} and not percent:
+        return None
+    if len(message) > 82:
+        message = message[:80].rsplit(" ", 1)[0] + "…"
     return f"{label} · {message}{percent}" if message or percent else None
 
 
@@ -298,7 +307,6 @@ async def _updates(request, db, token, tg, conversation):
     events = await studio.repo.events(conversation, user, after, limit=60)
     timeline_key = cursor_key + ":timeline"
     lines = json.loads(await db.get(timeline_key) or "[]")
-    changed = False
     for event in events:
         kind, data, seq = event["type"], event["data"], event["seq"]
         if kind == "narration.ready" and type(data.get("event_seq")) is int:
@@ -317,7 +325,6 @@ async def _updates(request, db, token, tg, conversation):
                 [{"text": "تأیید و شروع رندر", "callback_data": "studio:plan:" + action}],
             ])
             lines = [*lines, "برنامه آمادهٔ بررسی است"][-12:]
-            changed = True
             await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         elif kind == "question.required" and isinstance(data.get("choices"), list):
             choices = [choice for choice in data["choices"] if isinstance(choice, str) and choice.strip()][:8]
@@ -339,13 +346,11 @@ async def _updates(request, db, token, tg, conversation):
                 else:
                     lines.append(line)
                 lines = lines[-12:]
-                changed = True
                 await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         await db.set(cursor_key, seq, ex=30 * 86400)
-    if changed:
-        await _timeline(db, token, tg, cursor_key, lines)
     chat = await studio.repo.get_conversation(conversation, user)
     sent = 0
+    has_reply = False
     for message in chat.get("messages", []):
         if message.get("role") != "assistant" or not message.get("content"):
             continue
@@ -358,20 +363,34 @@ async def _updates(request, db, token, tg, conversation):
                 await _send(token, tg, text[start:start + 3900])
             await db.set(key, "1", ex=30 * 86400)
             sent += 1
+        has_reply = True
+    if has_reply and lines:
+        text = _timeline_text(lines)
+        delivered = cursor_key + ":timeline-delivered"
+        if await db.get(delivered) != text:
+            await _timeline(db, token, tg, cursor_key, text)
+            await db.set(delivered, text, ex=30 * 86400)
     return len(events) + sent
 
 
-async def _timeline(db, token, tg, key, lines):
-    text = "روند کار EditorGPT\n\n" + "\n".join("• " + line[:260] for line in lines)
+def _timeline_text(lines):
+    recent = list(dict.fromkeys(reversed(lines)))[:3]
+    current = recent[0]
+    history = "\n".join("• " + escape(line[:110]) for line in reversed(recent[1:]))
+    text = "<b>روند کار</b>\n" + escape(current[:120])
+    return text + ("\n\n<b>مراحل اخیر</b>\n" + history if history else "")
+
+
+async def _timeline(db, token, tg, key, text):
     message_id = await db.get(key + ":telegram")
     async with httpx.AsyncClient(timeout=15) as client:
         if message_id:
-            response = await _bot_call(client, token, "editMessageText", {"chat_id": tg, "message_id": int(message_id), "text": text})
+            response = await _bot_call(client, token, "editMessageText", {"chat_id": tg, "message_id": int(message_id), "text": text, "parse_mode": "HTML"})
             if response.is_success or "message is not modified" in response.text:
                 return
             if response.status_code != 400:
                 response.raise_for_status()
-        response = await _bot_call(client, token, "sendMessage", {"chat_id": tg, "text": text})
+        response = await _bot_call(client, token, "sendMessage", {"chat_id": tg, "text": text, "parse_mode": "HTML"})
         response.raise_for_status()
         await db.set(key + ":telegram", response.json()["result"]["message_id"], ex=30 * 86400)
 
