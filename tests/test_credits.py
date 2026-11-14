@@ -210,3 +210,18 @@ def test_tables_are_created_on_first_use_without_a_migration(tmp_path, monkeypat
     monkeypatch.setattr(credits, "settings", lambda fresh=False: {**credits.DEFAULT_SETTINGS})
     assert asyncio.run(credits.account("5"))["balance"] == 1_000_000
     assert asyncio.run(credits.packages())[0]["id"] == "p1"
+
+
+def test_a_films_calls_count_under_its_chat_even_when_they_carry_no_chat_id(db):
+    from app.models import StudioConversation, StudioProject
+    async def seed():
+        async with credits.AsyncSessionLocal() as s:
+            s.add(StudioConversation(id="c9", user_key="7", title="t"))
+            s.add(StudioProject(id="p9", conversation_id="c9", user_key="7", engine="talking", title="film", external_ref="job9"))
+            await s.commit()
+    asyncio.run(seed())
+    credits.charge(record(id="a", conversation_id="c9", project_id=None, input_tokens=1000, output_tokens=0))
+    credits.charge(record(id="b", conversation_id=None, project_id="job9", project_kind="talking", input_tokens=2000, output_tokens=0))
+    chats = asyncio.run(credits.chat_usage("7"))
+    assert [(c["id"], c["credits"], c["calls"]) for c in chats] == [("c9", 3000, 2)]
+    assert asyncio.run(credits.conversation_for_project("job9")) == "c9"

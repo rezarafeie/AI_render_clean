@@ -1579,7 +1579,7 @@ async def credits_usage(request: Request, page: int = Query(1, ge=1), size: int 
     from app.models import StudioConversation, StudioProject
     user = _user(request)
     await credits.account(user)
-    chats, projects, ledger = await asyncio.gather(credits.usage_by(user, "conversation_id"), credits.usage_by(user, "project_id"),
+    chats, projects, ledger = await asyncio.gather(credits.chat_usage(user), credits.usage_by(user, "project_id"),
                                                   credits.ledger(user, page, size, kind))
     async with AsyncSessionLocal() as db:
         titles = {r.id: r.title for r in (await db.execute(select(StudioConversation).where(StudioConversation.user_key == user,

@@ -426,7 +426,7 @@ async def credit_users(query: str = Query("", max_length=100)):
 @router.get("/credits/users/{user_id}")
 async def credit_user(user_id: str, page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200)):
     from app import credits
-    return {"account": await credits.account(user_id), "chats": await credits.usage_by(user_id, "conversation_id"),
+    return {"account": await credits.account(user_id), "chats": await credits.chat_usage(user_id),
             "projects": await credits.usage_by(user_id, "project_id"), **await credits.ledger(user_id, page, size)}
 
 

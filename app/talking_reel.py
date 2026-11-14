@@ -584,7 +584,12 @@ def start(job_dir: Path, raw_video: Path, *, regenerate: bool = False, cached_on
             except Exception:
                 owner_id = None
         from brain.lm_gateway import work_scope
-        usage_scope = work_scope('talking', job_dir.name, user=owner_id)       # model calls of this reel are billed to its owner and shown under it
+        try:
+            from app import credits as _credits
+            owner_chat = _credits._run(_credits.conversation_for_project(job_dir.name))
+        except Exception:
+            owner_chat = None
+        usage_scope = work_scope('talking', job_dir.name, user=owner_id, conversation=owner_chat)       # model calls of this reel are billed to its owner and shown under it
         usage_scope.__enter__()
         try:
             started = time.time()

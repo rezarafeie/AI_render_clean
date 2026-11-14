@@ -459,6 +459,39 @@ async def usage_by(user_id: str, column: str, limit: int = 50) -> list[dict]:
         return [{"id": r[0], "credits": int(r[1] or 0), "calls": int(r[2]), "input_tokens": int(r[3] or 0), "output_tokens": int(r[4] or 0), "last_at": r[5], "kind": r[6]} for r in rows]
 
 
+async def conversation_for_project(ref: str) -> str | None:
+    """The chat a project / film belongs to (studio projects know their conversation; the film's own id is the project's external_ref)."""
+    from app.models import StudioProject
+    async with _session() as db:
+        row = (await db.execute(select(StudioProject).where((StudioProject.id == ref) | (StudioProject.external_ref == ref)))).scalars().first()
+        return row.conversation_id if row else None
+
+
+async def chat_usage(user_id: str, limit: int = 50) -> list[dict]:
+    """Credits per chat, including the calls of its films / projects: a film's calls carry its project but not always the chat
+    (a render started from a button), so they are attached to the project's chat here."""
+    from app.models import StudioProject
+    async with _session() as db:
+        rows = (await db.execute(select(CreditLedger.conversation_id, CreditLedger.project_id, func.sum(-CreditLedger.amount), func.count(),
+                                        func.sum(CreditLedger.input_tokens), func.sum(CreditLedger.output_tokens), func.max(CreditLedger.created_at))
+                                 .where(CreditLedger.user_id == str(user_id), CreditLedger.kind == "usage")
+                                 .group_by(CreditLedger.conversation_id, CreditLedger.project_id))).all()
+        refs = {r[1] for r in rows if r[0] is None and r[1]}
+        owner = {}
+        if refs:
+            for p in (await db.execute(select(StudioProject).where(StudioProject.id.in_(refs) | StudioProject.external_ref.in_(refs)))).scalars():
+                owner[p.id] = p.conversation_id
+                if p.external_ref: owner[p.external_ref] = p.conversation_id
+    groups = {}
+    for conv, project, credits_, calls, tin, tout, last in rows:
+        conv = conv or owner.get(project)
+        if not conv: continue
+        g = groups.setdefault(conv, {"id": conv, "credits": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "last_at": "", "kind": None})
+        g["credits"] += int(credits_ or 0); g["calls"] += int(calls); g["input_tokens"] += int(tin or 0); g["output_tokens"] += int(tout or 0)
+        g["last_at"] = max(g["last_at"], last or "")
+    return sorted(groups.values(), key=lambda g: g["last_at"], reverse=True)[:limit]
+
+
 async def project_breakdown(user_id: str, project_id: str) -> dict:
     """What one video cost: per model and per step (route), with the raw tokens."""
     async with _session() as db:
