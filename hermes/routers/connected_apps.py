@@ -29,6 +29,11 @@ async def connections(user=Depends(current_user)):
     return await service.connections(str(user.id))
 
 
+@router.delete("/connections/{application}")
+async def disconnect(application: str, user=Depends(current_user)):
+    return await service.disconnect(str(user.id), application.lower())
+
+
 @router.post("/connect")
 async def connect(body: ConnectInput, user=Depends(current_user)):
     return await service.connect(str(user.id), body.application)

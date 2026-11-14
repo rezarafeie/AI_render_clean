@@ -279,3 +279,21 @@ a.proj-card:hover { background: var(--surface); border-color: var(--border-subtl
 .set-voice .set-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .set-voice audio { max-width: 100%; }
 .set-reading { margin: 0; padding: 12px 14px; border-radius: var(--radius-md); background: var(--hover); line-height: 2; }
+
+/* Connections page: one card per service, actions at the end of the card */
+.conn .conn-list { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+.conn .conn-card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface); }
+.conn .conn-card[data-connected="true"] { border-color: color-mix(in srgb, var(--success) 35%, var(--border-subtle)); }
+.conn .conn-card > header { display: grid; gap: 4px; min-width: 0; }
+.conn .conn-card > header > div { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.conn .conn-card > header b { font-size: 15px; font-weight: 600; }
+.conn .conn-card > header p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.7; }
+.conn .conn-card > header p.conn-account { color: var(--text); font-size: 13px; }
+.conn .conn-card .conn-note { color: var(--text-3); font-size: 13px; }
+.conn .conn-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.conn .conn-master { margin-top: var(--space-3); }
+.conn .conn-confirm { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-2, color-mix(in srgb, var(--text) 5%, transparent)); }
+.conn .conn-confirm p { margin: 0; font-size: 14px; line-height: 1.7; }
+.conn .conn-sub { margin: var(--space-6) 0 0; font-size: 13px; font-weight: 500; color: var(--text-3); }
+.conn .set-actions { margin-top: var(--space-3); }
+.conn .set-footnote { margin-top: var(--space-6); }

@@ -237,3 +237,24 @@ async def connect(user_id: str, toolkit: str) -> dict:
             # This is a provider-hosted authorization link, never the session MCP URL.
             return {"redirect_url": request.redirect_url, "status": "AUTHORIZATION_REQUIRED"}
     return await remote(authorize)
+
+
+async def disconnect(user_id: str, toolkit: str) -> dict:
+    """Revoke and delete this person's connected account(s) of one allowed toolkit, so another account can be connected afterwards."""
+    if toolkit not in allowed_toolkits():
+        raise HTTPException(422, detail={"code": "COMPOSIO_APPLICATION_NOT_ALLOWED"})
+    owner = identity(user_id)          # only accounts of this person's own identity are ever listed, so only theirs can be removed
+    def revoke():
+        with sdk() as client:
+            listed = client.connected_accounts.list(user_ids=[owner], toolkit_slugs=[toolkit], limit=50)
+            removed = 0
+            for item in listed.items:
+                if getattr(item, "user_id", owner) != owner:
+                    continue
+                client.connected_accounts.delete(item.id, revoke_on_delete=False)   # forget THIS connection only; never revoke at the provider, which could cut another person's link to the same Instagram page
+                removed += 1
+            return removed
+    removed = await remote(revoke)
+    from hermes.services import composio_account
+    composio_account.forget(user_id)
+    return {"application": toolkit, "removed": removed}
