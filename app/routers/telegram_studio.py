@@ -173,8 +173,7 @@ def _menu(base, conversation=None):
         [launch("EditorGPT", "/studio" + ("/" + conversation if conversation else "")), launch("InstaGPT", "/hermes")],
         [launch("پروژه‌ها", "/projects"), launch("کتابخانه", "/library"), launch("تنظیمات", "/settings")],
         [{"text": "گفتگوی جدید", "callback_data": "studio:new"}],
-        [{"text": "دریافت خروجی", "callback_data": "studio:output"}, {"text": "توقف", "callback_data": "studio:cancel"}],
-        [{"text": "EditorGPT Lite", "callback_data": "studio:lite"}, {"text": "EditorGPT Medium", "callback_data": "studio:medium"}],
+        [{"text": "دریافت خروجی", "callback_data": "studio:output"}],
     ]
 
 
