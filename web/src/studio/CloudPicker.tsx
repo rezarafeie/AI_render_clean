@@ -7,15 +7,51 @@ import { friendlyError } from "../ui";
 
 type Crumb = { id: string; name: string };
 const PROVIDER = "googledrive";
-const MEDIA = [["", "All media"], ["video", "Video"], ["audio", "Audio"], ["image", "Images"]] as const;
-const SORTS = [["name", "Name"], ["modified", "Modified"], ["size", "Size"]] as const;
+const MEDIA = [["", "همه"], ["video", "ویدیو"], ["audio", "صدا"], ["image", "تصویر"]] as const;
+const SORTS = [["name", "نام"], ["modified", "جدیدترین"], ["size", "حجم"]] as const;
 
 function reconnectNeeded(text: string) { return /reconnect_required|COMPOSIO_(?:CONNECTION|POLICY)|not connected/i.test(text); }
+
+/** 2823 s -> "47:03", 3725 s -> "1:02:05". */
+function clock(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+/** Drive's thumbnail links end with =s220: ask for another size. */
+function thumb(url: string, size: number): string { return /=s\d+(?:-[\w-]+)?$/i.test(url) ? url.replace(/=s\d+(?:-[\w-]+)?$/i, `=s${size}`) : url; }
+const when = (value: string | null) => { try { return value ? new Date(value).toLocaleDateString("fa-IR") : ""; } catch { return ""; } };
+const kindName = (kind: CloudFile["kind"]) => kind === "video" ? "ویدیو" : kind === "audio" ? "صدا" : kind === "image" ? "تصویر" : "";
+const kindIcon = (file: CloudFile) => file.is_folder ? "projects" : file.kind === "video" ? "video" : file.kind === "audio" ? "music" : file.kind === "image" ? "image" : "alert";
+
+/** The small picture of a file (Drive's own thumbnail), or its icon while it loads or when there is none. */
+function Preview({ file, size = 56, onOpen }: { file: CloudFile; size?: number; onOpen?: () => void }) {
+  const [failed, setFailed] = React.useState(false);
+  const box = <span className="cloud-thumb" style={{ width: size * 1.4, height: size }} data-kind={file.kind || "other"}>
+    {file.thumbnail && !failed
+      ? <img src={thumb(file.thumbnail, 220)} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)}/>
+      : <Icon name={kindIcon(file)} size={20}/>}
+    {file.kind === "video" && file.duration ? <b className="cloud-thumb-time" dir="ltr">{clock(file.duration)}</b> : null}
+  </span>;
+  return onOpen && file.thumbnail && !failed
+    ? <button type="button" className="cloud-thumb-btn" onClick={onOpen} aria-label={`پیش‌نمایش ${file.name}`}>{box}</button> : box;
+}
+
+function Meta({ file }: { file: CloudFile }) {
+  const parts: React.ReactNode[] = [];
+  if (kindName(file.kind)) parts.push(<span key="k" className="cloud-chip" data-kind={file.kind}>{kindName(file.kind)}</span>);
+  if (file.size) parts.push(<span key="s" className="cloud-chip"><bdi dir="ltr">{formatBytes(file.size)}</bdi></span>);
+  if (file.duration) parts.push(<span key="d" className="cloud-chip"><Icon name="clock" size={12}/> <bdi dir="ltr">{clock(file.duration)}</bdi></span>);
+  if (file.width && file.height) parts.push(<span key="r" className="cloud-chip"><bdi dir="ltr">{file.width}×{file.height}</bdi></span>);
+  const date = when(file.modified);
+  if (date) parts.push(<span key="m" className="cloud-date">{date}</span>);
+  return <span className="cloud-meta">{parts}</span>;
+}
 
 /** Browse Google Drive and choose files to import. Importing itself is started by the caller, which also tracks progress. */
 export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImport: (files: CloudFile[]) => Promise<void> | void }) {
   const [provider, setProvider] = React.useState<CloudProvider | null | undefined>(undefined);
-  const [path, setPath] = React.useState<Crumb[]>([{ id: "root", name: "My Drive" }]);
+  const [path, setPath] = React.useState<Crumb[]>([{ id: "root", name: "درایو من" }]);
   const [query, setQuery] = React.useState("");
   const [applied, setApplied] = React.useState("");
   const [media, setMedia] = React.useState<(typeof MEDIA)[number][0]>("");
@@ -26,14 +62,16 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
   const [error, setError] = React.useState("");
   const [picked, setPicked] = React.useState<Map<string, CloudFile>>(new Map());
   const [busy, setBusy] = React.useState(false);
+  const [preview, setPreview] = React.useState<CloudFile | null>(null);
+  const [showOther, setShowOther] = React.useState(false);
   const request = React.useRef(0);
   const folder = path[path.length - 1].id;
 
   React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { if (preview) setPreview(null); else onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, preview]);
 
   React.useEffect(() => {
     let live = true;
@@ -51,11 +89,12 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
       setFiles(current => more ? [...current, ...result.files] : result.files);
       setNext(result.next_page_token);
     } catch (e) {
-      if (id === request.current) setError(friendlyError(e, "load Google Drive") + (reconnectNeeded(String(e)) ? " Reconnect Google Drive in Settings." : ""));
+      if (id === request.current) setError(friendlyError(e, "load Google Drive") + (reconnectNeeded(String(e)) ? " اتصال گوگل درایو را در تنظیمات دوباره برقرار کنید." : ""));
     } finally { if (id === request.current) setLoading(false); }
   }, [folder, applied, media, sort]);
 
-  React.useEffect(() => { if (provider?.connected) void load(null); }, [provider, load]);
+  // A new folder, search, filter or sort starts from an empty list with a visible loading state, so the old folder's files never sit there looking like the new one's.
+  React.useEffect(() => { if (provider?.connected) { setFiles([]); setNext(null); setShowOther(false); void load(null); } }, [provider, load]);
 
   const toggle = (file: CloudFile) => setPicked(current => {
     const copy = new Map(current);
@@ -65,56 +104,101 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
   const open = (file: CloudFile) => { setApplied(""); setQuery(""); setPath(current => [...current, { id: file.id, name: file.name }]); };
   const search = (event: React.FormEvent) => { event.preventDefault(); setApplied(query.trim()); };
   const importable = (file: CloudFile) => !file.is_folder && !file.native && !!file.kind;
+  const folders = files.filter(file => file.is_folder);
+  const usable = files.filter(importable);
+  const other = files.filter(file => !file.is_folder && !importable(file));
+  const allPicked = usable.length > 0 && usable.every(file => picked.has(file.id));
+  const togglePage = () => setPicked(current => {
+    const copy = new Map(current);
+    if (allPicked) usable.forEach(file => copy.delete(file.id)); else usable.forEach(file => copy.set(file.id, file));
+    return copy;
+  });
+  const chosen = [...picked.values()];
+  const chosenBytes = chosen.reduce((sum, file) => sum + (file.size || 0), 0);
+  const chosenSeconds = chosen.reduce((sum, file) => sum + (file.duration || 0), 0);
+  const opening = loading && !files.length;
   async function start() {
     setBusy(true);
-    try { await onImport([...picked.values()]); onClose(); } catch (e) { setError(friendlyError(e, "start the import")); setBusy(false); }
+    try { await onImport(chosen); onClose(); } catch (e) { setError(friendlyError(e, "start the import")); setBusy(false); }
   }
 
-  return <div className="overlay" role="dialog" aria-modal="true" aria-label="Import from Google Drive" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="dialog" style={{ width: "min(720px, 100%)", display: "grid", gap: 12, gridTemplateRows: "auto auto 1fr auto", maxHeight: "calc(100dvh - 32px)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><h3 style={{ margin: 0, flex: 1 }}>Import from Google Drive</h3>
-        <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18}/></button></div>
+  return <div className="overlay" role="dialog" aria-modal="true" aria-label="وارد کردن از گوگل درایو" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog cloud-dialog">
+      <header className="cloud-head"><h3>وارد کردن از گوگل درایو</h3>
+        <button className="icon-btn" onClick={onClose} aria-label="بستن"><Icon name="close" size={18}/></button></header>
 
-      {provider === undefined ? <p role="status"><span className="spinner"/> Checking Google Drive… the first check can take up to a minute.</p>
+      {provider === undefined ? <p role="status"><span className="spinner"/> در حال بررسی گوگل درایو… بررسی اول ممکن است تا یک دقیقه طول بکشد.</p>
         : !provider?.connected ? <div className="notice" role="status" style={{ display: "grid", gap: 8 }}>
-          <b>{provider && !provider.enabled ? "Google Drive is not enabled on this server." : "Google Drive is not connected."}</b>
-          {error ? <span>{error}</span> : <span>Connect your account in Settings, then come back here. Your files stay in Drive until you choose them.</span>}
-          <NavLink className="btn btn-sm btn-primary" to="/settings#integrations" onClick={onClose}>Open Connected services</NavLink></div>
+          <b>{provider && !provider.enabled ? "گوگل درایو روی این سرور فعال نیست." : "گوگل درایو وصل نیست."}</b>
+          {error ? <span>{error}</span> : <span>حساب خود را در تنظیمات وصل کنید و دوباره برگردید. فایل‌های شما تا وقتی انتخابشان نکنید در درایو می‌مانند.</span>}
+          <NavLink className="btn btn-sm btn-primary" to="/settings#integrations" onClick={onClose}>باز کردن اتصال‌ها</NavLink></div>
         : <>
-          <form onSubmit={search} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input className="input" style={{ flex: "1 1 200px" }} type="search" placeholder="Search in Drive" aria-label="Search Google Drive" value={query} onChange={event => setQuery(event.target.value)}/>
-            <select className="input" aria-label="File type" value={media} onChange={event => setMedia(event.target.value as typeof media)}>{MEDIA.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select className="input" aria-label="Sort by" value={sort} onChange={event => setSort(event.target.value as typeof sort)}>{SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <button className="btn btn-sm btn-secondary" type="submit">Search</button>
+          <form onSubmit={search} className="cloud-tools">
+            <input className="input cloud-search" type="search" placeholder="جستجو در درایو" aria-label="جستجو در گوگل درایو" value={query} onChange={event => setQuery(event.target.value)}/>
+            <button className="btn btn-sm btn-secondary" type="submit">جستجو</button>
           </form>
-          <div style={{ overflow: "auto", minHeight: 160, border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
-            <nav aria-label="Folder path" style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "8px 10px", borderBottom: "1px solid var(--border-subtle)" }}>
-              {applied ? <span>Results for “{applied}” <button className="btn btn-sm btn-ghost" onClick={() => { setApplied(""); setQuery(""); }}>Clear</button></span>
-                : path.map((crumb, index) => <button key={crumb.id} className="btn btn-sm btn-ghost" disabled={index === path.length - 1} onClick={() => setPath(path.slice(0, index + 1))}>{index ? "/ " : ""}{crumb.name}</button>)}
+          <div className="cloud-filters">
+            <div className="cloud-seg" role="group" aria-label="نوع فایل">
+              {MEDIA.map(([value, label]) => <button key={value || "all"} type="button" className="cloud-seg-btn" aria-pressed={media === value} onClick={() => setMedia(value)}>{label}</button>)}
+            </div>
+            <label className="cloud-sort">مرتب‌سازی
+              <select className="input" value={sort} onChange={event => setSort(event.target.value as typeof sort)}>{SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          </div>
+
+          <div className="cloud-list" aria-busy={loading}>
+            <nav aria-label="مسیر پوشه" className="cloud-crumbs">
+              {applied ? <span>نتایج «{applied}» <button className="btn btn-sm btn-ghost" onClick={() => { setApplied(""); setQuery(""); }}>پاک کردن</button></span>
+                : path.map((crumb, index) => <React.Fragment key={crumb.id}>
+                  {index ? <span className="cloud-sep" aria-hidden="true">‹</span> : null}
+                  <button className="btn btn-sm btn-ghost" disabled={index === path.length - 1} onClick={() => setPath(path.slice(0, index + 1))}>{crumb.name}</button>
+                </React.Fragment>)}
+              {loading ? <span className="cloud-loading" role="status"><span className="spinner"/> {opening ? `در حال باز کردن «${applied || path[path.length - 1].name}»…` : "در حال بارگذاری…"}</span> : null}
             </nav>
-            {error ? <p role="alert" style={{ padding: 12 }}>{error} <button className="btn btn-sm btn-secondary" onClick={() => void load(null)}>Try again</button></p> : null}
-            {loading && !files.length ? <p role="status" style={{ padding: 12 }}><span className="spinner"/> Loading from Google Drive… this can take up to a minute.</p> : null}
-            {!loading && !error && !files.length ? <p style={{ padding: 12 }}>Nothing to show here.</p> : null}
-            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {files.map(file => <li key={file.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)" }}>
-                {importable(file)
-                  ? <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`Select ${file.name}`}/>
-                  : <span style={{ width: 16 }}/>}
-                <Icon name={file.is_folder ? "library" : file.kind === "video" ? "video" : file.kind === "audio" ? "music" : file.kind === "image" ? "image" : "alert"} size={18}/>
-                {file.is_folder
-                  ? <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "flex-start", textAlign: "start" }} onClick={() => open(file)}><span className="wrap-safe">{file.name}</span></button>
-                  : <label style={{ flex: 1, minWidth: 0, opacity: importable(file) ? 1 : 0.55 }}><span className="wrap-safe">{file.name}</span>
-                    <small style={{ display: "block" }}>{file.native ? "Google document · cannot be imported" : !file.kind ? "Unsupported file type" : [file.size ? formatBytes(file.size) : "", file.duration ? `${Math.round(file.duration)}s` : "", file.modified ? new Date(file.modified).toLocaleDateString() : ""].filter(Boolean).join(" · ")}</small></label>}
-              </li>)}
-            </ul>
-            {next ? <div style={{ padding: 10 }}><button className="btn btn-sm btn-secondary" disabled={loading} onClick={() => void load(next)}>{loading ? "Loading…" : "Load more"}</button></div> : null}
+            {error ? <p role="alert" className="cloud-pad">{error} <button className="btn btn-sm btn-secondary" onClick={() => void load(null)}>دوباره امتحان کنید</button></p> : null}
+            {opening ? <ul className="cloud-rows" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <li key={i} className="cloud-row cloud-skel"><span className="cloud-thumb"/><span className="cloud-skel-lines"><i/><i/></span></li>)}</ul> : null}
+            {!loading && !error && !files.length ? <p className="cloud-pad cloud-empty">اینجا چیزی برای نمایش نیست.</p> : null}
+
+            {folders.length ? <ul className="cloud-rows">{folders.map(file => <li key={file.id}>
+              <button type="button" className="cloud-row cloud-folder" onClick={() => open(file)} disabled={loading}>
+                <span className="cloud-thumb" data-kind="folder"><Icon name="projects" size={20}/></span>
+                <span className="cloud-name wrap-safe">{file.name}</span><span className="cloud-sep" aria-hidden="true">›</span>
+              </button></li>)}</ul> : null}
+
+            {usable.length ? <>
+              <div className="cloud-selectbar"><label><input type="checkbox" checked={allPicked} onChange={togglePage}/> انتخاب همه‌ی این فهرست ({usable.length.toLocaleString("fa-IR")})</label></div>
+              <ul className="cloud-rows">{usable.map(file => <li key={file.id} className="cloud-row" data-picked={picked.has(file.id)}>
+                <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`انتخاب ${file.name}`}/>
+                <Preview file={file} onOpen={() => setPreview(file)}/>
+                <label className="cloud-info"><span className="cloud-name wrap-safe">{file.name}</span><Meta file={file}/></label>
+              </li>)}</ul></> : null}
+
+            {other.length ? <div className="cloud-other">
+              <button type="button" className="btn btn-sm btn-ghost" aria-expanded={showOther} onClick={() => setShowOther(value => !value)}>{showOther ? "پنهان‌کردن" : "نمایش"} فایل‌های قابل‌وارد‌کردن‌نشده ({other.length.toLocaleString("fa-IR")})</button>
+              {showOther ? <ul className="cloud-rows">{other.map(file => <li key={file.id} className="cloud-row cloud-disabled">
+                <Preview file={file}/>
+                <span className="cloud-info"><span className="cloud-name wrap-safe">{file.name}</span>
+                  <span className="cloud-meta"><span className="cloud-chip">{file.native ? "سند گوگل؛ قابل‌وارد‌کردن نیست" : "نوع فایل پشتیبانی نمی‌شود"}</span></span></span>
+              </li>)}</ul> : null}</div> : null}
+
+            {next ? <div className="cloud-pad"><button className="btn btn-sm btn-secondary" disabled={loading} onClick={() => void load(next)}>{loading ? "در حال بارگذاری…" : "نمایش بیشتر"}</button></div> : null}
           </div>
         </>}
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-        <small style={{ marginInlineEnd: "auto" }}>{picked.size ? `${picked.size} selected` : "Select videos, audio or images"}</small>
-        <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void start()}>{busy ? "Starting…" : `Import ${picked.size || ""}`.trim()}</button>
-      </div>
+      {preview ? <div className="cloud-preview" role="dialog" aria-label={`پیش‌نمایش ${preview.name}`} onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}>
+        <div className="cloud-preview-card">
+          {preview.thumbnail ? <img src={thumb(preview.thumbnail, 800)} alt={preview.name} referrerPolicy="no-referrer"/> : null}
+          <b className="wrap-safe">{preview.name}</b><Meta file={preview}/>
+          <div className="set-actions">
+            <button className="btn btn-sm btn-primary" onClick={() => { if (!picked.has(preview.id)) toggle(preview); setPreview(null); }}>{picked.has(preview.id) ? "انتخاب شده ✓" : "انتخاب این فایل"}</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => setPreview(null)}>بستن</button>
+          </div></div></div> : null}
+
+      <footer className="cloud-foot">
+        <small className="cloud-summary">{chosen.length
+          ? <>{chosen.length.toLocaleString("fa-IR")} فایل انتخاب شد{chosenBytes ? <> · <bdi dir="ltr">{formatBytes(chosenBytes)}</bdi></> : null}{chosenSeconds ? <> · <bdi dir="ltr">{clock(chosenSeconds)}</bdi></> : null}</>
+          : "ویدیو، صدا یا تصویر انتخاب کنید"}</small>
+        <button className="btn btn-sm btn-secondary" onClick={onClose}>انصراف</button>
+        <button className="btn btn-sm btn-primary" disabled={!chosen.length || busy} onClick={() => void start()}>{busy ? "در حال شروع…" : chosen.length ? `وارد کردن ${chosen.length.toLocaleString("fa-IR")} فایل` : "وارد کردن"}</button>
+      </footer>
     </div></div>;
 }
