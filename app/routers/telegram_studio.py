@@ -395,13 +395,17 @@ async def _run_upload(db, token, job_id):
             attachment_id = (await _attach(request, token, job["conversation"], job["file"]))["id"]
             job["attachment_id"] = attachment_id
             await db.set(PREFIX + "file:" + job_id, json.dumps(job), ex=86400)
-        await studio.send_message(request, job["conversation"], studio.MessageCreate(
-            content=job["content"], attachment_ids=[attachment_id], render_target="server", agent_mode=job["mode"]))
+        if job["content"]:
+            await studio.send_message(request, job["conversation"], studio.MessageCreate(
+                content=job["content"], attachment_ids=[attachment_id], render_target="server", agent_mode=job["mode"]))
+        else:
+            await db.set(PREFIX + "draft-file:" + job["conversation"], attachment_id, ex=86400)
     except HTTPException as exc:
         log.warning("Telegram file rejected: %s (%s)", exc.status_code, str(exc.detail)[:120])
         await _send(token, tg, str(exc.detail)[:500])
     else:
-        await _send(token, tg, "فایل به گفتگو اضافه شد. روند کار همین‌جا نمایش داده می‌شود.")
+        await _send(token, tg, "فایل به گفتگو اضافه شد. روند کار همین‌جا نمایش داده می‌شود."
+                    if job["content"] else "فایل دریافت شد. بگو می‌خواهی با این فایل چه کاری انجام بدهم.")
     finally:
         user_context.reset(ctx)
     await db.zrem(WORK, job_id)
@@ -636,7 +640,6 @@ async def webhook(request: Request):
                 watch = json.dumps([tg, str(user.id), conversation_id])
                 await db.zadd(WATCH, {watch: time.time()})
                 if attachment:
-                    content = content or "این فایل را بررسی کن و گزینه‌های استفاده از آن را بپرس."
                     job = {"tg": tg, "user": str(user.id), "conversation": conversation_id,
                            "file": attachment, "content": content[:12000], "mode": mode}
                     async with db.pipeline(transaction=True) as pipe:
@@ -644,8 +647,13 @@ async def webhook(request: Request):
                             WORK, {str(update_id): time.time()}).execute()
                     await _send(token, tg, "فایل دریافت شد و دانلود به Studio در صف است.")
                     return {"ok": True}
+                draft = PREFIX + "draft-file:" + conversation_id
+                attachment_id = await db.get(draft)
                 await studio.send_message(request, conversation_id, studio.MessageCreate(
-                    content=content[:12000], render_target="server", agent_mode=mode))
+                    content=content[:12000], attachment_ids=[attachment_id] if attachment_id else [],
+                    render_target="server", agent_mode=mode))
+                if attachment_id:
+                    await db.delete(draft)
             except HTTPException as exc:
                 await _send(token, tg, str(exc.detail)[:500], buttons=keyboard)
                 return {"ok": True}
