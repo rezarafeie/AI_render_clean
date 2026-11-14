@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 import time
 from types import SimpleNamespace
 
@@ -188,17 +189,17 @@ async def telegram_media(ticket: str):
         raw = await db.get(PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest())
     if not raw:
         raise HTTPException(404)
-    path, kind = json.loads(raw)
+    path, _ = json.loads(raw)
     file = Path(path)
     if not file.is_file():
         raise HTTPException(404)
-    return FileResponse(file, filename=file.name, media_type="audio/mpeg" if kind == "audio" else "video/mp4" if kind == "video" else "application/octet-stream",
+    return FileResponse(file, filename=file.name, media_type=mimetypes.guess_type(file.name)[0] or "application/octet-stream",
                         headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
 
 
 async def _send_file(token, chat, path, kind):
-    method = "sendAudio" if kind == "audio" else "sendVideo" if path.suffix.lower() == ".mp4" else "sendDocument"
-    kind = "video" if method == "sendVideo" else kind
+    kind = "video" if kind == "document" and path.suffix.lower() == ".mp4" else kind
+    method = {"audio": "sendAudio", "photo": "sendPhoto", "video": "sendVideo", "document": "sendDocument"}[kind]
     if os.environ.get("EDITOR_TELEGRAM_BOT_RELAY_URL"):
         ticket = secrets.token_urlsafe(32)
         key = PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest()
@@ -307,12 +308,16 @@ async def _updates(request, db, token, tg, conversation):
     events = await studio.repo.events(conversation, user, after, limit=60)
     timeline_key = cursor_key + ":timeline"
     lines = json.loads(await db.get(timeline_key) or "[]")
-    active = (await db.get(timeline_key + ":busy")) == "1"
+    stopped_key = cursor_key + ":stopped"
     for event in events:
         kind, data, seq = event["type"], event["data"], event["seq"]
-        if kind == "work.state" and isinstance(data.get("busy"), bool):
-            active = data["busy"]
-            await db.set(timeline_key + ":busy", "1" if active else "0", ex=30 * 86400)
+        if kind == "message.stopped":
+            if data.get("stopped") != ["message"] or not await db.exists(stopped_key):
+                await db.set(stopped_key, json.dumps(data), ex=30 * 86400)
+        elif kind == "job.failed" and data.get("stopped") and data.get("motion_id"):
+            await db.set(stopped_key, json.dumps(data), ex=30 * 86400)
+        elif kind == "message.started" or (kind == "motion.progress" and data.get("status") == "completed"):
+            await db.delete(stopped_key)
         if kind == "narration.ready" and type(data.get("event_seq")) is int:
             try:
                 media = await studio.event_audio(request, conversation, data["event_seq"])
@@ -371,15 +376,110 @@ async def _updates(request, db, token, tg, conversation):
         from app.studio_orchestrator import conversation_busy
         busy = await asyncio.to_thread(conversation_busy, chat, user)
         active = busy or any(p.get("status") in {"queued", "running"} for p in chat.get("projects", []))
-        text = _timeline_text(lines, active=active)
+        stopped = not active and bool(await db.exists(stopped_key))
+        control = "stop" if active else "resume" if stopped else None
+        text = _timeline_text(lines, active=active, stopped=stopped)
+        signature = json.dumps([text, control], ensure_ascii=False)
         delivered = cursor_key + ":timeline-delivered"
-        if await db.get(delivered) != text:
-            await _timeline(db, token, tg, cursor_key, text, conversation)
-            await db.set(delivered, text, ex=30 * 86400)
+        if await db.get(delivered) != signature:
+            await _timeline(db, token, tg, cursor_key, text, conversation, control)
+            await db.set(delivered, signature, ex=30 * 86400)
+    if (chat.get("state") or {}).get("motion"):
+        await _motion_assets(request, db, token, tg, conversation, cursor_key)
     return len(events) + sent
 
 
-def _timeline_text(lines, *, active=False):
+async def _motion_assets(request, db, token, tg, conversation, cursor_key):
+    try:
+        motion = (await studio.conversation_motion(request, conversation))["motion"]
+    except (HTTPException, KeyError, OSError, ValueError):
+        return
+    if not motion:
+        return
+    motion_id = motion["id"]
+    # Use the same ownership-checked files displayed in Studio.
+    voice = await _ready_asset(studio.motion_media(request, motion_id, "voice"))
+    await _deliver_motion_asset(db, token, tg, cursor_key, motion_id, "audio", voice, "voice")
+    sent = 0
+    for shot in motion.get("snapshots") or []:
+        n = shot["n"]
+        media = await _ready_asset(studio.motion_snapshot(request, motion_id, n))
+        if await _deliver_motion_asset(db, token, tg, cursor_key, motion_id, "photo", media, f"snapshot:{n}"):
+            sent += 1
+        if sent == 3:
+            break
+
+
+async def _ready_asset(endpoint):
+    try:
+        return await endpoint
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        return None
+
+
+async def _deliver_motion_asset(db, token, tg, cursor_key, motion_id, kind, media, label):
+    if media is None:
+        return False
+    path = Path(media.path)
+    try:
+        stamp = path.stat()
+        key = f"{cursor_key}:asset:{motion_id}:{label}:{stamp.st_mtime_ns}:{stamp.st_size}"
+        if await db.exists(key):
+            return False
+        cooldown = key + ":retry"
+        if not await db.set(cooldown, "1", nx=True, ex=60):
+            return False
+        await _send_file(token, tg, path, kind)
+        await db.set(key, "1", ex=30 * 86400)
+        return True
+    except (HTTPException, OSError) as exc:
+        log.warning("Telegram motion asset delivery: %s", type(exc).__name__)
+        return False
+
+
+async def _workflow_control(request, db, token, tg, action):
+    _, control, conversation = action.split(":")
+    user = studio._user(request)
+    key = PREFIX + f"cursor:{tg}:{user}:{conversation}:stopped"
+    try:
+        async with db.lock(PREFIX + "control-lock:" + conversation, timeout=120, blocking_timeout=0):
+            chat = await studio.repo.get_conversation(conversation, user)
+            from app.studio_orchestrator import conversation_busy
+            active = await asyncio.to_thread(conversation_busy, chat, user)
+            active = active or any(p.get("status") in {"queued", "running"} for p in chat.get("projects", []))
+            if control == "stop" and active:
+                await studio.stop_conversation(request, conversation)
+            elif control == "resume" and not active:
+                raw = await db.get(key)
+                if not raw:
+                    return
+                stopped = json.loads(raw)
+                if stopped.get("motion_id"):
+                    await studio.motion_retry(request, stopped["motion_id"])
+                elif stopped.get("analysis_id"):
+                    await studio.discovery_resume(request, stopped["analysis_id"])
+                elif "project" in stopped.get("stopped", []):
+                    await studio.resume_stopped_project(request, chat["state"]["current_project_id"], studio.ResumeRequest(retry_confirmed=True))
+                else:
+                    previous = next((m for m in reversed(chat["messages"]) if m["role"] == "user"), None)
+                    if previous is None:
+                        return
+                    await studio.send_message(request, conversation, studio.MessageCreate(
+                        content=previous["content"], attachment_ids=previous.get("attachments") or [],
+                        render_target="server", agent_mode=previous.get("agent_mode")))
+                await db.delete(key)
+            await db.zadd(WATCH, {json.dumps([tg, user, conversation]): time.time()})
+    except KeyError:
+        await _send(token, tg, "گفتگو یا اجرای قبلی پیدا نشد.")
+    except HTTPException as exc:
+        await _send(token, tg, str(exc.detail)[:500])
+    except RuntimeError:
+        await _send(token, tg, "وضعیت کار تغییر کرده است. کارت روند به‌روز می‌شود.")
+
+
+def _timeline_text(lines, *, active=False, stopped=False):
     current, _, value = lines[-1].rpartition(" · ")
     percent = re.fullmatch(r"([0-9]{1,3})(?:\.([0-9]+))?٪", value)
     progress = float(value[:-1]) if percent else None
@@ -388,6 +488,9 @@ def _timeline_text(lines, *, active=False):
     stage = current.partition(" · ")[2] or current
     label = current.partition(" · ")[0]
     heading = ("⚙️ <b>در حال انجام</b>" if active else "⚠️ <b>نیاز به بررسی</b>" if label == "خطا" else "📋 <b>روند کار</b>")
+    if stopped:
+        heading = "⏸ <b>متوقف شد</b>"
+        progress = None
     rows = [heading, ("🔹 " if active else "") + "<b>" + escape(stage[:105]) + "</b>"]
     if progress is not None and 0 <= progress <= 100:
         filled = int(progress // 10)
@@ -403,8 +506,11 @@ def _timeline_text(lines, *, active=False):
     return "\n".join(rows)
 
 
-async def _timeline(db, token, tg, key, text, conversation):
+async def _timeline(db, token, tg, key, text, conversation, control=None):
     markup = {"inline_keyboard": [[{"text": "تاریخچه در Studio", "web_app": {"url": _config()[2] + "/studio/" + conversation}}]]}
+    if control:
+        label = "⏹ توقف" if control == "stop" else "▶️ ادامه"
+        markup["inline_keyboard"].insert(0, [{"text": label, "callback_data": f"studio:{control}:{conversation}"}])
     message_id = await db.get(key + ":telegram")
     async with httpx.AsyncClient(timeout=15) as client:
         if message_id:
@@ -501,7 +607,8 @@ async def telegram_loop():
                         except KeyError:
                             await db.zrem(WATCH, entry)
                         except Exception as exc:
-                            log.warning("Telegram timeline delivery: %s", type(exc).__name__)
+                            if type(exc).__name__ != "LockError":
+                                log.warning("Telegram timeline delivery: %s", type(exc).__name__)
             except Exception as exc:
                 log.warning("Telegram timeline worker: %s", type(exc).__name__)
             await asyncio.sleep(4)
@@ -542,7 +649,7 @@ async def webhook(request: Request):
     callback = update.get("callback_query")
     if callback:
         action = str(callback.get("data") or "")
-        if not action.startswith(("studio:plan:", "studio:choice:")) and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
+        if not re.fullmatch(r"studio:(stop|resume):[a-f0-9]{32}", action) and not action.startswith(("studio:plan:", "studio:choice:")) and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
             return {"ok": True}
         async with httpx.AsyncClient(timeout=5) as client:
             try:
@@ -574,6 +681,9 @@ async def webhook(request: Request):
         request.state.user = user
         draft_key = PREFIX + f"reference:{tg}:{user.id}"
         mode_key = PREFIX + f"mode:{tg}:{user.id}"
+        if callback and re.fullmatch(r"studio:(stop|resume):[a-f0-9]{32}", action):
+            await _workflow_control(request, db, token, tg, action)
+            return {"ok": True}
         if callback and action.startswith("studio:choice:"):
             raw = await db.get(PREFIX + "choice:" + action.removeprefix("studio:choice:"))
             option = json.loads(raw) if raw else []
