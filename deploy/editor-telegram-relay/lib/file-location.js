@@ -11,7 +11,7 @@ export function parseDocument(fileId){
   }
   const data=Buffer.from(out);let pos=8;
   const raw=data.readUInt32LE(0), type=raw&~0x03000000,dcId=data.readInt32LE(4);
-  if(![2,5].includes(type)||raw&0x01000000||!(raw&0x02000000)||dcId<1||dcId>5)throw new Error('Unsupported document location');
+  if(![2,4,5,8,9,10,13,17].includes(type)||raw&0x01000000||!(raw&0x02000000)||dcId<1||dcId>5)throw new Error('Unsupported document location');
   let size=data[pos++],header=1;
   if(size===254){size=data.readUIntLE(pos,3);pos+=3;header=4;}
   if(size<1||size>4096||pos+size>data.length)throw new Error('Invalid file reference');
