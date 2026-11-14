@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import tempfile
@@ -14,6 +15,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app import auth
@@ -67,17 +69,21 @@ if (old_account and old_account ~= account) or (old_telegram and old_telegram ~=
 redis.call('SET', by_tg, account)
 redis.call('SET', by_user, telegram)
 redis.call('DEL', KEYS[1])
-return 1
+return telegram
 """
 
 
 @router.post("/link")
 async def link(request: Request, body: Pair):
-    _config()
+    token, _, base = _config()
     async with storage() as db:
         result = await db.eval(PAIR_SCRIPT, 1, _key(body.code), str(request.state.user.id), PREFIX)
-    if result != 1:
+    if not result or result == -1:
         raise HTTPException(409, "کد منقضی شده یا یکی از حساب‌ها قبلاً متصل است.")
+    try:
+        await _send(token, int(result), "حساب EditorGPT متصل شد.", buttons=_menu(base))
+    except HTTPException:
+        pass  # Linking is durable even when the confirmation message cannot be delivered.
     return {"linked": True}
 
 
@@ -164,8 +170,40 @@ def _menu(base, conversation=None):
     ]
 
 
+@router.get("/media/{ticket}")
+async def telegram_media(ticket: str):
+    if len(ticket) != 43 or not all(c.isalnum() or c in "_-" for c in ticket):
+        raise HTTPException(404)
+    async with storage() as db:
+        raw = await db.get(PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest())
+    if not raw:
+        raise HTTPException(404)
+    path, kind = json.loads(raw)
+    file = Path(path)
+    if not file.is_file():
+        raise HTTPException(404)
+    return FileResponse(file, filename=file.name, media_type="audio/mpeg" if kind == "audio" else "video/mp4" if kind == "video" else "application/octet-stream",
+                        headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
+
+
 async def _send_file(token, chat, path, kind):
-    method = "sendAudio" if kind == "audio" else "sendDocument"
+    method = "sendAudio" if kind == "audio" else "sendVideo" if path.suffix.lower() == ".mp4" else "sendDocument"
+    kind = "video" if method == "sendVideo" else kind
+    if os.environ.get("EDITOR_TELEGRAM_BOT_RELAY_URL"):
+        ticket = secrets.token_urlsafe(32)
+        key = PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest()
+        async with storage() as db:
+            await db.set(key, json.dumps([str(path), kind]), ex=180)
+        base = _config()[2]
+        try:
+            async with httpx.AsyncClient(timeout=26) as client:
+                result = await _bot_call(client, token, method, {
+                    "chat_id": chat, kind: base + "/api/integrations/telegram/media/" + ticket})
+            if result.is_success and result.json().get("ok"):
+                return
+        except (httpx.HTTPError, ValueError):
+            pass
+        raise HTTPException(502, "تلگرام فایل را دریافت نکرد. آن را در Studio باز کنید.")
     with path.open("rb") as file:
         try:
             async with httpx.AsyncClient(timeout=120) as client:

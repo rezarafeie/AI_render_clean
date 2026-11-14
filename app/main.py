@@ -244,7 +244,7 @@ async def auth_middleware(request: Request, call_next):
         "/integrations/telegram/webhook",
         "/integrations/premiere/bridge/pending",
         "/integrations/premiere/bridge/pair",
-    } or re.fullmatch(r"/jobs/[0-9a-f]{12}/premiere/bridge/receipt", path):
+    } or (request.method in {"GET", "HEAD"} and re.fullmatch(r"/integrations/telegram/media/[A-Za-z0-9_-]{43}", path)) or re.fullmatch(r"/jobs/[0-9a-f]{12}/premiere/bridge/receipt", path):
         return await call_next(request)
     header = request.headers.get("Authorization", "")
     from app.media_session import COOKIE, allowed as media_cookie_allowed
@@ -283,7 +283,7 @@ async def request_log(request: Request, call_next):
             "event": "http_request",
             "request_id": request_id,
             "method": request.method,
-            "path": request.url.path,
+            "path": "/integrations/telegram/media/[ticket]" if request.url.path.startswith("/integrations/telegram/media/") else request.url.path,
             "status_code": response.status_code,
             "duration_ms": duration_ms,
         }
