@@ -628,8 +628,8 @@ async def webhook(request: Request):
             from brain.lm_gateway import user_context
             context = user_context.set(str(user.id))
             try:
-                if not conversation_id:
-                    chat = await studio.create_conversation(request, studio.ConversationCreate(title="تلگرام"))
+                if attachment or not conversation_id:
+                    chat = await studio.create_conversation(request, studio.ConversationCreate())
                     conversation_id = chat["id"]
                     await db.set(chat_key, conversation_id)
                 mode = command.removeprefix("/") if mode else await db.get(mode_key)
