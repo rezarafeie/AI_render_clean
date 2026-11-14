@@ -459,7 +459,8 @@ def _run(directory: Path, change: str) -> None:
             if _cancelled(key):
                 raise _Cancelled()
             log.exception("claude motion %s failed; the classic engine takes over", key)
-            _note(directory, "engine", f"موتور «موشن کلاد» این فیلم را کامل نکرد ({str(exc)[:90]})؛ موتور قبلی ادامه می‌دهد", "done")
+            _note(directory, "engine-switch", "── ساخت اول (موتور موشن کلاد) کامل نشد؛ از اینجا همه‌چیز از اول با موتور دوم ساخته می‌شود. پیام‌های بالای این خط مربوط به تلاش اول‌اند ──", "done", detail=f"علت: {str(exc)[:600]}")
+            _progress(directory, "writing", 5, "ساخت اول کامل نشد؛ دارم از اول با موتور دوم می‌سازم.", stage="writing")
             with _lock(key):
                 record = load(directory)
                 record["engine"] = "classic"
