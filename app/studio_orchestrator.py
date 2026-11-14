@@ -388,6 +388,9 @@ def request_stop(conversation_id: str, user_key: str) -> dict:
                 stopped_ids["analysis_id"] = pointer["analysis_id"]
         except (KeyError, OSError, ValueError):
             pass
+    from app import long_video as _long_video
+    if _long_video.stop_prepare(conversation_id):                 # the clip is still being cut from the long video
+        stopped.append("clip")
     project_id = state.get("current_project_id")
     if project_id:
         try:

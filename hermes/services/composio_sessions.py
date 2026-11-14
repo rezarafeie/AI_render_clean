@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import contextmanager
+import contextvars
 import hashlib
 import json
 import re
@@ -22,6 +23,8 @@ from hermes.database import get_row, save_row
 from hermes.security import decrypt_setting, encrypt_setting, utcnow
 
 _remote_capacity = threading.BoundedSemaphore(4)
+# One tool call may need longer than the usual 30 s (a Drive download is copied by Composio first): the caller sets this for that call only.
+CALL_TIMEOUT = contextvars.ContextVar("composio_call_timeout", default=0.0)
 
 
 def identity(user_id: str) -> str:
@@ -52,8 +55,9 @@ def sdk():
             raise HTTPException(503, detail={"code": "COMPOSIO_RELAY_URL_INVALID"})
         extra["base_url"] = base
     relay_headers = {"x-relay-secret": settings.COMPOSIO_RELAY_SECRET} if base and settings.COMPOSIO_RELAY_SECRET else {}
-    with httpx.Client(timeout=30 if base else 20, follow_redirects=False, headers=relay_headers) as client:   # the SDK ignores default_headers, the client carries the secret
-        yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=30 if base else 20, max_retries=1 if base else 0,
+    seconds = CALL_TIMEOUT.get() or (30 if base else 20)
+    with httpx.Client(timeout=seconds, follow_redirects=False, headers=relay_headers) as client:   # the SDK ignores default_headers, the client carries the secret
+        yield Composio(api_key=settings.COMPOSIO_API_KEY, timeout=seconds, max_retries=1 if base else 0,
                        allow_tracking=False, http_client=client, file_upload_dirs=False,
                        dangerously_allow_auto_upload_download_files=False, **extra)
 

@@ -544,6 +544,37 @@ def _ffmpeg(args: list[str], timeout: int = 600, *, nice: bool = False) -> None:
     subprocess.run([*(["nice", "-n", "10"] if nice else []), "ffmpeg", "-v", "error", "-y", *args], check=True, capture_output=True, timeout=timeout)
 
 
+class PrepareStopped(Exception):
+    """The person pressed Stop while a clip was being cut from the long video."""
+
+
+def _ffmpeg_progress(args: list[str], timeout: int, total: float, on_progress, should_stop) -> None:
+    """ffmpeg with real progress (out_time against the clip's length) and a stop check on every progress line; the process is killed on stop."""
+    command = ["ffmpeg", "-v", "error", "-y", "-progress", "pipe:1", "-nostats", *args]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    errors: list[str] = []
+    threading.Thread(target=lambda: errors.append(process.stderr.read()), daemon=True).start()
+    started = time.monotonic()
+    try:
+        for line in process.stdout:
+            if should_stop and should_stop():
+                raise PrepareStopped()
+            if time.monotonic() - started > timeout:
+                raise subprocess.TimeoutExpired(command, timeout)
+            if line.startswith("out_time_us=") and total > 0:
+                try:
+                    on_progress(min(1.0, int(line.split("=", 1)[1]) / 1e6 / total))
+                except ValueError:
+                    pass
+        code = process.wait()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    if code:
+        raise subprocess.CalledProcessError(code, command, stderr="".join(errors)[-500:])
+
+
 def thumbnail(directory: Path, cand: dict, source: Path) -> Path:
     target = directory / "thumbs" / f"{cand['id']}.jpg"
     if not target.is_file():
@@ -553,13 +584,17 @@ def thumbnail(directory: Path, cand: dict, source: Path) -> Path:
     return target
 
 
-def render_clip(source: Path, ranges: list[list[float]], target: Path, *, small: bool) -> Path:
+def render_clip(source: Path, ranges: list[list[float]], target: Path, *, small: bool, on_progress=None, should_stop=None) -> Path:
     """The clip for the given source ranges (several ranges are joined). ``small`` makes a light 360p preview."""
     target.parent.mkdir(parents=True, exist_ok=True)
     scale = ["-vf", "scale=-2:360"] if small else []
     quality = (["-c:v", "libx264", "-preset", "ultrafast", "-crf", "32", "-r", "24", "-threads", "2", "-c:a", "aac", "-b:a", "48k", "-movflags", "+faststart"] if small
                else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "3", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"])
-    run_ffmpeg = lambda args: _ffmpeg(args, 1800 if small else 3600, nice=small)
+    total = sum(b - a for a, b in ranges)
+    if on_progress or should_stop:
+        run_ffmpeg = lambda args: _ffmpeg_progress(args, 1800 if small else 3600, total, on_progress or (lambda fraction: None), should_stop)
+    else:
+        run_ffmpeg = lambda args: _ffmpeg(args, 1800 if small else 3600, nice=small)
     temporary = target.with_suffix(".part.mp4")
     if len(ranges) == 1:
         a, b = ranges[0]
@@ -716,6 +751,21 @@ def seed_transcript(analysis: dict, directory: Path, cand: dict) -> dict:
 
 
 _PREPARING: set[str] = set()
+_PREP_STOP: dict[str, threading.Event] = {}        # chat id -> "the person pressed Stop while its clip was being cut"
+
+
+def stop_prepare(child_id: str) -> bool:
+    """The Stop button of an editing chat whose clip is still being cut from the long video."""
+    event = _PREP_STOP.get(child_id)
+    if event is None:
+        return False
+    event.set()
+    return True
+
+
+def _clock(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}" if seconds >= 3600 else f"{seconds // 60}:{seconds % 60:02d}"
 
 
 def start_candidate(directory: Path, candidate_id: str, *, like_candidate: Optional[str] = None) -> dict:
@@ -751,6 +801,12 @@ def start_candidate(directory: Path, candidate_id: str, *, like_candidate: Optio
         _PREPARING.add(key)
     from app.studio_orchestrator import _assistant as say
     say(child_id, user_key, "دارم این بخش را از ویدیوی بلند جدا می‌کنم. روی سرور شلوغ ممکن است چند دقیقه طول بکشد؛ وقتی آماده شد، تدوین خودکار شروع می‌شود و لازم نیست چیزی بفرستید.")
+    cand = next(c for c in analysis["candidates"] if c["id"] == candidate_id)
+    span = sum(b - a for a, b in cand["ranges"])
+    _PREP_STOP[child_id] = threading.Event()
+    _emit(child_id, "work.state", busy=True)                      # the composer shows Stop at once
+    _emit(child_id, "tool.started", tool="clip_cut", stage="cutting", progress=0,
+          message=f"در حال جدا کردن این بخش ({_clock(span)}) از ویدیوی بلند…")
     threading.Thread(target=_prepare_child, args=(directory, candidate_id, child_id, like_candidate), daemon=True, name=f"discovery-clip-{candidate_id}").start()
     return {"conversation_id": child_id, "created": True}
 
@@ -764,7 +820,22 @@ def _prepare_child(directory: Path, candidate_id: str, child_id: str, like_candi
     key = f"{analysis['id']}:{candidate_id}"
     try:
         cand = next(c for c in analysis["candidates"] if c["id"] == candidate_id)
-        clip = render_clip(Path(analysis["source_path"]), cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False)
+        stopped = _PREP_STOP.setdefault(child_id, threading.Event())
+        span = sum(b - a for a, b in cand["ranges"])
+        began, shown = time.monotonic(), {"at": 0.0, "percent": -1}
+
+        def progress(fraction: float) -> None:
+            now, percent = time.monotonic(), int(fraction * 100)
+            if percent == shown["percent"] or (now - shown["at"] < 3 and percent < 100):
+                return
+            shown.update(at=now, percent=percent)
+            left = (now - began) / fraction * (1 - fraction) if fraction > 0.02 else None
+            _emit(child_id, "tool.progress", tool="clip_cut", stage="cutting", progress=percent,
+                  message=f"در حال جدا کردن بخش ({_clock(span)}) از ویدیوی بلند: {percent}٪" + (f" · حدود {_clock(left)} باقی مانده" if left is not None else ""))
+
+        clip = render_clip(Path(analysis["source_path"]), cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False,
+                           on_progress=progress, should_stop=stopped.is_set)
+        _emit(child_id, "tool.completed", tool="clip_cut", stage="cutting", progress=100, message="بخش جدا شد؛ تدوین شروع می‌شود.")
         attachment_path = ROOT / _safe(user_key) / child_id / "attachments"
         attachment_path.mkdir(parents=True, exist_ok=True)
         placed = attachment_path / f"{cand['id']}.mp4"
@@ -789,9 +860,23 @@ def _prepare_child(directory: Path, candidate_id: str, child_id: str, like_candi
                     c["child_preparing"] = False
             save(directory, fresh)
         dispatch_message(child_id, user_key, message["id"], text, [attachment["id"]])
+    except PrepareStopped:
+        log.info("clip for %s: stopped by the person", candidate_id)
+        try:                                                      # request_stop already wrote "stopped by you" into the chat; the card is free to be started again
+            with _lock(analysis["id"] + ":start"):
+                fresh = load(directory)
+                for c in fresh["candidates"]:
+                    if c["id"] == candidate_id:
+                        c.update(child_conversation_id=None, child_preparing=False, status="discovered")
+                save(directory, fresh)
+            _emit(child_id, "work.state", busy=False)
+        except Exception:
+            log.exception("the stop of %s could not be recorded", candidate_id)
     except Exception as exc:
         log.exception("clip for %s could not be prepared", candidate_id)
         try:
+            _emit(child_id, "tool.failed", tool="clip_cut", stage="cutting", message="جدا کردن بخش از ویدیوی بلند انجام نشد.")
+            _emit(child_id, "work.state", busy=False)
             say(child_id, user_key, f"جدا کردن این بخش از ویدیوی بلند انجام نشد ({str(exc)[:120] or type(exc).__name__}). به کارت برگردید و «شروع تدوین» را دوباره بزنید.")
             with _lock(analysis["id"] + ":start"):
                 fresh = load(directory)
@@ -803,6 +888,7 @@ def _prepare_child(directory: Path, candidate_id: str, child_id: str, like_candi
             log.exception("the failure of %s could not be recorded", candidate_id)
     finally:
         _PREPARING.discard(key)
+        _PREP_STOP.pop(child_id, None)
 
 
 def _child_status(user_key: str, cand: dict) -> tuple[str, Optional[dict]]:

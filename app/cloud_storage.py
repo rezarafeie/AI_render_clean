@@ -54,11 +54,24 @@ def _toolkit(provider: str) -> str:
     return PROVIDERS[provider]["toolkit"]
 
 
+DOWNLOAD_CALL_SECONDS = 58.0       # just under the relay's 60 s: Composio copies the whole Drive file before it answers
+
+
+async def _timed(slug: str, call):
+    from hermes.services import composio_sessions as _sessions
+    token = _sessions.CALL_TIMEOUT.set(DOWNLOAD_CALL_SECONDS) if slug == "GOOGLEDRIVE_DOWNLOAD_FILE" else None
+    try:
+        return await call
+    finally:
+        if token is not None:
+            _sessions.CALL_TIMEOUT.reset(token)
+
+
 async def _call(user: str, provider: str, slug: str, arguments: dict) -> dict:
     from fastapi import HTTPException
     from hermes.services.composio_read import execute
     try:
-        result = await execute(user, _toolkit(provider), slug, arguments, max_chars=200_000)
+        result = await _timed(slug, execute(user, _toolkit(provider), slug, arguments, max_chars=200_000))
     except HTTPException as exc:
         code = (exc.detail or {}).get("code", "") if isinstance(exc.detail, dict) else ""
         if code in {"COMPOSIO_TOOL_NOT_ALLOWED", "COMPOSIO_APPLICATION_NOT_ALLOWED"}:
@@ -328,7 +341,15 @@ async def _import(transfer_id: str, user: str, conversation_id: str) -> None:
         record = await _aset(user, record, state="downloading")
         size = 0
         for attempt in range(6):            # a link can expire during a very long download: ask Composio for a new one and carry on
-            downloaded = await _call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]})
+            downloaded = None
+            for tool_try in range(4):       # Composio keeps copying the file after our wait ends: the next ask usually finds it ready
+                try:
+                    downloaded = await _call(user, record["provider"], "GOOGLEDRIVE_DOWNLOAD_FILE", {"fileId": record["file_id"]})
+                    break
+                except CloudError as exc:
+                    if exc.code not in {"provider_unavailable", "rate_limited"} or tool_try == 3:
+                        raise
+                    await asyncio.sleep(3)
             link = (downloaded.get("downloaded_file_content") or {}).get("s3url")
             if not link:
                 raise CloudError("provider_error", "Google Drive did not return the file.", 502)
