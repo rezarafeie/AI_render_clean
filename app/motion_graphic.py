@@ -2105,7 +2105,11 @@ def media_path(directory: Path, kind: str, version: Optional[int] = None) -> Pat
         try:
             audio = json.loads((directory / "voice.json").read_text())["audio"][0]["path"]
         except (OSError, ValueError, KeyError, IndexError):
-            raise KeyError("voice")
+            # The Claude engine says "narration ready" long before voice.json is written: the finished take is already on disk.
+            takes = sorted((directory / "voice").glob("narration_*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True) if (directory / "voice").is_dir() else []
+            if not takes:
+                raise KeyError("voice")
+            audio = str(takes[0])
         path = Path(audio)
         if not path.is_file() or directory.resolve() not in path.resolve().parents:
             raise KeyError("voice")
