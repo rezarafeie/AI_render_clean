@@ -60,6 +60,7 @@ const ROUTE_TITLES: Record<string, string> = { "/projects": "Projects", "/templa
 export default function EditorShell() {
   const { authenticated, user, openAuth, logout } = useAuth();
   const credits = useCredits(authenticated && !isLocalDevelopment);
+  const [creditsOpen, setCreditsOpen] = React.useState(false);       // a tap opens the balance card where there is no hover (phones, tablets)
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 820px)");
@@ -214,11 +215,11 @@ export default function EditorShell() {
 
         <div className="sb-foot">
           {hermesMode ? <NavLink to="/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
-          {authenticated ? <div className="account" tabIndex={0}>
+          {authenticated ? <div className="account" tabIndex={0} data-credits-open={creditsOpen || undefined} onClick={() => setCreditsOpen(open => !open)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setCreditsOpen(false); }}>
             {credits ? <NavLink to="/credits" className="account-credits" data-low={credits.exhausted || undefined}><span>اعتبار</span><b>{credits.unlimited ? "نامحدود" : shortCredits(credits.balance)}</b></NavLink> : null}
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>
             <span className="account-copy"><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
-            {!isLocalDevelopment ? <button className="icon-btn account-out" onClick={() => void logout()} aria-label="Log out" data-tip="Log out" data-tip-pos="top"><Icon name="logout" size={18}/></button> : null}
+            {!isLocalDevelopment ? <button className="icon-btn account-out" onClick={event => { event.stopPropagation(); void logout(); }} aria-label="Log out" data-tip="Log out" data-tip-pos="top"><Icon name="logout" size={18}/></button> : null}
           </div> : null}
         </div>
         {!rail && !isMobile ? <Resizer panel={sidebarRef} edge="end" bounds={() => SIDEBAR_BOUNDS} width={liveWidth ?? sidebarWidth} label="عرض نوار کناری"

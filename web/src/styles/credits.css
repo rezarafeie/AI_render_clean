@@ -3,7 +3,7 @@
 .account-credits { position: absolute; inset-inline: 4px; bottom: calc(100% - 2px); z-index: 30; display: none; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-md, 12px); background: var(--elevated, var(--surface)); border: 1px solid var(--border); box-shadow: var(--shadow-md, 0 6px 20px rgba(0,0,0,.35)); font-size: 12.5px; color: var(--text-2, inherit); text-decoration: none; }
 .account-credits b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text, inherit); }
 .account-credits[data-low="true"] b { color: var(--error, #d33); }
-.account:hover .account-credits, .account:focus-within .account-credits { display: flex; }
+.account:hover .account-credits, .account[data-credits-open] .account-credits { display: flex; }
 .account-credits::after { content: ""; position: absolute; inset-inline: 0; top: 100%; height: 8px; }
 .credits-buy-link { text-decoration: underline; font-weight: 600; white-space: nowrap; }
 
