@@ -1006,8 +1006,29 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     notes: list[str] = []
     brief = record["request"] + "".join(f"\nپاسخ کاربر: {a}" for a in record.get("answers", []))
 
+    # A stopped or failed run keeps what it already made (the plan, then the code) in checkpoint.json, so pressing retry continues from there instead of starting over.
+    import hashlib
+    ckpt_file = directory / "checkpoint.json"
+    fingerprint = hashlib.sha256(json.dumps([brief, record.get("style", ""), record.get("context", "")], ensure_ascii=False).encode()).hexdigest()[:16]
+    ckpt: dict = {}
+    if not change and ckpt_file.is_file():
+        try:
+            data = json.loads(ckpt_file.read_text())
+            ckpt = data if data.get("fp") == fingerprint and data.get("direction") else {}
+        except (OSError, ValueError):
+            ckpt = {}
+
+    def checkpoint(**parts):
+        try:
+            ckpt_file.write_text(json.dumps({"fp": fingerprint, **parts}, ensure_ascii=False))
+        except OSError:
+            log.warning("claude motion checkpoint could not be saved", exc_info=True)
+
     if saved.get("direction") and change:
         direction = Direction.model_validate(saved["direction"])
+    elif ckpt:
+        direction = Direction.model_validate(ckpt["direction"])
+        hooks.note("direct", f"ادامه از طرح قبلی (دوباره نوشته نمی‌شود): «{direction.title}»، {len(direction.beats)} صحنه", "done")
     else:
         hooks.note("direct", "کارگردان (Opus) دارد رفرنس و درخواست را می‌خواند و متن نریشن، سبک بصری این فیلم و استوری‌بورد را می‌نویسد")
         hooks.progress(6, "دارم ایده، متن و سبک فیلم را می‌نویسم.")
@@ -1023,9 +1044,10 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
             return {"questions": direction.questions}
         hooks.note("direct", f"طرح فیلم آماده شد: «{direction.title}»، {len(direction.beats)} صحنه", "done",
                    detail="سبک: " + direction.look + "\n\n" + "\n".join(f"{i}. {b.line}\n   {b.plan}" for i, b in enumerate(direction.beats, 1)))
+        checkpoint(direction=direction.model_dump())
     check()
 
-    if not saved.get("polished") or not change:
+    if (not saved.get("polished") or not change) and not ckpt.get("final"):
         hooks.note("speech", "دارم متن نریشن را برای گوینده آماده می‌کنم: نیم‌فاصله، کسرهٔ اضافه و اعراب جاهای مبهم، مکث‌ها و عددها با حروف")
         hooks.progress(12, "دارم متن را برای تلفظ درست آماده می‌کنم.")
         original = [b.line for b in direction.beats]
@@ -1046,7 +1068,12 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     previous = Film.model_validate(saved["film"]) if (saved.get("film") and change) else None
     hooks.note("code", f"دارم فیلم را کدنویسی می‌کنم: اول کتابخانهٔ تصویرسازی همین فیلم، بعد {len(timeline['scenes'])} صحنه در {len(groups_of(timeline))} گروه موازی، هر عنصر روی کلمهٔ گفته‌شده‌اش")
     hooks.progress(22, "دارم صحنه‌ها و تصویرسازی‌ها را کدنویسی می‌کنم.")
-    film = write(direction, timeline, previous=previous, change=change, notes=hooks)
+    if ckpt.get("final") and ckpt.get("film"):
+        film = Film.model_validate(ckpt["film"])
+        hooks.note("code", "کد فیلم از ساخت قبلی برداشته شد؛ دوباره نوشته نمی‌شود", "done")
+    else:
+        film = write(direction, timeline, previous=previous, change=change, notes=hooks)
+        checkpoint(direction=direction.model_dump(), film=film.model_dump(), final=True)
     hooks.note("code", f"کد فیلم نوشته شد: {len(art_names(film.art))} تصویرسازی و {len(timeline['scenes'])} صحنه", "done")
     check()
 
@@ -1066,6 +1093,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
                          scene_feedback={i: feedback for i in scenes_wrong}, redo=scenes_wrong, notes=hooks)
             if art_wrong:
                 hooks.note("art-fix", "کتابخانهٔ تصویرسازی اصلاح شد", "done")
+            checkpoint(direction=direction.model_dump(), film=film.model_dump(), final=True)
             check()
         project(work, direction, timeline, film.code(timeline))
         hooks.note("build", "دارم پروژه را می‌سازم و از هر صحنه عکس می‌گیرم")
@@ -1140,6 +1168,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     check()
 
     state_file.write_text(json.dumps({"direction": direction.model_dump(), "film": film.model_dump()}, ensure_ascii=False))
+    ckpt_file.unlink(missing_ok=True)
     (work / "pending.json").write_text(json.dumps({"timing": timeline, "stills": [[label, str(path)] for label, path in built], "notes": notes}, ensure_ascii=False, default=str))
     (work / "out").mkdir(exist_ok=True)
     hooks.note("render", f"دارم {timeline['total']:.1f} ثانیه ویدیو را فریم‌به‌فریم رندر می‌کنم")
