@@ -631,12 +631,23 @@ def language_of(text: str) -> str:
     return "fa" if is_persian(re.sub(r"\[[^\]]*\]", " ", text)) else "en"
 
 
+import contextvars
+
+_BRIEF = contextvars.ContextVar("narration_brief", default="")
+
+
+def narration_brief(text: str):
+    """The person's own words for this film. Casting reads the speaker's gender from them («با صدای خانم»); without them it only sees a fixed 'narration educational' and falls back to a male voice."""
+    return _BRIEF.set(str(text or "")[:1500])
+
+
 def _cast(text: str, voice: str = "") -> tuple[str, str]:
-    """The person's own pick from NARRATORS is used as chosen; otherwise the studio's Persian casting."""
+    """The person's own pick from NARRATORS is used as chosen; otherwise the studio's Persian casting (which also reads the person's brief for the speaker's gender)."""
     if voice and voice in narrator_ids():
         return voice, "eleven_v3"
     from .speech_policy import eleven_cast
-    return eleven_cast(text, tts_voice(), tts_model(), language=language_of(text), context="narration educational")
+    context = (_BRIEF.get() + " narration educational").strip()
+    return eleven_cast(text, tts_voice(), tts_model(), language=language_of(text), context=context)
 
 
 def _narration_paths(full: str, out_dir: Path, voice: str = "") -> tuple[Path, Path]:

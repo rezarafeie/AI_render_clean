@@ -368,6 +368,8 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
     _local.run = run_id if run_id is not None else int(load(directory).get("run") or 0)
     from app.render_cloud.hooks import identity
     owned = load(directory)
+    from brain import localize as _localize
+    _localize.narration_brief(owned.get("request", "") + "".join(" " + a for a in owned.get("answers", [])))   # «با صدای خانم» decides the narrator's gender for this run
     def cloud_stage(stage):
         message = {'provisioning': 'در حال آماده‌سازی منابع رندر', 'preparing': 'در حال آماده‌سازی موتور رندر',
                    'downloading': 'در حال دریافت فایل‌های صحنه', 'rendering': 'در حال رندر فریم‌ها',
