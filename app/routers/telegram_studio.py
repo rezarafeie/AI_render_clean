@@ -368,39 +368,52 @@ async def _updates(request, db, token, tg, conversation):
             sent += 1
         has_reply = True
     if has_reply and lines:
-        page_size = 18
-        for offset in range(0, len(lines), page_size):
-            page = cursor_key if not offset else f"{cursor_key}:page:{offset // page_size}"
-            page_lines = lines[offset:offset + page_size]
-            is_last = offset + page_size >= len(lines)
-            text = _timeline_text(page_lines, active=active and is_last, archived=not is_last)
-            delivered = page + ":timeline-delivered"
-            if await db.get(delivered) != text:
-                await _timeline(db, token, tg, page, text)
-                await db.set(delivered, text, ex=30 * 86400)
+        from app.studio_orchestrator import conversation_busy
+        busy = await asyncio.to_thread(conversation_busy, chat, user)
+        active = busy or any(p.get("status") in {"queued", "running"} for p in chat.get("projects", []))
+        text = _timeline_text(lines, active=active)
+        delivered = cursor_key + ":timeline-delivered"
+        if await db.get(delivered) != text:
+            await _timeline(db, token, tg, cursor_key, text, conversation)
+            await db.set(delivered, text, ex=30 * 86400)
     return len(events) + sent
 
 
-def _timeline_text(lines, *, active=False, archived=False):
-    heading = "⏳ <b>در حال انجام</b>" if active else "<b>روند کار</b>"
-    if archived:
-        heading = "<b>مراحل قبلی</b>"
-    rows = ["├─ " + escape(line[:110]) for line in lines[:-1]]
-    current = escape(lines[-1][:120])
-    rows.append("└─ <b>" + current + "</b>" if active else "└─ " + current)
-    return heading + "\n\n" + "\n".join(rows)
+def _timeline_text(lines, *, active=False):
+    current, _, value = lines[-1].rpartition(" · ")
+    percent = re.fullmatch(r"([0-9]{1,3})(?:\.([0-9]+))?٪", value)
+    progress = float(value[:-1]) if percent else None
+    if progress is None:
+        current = lines[-1]
+    stage = current.partition(" · ")[2] or current
+    label = current.partition(" · ")[0]
+    heading = ("⚙️ <b>در حال انجام</b>" if active else "⚠️ <b>نیاز به بررسی</b>" if label == "خطا" else "📋 <b>روند کار</b>")
+    rows = [heading, ("🔹 " if active else "") + "<b>" + escape(stage[:105]) + "</b>"]
+    if progress is not None and 0 <= progress <= 100:
+        filled = int(progress // 10)
+        rows.append(f"▫️ <code>{'━' * filled}{'─' * (10 - filled)}</code>  <b>{progress:g}٪</b>")
+    recent = list(dict.fromkeys(reversed(lines[:-1])))
+    recent = [line for line in recent if (line.partition(" · ")[2] or line).rsplit(" · ", 1)[0] != stage]
+    if recent:
+        rows.extend(["", "<b>پیش از این</b>"])
+        for line in reversed(recent[:2]):
+            kind, _, detail = line.partition(" · ")
+            detail = re.sub(r"\s*·\s*\d+(?:\.\d+)?٪$", "", detail or kind)
+            rows.append(("✓ " if kind in {"پایان", "پایان رندر"} else "• ") + escape(detail[:90]))
+    return "\n".join(rows)
 
 
-async def _timeline(db, token, tg, key, text):
+async def _timeline(db, token, tg, key, text, conversation):
+    markup = {"inline_keyboard": [[{"text": "تاریخچه در Studio", "web_app": {"url": _config()[2] + "/studio/" + conversation}}]]}
     message_id = await db.get(key + ":telegram")
     async with httpx.AsyncClient(timeout=15) as client:
         if message_id:
-            response = await _bot_call(client, token, "editMessageText", {"chat_id": tg, "message_id": int(message_id), "text": text, "parse_mode": "HTML"})
+            response = await _bot_call(client, token, "editMessageText", {"chat_id": tg, "message_id": int(message_id), "text": text, "parse_mode": "HTML", "reply_markup": markup})
             if response.is_success or "message is not modified" in response.text:
                 return
             if response.status_code != 400:
                 response.raise_for_status()
-        response = await _bot_call(client, token, "sendMessage", {"chat_id": tg, "text": text, "parse_mode": "HTML"})
+        response = await _bot_call(client, token, "sendMessage", {"chat_id": tg, "text": text, "parse_mode": "HTML", "reply_markup": markup})
         response.raise_for_status()
         await db.set(key + ":telegram", response.json()["result"]["message_id"], ex=30 * 86400)
 
@@ -479,7 +492,10 @@ async def telegram_loop():
                             continue
                         try:
                             async with db.lock(PREFIX + "watch-lock:" + conversation, timeout=120, blocking_timeout=0):
-                                await db.zadd(WATCH, {entry: now + 10})
+                                due = await db.zscore(WATCH, entry)
+                                if due is None or due > time.time():
+                                    continue
+                                await db.zadd(WATCH, {entry: time.time() + 10})
                                 request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id=user)))
                                 await asyncio.wait_for(_updates(request, db, token, tg, conversation), timeout=110)
                         except KeyError:
