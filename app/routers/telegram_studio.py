@@ -320,6 +320,15 @@ async def _updates(request, db, token, tg, conversation):
             lines = [*lines, "برنامه آمادهٔ بررسی است"][-12:]
             changed = True
             await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
+        elif kind == "question.required" and isinstance(data.get("choices"), list):
+            choices = [choice for choice in data["choices"] if isinstance(choice, str) and choice.strip()][:8]
+            if choices:
+                buttons = []
+                for choice in choices:
+                    action = secrets.token_urlsafe(18)
+                    await db.set(PREFIX + "choice:" + action, json.dumps([tg, user, conversation, choice]), ex=86400)
+                    buttons.append([{"text": choice[:64], "callback_data": "studio:choice:" + action}])
+                await _send(token, tg, str(data.get("question") or "یک گزینه را انتخاب کنید.")[:3900], buttons=buttons)
         elif kind == "assistant.response.completed":
             # The persisted messages below also include replies without streamed events.
             pass
@@ -485,7 +494,7 @@ async def webhook(request: Request):
     callback = update.get("callback_query")
     if callback:
         action = str(callback.get("data") or "")
-        if not action.startswith("studio:plan:") and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
+        if not action.startswith(("studio:plan:", "studio:choice:")) and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
             return {"ok": True}
         async with httpx.AsyncClient(timeout=5) as client:
             try:
@@ -517,6 +526,14 @@ async def webhook(request: Request):
         request.state.user = user
         draft_key = PREFIX + f"reference:{tg}:{user.id}"
         mode_key = PREFIX + f"mode:{tg}:{user.id}"
+        if callback and action.startswith("studio:choice:"):
+            raw = await db.get(PREFIX + "choice:" + action.removeprefix("studio:choice:"))
+            option = json.loads(raw) if raw else []
+            if option[:3] != [tg, str(user.id), conversation_id]:
+                await _send(token, tg, "این انتخاب دیگر برای گفتگوی فعلی معتبر نیست.")
+                return {"ok": True}
+            text, command = option[3], ""
+
         if callback and action.startswith("studio:plan:"):
             raw = await db.get(PREFIX + "approve:" + action.removeprefix("studio:plan:"))
             details = json.loads(raw) if raw else []
