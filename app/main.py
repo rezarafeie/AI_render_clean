@@ -98,8 +98,17 @@ async def lifespan(app: FastAPI):
     recovered_talking = recover_interrupted_talking(jobstore.JOBS_ROOT)
     if recovered_talking:
         log.warning("marked %d interrupted talking reel task(s) as failed", recovered_talking)
-    yield
-    await close_db()
+    import asyncio
+    from contextlib import suppress
+    from app.routers.telegram_studio import telegram_loop
+    telegram = asyncio.create_task(telegram_loop())
+    try:
+        yield
+    finally:
+        telegram.cancel()
+        with suppress(asyncio.CancelledError):
+            await telegram
+        await close_db()
 
 
 production = settings.APP_ENV == "production"

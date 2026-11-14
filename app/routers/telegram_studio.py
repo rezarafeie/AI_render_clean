@@ -1,6 +1,11 @@
 """Telegram identity linking and a thin adapter to the existing Studio API."""
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
+from types import SimpleNamespace
+
 import hashlib
 import hmac
 import json
@@ -25,6 +30,9 @@ from app.routers import studio
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram"])
 PREFIX = "editorgpt:telegram:"
 PAIR_TTL = 600
+log = logging.getLogger(__name__)
+WORK = PREFIX + "pending-files"
+WATCH = PREFIX + "watch"
 
 
 @asynccontextmanager
@@ -126,6 +134,8 @@ async def _relay_download(request, conversation_id, file, size):
                 for attempt in range(3):
                     try:
                         response = await client.post(relay, headers=_relay_headers(), json=payload)
+                        if not response.is_success:
+                            log.warning("Telegram MTProto chunk failed: HTTP %s, offset=%s", response.status_code, offset)
                         response.raise_for_status()
                         block = response.content
                         if len(block) != length or hashlib.sha256(block).hexdigest() != response.headers.get("x-content-sha256"):
@@ -163,10 +173,9 @@ def _menu(base, conversation=None):
     return [
         [launch("EditorGPT", "/studio" + ("/" + conversation if conversation else "")), launch("InstaGPT", "/hermes")],
         [launch("پروژه‌ها", "/projects"), launch("کتابخانه", "/library"), launch("تنظیمات", "/settings")],
-        [{"text": "گفتگوی جدید", "callback_data": "studio:new"}, {"text": "مراحل و نریشن", "callback_data": "studio:updates"}],
+        [{"text": "گفتگوی جدید", "callback_data": "studio:new"}],
         [{"text": "دریافت خروجی", "callback_data": "studio:output"}, {"text": "توقف", "callback_data": "studio:cancel"}],
         [{"text": "EditorGPT Lite", "callback_data": "studio:lite"}, {"text": "EditorGPT Medium", "callback_data": "studio:medium"}],
-        [{"text": "بررسی برنامه", "callback_data": "studio:approve"}],
     ]
 
 
@@ -244,6 +253,8 @@ async def _attach(request, token, conversation_id, file):
 
 
 EVENT_LABELS = {
+    "plan.ready": "برنامه آماده شد", "question.required": "انتخاب شما",
+    "motion.completed": "موشن آماده شد", "assistant.error": "خطا",
     "tool.started": "شروع", "tool.progress": "پیشرفت", "tool.completed": "پایان",
     "tool.failed": "خطا", "storyboard.ready": "استوری‌بورد", "render.started": "شروع رندر",
     "render.completed": "پایان رندر", "render.failed": "خطای رندر", "motion.progress": "موشن",
@@ -268,7 +279,9 @@ async def _updates(request, db, token, tg, conversation):
     cursor_key = PREFIX + f"cursor:{tg}:{user}:{conversation}"
     after = int(await db.get(cursor_key) or 0)
     events = await studio.repo.events(conversation, user, after, limit=60)
-    seen = set()
+    timeline_key = cursor_key + ":timeline"
+    lines = json.loads(await db.get(timeline_key) or "[]")
+    changed = False
     for event in events:
         kind, data, seq = event["type"], event["data"], event["seq"]
         if kind == "narration.ready" and type(data.get("event_seq")) is int:
@@ -278,15 +291,33 @@ async def _updates(request, db, token, tg, conversation):
             except HTTPException as exc:
                 if exc.status_code != 404:
                     raise
+        elif kind == "plan.ready" and data.get("project_id") and data.get("version_id"):
+            action = secrets.token_urlsafe(18)
+            await db.set(PREFIX + "approve:" + action, json.dumps([tg, user, data["project_id"], data["version_id"]]), ex=86400)
+            base = _config()[2]
+            await _send(token, tg, "برنامه آمادهٔ بررسی است.", buttons=[
+                [{"text": "دیدن برنامه", "web_app": {"url": base + "/studio/" + conversation}}],
+                [{"text": "تأیید و شروع رندر", "callback_data": "studio:plan:" + action}],
+            ])
+            lines = [*lines, "برنامه آمادهٔ بررسی است"][-12:]
+            changed = True
+            await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         elif kind == "assistant.response.completed":
             # The persisted messages below also include replies without streamed events.
             pass
         else:
             line = _activity(event)
-            if line and line not in seen:
-                await _send(token, tg, line[:3900])
-                seen.add(line)
+            if line and (not lines or lines[-1] != line):
+                if lines and kind in {"tool.progress", "motion.progress"} and lines[-1].rsplit(" · ", 1)[0] == line.rsplit(" · ", 1)[0]:
+                    lines[-1] = line
+                else:
+                    lines.append(line)
+                lines = lines[-12:]
+                changed = True
+                await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
         await db.set(cursor_key, seq, ex=30 * 86400)
+    if changed:
+        await _timeline(db, token, tg, cursor_key, lines)
     chat = await studio.repo.get_conversation(conversation, user)
     sent = 0
     for message in chat.get("messages", []):
@@ -302,6 +333,105 @@ async def _updates(request, db, token, tg, conversation):
             await db.set(key, "1", ex=30 * 86400)
             sent += 1
     return len(events) + sent
+
+
+async def _timeline(db, token, tg, key, lines):
+    text = "روند کار EditorGPT\n\n" + "\n".join("• " + line[:260] for line in lines)
+    message_id = await db.get(key + ":telegram")
+    async with httpx.AsyncClient(timeout=15) as client:
+        if message_id:
+            response = await _bot_call(client, token, "editMessageText", {"chat_id": tg, "message_id": int(message_id), "text": text})
+            if response.is_success or "message is not modified" in response.text:
+                return
+            if response.status_code != 400:
+                response.raise_for_status()
+        response = await _bot_call(client, token, "sendMessage", {"chat_id": tg, "text": text})
+        response.raise_for_status()
+        await db.set(key + ":telegram", response.json()["result"]["message_id"], ex=30 * 86400)
+
+
+async def _run_upload(db, token, job_id):
+    raw = await db.get(PREFIX + "file:" + job_id)
+    if not raw:
+        await db.zrem(WORK, job_id)
+        return
+    job = json.loads(raw)
+    tg, user = job["tg"], job["user"]
+    if await db.get(PREFIX + f"tg:{tg}") != user:
+        await db.zrem(WORK, job_id)
+        return
+    request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id=user)))
+    from brain.lm_gateway import user_context
+    ctx = user_context.set(user)
+    try:
+        attachment_id = job.get("attachment_id")
+        if not attachment_id:
+            attachment_id = (await _attach(request, token, job["conversation"], job["file"]))["id"]
+            job["attachment_id"] = attachment_id
+            await db.set(PREFIX + "file:" + job_id, json.dumps(job), ex=86400)
+        await studio.send_message(request, job["conversation"], studio.MessageCreate(
+            content=job["content"], attachment_ids=[attachment_id], render_target="server", agent_mode=job["mode"]))
+    except HTTPException as exc:
+        log.warning("Telegram file rejected: %s", exc.status_code)
+        await _send(token, tg, str(exc.detail)[:500])
+    else:
+        await _send(token, tg, "فایل به گفتگو اضافه شد. روند کار همین‌جا نمایش داده می‌شود.")
+    finally:
+        user_context.reset(ctx)
+    await db.zrem(WORK, job_id)
+    await db.delete(PREFIX + "file:" + job_id)
+
+
+async def telegram_loop():
+    if not os.environ.get("EDITOR_TELEGRAM_BOT_TOKEN"):
+        return
+    token, _, _ = _config()
+
+    async def transfer():
+        while True:
+            try:
+                async with storage() as db:
+                    for job_id in await db.zrangebyscore(WORK, 0, time.time(), start=0, num=1):
+                        async with db.lock(PREFIX + "file-lock:" + job_id, timeout=900, blocking_timeout=0) as lock:
+                            upload = asyncio.create_task(_run_upload(db, token, job_id))
+                            try:
+                                while not upload.done():
+                                    await asyncio.wait({upload}, timeout=60)
+                                    if not upload.done():
+                                        await lock.extend(900, replace_ttl=True)
+                                await upload
+                            finally:
+                                if not upload.done():
+                                    upload.cancel()
+            except Exception as exc:
+                log.warning("Telegram upload worker: %s", type(exc).__name__)
+                await asyncio.sleep(8)
+            await asyncio.sleep(2)
+
+    async def monitor():
+        while True:
+            try:
+                async with storage() as db:
+                    now = time.time()
+                    for entry in await db.zrangebyscore(WATCH, 0, now, start=0, num=12):
+                        tg, user, conversation = json.loads(entry)
+                        if await db.get(PREFIX + f"tg:{tg}") != user:
+                            await db.zrem(WATCH, entry)
+                            continue
+                        try:
+                            async with db.lock(PREFIX + "watch-lock:" + conversation, timeout=120, blocking_timeout=0):
+                                await db.zadd(WATCH, {entry: now + 10})
+                                request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id=user)))
+                                await asyncio.wait_for(_updates(request, db, token, tg, conversation), timeout=110)
+                        except KeyError:
+                            await db.zrem(WATCH, entry)
+                        except Exception as exc:
+                            log.warning("Telegram timeline delivery: %s", type(exc).__name__)
+            except Exception as exc:
+                log.warning("Telegram timeline worker: %s", type(exc).__name__)
+            await asyncio.sleep(4)
+
+    await asyncio.gather(transfer(), monitor())
 
 
 def _private_message(update):
@@ -337,7 +467,7 @@ async def webhook(request: Request):
     callback = update.get("callback_query")
     if callback:
         action = str(callback.get("data") or "")
-        if action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
+        if not action.startswith("studio:plan:") and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "ref-content", "ref-style", "ref-both")}:
             return {"ok": True}
         async with httpx.AsyncClient(timeout=5) as client:
             try:
@@ -369,7 +499,20 @@ async def webhook(request: Request):
         request.state.user = user
         draft_key = PREFIX + f"reference:{tg}:{user.id}"
         mode_key = PREFIX + f"mode:{tg}:{user.id}"
-        if callback and command in {"/lite", "/medium"}:
+        if callback and action.startswith("studio:plan:"):
+            raw = await db.get(PREFIX + "approve:" + action.removeprefix("studio:plan:"))
+            details = json.loads(raw) if raw else []
+            if details[:2] != [tg, str(user.id)]:
+                await _send(token, tg, "این دکمه منقضی شده است. برنامه را در Studio باز کنید.")
+                return {"ok": True}
+            try:
+                await studio.approve_project_plan(request, details[2], studio.PlanApproval(version_id=details[3]))
+            except HTTPException as exc:
+                await _send(token, tg, str(exc.detail)[:500])
+            else:
+                await db.delete(PREFIX + "approve:" + action.removeprefix("studio:plan:"))
+                await _send(token, tg, "برنامه تأیید شد.")
+        elif callback and command in {"/lite", "/medium"}:
             mode = command[1:]
             await db.set(mode_key, mode)
             await _send(token, tg, f"EditorGPT {mode.title()} انتخاب شد. درخواست را بفرستید.", buttons=_menu(base, conversation_id))
@@ -455,14 +598,20 @@ async def webhook(request: Request):
                     chat = await studio.create_conversation(request, studio.ConversationCreate(title="تلگرام"))
                     conversation_id = chat["id"]
                     await db.set(chat_key, conversation_id)
-                ids = []
+                mode = command.removeprefix("/") if mode else await db.get(mode_key)
+                watch = json.dumps([tg, str(user.id), conversation_id])
+                await db.zadd(WATCH, {watch: time.time()})
                 if attachment:
-                    uploaded = await _attach(request, token, conversation_id, attachment)
-                    ids.append(uploaded["id"])
-                    content = content or str(message.get("caption") or "").strip() or "این فایل را بررسی کن و گزینه‌های استفاده از آن را بپرس."
+                    content = content or "این فایل را بررسی کن و گزینه‌های استفاده از آن را بپرس."
+                    job = {"tg": tg, "user": str(user.id), "conversation": conversation_id,
+                           "file": attachment, "content": content[:12000], "mode": mode}
+                    async with db.pipeline(transaction=True) as pipe:
+                        await pipe.set(PREFIX + "file:" + str(update_id), json.dumps(job), ex=86400).zadd(
+                            WORK, {str(update_id): time.time()}).execute()
+                    await _send(token, tg, "فایل دریافت شد و دانلود به Studio در صف است.", buttons=_menu(base, conversation_id))
+                    return {"ok": True}
                 await studio.send_message(request, conversation_id, studio.MessageCreate(
-                    content=content[:12000], attachment_ids=ids, render_target="server",
-                    agent_mode=command.removeprefix("/") if mode else await db.get(mode_key)))
+                    content=content[:12000], render_target="server", agent_mode=mode))
             except HTTPException as exc:
                 await _send(token, tg, str(exc.detail)[:500], buttons=keyboard)
                 return {"ok": True}
