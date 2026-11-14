@@ -96,3 +96,33 @@ def test_a_finished_build_whose_render_failed_is_rendered_again_not_rebuilt(tmp_
     with pytest.raises(Stop, match="build stops"):
         cm.build(tmp_path, record(), hooks())
     assert seen["art"] == film.art
+
+
+def test_a_call_cut_off_after_minutes_is_split_at_once_not_repeated(monkeypatch):
+    clock = {"t": 0.0}
+    calls = []
+
+    def slow_then_cut(guide, user, tokens=0):
+        calls.append(1)
+        clock["t"] += 246.0                      # the provider cut the stream after ~246 s
+        raise RuntimeError("provider reported a stream error")
+
+    monkeypatch.setattr(cm, "ask_text", slow_then_cut)
+    monkeypatch.setattr(cm.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(cm.time, "sleep", lambda s: None)
+    result = cm._one_ask("g", "u", 16000, split=lambda: "split-result", tries=3)
+    assert result == "split-result" and len(calls) == 1
+
+
+def test_a_fast_transient_failure_is_still_retried(monkeypatch):
+    calls = []
+
+    def flaky(guide, user, tokens=0):
+        calls.append(1)
+        if len(calls) < 2:
+            raise RuntimeError("502 Upstream AI gateway is unavailable")
+        return "ok"
+
+    monkeypatch.setattr(cm, "ask_text", flaky)
+    monkeypatch.setattr(cm.time, "sleep", lambda s: None)
+    assert cm._one_ask("g", "u", 16000, split=lambda: "split-result", tries=3) == "ok" and len(calls) == 2

@@ -594,15 +594,32 @@ def _art_context(direction: Direction, timeline: dict, extra: list[str]) -> str:
                                                               "EXAMPLE art.tsx (another film):\n" + (EXAMPLES / "art.example.tsx").read_text(encoding="utf-8")])
 
 
+SLOW_CUT_SECONDS = 200
+
+
+class _SlowCut(RuntimeError):
+    """A call that ran for minutes and was then cut off by the provider."""
+
+
 def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300):
     """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
+    def attempt():
+        # A long call the provider cut off after ~4 minutes (a stream error, zero tokens counted) would be cut off again at the same size: split at once instead of
+        # sending it twice more (each repeat costs another ~250 s).
+        started = time.monotonic()
+        try:
+            return ask_text(guide, user, tokens=tokens)
+        except Exception as exc:
+            if split is not None and time.monotonic() - started >= SLOW_CUT_SECONDS and _TRANSIENT.search(str(exc)):
+                raise _SlowCut(f"the call was cut off after {time.monotonic() - started:.0f} s") from exc    # no transient keyword in the text: _retrying must not repeat it
+            raise
     try:
         with _long_call(seconds, tokens):
-            return _retrying(lambda: ask_text(guide, user, tokens=tokens), tries=tries, waits=(10,), on_retry=on_retry)
+            return _retrying(attempt, tries=tries, waits=(10,), on_retry=on_retry)
     except Exception as exc:
-        if split is None or not _TRANSIENT.search(str(exc)):
+        if split is None or not (isinstance(exc, _SlowCut) or _TRANSIENT.search(str(exc))):
             raise
-        log.warning("claude motion call failed twice (%s); splitting it into smaller calls", str(exc)[:120])
+        log.warning("claude motion call failed (%s); splitting it into smaller calls", str(exc)[:120])
         if on_split:
             on_split(f"{_why(exc)}؛ این بخش را به تماس‌های کوچک‌تر می‌شکنم")
         return split()
