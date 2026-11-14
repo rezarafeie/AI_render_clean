@@ -1,0 +1,56 @@
+name: Build private RunPod Claude-engine worker image
+
+# The light worker for the Claude film engines (deploy/runpod/claude.Dockerfile). Run it by pushing a tag `claude-build-*`; the digest is printed in the job summary.
+on:
+  push:
+    tags:
+      - 'claude-build-*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: private-runpod-claude-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'rezarafeie/editorgpt-runpod-worker-build' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      REGISTRY_IMAGE: ghcr.io/rezarafeie/editorgpt-runpod-worker-build
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build the light image
+        shell: bash
+        run: |
+          docker build --file deploy/runpod/claude.Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${REGISTRY_IMAGE}:claude-sha-${GITHUB_SHA}" .
+          docker image ls "${REGISTRY_IMAGE}:claude-sha-${GITHUB_SHA}" --format 'size {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check the worker imports and its tools, offline
+        shell: bash
+        run: |
+          image="${REGISTRY_IMAGE}:claude-sha-${GITHUB_SHA}"
+          docker run --rm --network none --read-only --memory 384m --pids-limit 64 \
+            --entrypoint python "$image" -c 'import os, shutil; import app.render_cloud.runner; import app.render_cloud.engines; from engine.claude_motion_renderer import render; assert os.getuid() == 10001; assert all(shutil.which(t) for t in ("ffmpeg", "ffprobe", "node", "chromium", "unshare")); assert os.path.isdir("/app/remotion/node_modules/remotion"); print("Light worker import passed.")'
+          docker run --rm --network none --read-only --memory 256m --pids-limit 64 \
+            --entrypoint python "$image" -m app.render_cloud.containment_probe --require-socketless
+      - name: Publish the immutable image to the private registry
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          image="${REGISTRY_IMAGE}:claude-sha-${GITHUB_SHA}"
+          docker push "$image"
+          digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')"
+          case "$digest" in "${REGISTRY_IMAGE}"@sha256:*) ;; *) exit 1 ;; esac
+          printf 'Light Claude worker: `%s`\n\nNot approved for production until the replay on RunPod matches the full image output.\n' "$digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "DIGEST=$digest"
