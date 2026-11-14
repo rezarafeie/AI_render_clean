@@ -197,19 +197,23 @@ async def telegram_media(ticket: str):
                         headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
 
 
+async def _media_url(db, path, kind):
+    ticket = secrets.token_urlsafe(32)
+    key = PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest()
+    await db.set(key, json.dumps([str(path), kind]), ex=180)
+    return _config()[2] + "/api/integrations/telegram/media/" + ticket
+
+
 async def _send_file(token, chat, path, kind):
     kind = "video" if kind == "document" and path.suffix.lower() == ".mp4" else kind
     method = {"audio": "sendAudio", "photo": "sendPhoto", "video": "sendVideo", "document": "sendDocument"}[kind]
     if os.environ.get("EDITOR_TELEGRAM_BOT_RELAY_URL"):
-        ticket = secrets.token_urlsafe(32)
-        key = PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest()
         async with storage() as db:
-            await db.set(key, json.dumps([str(path), kind]), ex=180)
-        base = _config()[2]
+            url = await _media_url(db, path, kind)
         try:
             async with httpx.AsyncClient(timeout=26) as client:
                 result = await _bot_call(client, token, method, {
-                    "chat_id": chat, kind: base + "/api/integrations/telegram/media/" + ticket})
+                    "chat_id": chat, kind: url})
             if result.is_success and result.json().get("ok"):
                 return
         except (httpx.HTTPError, ValueError):
@@ -400,14 +404,49 @@ async def _motion_assets(request, db, token, tg, conversation, cursor_key):
     # Use the same ownership-checked files displayed in Studio.
     voice = await _ready_asset(studio.motion_media(request, motion_id, "voice"))
     await _deliver_motion_asset(db, token, tg, cursor_key, motion_id, "audio", voice, "voice")
-    sent = 0
+    pending = []
     for shot in motion.get("snapshots") or []:
         n = shot["n"]
         media = await _ready_asset(studio.motion_snapshot(request, motion_id, n))
-        if await _deliver_motion_asset(db, token, tg, cursor_key, motion_id, "photo", media, f"snapshot:{n}"):
-            sent += 1
-        if sent == 3:
-            break
+        if media is None:
+            return  # Wait for the published snapshot set to be readable.
+        path = Path(media.path)
+        try:
+            key = _asset_key(cursor_key, motion_id, f"snapshot:{n}", path)
+        except OSError:
+            return
+        if not await db.exists(key):
+            pending.append((key, path))
+
+    while pending:
+        # Telegram albums accept 2–10 items. Avoid leaving a singleton tail.
+        size = 9 if len(pending) == 11 else 10
+        batch, pending = pending[:size], pending[size:]
+        keys, paths = zip(*batch)
+        retry_key = keys[0] + ":retry"
+        if not await db.set(retry_key, "1", nx=True, ex=60):
+            return
+        try:
+            if len(paths) == 1:
+                await _send_file(token, tg, paths[0], "photo")
+            else:
+                media = [{"type": "photo", "media": await _media_url(db, path, "photo")} for path in paths]
+                async with httpx.AsyncClient(timeout=26) as client:
+                    result = await _bot_call(client, token, "sendMediaGroup", {"chat_id": tg, "media": media})
+                if not result.is_success or not result.json().get("ok"):
+                    raise HTTPException(502, "Telegram album delivery failed")
+        except (HTTPException, httpx.HTTPError, OSError, ValueError) as exc:
+            log.warning("Telegram snapshot album delivery: %s", type(exc).__name__)
+            return
+        async with db.pipeline(transaction=True) as pipe:
+            for key in keys:
+                pipe.set(key, "1", ex=30 * 86400)
+            await pipe.execute()
+
+
+def _asset_key(cursor_key, motion_id, label, path):
+    stamp = path.stat()
+    return f"{cursor_key}:asset:{motion_id}:{label}:{stamp.st_mtime_ns}:{stamp.st_size}"
 
 
 async def _ready_asset(endpoint):
@@ -424,8 +463,7 @@ async def _deliver_motion_asset(db, token, tg, cursor_key, motion_id, kind, medi
         return False
     path = Path(media.path)
     try:
-        stamp = path.stat()
-        key = f"{cursor_key}:asset:{motion_id}:{label}:{stamp.st_mtime_ns}:{stamp.st_size}"
+        key = _asset_key(cursor_key, motion_id, label, path)
         if await db.exists(key):
             return False
         cooldown = key + ":retry"

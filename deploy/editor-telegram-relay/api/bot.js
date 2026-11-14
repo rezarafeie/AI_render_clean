@@ -1,6 +1,6 @@
 import {timingSafeEqual} from 'node:crypto';
 
-const methods = new Set(['getMe', 'getFile', 'sendMessage', 'editMessageText', 'sendVideo', 'sendAudio', 'sendPhoto', 'sendDocument', 'answerCallbackQuery', 'setWebhook', 'getWebhookInfo']);
+const methods = new Set(['getMe', 'getFile', 'sendMessage', 'editMessageText', 'sendVideo', 'sendAudio', 'sendPhoto', 'sendMediaGroup', 'sendDocument', 'answerCallbackQuery', 'setWebhook', 'getWebhookInfo']);
 
 export default async function handler(req, res) {
   const expected = Buffer.from(process.env.RELAY_SECRET || '');
