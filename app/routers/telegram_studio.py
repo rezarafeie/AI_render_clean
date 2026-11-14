@@ -404,6 +404,10 @@ async def _motion_assets(request, db, token, tg, conversation, cursor_key):
     # Use the same ownership-checked files displayed in Studio.
     voice = await _ready_asset(studio.motion_media(request, motion_id, "voice"))
     await _deliver_motion_asset(db, token, tg, cursor_key, motion_id, "audio", voice, "voice")
+    # Both engines can publish draft snapshots during visual review and replace them
+    # before rendering. Deliver that settled set as one album when it fits.
+    if motion["status"] not in {"rendering", "completed"}:
+        return
     pending = []
     for shot in motion.get("snapshots") or []:
         n = shot["n"]
