@@ -33,7 +33,7 @@ function Preview({ file, size = 56, onOpen }: { file: CloudFile; size?: number; 
       : <Icon name={kindIcon(file)} size={20}/>}
     {file.kind === "video" && file.duration ? <b className="cloud-thumb-time" dir="ltr">{clock(file.duration)}</b> : null}
   </span>;
-  return onOpen && file.thumbnail && !failed
+  return onOpen && file.kind
     ? <button type="button" className="cloud-thumb-btn" onClick={onOpen} aria-label={`پیش‌نمایش ${file.name}`}>{box}</button> : box;
 }
 
@@ -63,12 +63,13 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
   const [picked, setPicked] = React.useState<Map<string, CloudFile>>(new Map());
   const [busy, setBusy] = React.useState(false);
   const [preview, setPreview] = React.useState<CloudFile | null>(null);
+  const [playing, setPlaying] = React.useState(false);
   const [showOther, setShowOther] = React.useState(false);
   const request = React.useRef(0);
   const folder = path[path.length - 1].id;
 
   React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { if (preview) setPreview(null); else onClose(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { if (preview) { setPreview(null); setPlaying(false); } else onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, preview]);
@@ -168,7 +169,7 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
               <div className="cloud-selectbar"><label><input type="checkbox" checked={allPicked} onChange={togglePage}/> انتخاب همه‌ی این فهرست ({usable.length.toLocaleString("fa-IR")})</label></div>
               <ul className="cloud-rows">{usable.map(file => <li key={file.id} className="cloud-row" data-picked={picked.has(file.id)}>
                 <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`انتخاب ${file.name}`}/>
-                <Preview file={file} onOpen={() => setPreview(file)}/>
+                <Preview file={file} onOpen={() => { setPreview(file); setPlaying(file.kind === "video" || file.kind === "audio"); }}/>
                 <label className="cloud-info"><span className="cloud-name wrap-safe">{file.name}</span><Meta file={file}/></label>
               </li>)}</ul></> : null}
 
@@ -184,14 +185,23 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
           </div>
         </>}
 
-      {preview ? <div className="cloud-preview" role="dialog" aria-label={`پیش‌نمایش ${preview.name}`} onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}>
+      {preview ? <div className="cloud-preview" role="dialog" aria-label={`پیش‌نمایش ${preview.name}`} onMouseDown={event => { if (event.target === event.currentTarget) { setPreview(null); setPlaying(false); } }}>
         <div className="cloud-preview-card">
-          {preview.thumbnail ? <img src={thumb(preview.thumbnail, 800)} alt={preview.name} referrerPolicy="no-referrer"/> : null}
+          {playing && (preview.kind === "video" || preview.kind === "audio")
+            // Google's own player straight from Drive: nothing is downloaded to this server and the file does not pass through it.
+            ? <iframe className="cloud-player" data-kind={preview.kind} title={preview.name} src={`https://drive.google.com/file/d/${encodeURIComponent(preview.id)}/preview`}
+                allow="autoplay; fullscreen" allowFullScreen referrerPolicy="no-referrer"/>
+            : preview.thumbnail ? <img src={thumb(preview.thumbnail, 800)} alt={preview.name} referrerPolicy="no-referrer"/> : <div className="cloud-noimg"><Icon name={kindIcon(preview)} size={40}/></div>}
           <b className="wrap-safe">{preview.name}</b><Meta file={preview}/>
           <div className="set-actions">
-            <button className="btn btn-sm btn-primary" onClick={() => { if (!picked.has(preview.id)) toggle(preview); setPreview(null); }}>{picked.has(preview.id) ? "انتخاب شده ✓" : "انتخاب این فایل"}</button>
-            <button className="btn btn-sm btn-secondary" onClick={() => setPreview(null)}>بستن</button>
-          </div></div></div> : null}
+            {preview.kind === "video" || preview.kind === "audio"
+              ? <button className="btn btn-sm btn-secondary" onClick={() => setPlaying(value => !value)}>{playing ? "توقف پخش" : `پخش ${preview.kind === "audio" ? "صدا" : "ویدیو"} از گوگل درایو`}</button> : null}
+            <a className="btn btn-sm btn-ghost" href={`https://drive.google.com/file/d/${encodeURIComponent(preview.id)}/view`} target="_blank" rel="noopener noreferrer">باز کردن در گوگل درایو</a>
+            <button className="btn btn-sm btn-primary" onClick={() => { if (!picked.has(preview.id)) toggle(preview); setPreview(null); setPlaying(false); }}>{picked.has(preview.id) ? "انتخاب شده ✓" : "انتخاب این فایل"}</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => { setPreview(null); setPlaying(false); }}>بستن</button>
+          </div>
+          {playing ? <small className="cloud-note">پخش با حساب گوگلِ همین مرورگر انجام می‌شود. اگر «دسترسی ندارید» دیدید یا ویدیو بالا نیامد، با همان حسابی که درایو را وصل کرده‌اید در گوگل وارد شوید یا فایل را در گوگل درایو باز کنید.</small> : null}
+        </div></div> : null}
 
       <footer className="cloud-foot">
         <small className="cloud-summary">{chosen.length

@@ -350,3 +350,8 @@ button.cloud-row:disabled { opacity: .6; cursor: progress; }
 .cloud-preview-card { width: min(560px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 10px; padding: 14px; border-radius: var(--radius-lg); background: var(--surface, var(--bg)); border: 1px solid var(--border); }
 .cloud-preview-card img { width: 100%; max-height: 52dvh; object-fit: contain; border-radius: 10px; background: #000; }
 @media (max-width: 560px) { .cloud-filters { align-items: stretch; } .cloud-thumb { transform: none; } }
+
+.cloud-player { width: 100%; border: 0; border-radius: 10px; background: #000; aspect-ratio: 16 / 9; }
+.cloud-player[data-kind="audio"] { aspect-ratio: auto; height: 150px; }
+.cloud-noimg { display: flex; align-items: center; justify-content: center; height: 160px; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text-3); }
+.cloud-note { color: var(--text-3); line-height: 1.7; }
