@@ -86,7 +86,7 @@ export default function CreditsPage() {
     {tab === "buy" ? <>
       <div className="cp-packs">{packs.map(p => <div className="cp-pack" key={p.id} data-best={p.id === best || undefined}>
         <div className="name"><span>{p.title}</span>{p.id === best ? <span className="tag">پرفروش</span> : null}</div>
-        <div className="big">{short(p.credits)}<small>اعتبار</small></div>
+        <div className="big">{short(p.credits)}</div><div className="unit">اعتبار</div>
         <div className="price">{p.price > 0 ? `${p.price.toLocaleString("fa-IR")} ${p.currency === "IRT" ? "تومان" : p.currency}` : "به‌زودی"}</div>
         <button disabled={p.price <= 0 || buying !== ""} onClick={() => void buy(p.id)}>{buying === p.id ? "در حال انتقال…" : p.price > 0 ? "خرید" : "به‌زودی"}</button>
       </div>)}</div>

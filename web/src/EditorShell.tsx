@@ -28,21 +28,20 @@ function shortCredits(value: number): string {
   if (n >= 10_000) return sign + Math.round(n / 1000).toLocaleString("fa-IR") + " هزار";
   return sign + Math.round(n).toLocaleString("fa-IR");
 }
-function CreditsChip() {
+/** The person's credit balance (weighted tokens). Shown on hover over the account name; refreshed every minute and on route change. */
+function useCredits(enabled: boolean) {
   const [state, setState] = React.useState<{ balance: number; unlimited: boolean; exhausted: boolean; initial_grant: number } | null>(null);
   const location = useLocation();
   React.useEffect(() => {
+    if (!enabled) return;
     let live = true;
     const load = () => { void api.creditsMe().then(value => { if (live) setState(value); }).catch(() => {}); };
     load();
     const timer = window.setInterval(load, 60000);
     window.addEventListener("credits:refresh", load);
     return () => { live = false; window.clearInterval(timer); window.removeEventListener("credits:refresh", load); };
-  }, [location.pathname]);
-  if (!state) return null;
-  const low = !state.unlimited && state.balance > 0 && state.balance < state.initial_grant * 0.1;
-  return <NavLink to="/credits" className="credits-chip" data-low={low || undefined} data-empty={state.exhausted || undefined} title="اعتبار و مصرف">
-    <span>اعتبار</span><b>{state.unlimited ? "نامحدود" : shortCredits(state.balance)}</b></NavLink>;
+  }, [enabled, location.pathname]);
+  return state;
 }
 
 // Kept so older screens that import { Icon } from "./EditorShell" keep working.
@@ -60,6 +59,7 @@ const ROUTE_TITLES: Record<string, string> = { "/projects": "Projects", "/templa
 
 export default function EditorShell() {
   const { authenticated, user, openAuth, logout } = useAuth();
+  const credits = useCredits(authenticated && !isLocalDevelopment);
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 820px)");
@@ -213,9 +213,9 @@ export default function EditorShell() {
         <div className="sb-spacer"/>
 
         <div className="sb-foot">
-          {authenticated && !hermesMode && !isLocalDevelopment ? <CreditsChip/> : null}
           {hermesMode ? <NavLink to="/settings" {...tip("Settings")}><Icon name="settings"/><span>Settings</span></NavLink> : <NavLink to="/settings" {...tip("Settings")} aria-current={settingsActive ? "page" : undefined}><Icon name="settings"/><span>Settings</span></NavLink>}
-          {authenticated ? <div className="account">
+          {authenticated ? <div className="account" tabIndex={0}>
+            {credits ? <NavLink to="/credits" className="account-credits" data-low={credits.exhausted || undefined}><span>اعتبار</span><b>{credits.unlimited ? "نامحدود" : shortCredits(credits.balance)}</b></NavLink> : null}
             <span className="avatar" aria-hidden="true">{initial || <Icon name="user" size={16}/>}</span>
             <span className="account-copy"><b>{user?.name || "Editor"}</b><small>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
             {!isLocalDevelopment ? <button className="icon-btn account-out" onClick={() => void logout()} aria-label="Log out" data-tip="Log out" data-tip-pos="top"><Icon name="logout" size={18}/></button> : null}

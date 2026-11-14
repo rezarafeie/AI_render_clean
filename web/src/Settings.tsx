@@ -10,6 +10,7 @@ import { AgentSettings } from "./studio/AgentMode";
 import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
 import { currentLang, setLang } from "./i18n/lang";
+import { CreditsCard } from "./CreditsCard";
 const VoiceCloneSettings = React.lazy(() => import("./settings/VoiceClone").then(module => ({ default: module.VoiceCloneSettings })));
 const CloudRenderSettings = React.lazy(() => import("./settings/CloudRender").then(module => ({ default: module.CloudRenderSettings })));
 
@@ -88,7 +89,8 @@ export default function Settings() {
           {authenticated ? <section className="set-section" aria-labelledby="set-account">
             <h2 id="set-account">Account</h2>
             <div className="set-controls"><div className="set-control"><span><b data-no-translate>{user?.name || "Editor"}</b><small data-no-translate>{isLocalDevelopment ? "Local workspace" : user?.email}</small></span>
-              {!isLocalDevelopment ? <button className="btn btn-sm btn-secondary" onClick={() => void logout()}><Icon name="logout" size={15}/>Log out</button> : null}</div></div>
+              {!isLocalDevelopment ? <button className="btn btn-sm btn-secondary" onClick={() => void logout()}><Icon name="logout" size={15}/>Log out</button> : null}</div>
+              {!isLocalDevelopment ? <CreditsCard/> : null}</div>
           </section> : null}
           <InstallationSettings/>
         </> : null}

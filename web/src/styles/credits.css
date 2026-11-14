@@ -1,10 +1,10 @@
-/* sidebar: one quiet line */
-.credits-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm, 8px); font-size: 12.5px; color: var(--text-2, inherit); text-decoration: none; }
-.credits-chip:hover { background: var(--hover, rgba(128,128,128,.12)); color: var(--text, inherit); }
-.credits-chip b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text, inherit); }
-.credits-chip[data-low="true"] b { color: var(--warning, #d98a00); }
-.credits-chip[data-empty="true"] b { color: var(--error, #d33); }
-.app[data-collapsed] .credits-chip span { display: none; }
+/* sidebar: the balance appears on hover / focus over the account row, so it takes no row of its own */
+.account { position: relative; }
+.account-credits { position: absolute; inset-inline: 4px; bottom: calc(100% - 2px); z-index: 30; display: none; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-md, 12px); background: var(--elevated, var(--surface)); border: 1px solid var(--border); box-shadow: var(--shadow-md, 0 6px 20px rgba(0,0,0,.35)); font-size: 12.5px; color: var(--text-2, inherit); text-decoration: none; }
+.account-credits b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text, inherit); }
+.account-credits[data-low="true"] b { color: var(--error, #d33); }
+.account:hover .account-credits, .account:focus-within .account-credits { display: flex; }
+.account-credits::after { content: ""; position: absolute; inset-inline: 0; top: 100%; height: 8px; }
 .credits-buy-link { text-decoration: underline; font-weight: 600; white-space: nowrap; }
 
 /* page */
@@ -36,7 +36,7 @@
 .cp-pack .name { font-size: 13px; color: var(--text-3, #888); display: flex; justify-content: space-between; align-items: center; }
 .cp-pack .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--ink, #fff); color: var(--on-ink, #000); }
 .cp-pack .big { font-size: 26px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.cp-pack .big small { font-size: 13px; font-weight: 400; color: var(--text-3, #888); margin-inline-start: 4px; }
+.cp-pack .unit { font-size: 13px; color: var(--text-3, #888); margin-top: -2px; margin-bottom: 4px; }
 .cp-pack .price { font-size: 15px; margin-bottom: 12px; color: var(--text-2, inherit); }
 .cp-pack button { margin-top: auto; min-height: 40px; border-radius: var(--radius-md, 12px); border: 0; font: inherit; font-weight: 600; cursor: pointer; background: var(--ink, #fff); color: var(--on-ink, #000); }
 .cp-pack button:disabled { opacity: .45; cursor: default; }
@@ -61,3 +61,8 @@
 .cp-pager { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 12px; font-size: 12.5px; border-top: 1px solid var(--border-subtle); }
 .cp-pager button { border: 1px solid var(--border-subtle); background: none; color: inherit; border-radius: 999px; padding: 4px 14px; cursor: pointer; font: inherit; }
 .cp-pager button:disabled { opacity: .4; cursor: default; }
+
+/* settings card */
+.cc-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cc-card .num { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cc-card small { display: block; color: var(--text-3, #888); font-size: 12.5px; }
