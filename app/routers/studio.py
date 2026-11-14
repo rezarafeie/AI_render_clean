@@ -191,6 +191,36 @@ async def studio_home(request: Request):
     return await studio_home.build(_user(request))
 
 
+@router.get("/projects-overview")
+async def projects_overview(request: Request):
+    """The Projects page: a card per chat that made something (kind, state, thumbnail)."""
+    from app import studio_overview
+    return await studio_overview.build(_user(request))
+
+
+@router.get("/projects/{project_id}/thumb")
+async def project_thumb(request: Request, project_id: str):
+    """A still of a finished talking / localized video (cut once, then kept)."""
+    from app import studio_overview
+    try: project = await repo.get_project(project_id, _user(request))
+    except KeyError: raise HTTPException(404, "project not found")
+    ref, video = project.get("external_ref"), None
+    if project["engine"] == "localize" and ref:
+        from app import localize
+        state = localize.load(ref)
+        video = localize.LOCALIZE_ROOT / ref / state.get("output", "") if state.get("output") else None
+    elif project["engine"] == "talking" and ref:
+        from app import talking_reel
+        job = jobstore.get(ref); state = talking_reel.load(job.dir) if job else {}
+        relative = state.get("output")
+        video = (job.dir / relative).resolve() if job and relative else None
+        if video and not video.is_relative_to((job.dir / "exports").resolve()): video = None
+    if not video or not video.is_file(): raise HTTPException(404, "output is not ready")
+    path = await asyncio.to_thread(studio_overview.cut_frame, video, project_id)
+    if not path: raise HTTPException(404, "no frame")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
 @router.get("/home/suggestions")
 async def studio_home_suggestions(request: Request):
     """The model's suggestions for the start page; slow (a model answers), so the page asks for them after it has already shown itself."""

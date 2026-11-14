@@ -2795,10 +2795,41 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                         log.debug("review frames could not be announced", exc_info=True)
                 if output and project["state"].get("announced_output") != output:       # once per finished video, however often the status is re-observed
                     await repo.update_project(project["id"], user_key, state={**state, "announced_output": output})
-                    await repo.add_message(conversation_id, user_key, "assistant",
-                        "ویدیو آماده شد. می‌توانید آن را پخش یا دانلود کنید و اصلاح بعدی را همین‌جا بگویید.")
+                    plain = "ویدیو آماده شد. می‌توانید آن را پخش یا دانلود کنید و اصلاح بعدی را همین‌جا بگویید."
+                    try:                                  # the chat ends with a short summary of what was made, written like the first message of the chat
+                        from app import studio_narrator
+                        studio_narrator.narrate(conversation_id, user_key, "video_ready", await _delivery_facts(conversation_id, user_key, project, engine, status, job),
+                                                fallback=plain)
+                    except Exception:
+                        log.warning("the delivery summary could not be started", exc_info=True)
+                        await repo.add_message(conversation_id, user_key, "assistant", plain)
         except Exception as exc:
             log.warning("Studio status sync failed project=%s error=%s", project["id"], type(exc).__name__)
+
+
+async def _delivery_facts(conversation_id: str, user_key: str, project: dict, engine: str, status: Any, job: Any) -> dict:
+    """What the closing message may say about a finished video: what was asked, what the studio made, and what the person can do next. Only real facts."""
+    facts: dict[str, Any] = {"video_is_ready": True, "kind_of_work": {"talking": "talking-head edit", "localize": "dubbing and subtitles", "motion": "motion video"}.get(engine, engine),
+                             "project_title": _short(str(project.get("title") or ""), 80),
+                             "person_can_now": "play or download the video here, and ask for any change in this chat"}
+    try:
+        conversation = await repo.get_conversation(conversation_id, user_key, message_limit=14)
+        asked = [m for m in conversation.get("messages", []) if m.get("role") == "user" and str(m.get("content") or "").strip()]
+        if asked:
+            facts["what_the_person_asked_for"] = _short(re.sub(r"https?://\S+", "", str(asked[-1]["content"])).strip(), 240)
+    except Exception:
+        log.debug("the request could not be read for the delivery summary", exc_info=True)
+    review: dict = {}
+    if isinstance(status, dict):
+        review = status.get("creative_review") or {}
+        for key, label in (("style", "style"), ("duration", "duration_seconds")):
+            if status.get(key): facts[label] = status[key]
+    try:
+        review = review or ((job.render.technical_qc or {}).get("creative_review") or {}) if job else review
+    except Exception:
+        pass
+    if review.get("summary"): facts["automatic_review_of_the_result"] = _short(str(review["summary"]), 300)
+    return facts
 
 
 def dispatch_message(*args: Any) -> None:

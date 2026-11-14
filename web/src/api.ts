@@ -1347,6 +1347,7 @@ export const api = {
     const form = new FormData(); form.append("file", file);
     return uploadWithProgress(`${BASE}/studio/conversations/${id}/attachments`, form, onProgress);
   },
+  async studioProjectsOverview(): Promise<{ items: ProjectCard[] }> { return j(await authFetch(`${BASE}/studio/projects-overview`)); },
   async creditsMe(): Promise<CreditsState> { return j(await authFetch(`${BASE}/studio/credits`)); },
   async creditsUsage(page = 1, size = 30): Promise<CreditsUsage> { return j(await authFetch(`${BASE}/studio/credits/usage?page=${page}&size=${size}`)); },
   async creditsProject(id: string): Promise<CreditsBreakdown> { return j(await authFetch(`${BASE}/studio/credits/projects/${encodeURIComponent(id)}`)); },
@@ -1515,3 +1516,5 @@ export type CreditEntry = { id: number; at: string; kind: string; amount: number
 export type CreditGroup = { id: string; title?: string | null; kind?: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; last_at: string };
 export type CreditsUsage = { chats: CreditGroup[]; projects: CreditGroup[]; items: CreditEntry[]; total: number };
 export type CreditsBreakdown = { by_model: { key: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; cache_tokens: number }[]; by_route: { key: string | null; credits: number; calls: number; input_tokens: number; output_tokens: number; cache_tokens: number }[]; total: number };
+
+export type ProjectCard = { id: string; title: string; updated_at: string | null; kind: string; kind_label: string; status: "running" | "needs_input" | "failed" | "ready" | "draft"; status_label: string; thumb: string | null; projects: number; refs: string[] };

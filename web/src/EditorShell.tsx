@@ -188,7 +188,6 @@ export default function EditorShell() {
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
-          <NavLink to="/templates" {...tip("Templates")}><Icon name="templates"/><span>Templates</span></NavLink>
           </>}
         </nav>
 
@@ -252,7 +251,6 @@ export default function EditorShell() {
           </> : <>
             <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
             <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>
-            <NavLink to="/templates"><Icon name="templates"/><span>Templates</span></NavLink>
           </>}
         </nav>
       </div>
