@@ -1432,8 +1432,17 @@ def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: 
                 _assistant(conversation_id, user_key, f"موسیقی «{track.get('filename', '')}» را جایگزین می‌کنم و روی بیت هم‌زمانش می‌کنم؛ فقط صدا دوباره ساخته می‌شود.")
                 _emit(conversation_id, "motion.revising", motion_id=record["id"])
                 return True
-        motion_graphic.revise(directory, text)
-        _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
+        from brain import localize as voices
+        from creative import claude_motion
+        voice = voices.narrator_for(text, user_key)               # «با صدای من/خودم» = the person's cloned voice; a narrator named in the message
+        if not voice and voices.my_voice_requested(text):
+            _assistant(conversation_id, user_key, "نوشته‌اید «با صدای خودم»، ولی هنوز صدایی از شما کلون نشده است. از تنظیمات ← «کلون صدا»، صدای خودتان را بسازید (ضبط ۳۰ ثانیه یا فایل صدا/ویدیو) و دوباره همین درخواست را بفرستید.")
+            return True
+        motion_graphic.revise(directory, text, voice_id=voice)
+        if voice and claude_motion.voice_only_change(text):
+            _assistant(conversation_id, user_key, "فقط نریشن را با صدای انتخابی شما دوباره می‌سازم؛ تصویرها و صحنه‌ها همان می‌مانند.")
+        else:
+            _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
         _emit(conversation_id, "motion.revising", motion_id=record["id"])
     return True
 

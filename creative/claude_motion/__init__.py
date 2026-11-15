@@ -1173,13 +1173,17 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     check()
 
     sheet = contact_sheet(built, work / "qa" / "sheet.jpg")
-    hooks.note("review", "طراح ارشد دارد عکس همهٔ صحنه‌ها را (کنار رفرنس) بررسی می‌کند")
-    hooks.progress(55, "طراح ارشد دارد صحنه‌ها را بررسی می‌کند.")
-    try:
-        verdict = review(sheet, reference_sheet, direction)
-    except Exception as exc:
-        log.warning("claude motion review unavailable: %s", str(exc)[:160])
+    if revoice:                                                  # only the narration changed: the pictures were already reviewed, and a review must not rewrite them
+        hooks.note("review", "فقط صدا عوض شد؛ تصویرها قبلاً بازبینی شده‌اند و دست نمی‌خورند", "done")
         verdict = {"ok": True, "problems": []}
+    else:
+        hooks.note("review", "طراح ارشد دارد عکس همهٔ صحنه‌ها را (کنار رفرنس) بررسی می‌کند")
+        hooks.progress(55, "طراح ارشد دارد صحنه‌ها را بررسی می‌کند.")
+        try:
+            verdict = review(sheet, reference_sheet, direction)
+        except Exception as exc:
+            log.warning("claude motion review unavailable: %s", str(exc)[:160])
+            verdict = {"ok": True, "problems": []}
     for problem in verdict["problems"]:
         hooks.note(f"review-{problem.get('scene', '')}-{len(notes)}", f"طراح ارشد دربارهٔ صحنهٔ {str(problem.get('scene', '?')).lstrip('0') or '?'}: {str(problem.get('what', ''))[:160]}", "done",
                    f"پیشنهاد: {problem.get('fix', '')}")

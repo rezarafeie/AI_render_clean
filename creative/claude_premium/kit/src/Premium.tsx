@@ -1,46 +1,13 @@
 import React from 'react';
 import {AbsoluteFill, Easing, OffthreadVideo, Sequence, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame} from 'remotion';
 import data from './data.json';
+import {CAP_Y, CREAM, D, FACE_TARGET_Y, FPS, GOLD, H, P, SERIF, SRC_H, SRC_W, STYLE, W, BASE_Z, behindGlow, behindStyle, behindSub, clamp, eio, eo, fa, fit, goldText, prog} from './tokens';
+import {Glass, Icon} from './gfx';
+import {GRAPHICS as WRITTEN} from './graphics';
 
 /* The fixed engine of the premium full-frame talking edit («تدوین صحبتی پریمیوم»): ONE full 1080x1920 frame, a virtual camera on the speaker,
    two-tier motion captions, glass cards, text that passes BEHIND the speaker, a graded look. Everything per video comes from data.json
    (the plan's moments); nothing here is written per video. Time is OUTPUT time, hooked to spoken words by the planner. */
-
-const W = 1080;
-const H = 1920;
-const FPS = (data as any).fps as number;
-const SRC_W = (data as any).video.w as number;
-const SRC_H = (data as any).video.h as number;
-const D = 'Doran';
-const SERIF = 'Playfair Display';
-
-const PALETTES: Record<string, any> = {
-	'cream-gold-espresso': {cream: '#F7EEDF', gold: '#E9C27A', goldGrad: 'linear-gradient(180deg, #FFF6DF 0%, #F1D79C 45%, #D4A24E 100%)', darkGrad: 'linear-gradient(180deg, #4A331A 0%, #22170C 55%, #0F0A05 100%)', ink: '#2E2114', glow: '255,240,215', leak1: '255,150,60', leak2: '255,205,120', vig: '20,10,0', glass: ['rgba(40,30,20,0.55)', 'rgba(15,12,10,0.45)'], glassBorder: 'rgba(255,235,200,0.28)', pill: 'rgba(18,14,10,0.42)', rule: 'rgba(255,235,200,0.35)'},
-	'ice-blue-silver': {cream: '#EEF4FA', gold: '#9CC8F0', goldGrad: 'linear-gradient(180deg, #FFFFFF 0%, #CFE3F5 45%, #8FB4D9 100%)', darkGrad: 'linear-gradient(180deg, #27425E 0%, #142234 55%, #08111C 100%)', ink: '#142234', glow: '220,236,255', leak1: '90,150,255', leak2: '160,210,255', vig: '0,8,20', glass: ['rgba(20,32,48,0.55)', 'rgba(8,14,22,0.45)'], glassBorder: 'rgba(200,225,255,0.28)', pill: 'rgba(8,14,22,0.42)', rule: 'rgba(200,225,255,0.35)'},
-	'mono-red': {cream: '#FFFFFF', gold: '#FF5A47', goldGrad: 'linear-gradient(180deg, #FF9C8E 0%, #FF5A47 50%, #C41E12 100%)', darkGrad: 'linear-gradient(180deg, #3A0E0A 0%, #1A0605 55%, #0A0202 100%)', ink: '#1A0605', glow: '255,225,220', leak1: '255,70,50', leak2: '255,140,110', vig: '20,0,0', glass: ['rgba(40,14,12,0.6)', 'rgba(14,6,5,0.5)'], glassBorder: 'rgba(255,200,190,0.28)', pill: 'rgba(20,6,5,0.5)', rule: 'rgba(255,200,190,0.35)'},
-	'black-neon-green': {cream: '#F2FFF6', gold: '#3BE37A', goldGrad: 'linear-gradient(180deg, #D8FFE6 0%, #6EF0A0 50%, #1FA463 100%)', darkGrad: 'linear-gradient(180deg, #123A22 0%, #08170E 55%, #020805 100%)', ink: '#08170E', glow: '200,255,220', leak1: '40,220,120', leak2: '120,255,180', vig: '0,10,4', glass: ['rgba(10,30,18,0.6)', 'rgba(4,12,8,0.5)'], glassBorder: 'rgba(160,255,200,0.28)', pill: 'rgba(4,14,8,0.5)', rule: 'rgba(160,255,200,0.35)'},
-	'coral-beige': {cream: '#FFF8F0', gold: '#F08A6C', goldGrad: 'linear-gradient(180deg, #FFE2D4 0%, #F5A98B 50%, #E8705A 100%)', darkGrad: 'linear-gradient(180deg, #5A3A2E 0%, #2E1C16 55%, #140A07 100%)', ink: '#3A2218', glow: '255,236,225', leak1: '255,140,100', leak2: '255,200,160', vig: '25,8,0', glass: ['rgba(60,34,26,0.55)', 'rgba(24,12,9,0.45)'], glassBorder: 'rgba(255,225,210,0.3)', pill: 'rgba(30,14,10,0.45)', rule: 'rgba(255,225,210,0.35)'},
-};
-const STYLE = ((data as any).style ?? {}) as any;
-const P = PALETTES[STYLE.palette] ?? PALETTES['cream-gold-espresso'];
-const CREAM = P.cream as string;
-const GOLD = P.gold as string;
-const goldText: React.CSSProperties = {background: P.goldGrad, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'};
-const darkText: React.CSSProperties = {background: P.darkGrad, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'};
-const behindStyle: React.CSSProperties = STYLE.behindInk === 'light' ? goldText : darkText;
-const behindGlow = STYLE.behindInk === 'light' ? 'drop-shadow(0 6px 18px rgba(0,0,0,0.55))' : `drop-shadow(0 6px 18px rgba(${P.glow},0.5))`;
-const behindSub = STYLE.behindInk === 'light' ? CREAM : (P.ink as string);
-const CAP_Y = (STYLE.capY as number) ?? 1180;
-const FACE_TARGET_Y = (STYLE.faceTargetY as number) ?? 740;
-const BASE_Z = ((STYLE.baseZoom as number[]) ?? [1.0, 1.12, 1.04, 1.16, 1.0, 1.1]) as number[];
-
-const clamp = (x: number) => Math.max(0, Math.min(1, x));
-const eo = Easing.bezier(0.16, 1, 0.3, 1);
-const eio = Easing.bezier(0.65, 0, 0.35, 1);
-const prog = (t: number, at: number, d = 0.4, e = eo) => e(clamp((t - at) / d));
-const fa = (n: number | string) => String(n).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
-/** a font size that keeps `chars` letters of Persian inside `maxW` px */
-const fit = (size: number, chars: number, maxW: number, k = 0.56) => Math.min(size, Math.floor(maxW / Math.max(1, chars * k)));
 
 type Word = {t: string; s: number; key: boolean};
 type Cap = {s: number; e: number; words: Word[]; hide: boolean; big: boolean};
@@ -58,6 +25,12 @@ const cuts = D_.cuts as number[];
 const events = (D_.events ?? []) as number[];
 const end = D_.end as {s: number; name: string; tag: string} | null;
 const TOTAL = D_.total as number;
+const props = (D_.props ?? []) as {s: number; e: number; name: string; zone: string}[];
+const GRAPHICS = WRITTEN as Record<string, React.FC<any>>;
+const KW = D_.kw as Record<string, number>;
+const FACE_H = (D_.faceH as number) ?? SRC_H * 0.18;
+const S0 = Math.max(W / SRC_W, H / SRC_H);
+const CAPY = Math.max(1040, Math.min(1250, FACE_TARGET_Y + FACE_H * S0 * 0.62 + 120));
 
 const useTime = () => useCurrentFrame() / FPS;
 const useSpAt = (at: number, damping = 14, mass = 0.8, stiffness = 140) => {
@@ -114,6 +87,28 @@ const camAt = (t: number) => {
 	const ty = Math.min(0, Math.max(H - SRC_H * S, target - (D_.faceY as number) * S));
 	return {S, tx, ty};
 };
+/** where the speaker's head is on screen at time t (from the camera and the tracked face): graphics are placed against it, never on it */
+const headAt = (t: number) => {
+	const c = camAt(t);
+	const fh = FACE_H * c.S;
+	const cy = c.ty + (D_.faceY as number) * c.S;
+	const cx = c.tx + faceX(t) * c.S;
+	return {fh, cy, cx, top: cy - fh * 0.95, chin: cy + fh * 0.62, half: fh * 0.66};
+};
+type Rect = {x: number; y: number; w: number; h: number};
+const zoneRect = (zone: string, t: number): Rect => {
+	const h = headAt(t);
+	if (zone === 'top') return {x: 70, y: 70, w: 940, h: Math.max(0, h.top - 40 - 70)};
+	if (zone === 'left') return {x: 24, y: Math.max(70, h.cy - h.fh * 1.0), w: Math.max(0, h.cx - h.half - 48), h: 560};
+	if (zone === 'right') {
+		const x = h.cx + h.half + 24;
+		return {x, y: Math.max(70, h.cy - h.fh * 1.0), w: Math.max(0, W - 24 - x), h: 560};
+	}
+	const y = CAPY + 190;
+	return {x: 60, y, w: 960, h: Math.max(0, Math.min(500, 1850 - y))};   // lower: under the captions, over the lap
+};
+const usable = (r: Rect) => r.w >= 200 && r.h >= 150;
+
 const Cam: React.FC = () => {
 	const t = useTime();
 	const {S, tx, ty} = camAt(t);
@@ -176,6 +171,24 @@ const Sphere: React.FC<{t: number}> = ({t}) => (
 	</svg>
 );
 
+/** where a behind-text sits against the head, or {ok: false} when the head leaves no room above it (then there is no behind-text: a hidden word is never shown) */
+const behindLayout = (b: Behind) => {
+	const latin = b.kind === 'latin';
+	let size = latin ? fit(210, b.word.length, 1000, 0.62) : fit(b.kind === 'stepped' ? 300 : 225, b.word.length, 980, 0.6);
+	const lh = latin ? 1.0 : b.kind === 'stepped' ? 0.95 : 1.05;
+	const extra = b.kind === 'stepped' ? 105 : b.kicker ? 64 : 0;
+	const headTop = b.top != null
+		? Math.min(...[b.s, b.s + (b.e - b.s) / 2, b.e - 0.3].map((t) => {
+			const c = camAt(t);
+			return c.ty + (b.top as number) * c.S;
+		}))
+		: headAt(b.s + (b.e - b.s) / 2).top;
+	const room = Math.min(1, (headTop - 70) / ((extra + size * lh) * 0.8));       // ~80% of the block above the head, the rest passes behind it
+	size = Math.floor(size * Math.max(0.5, room));
+	const blockH = extra * Math.max(0.5, room) + size * lh;
+	return {ok: b.seg != null && room >= 0.55, size, blockH, top: Math.max(70, Math.min(headTop - blockH * 0.8, 520))};
+};
+
 const BehindText: React.FC<{b: Behind}> = ({b}) => {
 	const f = useCurrentFrame();
 	const t = f / FPS; // local
@@ -185,20 +198,10 @@ const BehindText: React.FC<{b: Behind}> = ({b}) => {
 	const latin = b.kind === 'latin';
 	const slamAt = b.kind === 'stepped' ? (b.strike ?? 1.15) : 0.15;
 	const s = useSpAt(b.s + slamAt, b.kind === 'stepped' ? 12 : 14, b.kind === 'stepped' ? 0.8 : 1, b.kind === 'stepped' ? 180 : 140);
-	let size = latin ? fit(210, b.word.length, 1000, 0.62) : fit(b.kind === 'stepped' ? 300 : 225, b.word.length, 980, 0.6);
-	// Placed against the speaker's head: ~62% of the block above the head, the rest passes behind it (playbook A4), wherever the camera has put the head.
-	// the highest the head gets while the text is up (a slow push-in lifts it): the word is placed against THAT, so it is never buried at the peak
-	const headAt = (t: number) => {
-		const c = camAt(t);
-		return c.ty + (b.top as number) * c.S;
-	};
-	const headTop = b.top != null ? Math.min(headAt(b.s), headAt(b.s + (b.e - b.s) / 2), headAt(b.e - 0.3)) : b.kind === 'stepped' ? 410 : 430;
-	const lh = latin ? 1.0 : b.kind === 'stepped' ? 0.95 : 1.05;
-	const extra = b.kind === 'stepped' ? 105 : b.kicker ? 64 : 0;
-	const room = Math.max(0.55, Math.min(1, (headTop - 70) / ((extra + size * lh) * 0.62)));   // little room above a high head: the word gets smaller, never buried
-	size = Math.floor(size * room);
-	const blockH = extra * room + size * lh;
-	const top = Math.max(70, Math.min(headTop - blockH * 0.62, 520));
+	const L = behindLayout(b);
+	const size = L.size;
+	const top = L.top;
+	if (!L.ok) return null;
 	return (
 		<div style={{...wrap, top}}>
 			{b.sphere && <Sphere t={t} />}
@@ -237,10 +240,6 @@ const BehindText: React.FC<{b: Behind}> = ({b}) => {
 };
 
 /* ========== glass cards ========== */
-const Glass: React.FC<{children: React.ReactNode; style?: React.CSSProperties}> = ({children, style}) => (
-	<div style={{background: `linear-gradient(160deg, ${P.glass[0]}, ${P.glass[1]})`, border: `1.5px solid ${P.glassBorder}`, borderRadius: 40, backdropFilter: 'blur(18px) saturate(1.3)', boxShadow: '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)', ...style}}>{children}</div>
-);
-
 const InOut: React.FC<{s: number; e: number; children: React.ReactNode; y?: number}> = ({s, e, children, y = -60}) => {
 	const t = useTime();
 	const pin = useSpAt(s, 15, 0.8);
@@ -248,87 +247,6 @@ const InOut: React.FC<{s: number; e: number; children: React.ReactNode; y?: numb
 	if (t < s - 0.05 || t > e + 0.05) return null;
 	return (
 		<div style={{opacity: Math.min(prog(t, s, 0.15), 1 - po), transform: `translateY(${(1 - pin) * y + po * -30}px) scale(${0.9 + 0.1 * pin})`, filter: po > 0 ? `blur(${po * 12}px)` : undefined}}>{children}</div>
-	);
-};
-
-const Icon: React.FC<{k: string; s?: number}> = ({k: kind, s = 80}) => {
-	const st = {fill: 'none', stroke: GOLD, strokeWidth: 5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const};
-	return (
-		<svg width={s} height={s} viewBox="0 0 80 80">
-			{kind === 'spark' && <path d="M40,8 C43,28 52,37 72,40 C52,43 43,52 40,72 C37,52 28,43 8,40 C28,37 37,28 40,8 Z" {...st} />}
-			{kind === 'fork' && <path d="M40,74 L40,42 M40,42 L18,18 M40,42 L62,18 M18,18 L18,30 M18,18 L30,18 M62,18 L50,18 M62,18 L62,30" {...st} />}
-			{kind === 'compass' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={30} />
-					<path d="M52,28 L44,44 L28,52 L36,36 Z" fill={GOLD} />
-				</g>
-			)}
-			{kind === 'tools' && <path d="M50,12 a14,14 0 0,0 -6,22 L14,64 a5,5 0 0,0 7,7 L51,41 a14,14 0 0,0 22,-6 l-9,-2 -3,-9 Z" {...st} />}
-			{kind === 'user' && (
-				<g {...st}>
-					<circle cx={40} cy={28} r={13} />
-					<path d="M14,70 C16,52 64,52 66,70" />
-				</g>
-			)}
-			{kind === 'group' && (
-				<g {...st}>
-					<circle cx={40} cy={26} r={11} />
-					<path d="M20,66 C22,50 58,50 60,66" />
-					<circle cx={16} cy={34} r={8} />
-					<circle cx={64} cy={34} r={8} />
-					<path d="M2,64 C3,54 14,50 22,52 M78,64 C77,54 66,50 58,52" />
-				</g>
-			)}
-			{kind === 'list' && <path d="M26,22 L66,22 M26,40 L66,40 M26,58 L66,58 M12,22 L14,22 M12,40 L14,40 M12,58 L14,58" {...st} strokeWidth={6} />}
-			{kind === 'bulb' && (
-				<g {...st}>
-					<path d="M28,50 C18,42 18,18 40,14 C62,18 62,42 52,50 L52,58 L28,58 Z" />
-					<path d="M30,66 L50,66 M34,73 L46,73" />
-				</g>
-			)}
-			{kind === 'arrow' && <path d="M60,40 L20,40 M34,26 L20,40 L34,54" {...st} strokeWidth={6} />}
-			{kind === 'heart' && <path d="M40,68 C10,46 12,18 30,16 C36,16 40,20 40,24 C40,20 44,16 50,16 C68,18 70,46 40,68 Z" {...st} />}
-			{kind === 'star' && <path d="M40,8 L49,30 L72,31 L54,46 L60,70 L40,57 L20,70 L26,46 L8,31 L31,30 Z" {...st} />}
-			{kind === 'check' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={30} />
-					<path d="M26,41 L36,51 L56,29" />
-				</g>
-			)}
-			{kind === 'chart' && <path d="M12,66 L12,14 M12,66 L70,66 M22,54 L34,38 L46,46 L64,22 M54,22 L64,22 L64,32" {...st} />}
-			{kind === 'coin' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={28} />
-					<path d="M40,22 L40,58 M30,31 C30,25 50,25 50,32 C50,40 30,38 30,47 C30,55 50,55 50,49" />
-				</g>
-			)}
-			{kind === 'clock' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={30} />
-					<path d="M40,22 L40,40 L54,48" />
-				</g>
-			)}
-			{kind === 'target' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={30} />
-					<circle cx={40} cy={40} r={17} />
-					<circle cx={40} cy={40} r={4} fill={GOLD} />
-				</g>
-			)}
-			{kind === 'rocket' && <path d="M40,8 C56,18 58,40 50,58 L30,58 C22,40 24,18 40,8 Z M30,58 L22,72 L34,66 M50,58 L58,72 L46,66 M40,34 a6,6 0 1,0 0.1,0" {...st} />}
-			{kind === 'lock' && (
-				<g {...st}>
-					<rect x={18} y={36} width={44} height={34} rx={6} />
-					<path d="M28,36 L28,26 C28,12 52,12 52,26 L52,36" />
-				</g>
-			)}
-			{kind === 'play' && (
-				<g {...st}>
-					<circle cx={40} cy={40} r={30} />
-					<path d="M33,26 L58,40 L33,54 Z" fill={GOLD} />
-				</g>
-			)}
-		</svg>
 	);
 };
 
@@ -447,7 +365,7 @@ const Caption: React.FC<{c: Cap}> = ({c}) => {
 		const smallSize = Math.min(58, fit(58, smallChars, 980, 0.5));
 		const ul = prog(t, keys[0].s + 0.1, 0.5, eio);
 		return (
-			<div style={{position: 'absolute', left: 0, width: W, top: CAP_Y, display: 'flex', flexDirection: 'column', alignItems: 'center', direction: 'rtl', opacity: 1 - out, transform: `translateY(${-out * 30}px)`, filter: out > 0 ? `blur(${out * 10}px)` : undefined}}>
+			<div style={{position: 'absolute', left: 0, width: W, top: CAPY, display: 'flex', flexDirection: 'column', alignItems: 'center', direction: 'rtl', opacity: 1 - out, transform: `translateY(${-out * 30}px)`, filter: out > 0 ? `blur(${out * 10}px)` : undefined}}>
 				{small.length > 0 && (
 					<div style={{display: 'flex', gap: 16, direction: 'rtl'}}>
 						{small.map((w, i) => (
@@ -470,7 +388,7 @@ const Caption: React.FC<{c: Cap}> = ({c}) => {
 	const chars = c.words.reduce((n, w) => n + w.t.length, 0) + c.words.length * 2;
 	const size = fit(64, chars, 860, 0.56);
 	return (
-		<div style={{position: 'absolute', left: 0, width: W, top: CAP_Y + 70, display: 'flex', justifyContent: 'center', opacity: Math.min(prog(t, c.s, 0.12), 1 - out), transform: `translateY(${(1 - pin) * 30 - out * 20}px) scale(${0.94 + 0.06 * pin})`}}>
+		<div style={{position: 'absolute', left: 0, width: W, top: CAPY + 70, display: 'flex', justifyContent: 'center', opacity: Math.min(prog(t, c.s, 0.12), 1 - out), transform: `translateY(${(1 - pin) * 30 - out * 20}px) scale(${0.94 + 0.06 * pin})`}}>
 			<div style={{display: 'flex', gap: 18, direction: 'rtl', padding: '16px 38px 22px', borderRadius: 30, background: P.pill, border: `1px solid ${P.glassBorder}`, backdropFilter: 'blur(14px)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'}}>
 				{c.words.map((w, i) => (
 					<span key={i} style={{fontFamily: D, fontWeight: 700, fontSize: size, lineHeight: 1.2, whiteSpace: 'nowrap', color: i === cur ? GOLD : CREAM, opacity: t >= w.s - 0.08 ? 1 : 0.28, transform: i === cur ? 'translateY(-3px)' : 'none', display: 'inline-block', textShadow: '0 3px 12px rgba(0,0,0,0.5)'}}>{w.t}</span>
@@ -480,11 +398,50 @@ const Caption: React.FC<{c: Cap}> = ({c}) => {
 	);
 };
 
+const behindShows = (t: number) => behinds.some((b) => t >= b.s - 0.2 && t < b.e && behindLayout(b).ok);
+
+/** the reference's caption: small white words with a soft shadow; the words that carry the idea are bigger and warm-coloured, in the same line */
+const CleanCaption: React.FC<{c: Cap}> = ({c}) => {
+	const t = useTime();
+	const out = prog(t, c.e - 0.16, 0.16, eio);
+	const chars = c.words.reduce((n, w) => n + w.t.length * (w.key ? 1.55 : 1), 0) + c.words.length * 2;
+	const k = Math.min(1, 900 / Math.max(1, chars * 0.54 * 56));
+	return (
+		<div style={{position: 'absolute', left: 90, width: W - 180, top: CAPY, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'baseline', gap: `0 ${Math.round(16 * k + 4)}px`, direction: 'rtl', opacity: 1 - out, transform: `translateY(${-out * 18}px)`, filter: out > 0 ? `blur(${out * 8}px)` : undefined}}>
+			{c.words.map((w, i) => {
+				const p = prog(t, w.s - 0.06, 0.3);
+				return (
+					<span key={i} style={{fontFamily: D, fontWeight: w.key ? 800 : 600, fontSize: Math.round((w.key ? 86 : 56) * k), lineHeight: 1.25, whiteSpace: 'nowrap', display: 'inline-block', opacity: p, transform: `translateY(${(1 - p) * 22}px)`, filter: p < 1 ? `blur(${(1 - p) * 6}px)` : 'drop-shadow(0 5px 14px rgba(0,0,0,0.65))', ...(w.key ? goldText : {color: CREAM})}}>
+						{w.t}
+					</span>
+				);
+			})}
+		</div>
+	);
+};
+
 const Captions: React.FC = () => {
 	const t = useTime();
 	const c = caps.find((x) => t >= x.s && t < x.e);
-	if (!c || c.hide) return null;
-	return <Caption key={c.s} c={c} />;
+	if (!c || (c.hide && behindShows(t))) return null;
+	return STYLE.captions === 'two-tier' || STYLE.captions === 'pill' ? <Caption key={c.s} c={c} /> : <CleanCaption key={c.s} c={c} />;
+};
+
+/** a graphic written for this video, drawn inside its zone (never on the head) */
+const PropView: React.FC<{p: {s: number; e: number; name: string; zone: string}}> = ({p}) => {
+	const G = GRAPHICS[p.name];
+	const mid = p.s + (p.e - p.s) / 2;
+	let rect = zoneRect(p.zone, mid);
+	if (!usable(rect)) rect = zoneRect('lower', mid);
+	const t = useTime();
+	const fade = Math.min(prog(t, 0, 0.18), 1 - prog(t, p.e - p.s - 0.25, 0.25, eio));
+	if (!G || !usable(rect)) return null;
+	const k = (i: number) => (KW[String(i)] ?? p.s) - p.s;
+	return (
+		<div style={{position: 'absolute', left: rect.x, top: rect.y, width: rect.w, height: rect.h, opacity: fade}}>
+			<G k={k} dur={p.e - p.s} w={rect.w} h={rect.h} />
+		</div>
+	);
 };
 
 /* ========== main ========== */
@@ -512,7 +469,7 @@ export const Premium: React.FC = () => {
 						<BehindText b={b} />
 					</Sequence>
 				))}
-				{behinds.filter((b) => b.seg).map((b, i) => (
+				{behinds.filter((b) => b.seg && behindLayout(b).ok).map((b, i) => (
 					<Sequence key={'f' + i} from={Math.round(b.s * FPS)} durationInFrames={Math.max(1, Math.round((b.e - b.s) * FPS))}>
 						<FG b={b} />
 					</Sequence>
@@ -520,6 +477,11 @@ export const Premium: React.FC = () => {
 			</AbsoluteFill>
 			<Look />
 			<Graphics />
+			{props.map((p, i) => (
+				<Sequence key={'p' + i} from={Math.round(p.s * FPS)} durationInFrames={Math.max(1, Math.round((p.e - p.s) * FPS))}>
+					<PropView p={p} />
+				</Sequence>
+			))}
 			<Captions />
 		</AbsoluteFill>
 	);

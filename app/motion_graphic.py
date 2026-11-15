@@ -2208,12 +2208,14 @@ def apply_music_edits(directory: Path, record: dict, edits: dict) -> list[str]:
     return said
 
 
-def revise(directory: Path, change: str) -> None:
+def revise(directory: Path, change: str, voice_id: str = "") -> None:
     from creative.audio import music_director
     change = change.strip()[:3000]
     edits = music_director.edits_from_text(change)
     with _lock(directory.name):
         record = load(directory)
+        if voice_id:                           # «با صدای خودم»: the voice the person asked for is the film's voice from now on (a later retry keeps it too)
+            record["voice_id"] = voice_id
         if edits:
             apply_music_edits(directory, record, edits)
         record.update(status="queued", stage="queued", progress=0, error=None)
