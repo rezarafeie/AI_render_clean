@@ -680,12 +680,21 @@ def props_file(p: Plan, code: dict[str, str]) -> str:
 # ── 4. the cut-outs ──────────────────────────────────────────────────────────
 
 def cut_outs(work: Path, graded: Path, sched: dict, face: list[float], size: tuple[int, int], *, note: Note, progress: Callable[[int, str], None],
-             cancelled: Callable[[], bool]) -> dict[int, dict]:
+             cancelled: Callable[[], bool], known: dict | None = None) -> dict[int, dict]:
     """{heavy index: {"seg": "seg/fgN.webm", "crop": (x, w), "top": head-top y}} for every behind window that could be cut out; a window that fails is left out (it becomes a card)."""
     from creative.claude_premium import segment
     windows = [(n, h) for n, h in enumerate(sched["heavy"]) if h["kind"] == "behind"]
     if not windows:
         return {}
+    reused: dict[int, dict] = {}
+    for n, h in list(windows):                       # a window cut out by an interrupted run of this very schedule is not cut out again
+        item = (known or {}).get(str(n))
+        if item and item.get("sig") == [round(h["s"], 3), round(h["e"], 3)] and (work / "public" / "seg" / f"fg{n}.webm").is_file() and item.get("top") is not None:
+            reused[n] = {"seg": item["seg"], "crop": tuple(item["crop"]), "top": item["top"]}
+            windows.remove((n, h))
+    if not windows:
+        note("segment", f"سوژهٔ {len(reused)} پنجره از ساخت قبلی برداشته شد", "done")
+        return reused
     if not segment.available():
         note("segment", "ابزار جداسازی سوژه روی این سرور نیست؛ نوشته‌های پشت سوژه به کارت تبدیل می‌شوند", "done")
         return {}
@@ -720,8 +729,8 @@ def cut_outs(work: Path, graded: Path, sched: dict, face: list[float], size: tup
             out[job["n"]] = {"seg": f"seg/fg{job['n']}.webm", "crop": (job["crop"][0], job["crop"][2]), "top": tops[job["n"]]}
         else:
             note("segment", f"جداسازی پنجرهٔ {order[job['n']] + 1} نشد؛ آن نوشته کارت می‌شود", "active")
-    note("segment", f"سوژه برای {len(out)} پنجره جدا شد", "done")
-    return out
+    note("segment", f"سوژه برای {len(out) + len(reused)} پنجره جدا شد", "done")
+    return {**reused, **out}
 
 
 # ── 5. project, stills, review ───────────────────────────────────────────────
@@ -841,6 +850,33 @@ def mix(voice: Path, music: Path | None, sfx: list[dict], total: float, out: Pat
     return out
 
 
+ENGINE_REV = "premium-2"
+
+
+def _fingerprint(video: Path, words: list[dict], context: str) -> str:
+    import hashlib
+    text = "|".join(w["t"] for w in words)
+    return hashlib.sha256(f"{ENGINE_REV}|{video.stat().st_size}|{text}|{context.strip()}".encode()).hexdigest()[:20]
+
+
+def _load_checkpoint(work: Path, fp: str) -> dict:
+    """What an interrupted run of the SAME video and words already made (the plan, the written graphics, the cut, the cut-outs, the rendered video): a restart goes on from there."""
+    try:
+        data = json.loads((work / "checkpoint.json").read_text())
+        return data if data.get("fp") == fp else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_checkpoint(work: Path, fp: str, ck: dict, **parts) -> None:
+    ck.update(parts)
+    ck["fp"] = fp
+    try:
+        (work / "checkpoint.json").write_text(json.dumps(ck, ensure_ascii=False))
+    except OSError:
+        log.warning("premium checkpoint could not be saved", exc_info=True)
+
+
 # ── 7. the whole film ────────────────────────────────────────────────────────
 
 def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, progress: Callable[[int, str], None], cancelled: Callable[[], bool],
@@ -855,9 +891,16 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     if len(words) < 4:
         raise ValueError("the transcript has too few words")
     note("engine", "موتور «تدوین پریمیوم تمام‌قاب»: دوربین مجازی، زیرنویس موشن دوطبقه، کارت‌های شیشه‌ای و نوشته‌های پشت سوژه روی یک کادر کامل", "done")
-    note("plan", f"تدوینگر (Opus) دارد متن {len(words)} کلمه‌ای را می‌خواند و نقشهٔ لحظه‌ها را می‌چیند: هوک، عنوان، فهرست، مفهوم کلیدی، اوج")
-    progress(18, "دارم نقشهٔ لحظه‌ها را می‌چینم.")
-    p = ct._waiting(progress, 18, "دارم نقشهٔ لحظه‌ها را می‌چینم", lambda: plan(words, context))
+    fp = _fingerprint(video, words, context)
+    ck = _load_checkpoint(work, fp)
+    if ck.get("plan"):
+        p = Plan.model_validate(ck["plan"])
+        note("plan", "ادامه از ساخت قبلی: نقشهٔ لحظه‌ها و گرافیک‌های نوشته‌شده دوباره طراحی نمی‌شوند", "done")
+    else:
+        note("plan", f"تدوینگر (Opus) دارد متن {len(words)} کلمه‌ای را می‌خواند و نقشهٔ لحظه‌ها را می‌چیند: هوک، عنوان، فهرست، مفهوم کلیدی، اوج")
+        progress(18, "دارم نقشهٔ لحظه‌ها را می‌چینم.")
+        p = ct._waiting(progress, 18, "دارم نقشهٔ لحظه‌ها را می‌چینم", lambda: plan(words, context))
+        _save_checkpoint(work, fp, ck, plan=p.model_dump(), code={}, graded=None, segs={}, rendered=False)
     drops = set(p.drop) | ct.auto_drops(words)
     kinds = {k: sum(1 for m in p.moments if m.kind == k) for k in ("card", "behind", "list", "end")}
     note("plan", f"نقشه آماده شد: {kinds['card']} کارت، {kinds['behind']} نوشتهٔ پشت سوژه، {kinds['list']} فهرست، {len(drops)} کلمهٔ اضافه حذف می‌شود", "done",
@@ -866,7 +909,9 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     (work / "plan.json").write_text(p.model_dump_json(indent=1), encoding="utf-8")
     check()
     pool = ThreadPoolExecutor(max_workers=1)
-    drawing = pool.submit(write_props, p, words, None, note=note) if p.props else None      # the graphics are designed while the cut, the face and the cut-outs are made
+    saved_code = {k: v for k, v in (ck.get("code") or {}).items() if k in {g.name for g in p.props}}
+    redo = {g.name for g in p.props} - set(saved_code)
+    drawing = pool.submit(write_props, p, words, redo, previous=saved_code, note=note) if redo else None      # the graphics are designed while the cut, the face and the cut-outs are made
 
     cut = ct.edl(words, drops)
     hdr = is_hdr(video)
@@ -880,7 +925,12 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
             if fraction >= mark:
                 marks.discard(mark)
                 note("cut", f"اصلاح رنگ {int(mark * 100)}٪ انجام شد", "done")
-    graded, voice = cut_graded(video, cut["segs"], work, p.look.grade, hdr, graded_progress)
+    if ck.get("graded") == round(cut["total"], 3) and (work / "public" / "graded.mp4").is_file() and (work / "voice.wav").is_file():
+        graded, voice = work / "public" / "graded.mp4", work / "voice.wav"
+        note("cut", "برش و اصلاح رنگ از ساخت قبلی برداشته شد", "done")
+    else:
+        graded, voice = cut_graded(video, cut["segs"], work, p.look.grade, hdr, graded_progress)
+        _save_checkpoint(work, fp, ck, graded=round(cut["total"], 3))
     size = ct.probe(graded)
     note("cut", f"برش و اصلاح رنگ انجام شد: {len(cut['segs'])} تکه، {cut['total']:.1f} ثانیه", "done")
     check()
@@ -899,14 +949,16 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     if p.moments:
         note("plan", f"پس‌زمینه {'روشن' if light else 'تیره'} است؛ نوشتهٔ پشت سوژه {'تیره' if light else 'روشن'} می‌شود تا خوانا بماند", "done")
     progress(36, "دارم سوژه را جدا می‌کنم.")
-    segs = cut_outs(work, graded, sched, face, size, note=note, progress=progress, cancelled=cancelled)
+    segs = cut_outs(work, graded, sched, face, size, note=note, progress=progress, cancelled=cancelled, known=ck.get("segs") or {})
+    _save_checkpoint(work, fp, ck, segs={str(n): {**v, "crop": list(v["crop"]), "sig": [round(sched["heavy"][n]["s"], 3), round(sched["heavy"][n]["e"], 3)]} for n, v in segs.items()})
     face_h = face_height(graded, size, work / "face_height.json")
     check()
 
     names = [g["name"] for g in sched["props"]]
     p.props = [g for g in p.props if g.name in names]
     progress(40, "دارم گرافیک‌ها را طراحی می‌کنم.")
-    code = ct._waiting(progress, 40, "دارم گرافیک‌ها را طراحی و کدنویسی می‌کنم", drawing.result) if drawing else {}
+    code = ct._waiting(progress, 40, "دارم گرافیک‌ها را طراحی و کدنویسی می‌کنم", drawing.result) if drawing else dict(saved_code)
+    _save_checkpoint(work, fp, ck, code=code)
     check()
 
     data = build_data(p, cut, sched, face, face_y, size, ink, segs, face_h)
@@ -934,6 +986,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
             names = [n for n in names if n in code]
             continue
         code = write_props(p, words, set(wrong), feedback={n: detail for n in wrong}, previous=code, note=note)
+    _save_checkpoint(work, fp, ck, code=code)
     check()
 
     sheet = cm.contact_sheet([(label.split()[0] + " " + label.split()[-1], path) for label, path in built], work / "qa" / "sheet.jpg")
@@ -965,6 +1018,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
         if ok and trial_built:
             code = revised
             project(work, data, fixed_source)
+            _save_checkpoint(work, fp, ck, code=code)
         note("review", "اصلاح انجام شد" if ok and trial_built else "اصلاح ساخته نشد؛ همان نسخهٔ سالم قبلی می‌ماند", "done")
     elif verdict["problems"]:
         note("review", f"{len(verdict['problems'])} ایراد عینی گزارش شد", "done", json.dumps(verdict["problems"], ensure_ascii=False)[:1500])
@@ -976,7 +1030,11 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     note("render", "دارم ویدیو را رندر می‌کنم")
     progress(66, "دارم ویدیو را رندر می‌کنم.")
     video_out = work / "out" / "video.mp4"
-    ct.render_video(work, video_out, render_cloud=render_cloud, note=note, progress=progress, check=check)
+    if ck.get("rendered") and video_out.is_file():
+        note("render", "ویدیوی رندرشده از ساخت قبلی برداشته شد", "done")
+    else:
+        ct.render_video(work, video_out, render_cloud=render_cloud, note=note, progress=progress, check=check)
+        _save_checkpoint(work, fp, ck, rendered=True)
 
     note("mix", "دارم صدا را میکس می‌کنم: کمپرسور و حذف نویز روی صدا، موسیقی زیر صدا (داکینگ)، افکت‌های صوتی گره‌خورده به هر لحظه")
     progress(95, "دارم صدا را میکس می‌کنم.")
@@ -992,5 +1050,6 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
                     "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out)], check=True, timeout=600)
     note("mix", f"صدا میکس شد ({len(data['sfx'])} افکت{'، با موسیقی' if bed else ''}، ۱۴- LUFS)", "done")
     pool.shutdown(wait=False)
+    (work / "checkpoint.json").unlink(missing_ok=True)           # a finished film: the next render of this video is a fresh one, not this one again
     moments = len(data["props"]) + len(data["behind"])
     return {"output": out, "duration": data["total"], "beats": max(1, moments), "behind": len(data["behind"])}
