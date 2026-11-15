@@ -79,3 +79,4 @@ vendor/
 
 # Keep the cloud-render safety regressions despite the legacy test ignore rule.
 !/tests/test_render_cloud.py
+assets/models/

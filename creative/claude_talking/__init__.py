@@ -550,6 +550,52 @@ def mix(voice: Path, music: Path | None, sfx: list[dict], total: float, out: Pat
     return out
 
 
+def render_video(work: Path, video_out: Path, *, render_cloud: Callable[[Path, Path], bool] | None, note: Note, progress: Callable[[int, str], None],
+                 check: Callable[[], None]) -> None:
+    """The muted film of a Remotion project into `video_out`: on a RunPod worker when the cloud is meant for this person (three tries on fresh workers), else here."""
+    video_out.parent.mkdir(parents=True, exist_ok=True)
+    video_out.unlink(missing_ok=True)
+    rendered = False
+    if render_cloud:
+        def once() -> bool:
+            video_out.unlink(missing_ok=True)
+            ok = bool(render_cloud(work, video_out))
+            if not ok:
+                try:
+                    from app.render_cloud import hooks as cloud
+                    meant = bool(cloud.eligible())
+                except Exception:
+                    meant = False
+                if meant:                                 # the cloud IS meant for this person but gave nothing (budget, capacity, a worker that never started)
+                    raise RuntimeError("the cloud render service did not take the video (budget, capacity or worker start)")
+                return False                              # the cloud is not meant for this person: the server renders
+            if not video_out.is_file():
+                raise RuntimeError("the cloud render produced no video")
+            return True
+        try:
+            rendered = cm.cloud_retry(once, lambda text: note("render", text))
+        except (InterruptedError, Cancelled):
+            raise
+        except Exception as exc:
+            log.warning("claude talking cloud render failed: %s", str(exc)[:200])
+            if not cm.local_fallback_allowed():
+                raise RuntimeError("cloud render failed after 3 tries: " + str(exc)[:300])
+        if rendered:
+            note("render", "رندر ابری (RunPod) انجام شد", "done")
+    if not rendered:
+        def line(text: str) -> None:
+            if text.startswith("PROGRESS"):
+                try:
+                    progress(66 + int(int(text.split()[1]) * 0.28), "دارم ویدیو را رندر می‌کنم.")
+                except ValueError:
+                    pass
+        ok, detail = cm._node(work, ["video", str(video_out)], timeout=5400, on_line=line)
+        if not ok or not video_out.is_file():
+            raise RuntimeError("render failed: " + detail[:300])
+        note("render", "رندر انجام شد", "done")
+    check()
+
+
 # ── 6. the whole reel ────────────────────────────────────────────────────────
 
 def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, progress: Callable[[int, str], None], cancelled: Callable[[], bool],
@@ -665,47 +711,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     note("render", "دارم ویدیو را رندر می‌کنم")
     progress(66, "دارم ویدیو را رندر می‌کنم.")
     video_out = work / "out" / "video.mp4"
-    video_out.parent.mkdir(parents=True, exist_ok=True)
-    video_out.unlink(missing_ok=True)
-    rendered = False
-    if render_cloud:
-        def once() -> bool:
-            video_out.unlink(missing_ok=True)
-            ok = bool(render_cloud(work, video_out))
-            if not ok:
-                try:
-                    from app.render_cloud import hooks as cloud
-                    meant = bool(cloud.eligible())
-                except Exception:
-                    meant = False
-                if meant:                                 # the cloud IS meant for this person but gave nothing (budget, capacity, a worker that never started)
-                    raise RuntimeError("the cloud render service did not take the video (budget, capacity or worker start)")
-                return False                              # the cloud is not meant for this person: the server renders
-            if not video_out.is_file():
-                raise RuntimeError("the cloud render produced no video")
-            return True
-        try:
-            rendered = cm.cloud_retry(once, lambda text: note("render", text))
-        except (InterruptedError, Cancelled):
-            raise
-        except Exception as exc:
-            log.warning("claude talking cloud render failed: %s", str(exc)[:200])
-            if not cm.local_fallback_allowed():
-                raise RuntimeError("cloud render failed after 3 tries: " + str(exc)[:300])
-        if rendered:
-            note("render", "رندر ابری (RunPod) انجام شد", "done")
-    if not rendered:
-        def line(text: str) -> None:
-            if text.startswith("PROGRESS"):
-                try:
-                    progress(66 + int(int(text.split()[1]) * 0.28), "دارم ویدیو را رندر می‌کنم.")
-                except ValueError:
-                    pass
-        ok, detail = cm._node(work, ["video", str(video_out)], timeout=5400, on_line=line)
-        if not ok or not video_out.is_file():
-            raise RuntimeError("render failed: " + detail[:300])
-        note("render", "رندر انجام شد", "done")
-    check()
+    render_video(work, video_out, render_cloud=render_cloud, note=note, progress=progress, check=check)
 
     note("mix", "دارم صدا را میکس می‌کنم: کمپرسور روی صدا، موسیقی زیر صدا (داکینگ)، افکت‌های صوتی روی کلمه‌ها")
     progress(95, "دارم صدا را میکس می‌کنم.")

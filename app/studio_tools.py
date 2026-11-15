@@ -70,6 +70,8 @@ class TalkingInput(ToolInput):
     request: str = Field("", max_length=2000)
     transcript: dict | None = None    # a transcript prepared by long-video discovery: the clip is not transcribed again
     captions_only: bool | None = None  # understood from the request and the footage: subtitles and nothing else (None: decide from the words)
+    variant: str | None = Field(None, description="'premium' = the premium FULL-FRAME talking edit (one full screen, not split in two: virtual camera, two-tier motion captions, glass cards, "
+                                "text passing behind the speaker, graded look). Use it when the person asks for a premium / full-screen / typography-behind-the-speaker edit; otherwise None.")
 
 
 class ContentInput(ToolInput):
@@ -165,7 +167,7 @@ def _talking(args: TalkingInput) -> dict:
         from brain.transcribe import file_hash
         seeded = {**args.transcript, "file_hash": file_hash(job.dir / "raw" / job.raw_name), "requested_language": "fa", "engine": "whisper"}
         (job.dir / "transcript.json").write_text(json.dumps(seeded, ensure_ascii=False))
-    talking_reel.analyze(job.dir, job.dir / "raw" / job.raw_name, style=args.style, request=args.request, captions_only=args.captions_only)
+    talking_reel.analyze(job.dir, job.dir / "raw" / job.raw_name, style=args.style, request=args.request, captions_only=args.captions_only, variant=args.variant)
     return {"external_ref": job.id, "status": "analyzing", "style": args.style}
 
 

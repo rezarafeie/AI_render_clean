@@ -396,7 +396,7 @@ def resolve_music(music: Optional[str]) -> Optional[Path]:
 
 
 def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, request: str = "",
-            concept: Optional[dict] = None, captions_only: Optional[bool] = None) -> dict:
+            concept: Optional[dict] = None, captions_only: Optional[bool] = None, variant: Optional[str] = None) -> dict:
     """Transcribe and prepare editable AI decisions without starting a render.
 
     ``concept`` is a concept the user picked from the plan: the director is skipped and only the
@@ -407,6 +407,8 @@ def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, requ
             raise ValueError("talking reel is busy")
         state = load(job_dir)
         state.update(status="running", stage="transcribing", message="", progress=5, analysis_ready=False)
+        if wants_premium(request, variant):
+            state["variant"] = PREMIUM                      # sticks to the job: a re-render stays the premium edit
         save(job_dir, state)
         _running.add(key)
         _cancel_events[key], _pause_events[key] = threading.Event(), threading.Event()
@@ -475,6 +477,8 @@ def _analyze(job_dir: Path, video: Path, *, style: Optional[str], request: str =
     picked = None
     if captions_only is None:                          # no understanding of the footage available: the words decide
         captions_only = wants_captions_only(request) or bool(load(job_dir).get("captions_only"))
+    if load(job_dir).get("variant") == PREMIUM and not captions_only:
+        style = "talking_5"                            # the premium edit is a «صحبتی ۵» variant (same editing screen, its own renderer)
     if captions_only:                                  # «فقط زیرنویس»: nothing to direct, nothing to cut
         style = "talking_1"
     if concept:
@@ -731,8 +735,11 @@ def _run(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     from dotenv import load_dotenv
 
     load_dotenv(PROJECT_ROOT / ".env")
-    style = load(job_dir).get("style") or "talking_1"
-    if style == "talking_5":
+    state = load(job_dir)
+    style = state.get("style") or "talking_1"
+    if state.get("variant") == PREMIUM:
+        _run_premium(job_dir, video)
+    elif style == "talking_5":
         _run_style5(job_dir, video, regenerate=regenerate)
     elif style in SPLIT_STYLES:
         _run_split(job_dir, video, style, regenerate=regenerate)
@@ -881,10 +888,10 @@ def _run_style5(job_dir: Path, video: Path, *, regenerate: bool) -> None:
 CLAUDE_TALKING_STEPS = (24, 32, 45, 56, 66, 95)     # where the engine's steps start (plan 18, cut 24, graphics 32, build 45, review 56, render 66, mix 95)
 
 
-def step_label(percent: int) -> str:
+def step_label(percent: int, steps: tuple = CLAUDE_TALKING_STEPS) -> str:
     """«مرحلهٔ ۴ از ۷»: how far along the Claude talking engine is, so a long quiet step is never an unknown."""
-    number = 1 + sum(int(percent) >= start for start in CLAUDE_TALKING_STEPS)
-    return f"مرحلهٔ {number} از {len(CLAUDE_TALKING_STEPS) + 1}"
+    number = 1 + sum(int(percent) >= start for start in steps)
+    return f"مرحلهٔ {number} از {len(steps) + 1}"
 
 
 def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
@@ -924,6 +931,59 @@ def _run_claude_talking(job_dir: Path, video: Path, transcript: dict) -> None:
     state = load(job_dir)
     state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(float(result["duration"]), 2),
                  shots=int(result["beats"]), engine="claude_talking")
+    save(job_dir, state)
+
+
+PREMIUM = "premium"
+PREMIUM_WORDS = re.compile(r"تمام[\s\u200c]?قاب|پریمیوم|premium|full[\s-]?frame", re.I)
+
+
+def wants_premium(request: str, variant: Optional[str] = None) -> bool:
+    """The premium full-frame talking edit: asked for by name (the tool's variant) or in the person's words («تمام‌قاب»، «پریمیوم»)."""
+    return str(variant or "").strip().lower() == PREMIUM or bool(PREMIUM_WORDS.search(request or ""))
+
+
+def _run_premium(job_dir: Path, video: Path) -> None:
+    """The premium full-frame talking edit (creative/claude_premium): virtual camera, two-tier motion captions, glass cards, text behind the speaker, graded look."""
+    from creative import claude_premium
+    from app.render_cloud import hooks as cloud
+    key = str(job_dir)
+    (job_dir / "talking_notes.json").unlink(missing_ok=True)                  # a new attempt writes its log from the start
+    _stage(job_dir, "loading transcript" if (job_dir / "transcript.json").is_file() else "transcribing", progress=5)
+    transcript = transcript_for(job_dir, video)
+    note(job_dir, f"گفتار آماده است: {len(transcript.get('sentences') or [])} جمله، {float(transcript.get('duration') or 0):.0f} ثانیه", stage="transcript", done=True)
+    state = load(job_dir)
+
+    def cancelled() -> bool:
+        with _lock:
+            event = _cancel_events.get(key)
+        return bool(event and event.is_set())
+
+    def talk(step: str, text: str, state_: str = "active", detail: Optional[str] = None) -> None:
+        note(job_dir, text, stage=step, done=state_ == "done", detail=detail or "")
+
+    def progress(percent: int, message: str) -> None:
+        _stage(job_dir, "rendering" if "رندر" in message else "claude talking", progress=int(percent), message=f"{message} ({step_label(percent, claude_premium.STEPS)})")
+
+    def music(_feel: str, _total: float) -> Optional[Path]:
+        chosen = state.get("music")
+        if chosen and chosen != DEFAULT_MUSIC:
+            picked = resolve_music(chosen)
+            if picked:
+                return picked
+        if state.get("music_chosen") and not chosen:
+            return None                                   # the person chose no music
+        return claude_premium.KIT / "music.mp3"            # the reference film's own bed
+
+    def cloud_render(work: Path, out: Path) -> bool:
+        return bool(cloud.claude_motion(work, out, timeout=5400))
+
+    out = _next_output(job_dir)
+    result = claude_premium.make(video, transcript, job_dir / "talking_reel_work" / "premium", out, note=talk, progress=progress, cancelled=cancelled,
+                                 render_cloud=cloud_render, music=music, context=str(state.get("request") or ""))
+    state = load(job_dir)
+    state.update(status="done", stage="", message="", progress=100, output=f"exports/{out.name}", duration=round(float(result["duration"]), 2),
+                 shots=int(result["beats"]), engine="claude_premium")
     save(job_dir, state)
 
 
