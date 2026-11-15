@@ -265,7 +265,7 @@ def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr
     fc.append(f"[ac]apad=pad_dur={TAIL}[a]")
     (work / "public").mkdir(parents=True, exist_ok=True)
     graded, voice = work / "public" / "graded.mp4", work / "voice.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-filter_complex", ";".join(fc), "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16",
+    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-threads", "2", "-y", "-i", str(video), "-filter_complex", ";".join(fc), "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16",
                     "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(graded),
                     "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], check=True, timeout=3600)
     return graded, voice
