@@ -11,6 +11,7 @@ import { TranscriptionSettings } from "./settings/Transcription";
 import { IntegrationsSettings } from "./settings/Integrations";
 import { currentLang, setLang } from "./i18n/lang";
 import { CreditsCard } from "./CreditsCard";
+import "./styles/settings-assistant.css";
 const VoiceCloneSettings = React.lazy(() => import("./settings/VoiceClone").then(module => ({ default: module.VoiceCloneSettings })));
 const CloudRenderSettings = React.lazy(() => import("./settings/CloudRender").then(module => ({ default: module.CloudRenderSettings })));
 

@@ -37,14 +37,16 @@ export function AgentSettings() {
     catch {setError("ذخیرهٔ حالت پیش‌فرض انجام نشد. دوباره تلاش کنید.");}
     finally {setSaving(false);}
   };
-  return <section className="set-section" aria-labelledby="set-agent">
-    <h2 id="set-agent">Agent</h2>
-    <div className="set-row"><span><b>Default Agent Mode</b><small>For new conversations. Existing conversations keep their selection.</small></span>
-      <select className="input" aria-label="Default Agent Mode" value={mode} disabled={!loaded || saving}
-        onChange={event => void change(event.target.value as AgentMode)}>
-        {agentModes.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}
-      </select></div>
-    {error ? <p role="alert">{error}</p> : null}
+  return <section className="set-section" aria-labelledby="set-agent" dir="rtl">
+    <h2 id="set-agent">ایجنت</h2>
+    <div className="set-controls">
+      <div className="set-control"><label htmlFor="default-agent-mode"><b>حالت پیش‌فرض ایجنت</b><small>برای گفتگوهای جدید. گفتگوهای موجود انتخاب خودشان را نگه می‌دارند.</small></label>
+        <select id="default-agent-mode" className="input" aria-label="حالت پیش‌فرض ایجنت" value={mode} disabled={!loaded || saving}
+          onChange={event => void change(event.target.value as AgentMode)}>
+          {agentModes.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}
+        </select></div>
+    </div>
+    {error ? <p className="notice" data-tone="error" role="alert">{error}</p> : null}
   </section>;
 }
 

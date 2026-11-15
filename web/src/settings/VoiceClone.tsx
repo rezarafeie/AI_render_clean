@@ -27,18 +27,21 @@ function VoiceRow({ voice, onChange, onError }: { voice: Voice; onChange: () => 
     setBusy(true); onError("");
     try { setAudio(await api.previewVoice(voice.id, text)); } catch (e) { onError(e instanceof Error ? e.message : "ساخت صدای آزمایشی ناموفق بود"); } finally { setBusy(false); }
   }
-  return <li className="set-voice">
-    <div className="set-row">
-      {editing ? <><input className="input" dir="auto" value={name} maxLength={40} autoFocus onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") { setEditing(false); setName(voice.name); } }}/>
-        <button type="button" className="btn btn-sm" onClick={() => void save()}>ذخیره</button></>
-        : <><b dir="auto">{voice.name}</b><button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>تغییر نام</button></>}
-      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { if (window.confirm(`صدای «${voice.name}» از برنامه حذف شود؟ برای آزادشدن جا در حساب ElevenLabs، همین صدا را در پنل ElevenLabs هم پاک کنید.`)) void api.deleteVoice(voice.id).then(onChange).catch(e => onError(friendlyError(e, "delete the voice"))); }}>حذف</button>
+  return <li className="vc-voice">
+    <div className="vc-voice-head">
+      <span className="vc-voice-icon" aria-hidden="true">♪</span>
+      {editing ? <input className="input vc-name" dir="auto" value={name} maxLength={40} autoFocus onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") { setEditing(false); setName(voice.name); } }}/>
+        : <b dir="auto" className="vc-voice-name">{voice.name}</b>}
+      <span className="vc-voice-actions">
+        {editing ? <button type="button" className="btn btn-sm" onClick={() => void save()}>ذخیره</button> : <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>تغییر نام</button>}
+        <button type="button" className="btn btn-sm btn-ghost vc-delete" onClick={() => { if (window.confirm(`صدای «${voice.name}» از برنامه حذف شود؟ برای آزادشدن جا در حساب ElevenLabs، همین صدا را در پنل ElevenLabs هم پاک کنید.`)) void api.deleteVoice(voice.id).then(onChange).catch(e => onError(friendlyError(e, "delete the voice"))); }}>حذف</button>
+      </span>
     </div>
-    <label className="set-field">متن آزمایشی (حداکثر ۴۰۰ نویسه)<textarea className="input" dir="auto" rows={2} maxLength={400} value={text} onChange={e => setText(e.target.value)}/></label>
-    <div className="set-actions">
+    <div className="vc-test">
+      <input className="input" dir="auto" maxLength={400} value={text} onChange={e => setText(e.target.value)} aria-label="متن آزمایشی (حداکثر ۴۰۰ نویسه)" placeholder="متنی برای شنیدن صدا"/>
       <button type="button" className="btn btn-sm" disabled={busy || text.trim().length < 3} onClick={() => void play()}>{busy ? "در حال ساخت…" : "شنیدن صدا"}</button>
-      {audio ? <audio controls autoPlay src={audio}/> : null}
     </div>
+    {audio ? <audio className="vc-audio" controls autoPlay src={audio}/> : null}
   </li>;
 }
 
@@ -92,29 +95,34 @@ export function VoiceCloneSettings() {
   const ready = consent && !busy && !recording;
   return <section className="set-section" aria-labelledby="set-clone" dir="rtl">
     <h2 id="set-clone">کلون صدا</h2>
-    <p className="set-hint">صدای خودتان را بسازید و در نریشن ویدیوها استفاده کنید. فقط صدایی را کلون کنید که مال خودتان است یا اجازهٔ استفاده از آن را دارید.</p>
-    {voices.length ? <ul className="set-list" aria-label="صداهای کلون‌شدهٔ شما">{voices.map(voice => <VoiceRow key={voice.id} voice={voice} onChange={reload} onError={setError}/>)}</ul> : null}
-    <div className="chip-row" role="tablist">
-      <button type="button" role="tab" className="chip" aria-pressed={mode === "record"} onClick={() => setMode("record")}>ضبط با میکروفون</button>
-      <button type="button" role="tab" className="chip" aria-pressed={mode === "file"} onClick={() => setMode("file")}>از روی فایل (صدا یا ویدیو)</button>
-    </div>
-    <label className="set-field">نام صدا<input className="input" dir="auto" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="مثلاً: صدای من"/></label>
-    {mode === "record" ? <>
-      <p className="set-hint">این متن را با لحن طبیعی بخوانید؛ دست‌کم {MIN_RECORD} ثانیه، بدون موسیقی و در جای ساکت.</p>
-      <blockquote className="set-reading" dir="rtl">{READING}</blockquote>
-      <div className="set-actions">
-        {recording ? <button type="button" className="btn" onClick={stopRecording}>پایان ضبط · {seconds} ثانیه</button> : <button type="button" className="btn" disabled={busy} onClick={() => void startRecording()}>{blob ? "ضبط دوباره" : "شروع ضبط"}</button>}
-        {blob && !recording ? <>
-          <audio controls src={URL.createObjectURL(blob)} />
-          <button type="button" className="btn" disabled={!ready || seconds < MIN_RECORD} onClick={() => void submit(blob, "recording.webm", "recording")}>ساخت صدا</button>
-          {seconds < MIN_RECORD ? <span className="set-hint">ضبط شما {seconds} ثانیه است؛ دست‌کم {MIN_RECORD} ثانیه لازم است.</span> : null}
-        </> : null}
+    <p className="set-hint">صدای خودتان را بسازید و در نریشن ویدیوها استفاده کنید. فقط صدایی را کلون کنید که مال خودتان است یا اجازه‌ی استفاده از آن را دارید.</p>
+    {voices.length ? <ul className="vc-voices" aria-label="صداهای کلون‌شده‌ی شما">{voices.map(voice => <VoiceRow key={voice.id} voice={voice} onChange={reload} onError={setError}/>)}</ul> : null}
+    <div className="set-controls vc-new">
+      <div className="vc-new-head"><b>ساخت صدای جدید</b>
+        <div className="vc-seg" role="tablist" aria-label="روش ساخت">
+          <button type="button" role="tab" aria-pressed={mode === "record"} onClick={() => setMode("record")}>ضبط با میکروفون</button>
+          <button type="button" role="tab" aria-pressed={mode === "file"} onClick={() => setMode("file")}>از روی فایل</button>
+        </div></div>
+      <div className="vc-body">
+        <label className="set-field">نام صدا<input className="input" dir="auto" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="مثلاً: صدای من"/></label>
+        {mode === "record" ? <>
+          <details className="vc-reading" open>
+            <summary>متنی که باید بخوانید <small>دست‌کم {MIN_RECORD} ثانیه، با لحن طبیعی، بدون موسیقی و در جای ساکت</small></summary>
+            <blockquote dir="rtl">{READING}</blockquote>
+          </details>
+          <div className="set-actions vc-record">
+            {recording ? <button type="button" className="btn" onClick={stopRecording}>پایان ضبط · {seconds} ثانیه</button> : <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void startRecording()}>{blob ? "ضبط دوباره" : "شروع ضبط"}</button>}
+            {blob && !recording ? <audio controls src={URL.createObjectURL(blob)} /> : null}
+          </div>
+          {blob && !recording && seconds < MIN_RECORD ? <p className="set-control-note">ضبط شما {seconds} ثانیه است؛ دست‌کم {MIN_RECORD} ثانیه لازم است.</p> : null}
+        </> : <>
+          <p className="set-control-note">فایل صدا یا ویدیو، از ۳۰ ثانیه تا ۲ ساعت. بهترین بخش گفتار تمیز خودکار انتخاب می‌شود؛ بهتر است فقط یک نفر صحبت کند و موسیقی نداشته باشد.</p>
+          <input type="file" accept="audio/*,video/*" disabled={!ready} onChange={event => { const file = event.target.files?.[0]; if (file) void submit(file, file.name, "file"); event.target.value = ""; }} />
+        </>}
+        <label className="set-check"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/><span>تأیید می‌کنم این صدا مال خودم است یا اجازه‌ی کلون‌کردن و استفاده از آن را دارم.</span></label>
+        {mode === "record" ? <div className="set-actions"><button type="button" className="btn" disabled={!ready || !blob || recording || seconds < MIN_RECORD} onClick={() => blob && void submit(blob, "recording.webm", "recording")}>{busy ? "در حال ساخت…" : "ساخت صدا"}</button></div> : null}
       </div>
-    </> : <>
-      <p className="set-hint">فایل صدا یا ویدیو، از ۳۰ ثانیه تا ۲ ساعت. بهترین بخش گفتار تمیز خودکار انتخاب می‌شود؛ بهتر است فقط یک نفر صحبت کند و موسیقی نداشته باشد.</p>
-      <input type="file" accept="audio/*,video/*" disabled={!ready} onChange={event => { const file = event.target.files?.[0]; if (file) void submit(file, file.name, "file"); event.target.value = ""; }} />
-    </>}
-    <label className="set-check"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/> تأیید می‌کنم این صدا مال خودم است یا اجازهٔ کلون‌کردن و استفاده از آن را دارم.</label>
+    </div>
     {message && !error ? <p className="set-hint" role="status">{message}</p> : null}
     {error ? <div className="notice" data-tone="error" role="alert">{error}</div> : null}
   </section>;

@@ -1,0 +1,54 @@
+/* Settings → Assistant & processing: the same card language for every block */
+.set-pane .set-section { margin-top: var(--space-8, 32px); }
+.set-pane .set-section > h2 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; }
+.set-pane .set-hint { margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: var(--text-3); }
+.set-controls .set-control-note { margin: 0; padding: 0 16px 14px; font-size: 12.5px; line-height: 1.7; color: var(--text-3); }
+.set-controls .set-control > select.input, .set-controls .set-control > .input { flex: 0 1 240px; width: 240px; }
+
+/* choices (radio cards inside one card) */
+.set-choices { display: grid; }
+.set-choice { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; cursor: pointer; transition: background .15s ease; }
+.set-choice + .set-choice { border-top: 1px solid var(--border-subtle); }
+.set-choice:hover { background: var(--surface-hover, var(--hover)); }
+.set-choice[data-selected] { background: var(--accent-soft, var(--hover)); }
+.set-choice input { margin-top: 3px; flex: none; accent-color: var(--ink, #fff); }
+.set-choice > span { display: grid; gap: 3px; min-width: 0; }
+.set-choice b { font-size: 14px; font-weight: 600; }
+.set-choice small { font-size: 12.5px; line-height: 1.65; color: var(--text-3); }
+.set-controls > .set-control + .set-control, .set-controls > .set-control-note + .set-control, .set-choices + .set-control-note { border-top: 1px solid var(--border-subtle); }
+.set-choices + .set-control-note { padding-top: 12px; }
+
+/* voice clone */
+.vc-voices { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 10px; }
+.vc-voice { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg, 16px); background: var(--surface); }
+.vc-voice-head { display: flex; align-items: center; gap: 10px; }
+.vc-voice-icon { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); font-size: 15px; }
+.vc-voice-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-name { flex: 1; min-width: 0; height: 36px; }
+.vc-voice-actions { display: flex; gap: 4px; flex: none; }
+.vc-delete:hover { color: var(--error, #d33); }
+.vc-test { display: flex; gap: 8px; }
+.vc-test .input { flex: 1; min-width: 0; }
+.vc-audio { width: 100%; height: 40px; }
+.vc-new-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
+.vc-new-head b { font-size: 14px; }
+.vc-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--bg, transparent); border: 1px solid var(--border-subtle); }
+.vc-seg button { border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12.5px; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.vc-seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); font-weight: 600; }
+.vc-body { display: grid; gap: 14px; padding: 16px; }
+.vc-reading { border: 1px solid var(--border-subtle); border-radius: var(--radius-md, 12px); background: var(--bg, transparent); }
+.vc-reading summary { display: grid; gap: 2px; padding: 11px 14px; cursor: pointer; font-size: 13.5px; font-weight: 500; list-style: none; }
+.vc-reading summary::-webkit-details-marker { display: none; }
+.vc-reading summary small { font-size: 12px; font-weight: 400; color: var(--text-3); }
+.vc-reading blockquote { margin: 0; padding: 12px 14px 14px; border-top: 1px solid var(--border-subtle); font-size: 14px; line-height: 2; color: var(--text-2); }
+.vc-record { align-items: center; }
+.vc-record audio { flex: 1; min-width: 200px; height: 40px; }
+.vc-body .set-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.7; color: var(--text-2); cursor: pointer; }
+.vc-body .set-check input { margin-top: 4px; flex: none; accent-color: var(--ink, #fff); }
+.vc-body input[type="file"] { font-size: 13px; color: var(--text-2); }
+.set-field { display: grid; gap: 6px; font-size: 13px; color: var(--text-2); }
+@media (max-width: 560px) {
+  .set-controls .set-control > select.input, .set-controls .set-control > .input { width: 100%; flex: 1 1 100%; }
+  .vc-test { flex-direction: column; } .vc-test .btn { min-height: 42px; }
+  .vc-voice-head { flex-wrap: wrap; } .vc-voice-actions { margin-inline-start: auto; }
+}
