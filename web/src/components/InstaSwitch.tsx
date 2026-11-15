@@ -27,7 +27,7 @@ export function InstaSwitch({ enabled, onPointerEnter }: { enabled: boolean; onP
   const connected = info?.connected === true;
   const followers = connected ? compactCount(info?.followers) : "";
   const name = connected && info?.username ? `InstaGPT · @${info.username}` : "Switch to InstaGPT";
-  return <NavLink to="/hermes" className="switch-btn" data-connected={connected || undefined} aria-label={name} title={name} onPointerEnter={onPointerEnter} onTouchStart={onPointerEnter}>
+  return <NavLink to="/insta" className="switch-btn" data-connected={connected || undefined} aria-label={name} title={name} onPointerEnter={onPointerEnter} onTouchStart={onPointerEnter}>
     {connected ? (info?.picture && !broken
       ? <img className="switch-avatar" src={info.picture} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} draggable={false}/>
       : <span className="switch-avatar" aria-hidden="true">{(info?.username || "i").slice(0, 1).toUpperCase()}</span>)

@@ -95,7 +95,7 @@ await S("studio-mobile-preview", { url: "/studio/c1", size: "390", kind: "done",
 await S("studio-mobile-edit", { url: "/studio/c1", size: "390", kind: "approve", setup: p => p.locator('nav[aria-label="Studio views"] button', { hasText: "Edit" }).click() });
 await S("studio-desktop-edit", { url: "/studio/c1", size: "1440", kind: "approve", setup: p => p.getByRole("tab", { name: "Edit" }).click() });
 await S("studio-light", { url: "/studio/c1", size: "1440", kind: "done", theme: "light" });
-for (const [name, route] of [["render", "/jobs/job1/render"], ["new", "/new"], ["my-effects", "/my-effects"], ["library", "/library"], ["style-library", "/style-library"], ["style-learner", "/style-learner"], ["content", "/content"], ["localize", "/localize"], ["talking", "/talking"], ["hermes", "/hermes"], ["forgot", "/forgot-password"]]) {
+for (const [name, route] of [["render", "/jobs/job1/render"], ["new", "/new"], ["my-effects", "/my-effects"], ["library", "/library"], ["style-library", "/style-library"], ["style-learner", "/style-learner"], ["content", "/content"], ["localize", "/localize"], ["talking", "/talking"], ["hermes", "/insta"], ["forgot", "/forgot-password"]]) {
   await S(`legacy-${name}-desktop`, { url: route, size: "1440", guest: name === "forgot" });
   await S(`legacy-${name}-mobile`, { url: route, size: "390", guest: name === "forgot" });
 }

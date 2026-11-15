@@ -24,7 +24,7 @@ test('before the page is known the button is only the Instagram mark, with no la
   const {mod,React,server,router} = await load();
   const html = server.renderToStaticMarkup(React.createElement(router.MemoryRouter,null,React.createElement(mod.InstaSwitch,{enabled:true})));
   const link = new JSDOM(html).window.document.querySelector('a.switch-btn');
-  assert.equal(link.getAttribute('href'),'/hermes');
+  assert.equal(link.getAttribute('href'),'/insta');
   assert.equal(link.textContent.trim(),'');
   assert.match(link.getAttribute('aria-label'),/InstaGPT/);
   assert.equal(link.querySelector('.switch-avatar'),null);

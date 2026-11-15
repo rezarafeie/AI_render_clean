@@ -51,7 +51,7 @@ export type { IconName } from "./components/Icon";
 type RouteKind = "studio" | "page" | "legacy" | "workspace";
 function routeKind(pathname: string): RouteKind {
   if (pathname === "/" || pathname.startsWith("/studio")) return "studio";
-  if (pathname === "/hermes" || pathname.startsWith("/hermes/")) return "workspace";   // laid out like the Studio chat: a page column and a side panel
+  if (pathname === "/insta" || pathname.startsWith("/insta/")) return "workspace";   // laid out like the Studio chat: a page column and a side panel
   if (/^\/(projects|templates|settings|motion-library)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
   return "legacy";
 }
@@ -153,7 +153,7 @@ export default function EditorShell() {
     run: async () => {
       if (hermesMode) { await hermesApi.deleteChat(chat.id); refreshHermes(); }
       else { await api.deleteStudioConversation(chat.id); refreshChats(); window.dispatchEvent(new Event("editorgpt:conversations-updated")); }
-      if (location.pathname.endsWith(`/${chat.id}`)) navigate(hermesMode ? "/hermes" : "/studio", { replace: true });
+      if (location.pathname.endsWith(`/${chat.id}`)) navigate(hermesMode ? "/insta" : "/studio", { replace: true });
     },
   });
   const startSearch = () => { if (collapsed && !isMobile) setCollapsed(false); setSearching(true); };
@@ -171,7 +171,7 @@ export default function EditorShell() {
 
       <aside ref={sidebarRef} className="sidebar" data-open={drawer || undefined} aria-label="Main navigation" tabIndex={-1}>
         <div className="sb-head">
-          <NavLink to={hermesMode ? "/hermes" : "/studio"} className="brand" aria-label={hermesMode ? "InstaGPT home" : "EditorGPT home"}><span className="brand-mark"><Icon name="spark" size={18}/></span><span className="brand-name">{hermesMode ? "InstaGPT" : "EditorGPT"}</span></NavLink>
+          <NavLink to={hermesMode ? "/insta" : "/studio"} className="brand" aria-label={hermesMode ? "InstaGPT home" : "EditorGPT home"}><span className="brand-mark"><Icon name="spark" size={18}/></span><span className="brand-name">{hermesMode ? "InstaGPT" : "EditorGPT"}</span></NavLink>
           <button className="icon-btn sb-collapse rail-tip" data-tip={collapsed ? "Open sidebar" : "Close sidebar"} onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? "Open sidebar" : "Close sidebar"} aria-expanded={!collapsed}><Icon name="panel" size={19}/></button>
           {isMobile ? <button className="icon-btn" onClick={() => setDrawer(false)} aria-label="Close navigation"><Icon name="close" size={19}/></button> : null}
         </div>
@@ -179,13 +179,13 @@ export default function EditorShell() {
         <nav className="sb-nav" aria-label="Primary">
           {hermesMode ? <>
             <NavLink to="/studio" {...tip("Switch to EditorGPT")} aria-label="Switch to EditorGPT" onPointerEnter={() => void preloadEditor()}><Icon name="video"/><span>EditorGPT</span></NavLink>
-            <NavLink to="/hermes" end {...tip("New chat")} aria-label="New chat"><Icon name="edit"/><span>New chat</span></NavLink>
+            <NavLink to="/insta" end {...tip("New chat")} aria-label="New chat"><Icon name="edit"/><span>New chat</span></NavLink>
             <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
-            <NavLink to="/hermes/overview" {...tip("My page")}><Icon name="user"/><span>پیج من</span></NavLink>
-            <NavLink to="/hermes/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
-            <NavLink to="/hermes/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
+            <NavLink to="/insta/overview" {...tip("My page")}><Icon name="user"/><span>پیج من</span></NavLink>
+            <NavLink to="/insta/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
+            <NavLink to="/insta/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
           </> : <>
-          <NavLink to="/hermes" {...tip("Switch to InstaGPT")} aria-label="Switch to InstaGPT" onPointerEnter={() => void preloadHermes()}><Icon name="instagram"/><span>InstaGPT</span></NavLink>
+          <NavLink to="/insta" {...tip("Switch to InstaGPT")} aria-label="Switch to InstaGPT" onPointerEnter={() => void preloadHermes()}><Icon name="instagram"/><span>InstaGPT</span></NavLink>
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
@@ -198,7 +198,7 @@ export default function EditorShell() {
             {searching ? <div className="sb-search"><input ref={searchRef} className="input" type="search" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setSearching(false); setQuery(""); } }} placeholder="Search chats" aria-label="Search chats"/></div> : null}
             <div className="sb-list">
               {(hermesMode ? visibleHermes : visible).map(chat => <div key={chat.id} className="sb-chat-row">
-                <NavLink to={hermesMode ? `/hermes/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}
+                <NavLink to={hermesMode ? `/insta/chat/${chat.id}` : `/studio/${chat.id}`} className="sb-chat" title={chat.title}
                   onPointerEnter={hermesMode ? undefined : () => void prefetchChat(chat.id)} onTouchStart={hermesMode ? undefined : () => void prefetchChat(chat.id)} onFocus={hermesMode ? undefined : () => void prefetchChat(chat.id)}>{displayTitle(chat.title, 48)}</NavLink>
                 <button type="button" className="icon-btn trash-btn sb-chat-del" aria-label={`Delete chat: ${displayTitle(chat.title, 48)}`} data-tip="Delete" onClick={() => askDelete(chat)}><Icon name="trash" size={16}/></button>
               </div>)}
@@ -246,10 +246,10 @@ export default function EditorShell() {
         </main>
         <nav className="bottom-nav" aria-label="Mobile navigation" style={{ ["--tabs" as string]: 3 }}>
           {hermesMode ? <>
-            <NavLink to="/hermes" end><Icon name="edit"/><span>New chat</span></NavLink>
-            <NavLink to="/hermes/overview"><Icon name="user"/><span>پیج من</span></NavLink>
-            <NavLink to="/hermes/content"><Icon name="film"/><span>Content</span></NavLink>
-            <NavLink to="/hermes/analytics"><Icon name="list"/><span>Analytics</span></NavLink>
+            <NavLink to="/insta" end><Icon name="edit"/><span>New chat</span></NavLink>
+            <NavLink to="/insta/overview"><Icon name="user"/><span>پیج من</span></NavLink>
+            <NavLink to="/insta/content"><Icon name="film"/><span>Content</span></NavLink>
+            <NavLink to="/insta/analytics"><Icon name="list"/><span>Analytics</span></NavLink>
           </> : <>
             <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
             <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>

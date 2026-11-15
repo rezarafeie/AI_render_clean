@@ -47,11 +47,11 @@ export default function HermesPostEditor() {
     if (mode === 'schedule' && (!scheduledAt || new Date(scheduledAt) <= new Date())) { setError('Choose a future date and time.'); return; }
     const body = { caption, hashtags: parsedTags, media_urls: validMedia ? [mediaUrl] : [], scheduled_at: mode === 'schedule' ? fromInputDateTime(scheduledAt) : null };
     setBusy(true);
-    try { const post = id ? await hermesApi.updatePost(id, body) : await hermesApi.createPost({ account_id: accountId, ...body }); if (mode === 'publish') await hermesApi.publishNow(post.id); navigate(mode === 'schedule' ? '/hermes/scheduler' : '/hermes', { replace: true }); } catch (e) { setError(message(e)); } finally { setBusy(false); }
+    try { const post = id ? await hermesApi.updatePost(id, body) : await hermesApi.createPost({ account_id: accountId, ...body }); if (mode === 'publish') await hermesApi.publishNow(post.id); navigate(mode === 'schedule' ? '/insta/scheduler' : '/insta', { replace: true }); } catch (e) { setError(message(e)); } finally { setBusy(false); }
   }
-  async function remove() { if (!id || !window.confirm('Delete this post?')) return; setBusy(true); try { await hermesApi.deletePost(id); navigate('/hermes/scheduler', { replace: true }); } catch (e) { setError(message(e)); setBusy(false); } }
+  async function remove() { if (!id || !window.confirm('Delete this post?')) return; setBusy(true); try { await hermesApi.deletePost(id); navigate('/insta/scheduler', { replace: true }); } catch (e) { setError(message(e)); setBusy(false); } }
   if (loading) return <div className="hm-page hm-rise"><div className="hm-loading" role="status">Loading post editor…</div></div>;
-  return <div className="hm-page hm-rise"><div className="hm-page-head"><div><span className="hm-eyebrow">{id ? 'EDIT POST' : 'CREATE POST'}</span><h2>{id ? 'Refine your post' : 'Make something worth sharing'}</h2><p>Craft your caption, choose media and set the right moment.</p></div><Link className="hm-btn hm-btn-quiet" to="/hermes/scheduler">← Calendar</Link></div>
+  return <div className="hm-page hm-rise"><div className="hm-page-head"><div><span className="hm-eyebrow">{id ? 'EDIT POST' : 'CREATE POST'}</span><h2>{id ? 'Refine your post' : 'Make something worth sharing'}</h2><p>Craft your caption, choose media and set the right moment.</p></div><Link className="hm-btn hm-btn-quiet" to="/insta/scheduler">← Calendar</Link></div>
     {error && <div className="hm-alert" role="alert">{error}</div>}{notice && <div className="hm-notice" role="status">{notice}</div>}
     {busy && <div className="hm-loading" role="status">Updating your post…</div>}
     {!accounts.length && <div className="hm-empty hm-panel">Connect an Instagram account before creating a post. <Link to="/settings#integrations">Connect Instagram →</Link></div>}

@@ -50,7 +50,7 @@ export default function AgentChat({ title, chatId }) {
   useEffect(() => { const node = scroll.current; if (node) node.scrollTop = node.scrollHeight; }, [items.length, busy]);
 
   const act = useCallback((action) => {
-    if (action?.type === 'open_tab' && action.tab in TAB_FOR) navigate(`/hermes${TAB_FOR[action.tab] ? `/${TAB_FOR[action.tab]}` : ''}`);
+    if (action?.type === 'open_tab' && action.tab in TAB_FOR) navigate(`/insta${TAB_FOR[action.tab] ? `/${TAB_FOR[action.tab]}` : ''}`);
     if (action?.type === 'run_agent') void runAgent();
   }, [navigate, runAgent]);
 

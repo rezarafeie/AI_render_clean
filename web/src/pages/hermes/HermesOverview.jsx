@@ -96,7 +96,7 @@ export default function HermesOverview() {
     </section>
 
     {upcoming.length ? <section className="ov-block">
-      <h3>Up next <Link to="/hermes/content">All</Link></h3>
+      <h3>Up next <Link to="/insta/content">All</Link></h3>
       <ul className="ov-list">{upcoming.map((p) => <li key={p.id}><span dir="auto">{(p.caption || 'Untitled').slice(0, 56)}</span><small className="ov-sub">{new Date(p.scheduled_at).toLocaleDateString()}</small></li>)}</ul>
     </section> : null}
 

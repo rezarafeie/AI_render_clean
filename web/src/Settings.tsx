@@ -29,9 +29,6 @@ const groups: { title: string; hint: string; tools: Tool[] }[] = [
     { label: "Style learning", description: "Learn a style from reference videos.", to: "/style-learner", icon: "eye" },
     { label: "Media library", description: "Music, B-roll, sound effects and brand assets.", to: "/library", icon: "library" },
   ] },
-  { title: "Workspaces", hint: "Agents that use your connected services.", tools: [
-    { label: "Hermes", description: "Plan, schedule and analyse social publishing.", to: "/hermes", icon: "link" },
-  ] },
 ];
 
 type TabId = "general" | "assistant" | "connections" | "tools" | "admin";

@@ -51,7 +51,7 @@ export default function HermesContentPlan() {
     try {
       for (const item of items) { const post = await hermesApi.createPost({ account_id: accountId, caption: item.caption, hashtags: tags(item.hashtags), media_urls: [item.media_url], scheduled_at: null }); created.push(post.id); }
       await hermesApi.bulkSchedule(items.map((item, index) => ({ post_id: created[index], scheduled_at: fromInputDateTime(item.date_time) })));
-      navigate('/hermes/scheduler', { replace: true });
+      navigate('/insta/scheduler', { replace: true });
     } catch (e) {
       const rollback = await Promise.allSettled(created.map((id) => hermesApi.deletePost(id)));
       const failed = rollback.filter((item) => item.status === 'rejected').length;

@@ -52,8 +52,11 @@ const HermesFrame = React.lazy(loaders.hermesFrame);
 const HermesSkillsPage = React.lazy(loaders.hermesSkills);
 const HermesOverviewPage = React.lazy(loaders.hermesOverview);
 const HermesInsightsPage = React.lazy(loaders.hermesInsights);
-// The OAuth callback lands on /hermes/connect; keep its query so Settings can confirm the connection.
+// The OAuth callback lands on /insta/connect; keep its query so Settings can confirm the connection.
 function ReturnToSettings() { const { search } = useLocation(); return <Navigate to={`/settings${search}#integrations`} replace/>; }
+
+// The workspace used to live under /hermes: old bookmarks and the OAuth callback (/hermes/connect?…) land here and move to /insta with their query kept.
+function FromHermes() { const { pathname, search, hash } = useLocation(); return <Navigate to={`${pathname.replace(/^\/hermes/, "/insta")}${search}${hash}`} replace/>; }
 
 function LoadingSpinner() { return <div className="boot" role="status" aria-label="Loading EditorGPT"><span className="spinner"/></div>; }
 
@@ -102,7 +105,8 @@ function App() {
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
       <Route path="motion-library" element={<MotionLibrary/>}/><Route path="my-effects" element={<RequireAuth><MyEffects/></RequireAuth>}/><Route path="library" element={<RequireAuth><Library/></RequireAuth>}/><Route path="style-library" element={<RequireAuth><StyleLibrary/></RequireAuth>}/><Route path="style-learner" element={<RequireAuth><StyleLearner/></RequireAuth>}/><Route path="fonts" element={<Navigate to="/style-library#fonts" replace/>}/>
-      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesHome/>}/><Route path="chat/:chatId" element={<HermesChat/>}/><Route path="skills" element={<HermesSkillsPage/>}/><Route path="overview" element={<HermesOverviewPage/>}/><Route path="insights" element={<HermesInsightsPage/>}/><Route element={<HermesFrame/>}><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<Navigate to="/settings#integrations" replace/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/></Route><Route path="connect" element={<ReturnToSettings/>}/><Route path="scheduler" element={<Navigate to="/hermes/content" replace/>}/><Route path="content-plan" element={<Navigate to="/hermes/content" replace/>}/><Route path="advisor" element={<Navigate to="/hermes" replace/>}/><Route path="overview" element={<Navigate to="/hermes" replace/>}/></Route>
+      <Route path="hermes" element={<RequireAuth><HermesLayout/></RequireAuth>}><Route index element={<HermesHome/>}/><Route path="chat/:chatId" element={<HermesChat/>}/><Route path="skills" element={<HermesSkillsPage/>}/><Route path="overview" element={<HermesOverviewPage/>}/><Route path="insights" element={<HermesInsightsPage/>}/><Route element={<HermesFrame/>}><Route path="content" element={<HermesContent/>}/><Route path="analytics" element={<HermesAnalytics/>}/><Route path="settings" element={<Navigate to="/settings#integrations" replace/>}/><Route path="post/new" element={<HermesPostEditor/>}/><Route path="post/:id" element={<HermesPostEditor/>}/></Route><Route path="connect" element={<ReturnToSettings/>}/><Route path="scheduler" element={<Navigate to="/insta/content" replace/>}/><Route path="content-plan" element={<Navigate to="/insta/content" replace/>}/><Route path="advisor" element={<Navigate to="/insta" replace/>}/><Route path="overview" element={<Navigate to="/insta" replace/>}/></Route>
+      <Route path="hermes/*" element={<FromHermes/>}/><Route path="hermes" element={<FromHermes/>}/>
       <Route path="*" element={<Navigate to="/studio" replace/>}/>
     </Route>
   </Routes></React.Suspense><ToastHost/></JobCacheProvider></AuthProvider></SessionBootstrap></AppErrorBoundary></BrowserRouter>;

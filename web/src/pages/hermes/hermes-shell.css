@@ -230,3 +230,16 @@
 
 .hermes-home a.home-chip { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
 .hermes-home .home-recent li a { text-decoration: none; }
+
+/* the "my page" card on the InstaGPT home */
+.home-pagecard { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-top: 18px; border-radius: var(--radius-lg, 16px); border: 1px solid var(--border-subtle); background: var(--surface); color: inherit; text-decoration: none; transition: border-color .15s ease, background .15s ease; }
+.home-pagecard:hover { border-color: var(--border-strong, var(--border)); background: var(--surface-hover, var(--hover)); }
+.home-pagecard .pc-avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); font-weight: 700; }
+.home-pagecard .pc-main { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: start; }
+.home-pagecard .pc-main b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-pagecard small { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-pagecard .pc-nums { display: flex; gap: 16px; flex: none; }
+.home-pagecard .pc-nums span { display: grid; gap: 1px; text-align: center; }
+.home-pagecard .pc-nums b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.home-pagecard > svg { flex: none; color: var(--text-3); }
+@media (max-width: 560px) { .home-pagecard { flex-wrap: wrap; } .home-pagecard .pc-main { flex-basis: calc(100% - 100px); } .home-pagecard .pc-nums { order: 3; flex-basis: 100%; justify-content: space-around; padding-top: 6px; border-top: 1px solid var(--border-subtle); } .home-pagecard > svg { display: none; } }

@@ -13,6 +13,6 @@ test("the frame follows the visual viewport only while a field is focused and th
 
 test("the Home button of a chat leads to its own app", () => {
   assert.equal(chatHomePath("/studio/a2b0719d115b46e9b73ac599a9d95216"), "/studio");
-  assert.equal(chatHomePath("/hermes/chat/42"), "/hermes");
-  for (const other of ["/studio", "/", "/hermes", "/hermes/content", "/settings", "/projects"]) assert.equal(chatHomePath(other), null);
+  assert.equal(chatHomePath("/insta/chat/42"), "/insta");
+  for (const other of ["/studio", "/", "/insta", "/insta/content", "/settings", "/projects"]) assert.equal(chatHomePath(other), null);
 });
