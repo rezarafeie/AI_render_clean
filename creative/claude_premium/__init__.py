@@ -278,8 +278,9 @@ def is_hdr(video: Path) -> bool:
     return out in HDR_TRANSFERS
 
 
-def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr: bool) -> tuple[Path, Path]:
-    """public/graded.mp4 (jump-cut, tone-mapped when HDR, colour-graded, <=1080 px on its short side... never upscaled, 1 s held tail, dense keyframes) and voice.wav."""
+def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr: bool, on_progress: Callable[[float], None] | None = None) -> tuple[Path, Path]:
+    """public/graded.mp4 (jump-cut, tone-mapped when HDR, colour-graded, <=1080 px on its short side... never upscaled, 1 s held tail, dense keyframes) and voice.wav.
+    `on_progress(fraction)` is told how far ffmpeg is (it is the longest silent step: minutes on a loaded server)."""
     fc = []
     for k, (s, e, _) in enumerate(segs):
         dur = e - s
@@ -292,9 +293,23 @@ def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr
     fc.append(f"[ac]apad=pad_dur={TAIL}[a]")
     (work / "public").mkdir(parents=True, exist_ok=True)
     graded, voice = work / "public" / "graded.mp4", work / "voice.wav"
-    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-threads", "2", "-y", "-i", str(video), "-filter_complex", ";".join(fc), "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16",
-                    "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(graded),
-                    "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], check=True, timeout=3600)
+    total = sum(e - s for s, e, _ in segs) + TAIL
+    process = subprocess.Popen(["nice", "-n", "10", "ffmpeg", "-v", "error", "-nostats", "-progress", "pipe:1", "-threads", "2", "-y", "-i", str(video), "-filter_complex", ";".join(fc),
+                                "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16", "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(graded),
+                                "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        for line in process.stdout:
+            if on_progress and line.startswith("out_time_us="):
+                try:
+                    on_progress(min(0.99, int(line.split("=")[1]) / 1_000_000 / max(0.1, total)))
+                except ValueError:
+                    pass
+        process.wait(timeout=3600)
+    finally:
+        if process.poll() is None:
+            process.kill()
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, "ffmpeg", stderr=(process.stderr.read() if process.stderr else "")[-400:])
     return graded, voice
 
 
@@ -857,7 +872,15 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     hdr = is_hdr(video)
     note("cut", f"دارم برش پرش‌دار و اصلاح رنگ می‌زنم ({len(cut['segs'])} تکه، {cut['total']:.1f} ثانیه{'، تون‌مپ HDR' if hdr else ''}، رنگ «{p.look.grade}»)")
     progress(24, "دارم برش و اصلاح رنگ می‌زنم.")
-    graded, voice = cut_graded(video, cut["segs"], work, p.look.grade, hdr)
+    marks = {0.25, 0.5, 0.75}
+
+    def graded_progress(fraction: float) -> None:
+        progress(24 + int(fraction * 5), f"دارم برش و اصلاح رنگ می‌زنم ({int(fraction * 100)}٪)")
+        for mark in sorted(marks):
+            if fraction >= mark:
+                marks.discard(mark)
+                note("cut", f"اصلاح رنگ {int(mark * 100)}٪ انجام شد", "done")
+    graded, voice = cut_graded(video, cut["segs"], work, p.look.grade, hdr, graded_progress)
     size = ct.probe(graded)
     note("cut", f"برش و اصلاح رنگ انجام شد: {len(cut['segs'])} تکه، {cut['total']:.1f} ثانیه", "done")
     check()
