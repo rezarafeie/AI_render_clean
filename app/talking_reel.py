@@ -115,11 +115,13 @@ def recover_interrupted(jobs_root: Path) -> int:
 
     Talking renders run in daemon threads and cannot survive their owning
     process.  Leaving the persisted state as ``running`` makes the editor look
-    permanently stuck even though no FFmpeg process exists.
+    permanently stuck even though no FFmpeg process exists. A Claude talking / premium
+    reel that already has a checkpoint (its plan, graphics, cut or render) is started again at once and goes on from there.
     """
     if not jobs_root.is_dir():
         return 0
     recovered = 0
+    again: list[tuple[Path, Path]] = []
     for path in jobs_root.glob("*/talking_reel.json"):
         try:
             state = json.loads(path.read_text())
@@ -137,6 +139,16 @@ def recover_interrupted(jobs_root: Path) -> int:
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1))
         tmp.replace(path)
         recovered += 1
+        job_dir = path.parent
+        raws = sorted((job_dir / "raw").glob("*")) if (job_dir / "raw").is_dir() else []
+        if any(job_dir.glob("talking_reel_work/*/checkpoint.json")) and raws and state.get("analysis_ready"):
+            again.append((job_dir, raws[0]))
+    for job_dir, raw in again:
+        try:
+            log.warning("talking reel %s was interrupted by a restart: going on from its checkpoint", job_dir.name)
+            start(job_dir, raw)
+        except Exception:
+            log.warning("talking reel %s could not be resumed", job_dir.name, exc_info=True)
     return recovered
 
 

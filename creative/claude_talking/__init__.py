@@ -598,6 +598,33 @@ def render_video(work: Path, video_out: Path, *, render_cloud: Callable[[Path, P
 
 # ── 6. the whole reel ────────────────────────────────────────────────────────
 
+ENGINE_REV = "talking-2"
+
+
+def fingerprint(video: Path, words: list[dict], context: str, rev: str = ENGINE_REV) -> str:
+    import hashlib
+    text = "|".join(w["t"] for w in words)
+    return hashlib.sha256(f"{rev}|{video.stat().st_size}|{text}|{context.strip()}".encode()).hexdigest()[:20]
+
+
+def load_checkpoint(work: Path, fp: str) -> dict:
+    """What an interrupted run of the SAME video and words already made (plan, written graphics, the cut, the rendered video): a restart goes on from there."""
+    try:
+        data = json.loads((work / "checkpoint.json").read_text())
+        return data if data.get("fp") == fp else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_checkpoint(work: Path, fp: str, ck: dict, **parts) -> None:
+    ck.update(parts)
+    ck["fp"] = fp
+    try:
+        (work / "checkpoint.json").write_text(json.dumps(ck, ensure_ascii=False))
+    except OSError:
+        log.warning("talking checkpoint could not be saved", exc_info=True)
+
+
 def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, progress: Callable[[int, str], None], cancelled: Callable[[], bool],
          render_cloud: Callable[[Path, Path], bool] | None = None, music: Callable[[str, float], Path | None] | None = None, context: str = "") -> dict:
     """The reel into `out`. Raises on failure (the caller falls back to the previous talking engine)."""
@@ -611,8 +638,15 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
         raise ValueError("the transcript has too few words")
     note("engine", "موتور «تاکینگ کلاد»: برش پرش‌دار، کادر روی صورت، زیرنویس کلمه‌به‌کلمه و موشن‌گرافیک‌هایی که این ویدیو لازم دارد", "done")
     note("plan", f"تدوینگر (Opus) دارد متن {len(words)} کلمه‌ای را می‌خواند و beatها، چیدمان‌ها، کلمه‌های کلیدی و گرافیک‌های لازم را تعیین می‌کند")
-    progress(18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم.")
-    p = _waiting(progress, 18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم", lambda: plan(words, context))
+    fp = fingerprint(video, words, context)
+    ck = load_checkpoint(work, fp)
+    if ck.get("plan"):
+        p = Plan.model_validate(ck["plan"])
+        note("plan", "ادامه از ساخت قبلی: برنامه و گرافیک‌های نوشته‌شده دوباره ساخته نمی‌شوند", "done")
+    else:
+        progress(18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم.")
+        p = _waiting(progress, 18, "دارم تدوین و گرافیک‌ها را برنامه‌ریزی می‌کنم", lambda: plan(words, context))
+        save_checkpoint(work, fp, ck, plan=p.model_dump(), code={}, cut=None, rendered=False)
     drops = set(p.drop) | auto_drops(words)
     note("plan", f"برنامه آماده شد: {len(p.beats)} beat، {len(p.graphics)} گرافیک، {len(drops)} کلمهٔ اضافه حذف می‌شود", "done",
          "\n".join(f"{b.at}: {b.layout}{' · ' + b.graphic if b.graphic else ''} — {' '.join(w['t'] for w in words[b.at:b.at + 6])}" for b in p.beats))
@@ -622,16 +656,23 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     cut = edl(words, drops)
     note("cut", f"دارم برش پرش‌دار می‌زنم: مکث‌ها و کلمه‌های اضافه حذف می‌شوند ({len(cut['segs'])} تکه، {cut['total']:.1f} ثانیه)")
     progress(24, "دارم برش‌ها را می‌زنم.")
+    saved_code = {k: v for k, v in (ck.get("code") or {}).items() if k in {g.name for g in p.graphics}}
+    redo = {g.name for g in p.graphics} - set(saved_code)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        drawing = pool.submit(write_graphics, p, words, note=note)
-        cut_file, voice = cut_video(video, cut["segs"], work)
+        drawing = pool.submit(write_graphics, p, words, previous=saved_code, only=redo, note=note) if redo else None
+        if ck.get("cut") == round(cut["total"], 3) and (work / "public" / "cut.mp4").is_file() and (work / "voice.wav").is_file():
+            cut_file, voice = work / "public" / "cut.mp4", work / "voice.wav"
+        else:
+            cut_file, voice = cut_video(video, cut["segs"], work)
+            save_checkpoint(work, fp, ck, cut=round(cut["total"], 3))
         note("cut", f"برش پرش‌دار انجام شد: {len(cut['segs'])} تکه، {cut['total']:.1f} ثانیه", "done")
         size = probe(cut_file)
         note("face", "دارم صورت گوینده را ردیابی می‌کنم تا کادر همیشه روی صورت بماند")
         face, face_y = face_track(cut_file, cut["total"] + TAIL, size, work / "faces.json")
         note("face", "صورت گوینده ردیابی شد" if face else "صورتی پیدا نشد؛ کادر وسط تصویر می‌ماند", "done")
         progress(32, "دارم گرافیک‌ها را کدنویسی می‌کنم.")
-        code = _waiting(progress, 32, "دارم گرافیک‌ها را کدنویسی می‌کنم", drawing.result)
+        code = _waiting(progress, 32, "دارم گرافیک‌ها را کدنویسی می‌کنم", drawing.result) if drawing else dict(saved_code)
+    save_checkpoint(work, fp, ck, code=code)
     check()
 
     names = [g.name for g in p.graphics]
@@ -695,6 +736,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
             ok, detail, trial_built = stills(trial, data)
             if ok and trial_built:
                 code, built, fixed = revised, trial_built, True
+                save_checkpoint(work, fp, ck, code=code)
                 (work / "src" / "graphics.tsx").write_text(source, encoding="utf-8")
                 break
             broken = [n for n in (blame(detail, source, list(asked)) or list(asked)) if n in asked]
@@ -711,7 +753,11 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     note("render", "دارم ویدیو را رندر می‌کنم")
     progress(66, "دارم ویدیو را رندر می‌کنم.")
     video_out = work / "out" / "video.mp4"
-    render_video(work, video_out, render_cloud=render_cloud, note=note, progress=progress, check=check)
+    if ck.get("rendered") and video_out.is_file():
+        note("render", "ویدیوی رندرشده از ساخت قبلی برداشته شد", "done")
+    else:
+        render_video(work, video_out, render_cloud=render_cloud, note=note, progress=progress, check=check)
+        save_checkpoint(work, fp, ck, rendered=True)
 
     note("mix", "دارم صدا را میکس می‌کنم: کمپرسور روی صدا، موسیقی زیر صدا (داکینگ)، افکت‌های صوتی روی کلمه‌ها")
     progress(95, "دارم صدا را میکس می‌کنم.")
@@ -726,4 +772,5 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video_out), "-i", str(audio), "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
                     "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out)], check=True, timeout=600)
     note("mix", f"صدا میکس شد ({len(data['sfx'])} افکت{'، با موسیقی' if bed else ''}، ۱۴- LUFS)", "done")
+    (work / "checkpoint.json").unlink(missing_ok=True)              # a finished reel: the next render of this video is a fresh one
     return {"output": out, "duration": data["total"], "beats": len(data["beats"]), "graphics": len(code)}

@@ -338,6 +338,7 @@ def start(directory: Path, *, change: str = "") -> None:
         run_id = int(record.get("run") or 0) + 1
         record["run"] = run_id
         record["error"] = None
+        record["running_change"] = change                    # what this run was started for: a restart goes on with the same request
         record.update(status="queued", stage="queued", progress=0, message="دارم شروع می‌کنم…")   # the card must leave "failed" the moment the person presses retry
         save(directory, record)
     _emit(record["conversation_id"], "motion.progress", motion_id=key, status="queued", stage="queued", progress=0, message="دارم شروع می‌کنم…")
@@ -2241,8 +2242,10 @@ def edit(directory: Path, changes: dict) -> dict:
 
 
 def recover_interrupted() -> int:
-    """After a restart: records left mid-way are marked failed (resumable), never silently stuck as 'working'."""
+    """After a restart: records left mid-way are marked failed, and the ones that have a checkpoint (a Claude film whose plan, code or render was already made) are
+    started again at once: they go on from where they stopped, they do not begin again."""
     count = 0
+    again: list[tuple[Path, str]] = []
     for path in ROOT.glob("*/*/motion/*/motion.json"):
         try:
             record = json.loads(path.read_text())
@@ -2252,5 +2255,13 @@ def recover_interrupted() -> int:
             record.update(status="failed", stage="failed", message="ساخت با راه‌اندازی دوبارهٔ سرور قطع شد.", error="interrupted")
             path.write_text(json.dumps(record, ensure_ascii=False))
             count += 1
+            if (path.parent / "checkpoint.json").is_file() and time.time() - float(record.get("updated_at") or 0) < 6 * 3600:
+                again.append((path.parent, str(record.get("running_change") or "")))
+    for directory, change in again:
+        try:
+            log.warning("motion %s was interrupted by a restart: going on from its checkpoint", directory.name)
+            start(directory, change=change)
+        except Exception:
+            log.warning("motion %s could not be resumed", directory.name, exc_info=True)
     return count
 
