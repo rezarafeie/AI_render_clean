@@ -116,3 +116,32 @@ def parse_dictionary(lines: list[str]) -> dict[str, str]:
             if written and spoken and len(written) <= 60 and len(spoken) <= 120:
                 entries[written] = spoken
     return entries
+
+
+_MARKS = re.compile(r"[\u064B-\u0652\u0640]")
+_W = r"[\u0600-\u06FF\w\u200c]+"
+_PRON_PATTERNS = (
+    # «تلفظ کلمه مرتب درست نیست، مُرَتَب درسته»
+    re.compile(rf"تلفظ\s+(?:کلمه(?:\s*ی)?\s+|لغت(?:\s*ی)?\s+)?[«\"]?(?P<w>{_W})[»\"]?\s*(?:رو|را)?\s*(?:درست\s+نیست|اشتباه(?:ه|\s+است)?|غلط(?:ه)?|نادرست(?:ه)?)\s*[،,.\-–]*\s*(?:و\s+|که\s+)?[«\"]?(?P<s>{_W})[»\"]?\s*(?:درسته|درست\s*است|درست|صحیحه|صحیح\s+است|صحیح)"),
+    # «مرتب» رو «مُرَتَب» بخون / تلفظ کن
+    re.compile(rf"[«\"](?P<w>{_W})[»\"]\s*(?:رو|را)\s*[«\"]?(?P<s>{_W})[»\"]?\s*(?:بخون|بخوان|تلفظ\s+کن|بگو)"),
+    # مرتب را مُرَتَب بخوان (without quotes)
+    re.compile(rf"(?:کلمه(?:\s*ی)?\s+)?(?P<w>{_W})\s+(?:رو|را)\s+(?P<s>{_W})\s+(?:بخون|بخوان|تلفظ\s+کن)"),
+    # مرتب = مُرَتَب
+    re.compile(rf"^\s*[«\"]?(?P<w>{_W})[»\"]?\s*=\s*[«\"]?(?P<s>[^\n»\"]+?)[»\"]?\s*$", re.M),
+)
+
+
+def pronunciations_from_text(text: str) -> dict[str, str]:
+    """The pronunciation fixes a person states in plain words («تلفظ کلمه مرتب درست نیست، مُرَتَب درسته», «X رو Y بخون», «X = Y»): {written (marks removed): spoken (marks kept)}.
+    The spoken form must differ from the written one in its letters or marks."""
+    found: dict[str, str] = {}
+    for n, pattern in enumerate(_PRON_PATTERNS):
+        for match in pattern.finditer(str(text or "")):
+            written, spoken = _MARKS.sub("", match.group("w")).strip(), match.group("s").strip()
+            if not written or not spoken or written == spoken or len(written) > 60 or len(spoken) > 120:
+                continue
+            if n == 2 and _MARKS.sub("", spoken) != written:              # the unquoted «X رو Y بخون» is only trusted when Y is X with its vowels (it is a sentence otherwise)
+                continue
+            found.setdefault(written, spoken)
+    return found

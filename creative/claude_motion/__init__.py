@@ -392,7 +392,7 @@ def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None)
     character times of the sentence so `cue('word')` lands on the heard word. Returns the kit's timing plus the voice clips for the mix."""
     from brain import localize
     from creative.audio import persian
-    texts = [persian.speakable(b.line, {}).strip() for b in direction.beats]
+    texts = [persian.speakable(b.line, record.get("pronunciations") or {}).strip() for b in direction.beats]     # the person's pronunciation fixes («مرتب = مُرَتَب») are applied here too
     voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
     scenes, clips, cursor = [], [], LEAD
     for i, text in enumerate(texts, 1):
@@ -625,7 +625,7 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
         return split()
 
 
-_VOICE_WORDS = re.compile(r"نریشن|نریشین|روایت|گوینده|راوی|لحن|صدا|voice|narrat|speaker|tts", re.I)
+_VOICE_WORDS = re.compile(r"نریشن|نریشین|روایت|گوینده|راوی|لحن|صدا|تلفظ|بخوان|بخون|voice|narrat|speaker|tts|pronounc", re.I)
 _VISUAL_WORDS = re.compile(r"تصویر|صحنه|رنگ|انیمیشن|فونت|سبک|عنوان|زیرنویس|پس‌?زمینه|لوگو|عکس|اندازه|scene|colou?r|font|style|image|title|caption|background|logo|animation|size", re.I)
 
 

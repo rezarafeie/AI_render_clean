@@ -1439,8 +1439,11 @@ def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: 
             _assistant(conversation_id, user_key, "نوشته‌اید «با صدای خودم»، ولی هنوز صدایی از شما کلون نشده است. از تنظیمات ← «کلون صدا»، صدای خودتان را بسازید (ضبط ۳۰ ثانیه یا فایل صدا/ویدیو) و دوباره همین درخواست را بفرستید.")
             return True
         motion_graphic.revise(directory, text, voice_id=voice)
-        if voice and claude_motion.voice_only_change(text):
-            _assistant(conversation_id, user_key, "فقط نریشن را با صدای انتخابی شما دوباره می‌سازم؛ تصویرها و صحنه‌ها همان می‌مانند.")
+        if claude_motion.voice_only_change(text):
+            from creative.audio import persian as _persian
+            fixes = _persian.pronunciations_from_text(text)
+            said = ("تلفظ " + "، ".join(f"«{a}» ← «{b}»" for a, b in fixes.items()) + " ثبت شد و روی همهٔ جمله‌ها اعمال می‌شود. ") if fixes else ""
+            _assistant(conversation_id, user_key, said + "فقط نریشن را" + (" با صدای انتخابی شما" if voice else "") + " دوباره می‌سازم؛ تصویرها و صحنه‌ها همان می‌مانند.")
         else:
             _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
         _emit(conversation_id, "motion.revising", motion_id=record["id"])
