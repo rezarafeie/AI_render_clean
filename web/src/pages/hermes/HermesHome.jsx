@@ -41,10 +41,10 @@ export default function HermesHome() {
         placeholder="Ask about your page, content, ideas, or schedule…" textOnly />
       <section className="home-suggest" aria-label="پیشنهادها">
         <ScrollRow>
-          {SUGGESTIONS.slice(0, 3).map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}
-          <NavLink to="/hermes/skills" className="chip home-chip"><Icon name="wand" size={15}/><span>مهارت‌ها</span></NavLink>
-          <NavLink to="/hermes/insights" className="chip home-chip"><Icon name="spark" size={15}/><span>بینش‌ها</span></NavLink>
           <NavLink to="/hermes/overview" className="chip home-chip"><Icon name="user" size={15}/><span>پیج من</span></NavLink>
+          <NavLink to="/hermes/insights" className="chip home-chip"><Icon name="spark" size={15}/><span>بینش‌ها</span></NavLink>
+          <NavLink to="/hermes/skills" className="chip home-chip"><Icon name="wand" size={15}/><span>مهارت‌ها</span></NavLink>
+          {SUGGESTIONS.slice(0, 3).map((item) => <button key={item} className="chip home-chip" onClick={() => void start(item)}><span dir="auto">{item}</span></button>)}
         </ScrollRow>
       </section>
       {array(chats.data?.chats).length ? <section className="home-recent" aria-label="آخرین گفتگوها">

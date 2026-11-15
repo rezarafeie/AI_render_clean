@@ -181,6 +181,7 @@ export default function EditorShell() {
             <NavLink to="/studio" {...tip("Switch to EditorGPT")} aria-label="Switch to EditorGPT" onPointerEnter={() => void preloadEditor()}><Icon name="video"/><span>EditorGPT</span></NavLink>
             <NavLink to="/hermes" end {...tip("New chat")} aria-label="New chat"><Icon name="edit"/><span>New chat</span></NavLink>
             <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
+            <NavLink to="/hermes/overview" {...tip("My page")}><Icon name="user"/><span>پیج من</span></NavLink>
             <NavLink to="/hermes/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/hermes/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
           </> : <>
@@ -246,6 +247,7 @@ export default function EditorShell() {
         <nav className="bottom-nav" aria-label="Mobile navigation" style={{ ["--tabs" as string]: 3 }}>
           {hermesMode ? <>
             <NavLink to="/hermes" end><Icon name="edit"/><span>New chat</span></NavLink>
+            <NavLink to="/hermes/overview"><Icon name="user"/><span>پیج من</span></NavLink>
             <NavLink to="/hermes/content"><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/hermes/analytics"><Icon name="list"/><span>Analytics</span></NavLink>
           </> : <>
