@@ -27,6 +27,8 @@ class URL(Args):
 
 class Talking(Asset):
     style: Literal["talking_1", "talking_2", "talking_3", "talking_5"] | None = None
+    variant: Literal["premium"] | None = Field(default=None, description="'premium' = the premium FULL-FRAME talking edit (one full screen, designed glass graphics beside the speaker, text passing behind him). "
+                                                "Use it when the person asks for the premium / full-frame engine; it is not a style.")
     request: str = Field(default="", max_length=2000)
 
 
@@ -249,7 +251,9 @@ def execute(record, step):
         if asset["kind"] != "video": raise ValueError("A video attachment is required")
         payload = {"source_path": asset["path"], "filename": asset["filename"], "user_key": user, "request": args.request}
         engine = "talking" if name == "analyze_talking_reel" else "localize"
-        if isinstance(args, Talking): payload["style"] = args.style
+        if isinstance(args, Talking):
+            payload["style"] = args.style
+            payload["variant"] = args.variant
         result = studio_tools.execute(name, payload)
         value = run(repo.create_project(cid, user, engine, asset["filename"],
             {"attachment_ids": [args.attachment_id], "auto_render": False, "manual_mode": True,

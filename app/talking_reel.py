@@ -955,6 +955,14 @@ def wants_premium(request: str, variant: Optional[str] = None) -> bool:
     return str(variant or "").strip().lower() == PREMIUM or bool(PREMIUM_WORDS.search(request or ""))
 
 
+SPLIT_WORDS = re.compile(r"دو\s*تکه|حالت\s+قبلی|موتور\s+قبلی|تاکینگ\s+کلاد|split", re.I)
+
+
+def wants_split(request: str) -> bool:
+    """The person wants the previous (split in two) edit back after the premium full-frame one."""
+    return bool(SPLIT_WORDS.search(request or ""))
+
+
 def _run_premium(job_dir: Path, video: Path) -> None:
     """The premium full-frame talking edit (creative/claude_premium): virtual camera, two-tier motion captions, glass cards, text behind the speaker, graded look."""
     from creative import claude_premium

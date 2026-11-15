@@ -1756,6 +1756,29 @@ def _revise_talking(conversation_id: str, user_key: str, project: dict, job, tex
     """Flow F for talking projects: interpret the request into typed operations, apply only those, re-render once.
     Returns False when the creative layer is unavailable so the keyword path below still works."""
     from app.studio_render_intent import is_plain_rerender
+    from app import talking_reel as _tr
+    if render and (_tr.wants_premium(text) or _tr.wants_split(text)):
+        # «با موتور پریمیوم تدوینش کن» / «برگرد به دو تکه»: the engine is a property of the job, not a style: the approved plan is kept and the film is rendered again with the other engine as a new version.
+        state0 = _tr.load(job.dir)
+        premium_now = state0.get("variant") == _tr.PREMIUM
+        want_premium = _tr.wants_premium(text) and not _tr.wants_split(text)
+        if want_premium != premium_now:
+            if want_premium:
+                state0["variant"] = _tr.PREMIUM
+            else:
+                state0.pop("variant", None)
+            _tr.save(job.dir, state0)
+            result = resume_project(project['id'], user_key, retry_confirmed=False)
+            if result.get('status') != 'running':
+                state0["variant"] = _tr.PREMIUM if premium_now else None
+                if not premium_now:
+                    state0.pop("variant", None)
+                _tr.save(job.dir, state0)
+                raise ValueError('موتور، شروع تدوین دوباره را تأیید نکرد.')
+            _assistant(conversation_id, user_key, ("با موتور پریمیوم تمام‌قاب دوباره تدوین می‌کنم: یک کادر کامل، گرافیک‌های شیشه‌ای طراحی‌شده برای همین ویدیو کنار گوینده و دوربین مجازی. "
+                                                   if want_premium else "با موتور قبلی (دوتکه) دوباره تدوین می‌کنم. ")
+                       + "نسخهٔ فعلی دست‌نخورده می‌ماند و نسخهٔ جدید جداگانه به همین گفتگو اضافه می‌شود.")
+            return True
     if render and is_plain_rerender(text):
         result = resume_project(project['id'], user_key, retry_confirmed=False)
         if result.get('status') != 'running':
