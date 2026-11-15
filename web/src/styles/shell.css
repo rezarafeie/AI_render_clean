@@ -52,13 +52,19 @@ html[data-keyboard-open] .app { position: fixed; inset-inline: 0; top: var(--app
 }
 .sb-chat-row { position: relative; display: block; min-width: 0; max-width: 100%; }
 .sb-chat-row .sb-chat { padding-inline-end: 10px; }
-.sb-chat-del { position: absolute; inset-inline-end: 0; inset-block: 0; width: 52px; height: auto; min-height: 0; padding: 0 10px; border: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; display: flex; align-items: center; justify-content: flex-end; opacity: 0; background: linear-gradient(to right, transparent, var(--hover) 55%); color: var(--text-3); --sb-row-bg: var(--hover); }
-:dir(rtl) > .sb-chat-del, .sb-chat-row:dir(rtl) .sb-chat-del { background: linear-gradient(to left, transparent, var(--sb-row-bg) 55%); border-radius: var(--radius-sm) 0 0 var(--radius-sm); justify-content: flex-start; }
-.sb-chat-row:has(.sb-chat[aria-current="page"]) .sb-chat-del { --sb-row-bg: var(--active); }
-.sb-chat-row:hover .sb-chat-del, .sb-chat-del:focus-visible { opacity: 1; }     /* the end of the title fades into the row while the bin shows: no empty strip is kept for it */
-.sb-chat-del:hover { color: var(--error, #d33); }
+.sb-chat-row { border-radius: var(--radius-sm); }
+.sb-chat-row:hover { background: var(--hover); }
+.sb-chat-row:has(.sb-chat[aria-current="page"]) { background: var(--active); }
+.sb-chat-row .sb-chat:hover { background: transparent; }
+.sb-chat-row .sb-chat[aria-current="page"] { background: transparent; }
+.sb-chat-del { --size: 26px; position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%); width: var(--size); height: var(--size); padding: 0; opacity: 0; background: none; border-radius: var(--radius-sm); color: var(--text-3); }
 .sb-chat-del svg { width: 15px; height: 15px; }
-@media (hover: none) { .sb-chat-row .sb-chat { padding-inline-end: 40px; } .sb-chat-del { opacity: .75; } }
+.sb-chat-del:hover:not(:disabled), .sb-chat-del:focus-visible { background: none; color: var(--error, #d33); }
+/* pointing at a row: the end of the title fades out where the bin appears (the row keeps its single background) */
+.sb-chat-row:hover .sb-chat-del, .sb-chat-del:focus-visible { opacity: 1; }
+.sb-chat-row:hover .sb-chat { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
+.sb-chat-row:dir(rtl):hover .sb-chat { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
+@media (hover: none) { .sb-chat-row .sb-chat { padding-inline-end: 40px; } .sb-chat-del { opacity: .75; } .sb-chat-row:hover .sb-chat { -webkit-mask-image: none; mask-image: none; } }
 .sb-chat:hover { background: var(--hover); color: var(--text); }
 .sb-chat[aria-current="page"] { background: var(--active); color: var(--text); }
 .sb-empty { padding: 8px 10px; font-size: 13px; color: var(--text-3); }
