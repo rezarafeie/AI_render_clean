@@ -183,8 +183,12 @@ const BehindText: React.FC<{b: Behind}> = ({b}) => {
 	const s = useSpAt(b.s + slamAt, b.kind === 'stepped' ? 12 : 14, b.kind === 'stepped' ? 0.8 : 1, b.kind === 'stepped' ? 180 : 140);
 	let size = latin ? fit(210, b.word.length, 1000, 0.62) : fit(b.kind === 'stepped' ? 300 : 225, b.word.length, 980, 0.6);
 	// Placed against the speaker's head: ~62% of the block above the head, the rest passes behind it (playbook A4), wherever the camera has put the head.
-	const mid = camAt(b.s + (b.e - b.s) / 2);
-	const headTop = b.top != null ? mid.ty + b.top * mid.S : b.kind === 'stepped' ? 410 : 430;
+	// the highest the head gets while the text is up (a slow push-in lifts it): the word is placed against THAT, so it is never buried at the peak
+	const headAt = (t: number) => {
+		const c = camAt(t);
+		return c.ty + (b.top as number) * c.S;
+	};
+	const headTop = b.top != null ? Math.min(headAt(b.s), headAt(b.s + (b.e - b.s) / 2), headAt(b.e - 0.3)) : b.kind === 'stepped' ? 410 : 430;
 	const lh = latin ? 1.0 : b.kind === 'stepped' ? 0.95 : 1.05;
 	const extra = b.kind === 'stepped' ? 105 : b.kicker ? 64 : 0;
 	const room = Math.max(0.55, Math.min(1, (headTop - 70) / ((extra + size * lh) * 0.62)));   // little room above a high head: the word gets smaller, never buried
