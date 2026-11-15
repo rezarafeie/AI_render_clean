@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
 import { useHermesData } from './hermesCache';
 import { array } from './hermesUtils';
 import hermesApi from '../../services/hermesApi';
+import { api } from '../../api';
 import { Composer } from '../../studio/Composer';
 import { message } from './hermesUtils';
 import { useHermes } from './HermesContext';
@@ -14,26 +15,50 @@ const SUGGESTIONS = ['پیجم را تحلیل کن', 'یک ایده‌ی ریل
 
 const fa = (value) => (value == null ? '—' : new Intl.NumberFormat('fa-IR', { notation: 'compact', maximumFractionDigits: 1 }).format(value));
 
-/** A small summary of "my page" (profile line, three numbers, one finding) that opens the full overview. */
+const sinceText = (iso) => {
+  const time = iso ? Date.parse(iso) : 0;
+  if (!time) return '';
+  const diff = Date.now() - time;
+  if (diff < 60_000) return 'همین حالا';
+  const rtf = new Intl.RelativeTimeFormat('fa', { numeric: 'auto' });
+  if (diff < 3_600_000) return rtf.format(-Math.round(diff / 60_000), 'minute');
+  if (diff < 86_400_000) return rtf.format(-Math.round(diff / 3_600_000), 'hour');
+  return rtf.format(-Math.round(diff / 86_400_000), 'day');
+};
+
+/** "My page" in brief: profile picture and name, one finding, three numbers, the count of new ideas, when it was last updated and a button that updates it here. */
 function PageCard() {
-  const { agent, running } = useHermes();
+  const { agent, running, runAgent } = useHermes();
+  const [picture, setPicture] = useState('');
+  useEffect(() => { void api.studioHome().then((home) => setPicture(home?.instagpt?.picture || '')).catch(() => {}); }, []);
   const profile = agent?.profile;
   const analysis = agent?.analysis;
   const score = analysis?.profile?.score;
   const finding = analysis?.strategy?.niche || array(analysis?.content?.do_more)[0] || '';
-  return <Link to="/insta/overview" className="home-pagecard" aria-label="پیج من؛ دیدن خلاصه‌ی کامل">
-    <span className="pc-avatar" aria-hidden="true">{(profile?.username || '?').slice(0, 1).toUpperCase()}</span>
-    <span className="pc-main">
-      <b dir="ltr">{profile ? `@${profile.username}` : 'پیج من'}</b>
-      <small dir="auto">{finding || (running ? 'در حال خواندن پیج…' : analysis ? 'بررسی آماده است' : 'خلاصه‌ی پیج و ایده‌ها')}</small>
-    </span>
-    <span className="pc-nums">
-      <span><b>{fa(profile?.followers)}</b><small>دنبال‌کننده</small></span>
-      <span><b>{fa(profile?.media_count)}</b><small>پست</small></span>
-      <span><b>{score != null ? fa(score) : '—'}</b><small>امتیاز</small></span>
-    </span>
-    <Icon name="chevronLeft" size={16}/>
-  </Link>;
+  const fresh = array(agent?.proposals).filter((p) => p.status === 'proposed').length;
+  const updated = sinceText(agent?.run?.finished_at);
+  return <section className="home-pagecard" dir="rtl" aria-label="پیج من">
+    <Link to="/insta/overview" className="pc-top">
+      <span className="pc-avatar" aria-hidden="true">{picture ? <img src={picture} alt="" referrerPolicy="no-referrer" onError={() => setPicture('')}/> : (profile?.username || '?').slice(0, 1).toUpperCase()}</span>
+      <span className="pc-main">
+        <b dir="ltr">{profile ? `@${profile.username}` : 'پیج من'}</b>
+        <small dir="auto">{finding || (running ? 'در حال خواندن پیج…' : analysis ? 'بررسی آماده است' : 'خلاصه‌ی پیج و ایده‌ها')}</small>
+      </span>
+      {fresh ? <span className="pc-badge" title="ایده‌های آماده‌ی بازبینی">{fa(fresh)} ایده‌ی جدید</span> : null}
+      <Icon name="chevronLeft" size={16}/>
+    </Link>
+    <div className="pc-foot">
+      <span className="pc-nums">
+        <span><b>{fa(profile?.followers)}</b><small>دنبال‌کننده</small></span>
+        <span><b>{fa(profile?.media_count)}</b><small>پست</small></span>
+        <span><b>{score != null ? fa(score) : '—'}</b><small>امتیاز</small></span>
+      </span>
+      <span className="pc-update">
+        <small>{running ? 'در حال به‌روزرسانی…' : updated ? `آخرین به‌روزرسانی ${updated}` : 'هنوز به‌روز نشده'}</small>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => runAgent()} disabled={running}><Icon name="refresh" size={14}/>{running ? 'صبر کنید' : 'به‌روزرسانی'}</button>
+      </span>
+    </div>
+  </section>;
 }
 
 /** The home page is the Studio's: a title, the input, quick suggestions; the overview of the page sits under them. */
