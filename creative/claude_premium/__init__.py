@@ -372,7 +372,7 @@ def schedule(p: Plan, cut: dict, *, has_face: bool) -> dict:
     for h in placed:
         if h["kind"] == "behind":
             m = h["m"]
-            amount = 0.22 if m.climax else m.zoom
+            amount = 0.16 if m.climax else m.zoom
             if amount > 0:
                 zooms.append({"s": round(h["s"], 3), "e": round(h["e"], 3), "amount": amount, "ramp": round(min(3.2, h["e"] - h["s"]), 2) if m.climax else 0.5})
     return {"heavy": placed, "end": end, "zooms": zooms, "notes": notes, "total": total, "start": start, "finish": finish}

@@ -92,22 +92,26 @@ const faceX = (t: number) => {
 	const b = Math.min(face.length - 1, a + 1);
 	return face[a] + (face[b] - face[a]) * (i - a);
 };
-const zoomAt = (t: number) => {
-	const seg = cuts.filter((c) => c <= t).length;
-	let z = BASE_Z[seg % BASE_Z.length];
+const emphasisAt = (t: number) => {
+	let m = 1;
 	for (const e of zooms) {
 		const ramp = e.ramp ?? 0.5;
-		z *= 1 + e.amount * prog(t, e.s - 0.1, ramp, eio) * (1 - prog(t, e.e - 0.2, 0.4, eio));
+		m *= 1 + e.amount * prog(t, e.s - 0.1, ramp, eio) * (1 - prog(t, e.e - 0.2, 0.4, eio));
 	}
-	z *= 1 + 0.006 * (t % 6);
-	return z;
+	return m;
+};
+const zoomAt = (t: number) => {
+	const seg = cuts.filter((c) => c <= t).length;
+	return BASE_Z[seg % BASE_Z.length] * emphasisAt(t) * (1 + 0.006 * (t % 6));
 };
 const camAt = (t: number) => {
 	const base = Math.max(W / SRC_W, H / SRC_H);
 	const S = base * zoomAt(t);
 	const cx = faceX(t) + ((D_.faceDx as number) ?? 0);
+	// a push-in lifts the head toward the top edge: the face target sinks a little with the emphasis so the head keeps room for the text passing behind it
+	const target = FACE_TARGET_Y + (emphasisAt(t) - 1) * 700;
 	const tx = Math.min(0, Math.max(W - SRC_W * S, W / 2 - cx * S));
-	const ty = Math.min(0, Math.max(H - SRC_H * S, FACE_TARGET_Y - (D_.faceY as number) * S));
+	const ty = Math.min(0, Math.max(H - SRC_H * S, target - (D_.faceY as number) * S));
 	return {S, tx, ty};
 };
 const Cam: React.FC = () => {
