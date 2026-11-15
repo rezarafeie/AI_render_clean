@@ -20,7 +20,7 @@ from app import jobs as jobstore
 from app.studio_orchestrator import cancel_project, confirm_action, dispatch_message, resume_project, sync_conversation
 from app.studio_store import ROOT, repo
 from app.studio_tools import list_tools
-from app.job_access import get_job_for_request, is_local_auth_bypass
+from app.job_access import admin_view_as, get_job_for_request, is_local_auth_bypass
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +42,10 @@ from app.studio_ingest import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, MAX_BYTES, Ing
 
 
 def _user(request: Request) -> str:
+    viewing = admin_view_as(request)                     # an administrator reading a user's chat from the admin lists: reads only (see app.job_access.admin_view_as)
+    if viewing is not None:
+        log.info("administrator %s is viewing user %s: %s", request.state.user.id, viewing, request.url.path)
+        return viewing
     return str(request.state.user.id)
 
 

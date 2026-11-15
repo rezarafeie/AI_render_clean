@@ -315,10 +315,21 @@ export interface BrandProfile {
   answered: string[]; has_logo: boolean; updated_at: number | null;
 }
 
+const ADMIN_VIEW_KEY = "admin_view_as";
+/** The person whose chat an administrator is reading (admin lists -> a chat link): reads only, the server ignores the header for anything but GET and for non-administrators. */
+export function getAdminViewAs(): string { try { return sessionStorage.getItem(ADMIN_VIEW_KEY) || ""; } catch { return ""; } }
+export function setAdminViewAs(id: string | null): void {
+  try { if (id) sessionStorage.setItem(ADMIN_VIEW_KEY, id); else sessionStorage.removeItem(ADMIN_VIEW_KEY); } catch { /* private mode */ }
+  if (typeof document !== "undefined") document.documentElement.toggleAttribute("data-admin-view", Boolean(id));
+}
+if (typeof document !== "undefined" && getAdminViewAs()) document.documentElement.setAttribute("data-admin-view", "");
+
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {
   await ensureFreshToken();
   const token = getToken();
   const headers = new Headers(init?.headers);
+  const viewing = getAdminViewAs();
+  if (viewing && !headers.has("X-Admin-View-As") && !url.includes("/admin/")) headers.set("X-Admin-View-As", viewing);
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }

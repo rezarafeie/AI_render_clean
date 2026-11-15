@@ -6,6 +6,7 @@ import { chatHomePath } from "./chatHome";
 import { peekCache, writeCache } from "./pages/hermes/hermesCache";
 import { prefetchChat } from "./studio/chatPrefetch";
 import { Icon } from "./components/Icon";
+import { AdminViewBanner } from "./components/AdminViewBanner";
 import { InstaSwitch } from "./components/InstaSwitch";
 import { ConfirmDelete, DeleteTarget } from "./components/ConfirmDelete";
 import { ProjectStatusDot } from "./components/ProjectStatusDot";
@@ -241,6 +242,7 @@ export default function EditorShell() {
             : <InstaSwitch enabled={authenticated} onPointerEnter={() => void preloadHermes()}/>) : null}
           {chatHome ? <NavLink to={chatHome} className="icon-btn icon-btn-lg" aria-label={hermesMode ? "InstaGPT home" : "Studio home"}><Icon name="home"/></NavLink> : null}
         </header>
+        <AdminViewBanner/>
         <main id="main-content" className={`main${kind === "legacy" ? " eg-legacy" : ""}`} data-route={kind} tabIndex={-1}>
           <React.Suspense fallback={<PaneSkeleton/>}>{kind === "legacy" ? <div className="legacy-frame"><Outlet/></div> : <Outlet/>}</React.Suspense>
         </main>

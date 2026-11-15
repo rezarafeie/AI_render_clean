@@ -64,6 +64,70 @@ async def users(query: str = Query("", max_length=100), limit: int = Query(200, 
     return {"total": total, "users": out}
 
 
+def _chat_status(projects: list) -> str:
+    """One word for a chat: what its newest project is doing (running / done / failed / stopped), or idle when it has none."""
+    if not projects:
+        return "idle"
+    newest = max(projects, key=lambda p: p.updated_at or p.created_at)
+    status = str(newest.status or "")
+    return {"planning": "running", "running": "running", "analyzing": "running", "rendering": "running", "queued": "running", "awaiting_input": "waiting", "awaiting_confirmation": "waiting",
+            "done": "done", "completed": "done", "ready": "done", "failed": "failed", "error": "failed", "canceled": "stopped", "cancelled": "stopped"}.get(status, status or "idle")
+
+
+@router.get("/chats")
+async def all_chats(query: str = Query("", max_length=100), user: int | None = None, status: str = Query("", max_length=20), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    """Every chat of every person, newest first: just the facts (title, who, when, status) and the link; the chat itself is opened in the chat page (read-only for an administrator)."""
+    async with _db() as db:
+        base = select(StudioConversation)
+        if query.strip():
+            base = base.where(StudioConversation.title.ilike(f"%{query.strip()}%"))
+        if user is not None:
+            base = base.where(StudioConversation.user_key == str(user))
+        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+        rows = (await db.execute(base.order_by(StudioConversation.updated_at.desc()).limit(limit if not status else 400).offset(offset if not status else 0))).scalars().all()
+        ids = [c.id for c in rows]
+        projects = (await db.execute(select(StudioProject).where(StudioProject.conversation_id.in_(ids)))).scalars().all() if ids else []
+        counts = dict((await db.execute(select(StudioMessage.conversation_id, func.count()).where(StudioMessage.conversation_id.in_(ids)).group_by(StudioMessage.conversation_id))).all()) if ids else {}
+        file_counts = dict((await db.execute(select(StudioAttachment.conversation_id, func.count()).where(StudioAttachment.conversation_id.in_(ids)).group_by(StudioAttachment.conversation_id))).all()) if ids else {}
+        keys = {int(c.user_key) for c in rows if str(c.user_key).isdigit()}
+        people = {u.id: u for u in (await db.execute(select(UserModel).where(UserModel.id.in_(keys)))).scalars().all()} if keys else {}
+    by_chat: dict[str, list] = {}
+    for p in projects:
+        by_chat.setdefault(p.conversation_id, []).append(p)
+    out = []
+    for c in rows:
+        person = people.get(int(c.user_key)) if str(c.user_key).isdigit() else None
+        state = _chat_status(by_chat.get(c.id, []))
+        if status and state != status:
+            continue
+        out.append({"id": c.id, "title": c.title, "user": {"id": c.user_key, "name": person.name if person else "", "email": person.email if person else ""}, "status": state,
+                    "messages": counts.get(c.id, 0), "projects": len(by_chat.get(c.id, [])), "files": file_counts.get(c.id, 0), "created_at": _iso(c.created_at), "updated_at": _iso(c.updated_at)})
+    if status:
+        total, out = len(out), out[offset:offset + limit]
+    return {"total": total, "chats": out}
+
+
+@router.get("/files")
+async def all_files(query: str = Query("", max_length=100), user: int | None = None, kind: str = Query("", max_length=12), limit: int = Query(60, ge=1, le=200), offset: int = Query(0, ge=0)):
+    """Every uploaded file of every person, newest first, with the chat it belongs to."""
+    async with _db() as db:
+        base = select(StudioAttachment)
+        if query.strip():
+            base = base.where(StudioAttachment.filename.ilike(f"%{query.strip()}%"))
+        if user is not None:
+            base = base.where(StudioAttachment.user_key == str(user))
+        if kind in {"video", "image", "audio"}:
+            base = base.where(StudioAttachment.kind == kind)
+        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+        rows = (await db.execute(base.order_by(StudioAttachment.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+        keys = {int(f.user_key) for f in rows if str(f.user_key).isdigit()}
+        people = {u.id: u for u in (await db.execute(select(UserModel).where(UserModel.id.in_(keys)))).scalars().all()} if keys else {}
+        titles = {c.id: c.title for c in (await db.execute(select(StudioConversation).where(StudioConversation.id.in_({f.conversation_id for f in rows})))).scalars().all()} if rows else {}
+    return {"total": total, "files": [{"id": f.id, "conversation_id": f.conversation_id, "chat_title": titles.get(f.conversation_id, ""), "name": f.filename, "kind": f.kind, "mime": f.mime_type,
+                                       "size": f.size_bytes, "created_at": _iso(f.created_at),
+                                       "user": {"id": f.user_key, "name": (people.get(int(f.user_key)).name if str(f.user_key).isdigit() and people.get(int(f.user_key)) else "")}} for f in rows]}
+
+
 @router.get("/users/{user_id}")
 async def user_detail(user_id: int):
     key = str(user_id)
@@ -79,7 +143,8 @@ async def user_detail(user_id: int):
         job_rows = (await db.execute(select(Job).where(Job.user_id == user_id).order_by(Job.created_at.desc()).limit(200))).scalars().all()
     return {
         "user": _user_row(row),
-        "conversations": [{"id": c.id, "title": c.title, "language": c.language, "messages": counts.get(c.id, 0), "created_at": _iso(c.created_at), "updated_at": _iso(c.updated_at)} for c in conversations],
+        "conversations": [{"id": c.id, "title": c.title, "language": c.language, "messages": counts.get(c.id, 0), "status": _chat_status([p for p in projects if p.conversation_id == c.id]),
+                           "created_at": _iso(c.created_at), "updated_at": _iso(c.updated_at)} for c in conversations],
         "projects": [{"id": p.id, "conversation_id": p.conversation_id, "title": p.title, "engine": p.engine, "status": p.status, "job": p.external_ref, "version": p.current_version,
                       "created_at": _iso(p.created_at), "updated_at": _iso(p.updated_at)} for p in projects],
         "files": [{"id": f.id, "conversation_id": f.conversation_id, "name": f.filename, "kind": f.kind, "mime": f.mime_type, "size": f.size_bytes, "created_at": _iso(f.created_at)} for f in files],
