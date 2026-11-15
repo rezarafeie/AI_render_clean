@@ -56,6 +56,7 @@ class Ledger:
                 updated REAL NOT NULL, PRIMARY KEY(job_id,source,reference,category))''')
             db.execute('CREATE TABLE IF NOT EXISTS cloud_render_policy (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)')
             db.execute('CREATE TABLE IF NOT EXISTS cloud_render_dcs (dc TEXT PRIMARY KEY, bad_until REAL NOT NULL DEFAULT 0, last_ok REAL NOT NULL DEFAULT 0, fails INTEGER NOT NULL DEFAULT 0)')
+            db.execute('CREATE TABLE IF NOT EXISTS cloud_render_dc_claims (job_id TEXT PRIMARY KEY, dc TEXT NOT NULL, until REAL NOT NULL)')
 
     @contextmanager
     def transaction(self):
@@ -209,6 +210,38 @@ class Ledger:
             with self.transaction() as db:
                 db.execute('INSERT INTO cloud_render_dcs(dc,last_ok) VALUES(?,?) ON CONFLICT(dc) DO UPDATE SET last_ok=excluded.last_ok, bad_until=0, fails=0',
                            (dc, time.time()))
+        except Exception:
+            pass
+
+    def dc_pick(self, candidates: list[str], job_id: str, seconds: float) -> str | None:
+        """The data center for a new Pod, claimed for `seconds` in the same transaction that chooses it: a request that starts while another Pod is still starting somewhere goes to a
+        DIFFERENT data center (two Pods asking one data center at once is how both end up waiting for a machine). Never raises; None when there are no candidates."""
+        if not candidates:
+            return None
+        now = time.time()
+        try:
+            with self.transaction() as db:
+                db.execute('DELETE FROM cloud_render_dc_claims WHERE until<?', (now,))
+                load: dict[str, int] = {}
+                for r in db.execute('SELECT dc, COUNT(*) n FROM cloud_render_dc_claims WHERE job_id<>? GROUP BY dc', (job_id,)).fetchall():
+                    load[r['dc']] = r['n']
+                rows = {r['dc']: (r['bad_until'], r['last_ok']) for r in db.execute('SELECT dc,bad_until,last_ok FROM cloud_render_dcs').fetchall()}
+                good = [(dc, i) for i, dc in enumerate(candidates) if rows.get(dc, (0, 0))[0] <= now]
+                if good:
+                    ordered = [dc for dc, i in sorted(good, key=lambda x: (load.get(x[0], 0), -rows.get(x[0], (0, 0))[1], x[1]))]
+                else:
+                    ordered = sorted(candidates, key=lambda dc: (rows.get(dc, (0, 0))[0], load.get(dc, 0)))
+                chosen = ordered[0]
+                db.execute('INSERT INTO cloud_render_dc_claims(job_id,dc,until) VALUES(?,?,?) ON CONFLICT(job_id) DO UPDATE SET dc=excluded.dc, until=excluded.until', (job_id, chosen, now + seconds))
+                return chosen
+        except Exception:
+            return self.dc_order(candidates)[0]
+
+    def dc_release(self, job_id: str) -> None:
+        """The Pod started (or failed, or was cancelled): its claim on a data center ends (never raises)."""
+        try:
+            with self.transaction() as db:
+                db.execute('DELETE FROM cloud_render_dc_claims WHERE job_id=?', (job_id,))
         except Exception:
             pass
 

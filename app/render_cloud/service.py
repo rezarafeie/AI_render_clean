@@ -351,12 +351,7 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
         # One data center per Pod, chosen from the configured list by what has worked lately: a Pod that never starts then marks its data center bad
         # and the next Pod (the fresh one tried below, the retries above) goes elsewhere; the timeline says where each Pod was placed.
         listed = [d.strip() for d in config.data_centers.split(',') if d.strip()]
-        chosen_dc = ledger.dc_order(listed)[0] if listed else None
-        if chosen_dc and on_stage:
-            try:
-                on_stage('cloud placement', f'کارگر ابری در دیتاسنتر {chosen_dc} ساخته می‌شود')
-            except Exception:
-                pass
+        chosen_dc = None
         fingerprint = hashlib.sha256(spec.model_dump_json().encode()).hexdigest()
         marker = (marker_root or project) / '.cloud-render-job.json'
         job_id = None
@@ -369,6 +364,13 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
         except (OSError, ValueError, KeyError, Conflict):
             pass
         spec = spec.model_copy(update={'job_id': job_id or uuid.uuid4().hex})
+        # Claimed together with the choice: a second film starting while this Pod is still starting is placed in another data center.
+        chosen_dc = ledger.dc_pick(listed, spec.job_id, config.startup_seconds + 120) if listed else None
+        if chosen_dc and on_stage:
+            try:
+                on_stage('cloud placement', f'کارگر ابری در دیتاسنتر {chosen_dc} ساخته می‌شود')
+            except Exception:
+                pass
         temp_marker = marker.with_name('.cloud-marker-' + uuid.uuid4().hex)
         temp_marker.write_text(json.dumps({'fingerprint': fingerprint, 'job_id': spec.job_id}))
         os.replace(temp_marker, marker)
@@ -389,14 +391,17 @@ def _render_prepared(project: Path, output: Path, *, user, project_id, engine,
             await_result(spec, output, ledger=ledger, store=store, provider=provider,
                          on_progress=on_progress, on_stage=on_stage, should_cancel=should_cancel, on_detail=on_detail,
                          startup_seconds=config.startup_seconds, stall_seconds=config.stall_seconds)
+            ledger.dc_release(spec.job_id)
             if chosen_dc:
                 ledger.dc_mark_ok(chosen_dc)
             return True
         except InterruptedError:
+            ledger.dc_release(spec.job_id)
             ledger.cancel(spec.job_id, spec.user_id)
             ledger.finish(spec.job_id, spec.user_id, 'cancelled', 'cancelled')
             raise
         except Exception as failure:
+            ledger.dc_release(spec.job_id)
             if (isinstance(failure, Conflict) and str(failure) in {'Budget limit', 'Concurrency limit'}
                     and config.enable_local_fallback and config.override == 'auto'):
                 # The reservation itself was refused (the daily/monthly budget or the worker limit): nothing was created or billed in the cloud.
