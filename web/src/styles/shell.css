@@ -64,7 +64,15 @@ html[data-keyboard-open] .app { position: fixed; inset-inline: 0; top: var(--app
 .sb-chat-row:hover .sb-chat-del, .sb-chat-del:focus-visible { opacity: 1; }
 .sb-chat-row:hover .sb-chat { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
 .sb-chat-row:dir(rtl):hover .sb-chat { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
-@media (hover: none) { .sb-chat-row .sb-chat { padding-inline-end: 40px; } .sb-chat-del { opacity: .75; } .sb-chat-row:hover .sb-chat { -webkit-mask-image: none; mask-image: none; } }
+/* touch screens have no hover: the bin shows on the row being touched, the focused one and the chat that is open, never on all rows */
+@media (hover: none) {
+  .sb-chat-row:hover .sb-chat-del { opacity: 0; } .sb-chat-row:hover .sb-chat { -webkit-mask-image: none; mask-image: none; } .sb-chat-row:hover { background: none; }
+  .sb-chat-row:active, .sb-chat-row:focus-within, .sb-chat-row:has(.sb-chat[aria-current="page"]) { background: var(--active); }
+  .sb-chat-row:active .sb-chat-del, .sb-chat-row:focus-within .sb-chat-del, .sb-chat-row:has(.sb-chat[aria-current="page"]) .sb-chat-del { opacity: 1; }
+  .sb-chat-row:active .sb-chat, .sb-chat-row:focus-within .sb-chat, .sb-chat-row:has(.sb-chat[aria-current="page"]) .sb-chat { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to right, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
+  .sb-chat-row:dir(rtl):active .sb-chat, .sb-chat-row:dir(rtl):focus-within .sb-chat, .sb-chat-row:dir(rtl):has(.sb-chat[aria-current="page"]) .sb-chat { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); mask-image: linear-gradient(to left, #000 calc(100% - 52px), transparent calc(100% - 30px)); }
+  .sb-chat-del { width: 36px; height: 36px; }
+}
 .sb-chat:hover { background: var(--hover); color: var(--text); }
 .sb-chat[aria-current="page"] { background: var(--active); color: var(--text); }
 .sb-empty { padding: 8px 10px; font-size: 13px; color: var(--text-3); }
