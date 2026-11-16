@@ -97,6 +97,8 @@ def _stream(conversation_id: str, user_key: str, kind: str, facts: dict, attachm
         messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": json.dumps({"stage": kind, "facts": facts}, ensure_ascii=False)[:6000]}]
         _emit(conversation_id, "assistant.response.started", response_id=response_id, narration=kind)
         flushed, tick = "", 0.0
+        from app.studio_activity import quiet
+        quiet_token = quiet.set(True)
         try:
             for chunk in stream_chat("conversation_response", messages, tokens=300, timeout_seconds=30):
                 text += chunk
@@ -119,6 +121,8 @@ def _stream(conversation_id: str, user_key: str, kind: str, facts: dict, attachm
         except Exception as exc:
             log.warning("narration %s fell back to its plain text: %s", kind, type(exc).__name__)
             _emit(conversation_id, "assistant.response.failed", response_id=response_id, text="", message_id=None, error="")
+        finally:
+            quiet.reset(quiet_token)
     if fallback.strip():
         _post(conversation_id, user_key, fallback.strip(), attachments)
 

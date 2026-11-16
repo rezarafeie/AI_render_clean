@@ -578,7 +578,8 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
         _publish_claude_snapshots(directory, built, lines)
 
     hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
-                                progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills)
+                                progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills,
+                                say=lambda text: _assistant(cid, user, text))
     try:
         if record.get("vox"):
             from creative import claude_vox

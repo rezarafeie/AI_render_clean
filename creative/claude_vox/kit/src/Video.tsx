@@ -12,6 +12,7 @@ type Scene = {id: string; start: number; dur: number; end: number; words: Word[]
 const scenes = (timing as unknown as {scenes: Scene[]}).scenes;
 const IN = 0.32;
 const CIRCLE = new Set(['big_term', 'growth_chart']);
+const MODE: string = (THEME as any).transition ?? 'mix';
 
 const norm = (s: string) => s.replace(/[ً-ْـ]/g, '').replace(/[‌‍]/g, '').replace(/[ي]/g, 'ی').replace(/[ك]/g, 'ک');
 
@@ -20,8 +21,7 @@ const Fonts: React.FC = () => (
 		{[
 			...THEME.faces.map((f: {file: string; weight: string}) => `@font-face{font-family:'Doran';src:url('${staticFile('fonts/' + f.file)}');font-weight:${f.weight};font-display:block;}`),
 			...THEME.aliases.map((a: string) => THEME.faces.map((f: {file: string; weight: string}) => `@font-face{font-family:'${a}';src:url('${staticFile('fonts/' + f.file)}');font-weight:${f.weight};font-display:block;}`).join('\n')),
-			`@font-face{font-family:'Anton';src:url('${staticFile('fonts/Anton-Regular.ttf')}');font-display:block;}`,
-			`@font-face{font-family:'Special Elite';src:url('${staticFile('fonts/SpecialElite-Regular.ttf')}');font-display:block;}`,
+			...(THEME.fonts ?? []).map((f: {family: string; file: string; weight: string}) => `@font-face{font-family:'${f.family}';src:url('${staticFile('fonts/' + f.file)}');font-weight:${f.weight};font-display:block;}`),
 		].join('\n')}
 	</style>
 );
@@ -32,9 +32,17 @@ const Wrap: React.FC<{i: number; dur: number; circle: boolean; children?: React.
 	const p = i === 0 ? 1 : eo(clamp(t / IN));
 	const dir = i % 2 ? 1 : -1;
 	const push = 1 + 0.035 * (t / Math.max(dur, 1));
-	const style: React.CSSProperties = circle
-		? {clipPath: `circle(${p * 125}% at 50% 55%)`}
-		: {transform: `translateX(${(1 - p) * dir * 1150}px) rotate(${(1 - p) * dir * 4}deg)`, boxShadow: p < 1 ? '0 0 60px rgba(0,0,0,0.35)' : undefined};
+	const zoom = MODE === 'zoom' || (MODE === 'mix' && false);
+	let style: React.CSSProperties;
+	if (zoom && i > 0) {
+		style = {opacity: clamp(t / (IN * 0.8)), transform: `scale(${1 + (1 - p) * 0.22})`};      // a quick zoom-fade into the next page
+	} else if (circle && MODE !== 'slide') {
+		style = {clipPath: `circle(${p * 125}% at 50% 55%)`};
+	} else if (circle && MODE === 'slide' && i > 0) {
+		style = {clipPath: `circle(${p * 125}% at 50% 55%)`};
+	} else {
+		style = {transform: `translateX(${(1 - p) * dir * 1150}px) rotate(${(1 - p) * dir * 4}deg)`, boxShadow: p < 1 ? '0 0 60px rgba(0,0,0,0.35)' : undefined};
+	}
 	return (
 		<AbsoluteFill style={{...style, overflow: 'hidden'}}>
 			<AbsoluteFill style={{transform: `scale(${push})`}}>{children}</AbsoluteFill>
@@ -46,7 +54,7 @@ export const Main: React.FC = () => {
 	const [h] = React.useState(() => delayRender('fonts'));
 	React.useEffect(() => {
 		const loads = [800, 700, 500].map((w) => document.fonts.load(`${w} 60px Doran`, 'سلام'));
-		Promise.all([...loads, document.fonts.load('60px Anton', 'A'), document.fonts.load('60px "Special Elite"', 'A')])
+		Promise.all([...loads, ...((THEME as any).fonts ?? []).map((f: {family: string}) => document.fonts.load(`60px "${f.family}"`, 'A'))])
 			.catch(() => null)
 			.then(() => document.fonts.ready)
 			.then(() => continueRender(h));

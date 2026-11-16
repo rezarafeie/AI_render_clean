@@ -4,19 +4,26 @@ import React from 'react';
 import {AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame} from 'remotion';
 import {THEME} from './theme';
 import usmap from './usmap.json';
+import world from './world.json';
 
 export const W = 1080;
 export const H = 1920;
 export const FPS = 30;
-export const INK = '#1C1B19';
+export const INK = THEME.ink || '#1C1B19';
+export const BG = THEME.bg || '#EEE5D9';
+/** the text colour that reads on THIS film's ground (dark looks: cream) */
+export const TXT = THEME.text || INK;
 export const RED = THEME.red;
 export const MUST = THEME.must;
 export const TEAL = THEME.teal;
 export const CREAM = '#F3ECDF';
 export const DARK = '#2A2724';
 export const D = 'Doran';
-export const TW = "'Special Elite', 'Courier New', monospace";
-export const ANTON = 'Anton';
+export const TW = "'Elite', 'Special Elite', 'Courier New', monospace";
+export const ANTON = THEME.display || 'Anton';        // the look's DISPLAY face (Anton, Bebas, Grotesk, Playfair...): numbers and big Latin headlines
+export const SERIF = THEME.serif || 'Playfair';
+export const SCRIPT = THEME.script || 'Caveat';
+export const SANS = THEME.sans || 'Grotesk';
 
 export const clamp = (x: number) => Math.max(0, Math.min(1, x));
 export const eo = Easing.bezier(0.16, 1, 0.3, 1);
@@ -29,6 +36,8 @@ export const useSp = (at: number, damping = 13, mass = 0.8, stiffness = 150) => 
 	return spring({frame: f - Math.round(at * FPS), fps: FPS, config: {damping, mass, stiffness}});
 };
 export const fa = (n: number | string) => String(n).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+/** Latin digits (۰-۹ and ٠-٩ are converted): numbers of this film are set in Anton or the typewriter, never in the Persian text face */
+export const lat = (n: number | string) => String(n).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 /** boil: changes every 3 frames, for hand-drawn jitter */
 export const useBoil = () => Math.floor(useCurrentFrame() / 3);
 
@@ -42,12 +51,15 @@ export const Abs: React.FC<{x: number; y: number; children?: React.ReactNode; st
 );
 
 /* ---------------- paper background ---------------- */
-export const Paper: React.FC<{tex?: 'paper' | 'grid'; tint?: string; tintOp?: number}> = ({tex = 'paper', tint, tintOp = 1}) => (
-	<AbsoluteFill>
-		<Img src={staticFile(`img/${tex === 'grid' ? 'grid' : 'paper'}.jpg`)} style={{width: W, height: H}} />
-		{tint && <AbsoluteFill style={{background: tint, mixBlendMode: 'multiply', opacity: tintOp}} />}
-	</AbsoluteFill>
-);
+export const Paper: React.FC<{tex?: 'paper' | 'grid' | 'white' | 'kraft' | 'blueprint' | 'flat'; tint?: string; tintOp?: number}> = ({tex, tint, tintOp = 1}) => {
+	const kind = tex ?? (THEME.ground as string) ?? 'paper';
+	return (
+		<AbsoluteFill style={{background: kind === 'flat' ? BG : undefined}}>
+			{kind !== 'flat' && <Img src={staticFile(`img/${['paper', 'grid', 'white', 'kraft', 'blueprint'].includes(kind) ? kind : 'paper'}.jpg`)} style={{width: W, height: H}} />}
+			{tint && <AbsoluteFill style={{background: tint, mixBlendMode: kind === 'blueprint' ? 'normal' : 'multiply', opacity: tintOp}} />}
+		</AbsoluteFill>
+	);
+};
 
 /* ---------------- entering element ---------------- */
 type From = 'left' | 'right' | 'up' | 'down' | 'pop' | 'drop' | 'none';
@@ -289,13 +301,13 @@ export const HeartMark: React.FC<{cx: number; cy: number; s?: number; at: number
 
 /* ---------------- stamps / labels / numbers ---------------- */
 /** a rubber stamp that slams down (Persian or Latin text) */
-export const Stamp: React.FC<{at: number; children?: React.ReactNode; color?: string; rot?: number; size?: number; x: number; y: number}> = ({at, children, color = RED, rot = -10, size = 70, x, y}) => {
+export const Stamp: React.FC<{at: number; children?: React.ReactNode; color?: string; rot?: number; size?: number; x: number; y: number; font?: string}> = ({at, children, color = RED, rot = -10, size = 70, x, y, font = D}) => {
 	const t = useT();
 	const s = useSp(at, 9, 0.6, 260);
 	if (t < at) return null;
 	return (
 		<div style={{position: 'absolute', left: x, top: y, transform: `translate(-50%,-50%) rotate(${rot}deg) scale(${interpolate(s, [0, 1], [2.2, 1])})`, opacity: prog(t, at, 0.06)}}>
-			<div style={{fontFamily: D, fontWeight: 800, fontSize: size, color, border: `7px solid ${color}`, padding: `${size * 0.05}px ${size * 0.35}px ${size * 0.15}px`, borderRadius: 14, direction: 'rtl', whiteSpace: 'nowrap', mixBlendMode: 'multiply', maskImage: 'radial-gradient(circle at 30% 40%, black 60%, rgba(0,0,0,0.75) 100%)'}}>
+			<div style={{fontFamily: font, fontWeight: font === D ? 800 : 400, fontSize: size, color, border: `7px solid ${color}`, padding: `${size * 0.05}px ${size * 0.35}px ${size * 0.15}px`, borderRadius: 14, direction: font === D ? 'rtl' : 'ltr', whiteSpace: 'nowrap', mixBlendMode: 'multiply', maskImage: 'radial-gradient(circle at 30% 40%, black 60%, rgba(0,0,0,0.75) 100%)'}}>
 				{children}
 			</div>
 		</div>
@@ -305,6 +317,11 @@ export const Stamp: React.FC<{at: number; children?: React.ReactNode; color?: st
 /** a tilted paper label with a shadow */
 export const Label: React.FC<{children?: React.ReactNode; bg?: string; color?: string; size?: number; rot?: number; font?: string}> = ({children, bg = '#FBF8F1', color = INK, size = 48, rot = -2, font = D}) => (
 	<div style={{background: bg, color, fontFamily: font, fontWeight: font === D ? 700 : 400, fontSize: size, padding: `${size * 0.12}px ${size * 0.45}px ${size * 0.22}px`, transform: `rotate(${rot}deg)`, boxShadow: '0 8px 14px rgba(40,30,15,0.22)', whiteSpace: 'nowrap', direction: font === D ? 'rtl' : 'ltr', display: 'inline-block'}}>{children}</div>
+);
+
+/** a number or a year set in Anton (or the typewriter with font={TW}): Latin digits, any Persian digits are converted. THE way to show a number on screen. */
+export const Num: React.FC<{children?: React.ReactNode; size?: number; color?: string; font?: string; style?: React.CSSProperties}> = ({children, size = 120, color = INK, font = ANTON, style}) => (
+	<div style={{fontFamily: font, fontSize: size, color, lineHeight: 1.05, direction: 'ltr', whiteSpace: 'nowrap', letterSpacing: font === ANTON ? 1 : 0, ...style}}>{typeof children === 'string' || typeof children === 'number' ? lat(children) : children}</div>
 );
 
 /** a counting number in Anton with thousands separators (prefix '$', suffix '%' ...) */
@@ -412,10 +429,10 @@ export const LineChart: React.FC<{pts: [number, number, string?][]; p: number; x
 	const d = shown.map((q, i) => `${i ? 'L' : 'M'}${q[0]},${q[1]}`).join(' ');
 	return (
 		<Full>
-			<line x1={x} y1={y + h} x2={x + w} y2={y + h} stroke={INK} strokeWidth={4} />
-			<line x1={x} y1={y + h} x2={x} y2={y - 20} stroke={INK} strokeWidth={4} />
+			<line x1={x} y1={y + h} x2={x + w} y2={y + h} stroke={TXT} strokeWidth={4} />
+			<line x1={x} y1={y + h} x2={x} y2={y - 20} stroke={TXT} strokeWidth={4} />
 			{(ticks ?? []).map((tv) => (
-				<text key={tv} x={X(tv)} y={y + h + 60} textAnchor="middle" fontFamily={TW} fontSize={36} fill={INK}>
+				<text key={tv} x={X(tv)} y={y + h + 60} textAnchor="middle" fontFamily={TW} fontSize={36} fill={TXT}>
 					{tickFmt ? tickFmt(tv) : String(tv)}
 				</text>
 			))}
@@ -423,9 +440,9 @@ export const LineChart: React.FC<{pts: [number, number, string?][]; p: number; x
 			{list.map((q, i) =>
 				i <= seg + 0.01 ? (
 					<g key={i}>
-						<circle cx={X(q[0])} cy={Y(vs[i])} r={12} fill={i === n - 1 ? color : INK} />
+						<circle cx={X(q[0])} cy={Y(vs[i])} r={12} fill={i === n - 1 ? color : TXT} />
 						{q[2] ? (
-							<text x={X(q[0]) + (i === n - 1 ? -20 : 20)} y={Y(vs[i]) - 28} textAnchor={i === n - 1 ? 'end' : 'start'} fontFamily={ANTON} fontSize={i === n - 1 ? 80 : 50} fill={INK}>
+							<text x={X(q[0]) + (i === n - 1 ? -20 : 20)} y={Y(vs[i]) - 28} textAnchor={i === n - 1 ? 'end' : 'start'} fontFamily={ANTON} fontSize={i === n - 1 ? 80 : 50} fill={TXT}>
 								{q[2]}
 							</text>
 						) : null}
@@ -444,20 +461,20 @@ export const Bars: React.FC<{bars: [string, number, string?][]; p: number; x: nu
 	const bw = (w / list.length) * 0.62;
 	return (
 		<Full>
-			<line x1={x} y1={y + h} x2={x + w} y2={y + h} stroke={INK} strokeWidth={4} />
+			<line x1={x} y1={y + h} x2={x + w} y2={y + h} stroke={TXT} strokeWidth={4} />
 			{list.map(([label, v, color], i) => {
 				const k = clamp(p * list.length - i);
 				const bh = (v / max) * h * eo(k);
 				const cx = x + (w / list.length) * (i + 0.5);
 				return (
 					<g key={i}>
-						<rect x={cx - bw / 2} y={y + h - bh} width={bw} height={bh} fill={color || TEAL} stroke={INK} strokeWidth={4} />
+						<rect x={cx - bw / 2} y={y + h - bh} width={bw} height={bh} fill={color || TEAL} stroke={TXT} strokeWidth={4} />
 						{k > 0.9 ? (
-							<text x={cx} y={y + h - bh - 22} textAnchor="middle" fontFamily={ANTON} fontSize={52} fill={INK}>
+							<text x={cx} y={y + h - bh - 22} textAnchor="middle" fontFamily={ANTON} fontSize={52} fill={TXT}>
 								{fmt ? fmt(v) : String(v)}
 							</text>
 						) : null}
-						<text x={cx} y={y + h + 56} textAnchor="middle" fontFamily={D} fontWeight={700} fontSize={40} fill={INK} style={{direction: 'rtl'}}>
+						<text x={cx} y={y + h + 56} textAnchor="middle" fontFamily={D} fontWeight={700} fontSize={40} fill={TXT} style={{direction: 'rtl'}}>
 							{label}
 						</text>
 					</g>
@@ -491,4 +508,123 @@ export const usPoint = (lon: number, lat: number, w: number): [number, number] =
 	const c = Math.cos((38 * Math.PI) / 180);
 	const k = w / usmap.w;
 	return [(lon + 125) * c * k0 * k, (50 - lat) * k0 * k];
+};
+
+/* ---------------- look accents ---------------- */
+/** a paint splash / brush blob (organic shape with droplets) centred at x,y, radius r, springing in */
+export const Splash: React.FC<{x: number; y: number; r?: number; color?: string; at?: number; rot?: number; seed?: string; op?: number}> = ({x, y, r = 260, color = TEAL, at = 0, rot = 0, seed = 'sp', op = 0.9}) => {
+	const sc = useSp(at, 14, 0.9, 120);
+	const n = 16;
+	const pts: [number, number][] = [];
+	for (let i = 0; i < n; i++) {
+		const a = (i / n) * Math.PI * 2;
+		const k = 0.62 + random(seed + i) * 0.5;
+		pts.push([Math.cos(a) * r * k, Math.sin(a) * r * k * 0.8]);
+	}
+	const d = smooth([...pts, pts[0], pts[1]]) + 'Z';
+	return (
+		<div style={{position: 'absolute', left: x - r * 1.3, top: y - r * 1.3, width: r * 2.6, height: r * 2.6, transform: `scale(${sc}) rotate(${rot}deg)`, opacity: op, pointerEvents: 'none'}}>
+			<svg width={r * 2.6} height={r * 2.6} viewBox={`${-r * 1.3} ${-r * 1.3} ${r * 2.6} ${r * 2.6}`} style={{overflow: 'visible'}}>
+				<path d={d} fill={color} />
+				{Array.from({length: 7}).map((_, i) => {
+					const a = random(seed + 'd' + i) * Math.PI * 2;
+					const dist = r * (0.95 + random(seed + 'e' + i) * 0.35);
+					return <circle key={i} cx={Math.cos(a) * dist} cy={Math.sin(a) * dist * 0.8} r={6 + random(seed + 'f' + i) * 16} fill={color} />;
+				})}
+			</svg>
+		</div>
+	);
+};
+
+/** rays bursting from x,y (behind a key icon) */
+export const Starburst: React.FC<{x: number; y: number; r?: number; rays?: number; color?: string; at?: number; spin?: number}> = ({x, y, r = 380, rays = 24, color = RED, at = 0, spin = 4}) => {
+	const t = useT();
+	const p = prog(t, at, 0.5);
+	return (
+		<svg width={2 * r} height={2 * r} viewBox={`${-r} ${-r} ${2 * r} ${2 * r}`} style={{position: 'absolute', left: x - r, top: y - r, transform: `rotate(${t * spin}deg)`, opacity: p, pointerEvents: 'none'}}>
+			{Array.from({length: rays}).map((_, i) => {
+				const a = (i / rays) * Math.PI * 2;
+				const len = r * (i % 2 ? 0.78 : 1) * p;
+				return <path key={i} d={`M${Math.cos(a - 0.05) * r * 0.45},${Math.sin(a - 0.05) * r * 0.45} L${Math.cos(a) * len},${Math.sin(a) * len} L${Math.cos(a + 0.05) * r * 0.45},${Math.sin(a + 0.05) * r * 0.45} Z`} fill={color} />;
+			})}
+		</svg>
+	);
+};
+
+/** a small four-point twinkle star */
+export const Sparkle: React.FC<{x: number; y: number; s?: number; color?: string; at?: number}> = ({x, y, s = 36, color = INK, at = 0}) => {
+	const t = useT();
+	if (t < at) return null;
+	const k = 0.75 + 0.25 * Math.sin(t * 5 + x);
+	return (
+		<svg width={s * 2} height={s * 2} viewBox="-50 -50 100 100" style={{position: 'absolute', left: x - s, top: y - s, transform: `scale(${k}) rotate(${(t * 20) % 360}deg)`}}>
+			<path d="M0,-48 C4,-10 10,-4 48,0 C10,4 4,10 0,48 C-4,10 -10,4 -48,0 C-10,-4 -4,-10 0,-48 Z" fill={color} />
+		</svg>
+	);
+};
+
+/** an annotation tag with a leader line to the thing it names (frame coordinates): label centred at x,y; the line ends at tx,ty */
+export const Tag: React.FC<{x: number; y: number; tx: number; ty: number; at: number; children?: React.ReactNode; bg?: string; color?: string; size?: number; font?: string}> = ({x, y, tx, ty, at, children, bg = MUST, color = '#111', size = 40, font = SANS}) => {
+	const t = useT();
+	const p = prog(t, at, 0.4, eio);
+	if (t < at) return null;
+	return (
+		<>
+			<svg width={W} height={H} style={{position: 'absolute', left: 0, top: 0, pointerEvents: 'none'}}>
+				<line x1={x} y1={y} x2={x + (tx - x) * p} y2={y + (ty - y) * p} stroke={INK} strokeWidth={3} />
+				{p > 0.95 && <circle cx={tx} cy={ty} r={7} fill={INK} />}
+			</svg>
+			<div style={{position: 'absolute', left: x, top: y, transform: `translate(-50%,-50%) scale(${eo(clamp((t - at) / 0.3))})`, background: bg, color, fontFamily: font, fontWeight: 700, fontSize: size, padding: `${size * 0.15}px ${size * 0.4}px`, boxShadow: '0 6px 12px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', direction: 'ltr'}}>{children}</div>
+		</>
+	);
+};
+
+/** the world (countries as paths). Width w; `fill` colours countries by English name ('Iran': RED) after fillAt; `land` is the colour of the rest. Frame size = w x worldHeight(w). */
+export const worldHeight = (w: number) => (world.h * w) / world.w;
+export const WorldMap: React.FC<{at?: number; w: number; fill?: Record<string, string>; fillAt?: number; land?: string; edge?: string}> = ({at = 0, w, fill = {}, fillAt, land = '#E9D8B4', edge = '#0F1C3F'}) => {
+	const t = useT();
+	const p = prog(t, at, 0.9, eio);
+	const f = prog(t, fillAt ?? at + 0.8, 0.5);
+	const paths = world.paths as Record<string, string>;
+	const names = Object.keys(paths);
+	return (
+		<svg width={w} height={worldHeight(w)} viewBox={`0 0 ${world.w} ${world.h}`} style={{overflow: 'visible'}}>
+			{names.map((n, i) => (
+				<path key={n} d={paths[n]} fill={land} stroke={edge} strokeWidth={0.8} opacity={clamp(p * 1.8 - (i / names.length) * 0.8)} />
+			))}
+			{Object.entries(fill ?? {}).map(([n, color]) => (paths[n] ? <path key={'f' + n} d={paths[n]} fill={color} stroke={edge} strokeWidth={0.8} opacity={f} /> : null))}
+		</svg>
+	);
+};
+/** where a country (by English name) or [lon, lat] falls on a WorldMap of width w: [x, y] relative to the map's top-left */
+export const worldPoint = (place: string | [number, number], w: number): [number, number] => {
+	const k = w / world.w;
+	if (typeof place === 'string') {
+		const c = (world.centers as Record<string, [number, number]>)[place];
+		return c ? [c[0] * k, c[1] * k] : [world.w * k * 0.5, world.h * k * 0.5];
+	}
+	const [lon, lat] = place;
+	const la = Math.max(-58, Math.min(84, lat));
+	return [(lon + 180) * world.k * (0.88 + 0.12 * Math.cos((la * Math.PI) / 180)) * k, (84 - la) * world.k * 1.18 * k];
+};
+
+/** a dashed route drawn through frame points with a glowing head (a trade route, a flight, a money flow) */
+export const Route: React.FC<{pts: [number, number][]; at: number; dur?: number; color?: string; width?: number; dash?: boolean}> = ({pts, at, dur = 1.6, color = RED, width = 7, dash = true}) => {
+	const t = useT();
+	if (!pts || pts.length < 2 || t < at) return null;
+	const p = prog(t, at, dur, eio);
+	const d = smooth(pts);
+	const len = 4000;
+	return (
+		<svg width={W} height={H} style={{position: 'absolute', left: 0, top: 0, pointerEvents: 'none'}}>
+			<path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeDasharray={dash ? '3 17' : len} strokeDashoffset={dash ? 0 : len * (1 - p)} pathLength={dash ? undefined : len} style={dash ? {clipPath: `inset(0 ${(1 - p) * 100}% 0 0)`} : undefined} />
+			{(() => {
+				const i = Math.min(pts.length - 2, Math.floor(p * (pts.length - 1)));
+				const f = p * (pts.length - 1) - i;
+				const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f;
+				const y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f;
+				return p < 1 ? <circle cx={x} cy={y} r={14} fill={color} /> : <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r={11} fill={color} />;
+			})()}
+		</svg>
+	);
 };

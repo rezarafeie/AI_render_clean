@@ -35,7 +35,7 @@ const S01: React.FC = () => {
 				{t > c('دلار') && (
 					<Wipe at={c('دلار')}>
 						<T size={50} weight={500}>
-							حدود {fa('۱.۲')} میلیارد دلار
+							حدود یک و دو دهم میلیارد دلار
 						</T>
 					</Wipe>
 				)}
@@ -60,7 +60,7 @@ const S02: React.FC = () => {
 			</Enter>
 			<CircleMark cx={540} cy={930} rx={470} ry={360} at={c('حتی')} />
 			<Stamp at={c('جفت') - 0.1} x={560} y={1450} rot={-8} size={92}>
-				{fa(0)} جفت کفش
+				صفر جفت کفش
 			</Stamp>
 		</AbsoluteFill>
 	);
@@ -389,7 +389,7 @@ const S10: React.FC = () => {
 						{[2, 1, 0].map((k) => (
 							<div key={k} style={{position: 'absolute', left: k * 8, top: k * 8, width: 260, height: 280, background: '#FBF8F1', boxShadow: '0 8px 14px rgba(0,0,0,0.2)', borderTop: `44px solid ${RED}`}} />
 						))}
-						<div style={{position: 'absolute', left: 0, top: 60, width: 260, textAlign: 'center', fontFamily: D, fontWeight: 800, fontSize: 130, color: INK}}>{fa(dIdx)}</div>
+						<div style={{position: 'absolute', left: 0, top: 50, width: 260, display: 'flex', justifyContent: 'center'}}><Num size={150}>{dIdx}</Num></div>
 						<div style={{position: 'absolute', left: 0, top: 220, width: 260, textAlign: 'center', fontFamily: D, fontWeight: 500, fontSize: 40, color: INK}}>روز بعد</div>
 					</div>
 				</Enter>
@@ -574,7 +574,7 @@ const S13: React.FC = () => {
 					</div>
 				</Torn>
 			</Enter>
-			<Stamp at={c('خریدش') - 0.05} x={860} y={1380} rot={10} size={70}>
+			<Stamp at={c('خریدش') - 0.05} x={860} y={1380} rot={10} size={80} font={ANTON}>
 				$1.2B
 			</Stamp>
 		</AbsoluteFill>

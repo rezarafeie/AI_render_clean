@@ -1054,6 +1054,7 @@ class Hooks(BaseModel):
     note: Callable[..., None]
     progress: Callable[[int, str], None]
     cancelled: Callable[[], bool]
+    say: Callable[[str], None] | None = None                  # a message in the chat (the research summary before a Vox film is made)
     snapshots: Callable[[list, list], None] | None = None    # called with ([(label, still path)], [narration line per scene]) as soon as the scene stills exist, so the chat shows them while the film is still being made
 
 

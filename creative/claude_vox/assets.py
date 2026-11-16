@@ -12,9 +12,12 @@ import io
 import json
 import logging
 import os
+import re
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from .looks import PICTURE
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +27,9 @@ ROUTE = os.environ.get("VOX_IMAGE_ROUTE", "photorealistic_image")
 PER_SHEET = 6
 MAX_PICTURES = 18
 
-SHEET = ("Sheet of {n} separate vintage black-and-white halftone newspaper photo cutouts on a pure white background, evenly spaced in a {cols}x{rows} grid "
+SHEET = ("Sheet of {n} separate {style} on a pure white background, evenly spaced in a {cols}x{rows} grid "
          "(top row left to right, then the bottom row) with generous white space between them, each object complete and fully inside its own cell, nothing touching "
-         "the edges, no text, no letters, no logos, no brand marks:\n{items}\nHigh contrast, grainy print texture, documentary collage style.{extra}")
+         "the edges, no text, no letters, no logos, no brand marks:\n{items}\n{style_tail}{extra}")
 PEOPLE = " The people are anonymous: faces not detailed, seen from behind or with the face in shadow."
 PLACES = " Places and rooms are photographed as rectangular prints that fill their cell: absolutely no text, no signs."
 
@@ -40,12 +43,14 @@ def _cache() -> Path:
 
 # ── paper ────────────────────────────────────────────────────────────────────
 
+GROUNDS = ("paper", "grid", "white", "kraft", "blueprint")
+
+
 def textures() -> dict[str, Path]:
-    """paper.jpg and grid.jpg (1080x1920), made once (deterministic) and kept in the kit (or the cache when the kit is read-only)."""
+    """paper, grid, white, kraft and blueprint (1080x1920 jpg), made once (deterministic) and kept in the kit (or the cache when the kit is read-only)."""
     for folder in (KIT / "public" / "img", _cache() / "img"):
-        paper, grid = folder / "paper.jpg", folder / "grid.jpg"
-        if paper.is_file() and grid.is_file():
-            return {"paper": paper, "grid": grid}
+        if all((folder / f"{k}.jpg").is_file() for k in GROUNDS):
+            return {k: folder / f"{k}.jpg" for k in GROUNDS}
     import cv2
     import numpy as np
     rng = np.random.default_rng(3)
@@ -61,24 +66,38 @@ def textures() -> dict[str, Path]:
     gy = cv2.Sobel(height, cv2.CV_32F, 0, 1, ksize=5)
     shade = -gx * 0.6 - gy * 0.8                                                       # light from the top left
     shade = shade / max(float(np.percentile(np.abs(shade), 99)), 1e-6)
-    image = np.array([217, 229, 238], np.float32)[None, None, :] * (1 + 0.06 * shade[..., None])   # BGR of #EEE5D9
-    image[rng.random((h, w)) < 0.004] *= 0.9                                           # fibres
-    image += rng.standard_normal((h, w)).astype(np.float32)[..., None] * 3.5
+    grain = rng.standard_normal((h, w)).astype(np.float32)[..., None] * 3.5
+    fibres = rng.random((h, w)) < 0.004
     yy, xx = np.mgrid[0:h, 0:w]
     d = np.sqrt(((xx - w / 2) / w) ** 2 + ((yy - h / 2) / h) ** 2)
-    image *= (1 - 0.18 * np.clip(d - 0.25, 0, 1))[..., None]
-    paper = np.clip(image, 0, 255).astype(np.uint8)
-    grid = paper.astype(np.float32)
-    for x in range(0, w, 54):
-        grid[:, x:x + 2] *= 0.93
-    for y in range(0, h, 54):
-        grid[y:y + 2, :] *= 0.93
+    vignette = (1 - 0.18 * np.clip(d - 0.25, 0, 1))[..., None]
+
+    def make(base_bgr, strength=0.06):
+        img = np.array(base_bgr, np.float32)[None, None, :] * (1 + strength * shade[..., None])
+        img[fibres] *= 0.9
+        return np.clip((img + grain) * vignette, 0, 255).astype(np.uint8)
+
+    def lines(img, step, color, alpha):
+        out = img.astype(np.float32)
+        c = np.array(color, np.float32)
+        for x in range(0, w, step):
+            out[:, x:x + 2] = out[:, x:x + 2] * (1 - alpha) + c * alpha
+        for y in range(0, h, step):
+            out[y:y + 2, :] = out[y:y + 2, :] * (1 - alpha) + c * alpha
+        return np.clip(out, 0, 255).astype(np.uint8)
+
+    paper = make([217, 229, 238])                                                       # BGR of #EEE5D9
+    images = {"paper": paper,
+              "grid": lines(paper, 54, [0, 0, 0], 0.07),
+              "white": make([242, 242, 240], 0.03),
+              "kraft": make([152, 174, 185], 0.07),                                     # #B9AE98
+              "blueprint": lines(lines(make([63, 28, 15], 0.025), 54, [160, 120, 90], 0.10), 270, [200, 170, 140], 0.14)}   # deep navy with a fine and a coarse grid
     for folder in (KIT / "public" / "img", _cache() / "img"):
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(folder / "paper.jpg"), paper, [cv2.IMWRITE_JPEG_QUALITY, 90])
-            cv2.imwrite(str(folder / "grid.jpg"), np.clip(grid, 0, 255).astype(np.uint8), [cv2.IMWRITE_JPEG_QUALITY, 90])
-            return {"paper": folder / "paper.jpg", "grid": folder / "grid.jpg"}
+            for k, image in images.items():
+                cv2.imwrite(str(folder / f"{k}.jpg"), image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            return {k: folder / f"{k}.jpg" for k in GROUNDS}
         except OSError:
             continue
     raise RuntimeError("the paper textures could not be written")
@@ -123,12 +142,14 @@ def sheets_of(pictures: list[dict]) -> list[list[dict]]:
     return [ranked[i:i + PER_SHEET] for i in range(0, len(ranked), PER_SHEET)]
 
 
-def sheet_prompt(group: list[dict]) -> str:
+def sheet_prompt(group: list[dict], style: str = "") -> str:
+    from .looks import PICTURE
+    style = style or PICTURE["halftone"]
     cols = 3 if len(group) > 2 else len(group)
     rows = 2 if len(group) > 3 else 1
     items = "\n".join(f"{i}) {str(p.get('prompt') or p.get('name'))[:220]}" for i, p in enumerate(group, 1))
     extra = (PEOPLE if any(p.get("kind") == "person" or p.get("people") for p in group) else "") + (PLACES if any(p.get("kind") == "photo" for p in group) else "")
-    return SHEET.format(n=len(group), cols=cols, rows=rows, items=items, extra=extra)
+    return SHEET.format(n=len(group), cols=cols, rows=rows, items=items, extra=extra, style=style.split(',')[0], style_tail=style + '.')
 
 
 def generate(prompt: str, out: Path) -> Path:
@@ -183,6 +204,52 @@ def check_sheet(path: Path, group: list[dict]) -> set[int]:
         return set()
 
 
+# ── real photos: Wikimedia Commons (free licenses, no key) ───────────────────
+
+COMMONS = "https://commons.wikimedia.org/w/api.php"
+FREE = re.compile(r"^(cc[ -]?by(?!.*nc)|cc0|public domain|pd|gfdl|attribution)", re.I)
+
+
+def commons_photo(query: str, out: Path) -> str | None:
+    """A real, freely licensed photo for `query` from Wikimedia Commons saved to `out` (a .jpg); returns its credit line, or None when nothing fits."""
+    import json as _json
+    import urllib.parse
+    params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": "6", "gsrlimit": "12", "gsrsearch": f"{query} filetype:bitmap",
+              "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata", "iiurlwidth": "1600"}
+    request = urllib.request.Request(COMMONS + "?" + urllib.parse.urlencode(params), headers={"User-Agent": "editorgpt-vox/1 (video engine; contact via service)"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as r:
+            pages = (_json.loads(r.read(2_000_000)).get("query") or {}).get("pages") or {}
+    except Exception as exc:
+        log.warning("commons search %r failed: %s", query, str(exc)[:120])
+        return None
+    for page in sorted(pages.values(), key=lambda p: p.get("index", 99)):
+        info = (page.get("imageinfo") or [{}])[0]
+        meta = info.get("extmetadata") or {}
+        license_name = str((meta.get("LicenseShortName") or {}).get("value") or "")
+        if info.get("mime") not in {"image/jpeg", "image/png"} or int(info.get("width") or 0) < 900 or int(info.get("height") or 0) < 500:
+            continue
+        if not FREE.search(license_name) or str((meta.get("NonFree") or {}).get("value") or "").lower() == "true":
+            continue
+        if re.search(r"logo|map|flag|diagram|poster|screenshot|portrait|\bsvg\b", str(page.get("title", "")), re.I):
+            continue
+        url = info.get("thumburl") or info.get("url")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "editorgpt-vox/1"}), timeout=60) as r:
+                raw = r.read(25 * 1024 * 1024)
+            from PIL import Image
+            image = Image.open(io.BytesIO(raw))
+            image.load()
+            out.parent.mkdir(parents=True, exist_ok=True)
+            image.convert("RGB").save(out)
+        except Exception as exc:
+            log.warning("commons download failed: %s", str(exc)[:120])
+            continue
+        author = re.sub(r"<[^>]+>", "", str((meta.get("Artist") or {}).get("value") or "Wikimedia Commons")).strip()[:60]
+        return f"{page.get('title', '').replace('File:', '')[:70]} — {author} ({license_name or 'free license'}), Wikimedia Commons"
+    return None
+
+
 # ── cutting ──────────────────────────────────────────────────────────────────
 
 def boxes(image, n: int) -> list[tuple[int, int, int, int]]:
@@ -216,14 +283,24 @@ def _up(image, factor: float):
     return cv2.addWeighted(image, 1.5, blur, -0.5, 0)
 
 
-def _gray(image):
+def _gray(image, treatment: str = "halftone"):
+    """The film's picture treatment: grayscale (halftone, mono), higher-contrast gray (engraving), sepia, or the colours kept a little desaturated (vector, colorcut)."""
     import cv2
+    import numpy as np
+    if treatment in {"vector", "colorcut"}:
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[..., 1] *= 0.88 if treatment == "colorcut" else 1.0
+        return cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR)
     g = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    g = cv2.convertScaleAbs(g, alpha=1.12, beta=-8)
+    g = cv2.convertScaleAbs(g, alpha=1.3 if treatment == "engraving" else 1.12, beta=-12 if treatment == "engraving" else -8)
+    if treatment == "sepia":
+        f = (g.astype(np.float32) / 255.0)[..., None]
+        low, high = np.array([22, 38, 58], np.float32), np.array([190, 226, 246], np.float32)       # BGR: dark brown shadows to cream highlights
+        return np.clip(low + f * (high - low), 0, 255).astype(np.uint8)
     return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
 
 
-def cutout(cell, out: Path, border: int = 14, minfrac: float = 0.002) -> Path | None:
+def cutout(cell, out: Path, border: int = 14, minfrac: float = 0.002, treatment: str = "halftone") -> Path | None:
     """The object of a white-ground cell with a white paper border (cut.py of the reference film); None when nothing usable is in the cell."""
     import cv2
     import numpy as np
@@ -247,7 +324,7 @@ def cutout(cell, out: Path, border: int = 14, minfrac: float = 0.002) -> Path | 
     if filled.sum() < 0.01 * h * w or filled.sum() > 0.97 * h * w:
         return None
     factor = min(2.5, 1400 / max(h, w))
-    big = _up(_gray(cell), factor)
+    big = _up(_gray(cell, treatment), factor)
     km = cv2.resize(filled * 255, (big.shape[1], big.shape[0]), interpolation=cv2.INTER_LINEAR)
     km = cv2.GaussianBlur(km, (0, 0), 1.0)
     dil = cv2.dilate((km > 127).astype(np.uint8) * 255, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * border + 1, 2 * border + 1)))
@@ -266,7 +343,7 @@ def cutout(cell, out: Path, border: int = 14, minfrac: float = 0.002) -> Path | 
     return out
 
 
-def photo(cell, out: Path) -> Path | None:
+def photo(cell, out: Path, treatment: str = "halftone") -> Path | None:
     """A printed photo: the cell cropped to its content, grayscale, upscaled (JPG)."""
     import cv2
     import numpy as np
@@ -277,7 +354,7 @@ def photo(cell, out: Path) -> Path | None:
     crop = cell[ys.min():ys.max(), xs.min():xs.max()]
     if min(crop.shape[:2]) < 60:
         return None
-    big = _up(_gray(crop), min(2.5, 1400 / max(crop.shape[:2])))
+    big = _up(_gray(crop, treatment), min(2.5, 1400 / max(crop.shape[:2])))
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), big, [cv2.IMWRITE_JPEG_QUALITY, 92])
     return out
@@ -287,7 +364,7 @@ def file_name(picture: dict) -> str:
     return f"{picture['name']}.{'jpg' if picture.get('kind') == 'photo' else 'png'}"
 
 
-def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None) -> list[dict]:
+def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None, credits: list[str] | None = None, treatment: str = "halftone") -> list[dict]:
     """Every picture that could be made, as [{name, kind, file, w, h, what}] (file is the name under public/img). Pictures already cut in `folder` are kept."""
     import cv2
     folder.mkdir(parents=True, exist_ok=True)
@@ -299,6 +376,36 @@ def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None) 
             ready[p["name"]] = p
         else:
             wanted.append(p)
+    real = [p for p in wanted if p.get("kind") == "photo" and p.get("commons")]
+    if real:
+        import cv2
+
+        def fetch(p: dict) -> None:
+            if should_stop and should_stop():
+                return
+            raw = folder / "commons" / f"{p['name']}.jpg"
+            credit = commons_photo(str(p["commons"])[:100], raw)
+            if not credit:
+                if on_note:
+                    on_note(f"عکس واقعی «{p['commons']}» در ویکی‌مدیا کامنز پیدا نشد؛ جایش یک تصویر ساخته‌شده می‌آید")
+                return
+            image = cv2.imread(str(raw))
+            if image is None:
+                return
+            if 1 in check_sheet(raw, [p]):
+                if on_note:
+                    on_note(f"عکس واقعی «{p['commons']}» لوگو، نوشته یا چهرهٔ واقعی داشت و کنار گذاشته شد")
+                return
+            if photo(image, folder / file_name(p), treatment):
+                ready[p["name"]] = p
+                if credits is not None:
+                    credits.append(credit)
+                if on_note:
+                    on_note(f"عکس واقعی «{p['commons']}» از ویکی‌مدیا کامنز آماده شد: {credit}")
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            list(pool.map(fetch, real))
+        wanted = [p for p in wanted if p["name"] not in ready]
     groups = sheets_of(wanted)
 
     def one(index_group):
@@ -312,7 +419,7 @@ def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None) 
             if not sheet.is_file():
                 if on_note:
                     on_note(f"دارم برگهٔ تصویر {index + 1} از {len(groups)} را می‌سازم: " + "، ".join(p["name"] for p in group))
-                generate(sheet_prompt(group), sheet)
+                generate(sheet_prompt(group, PICTURE.get(treatment, PICTURE['halftone'])), sheet)
         except Exception as exc:
             log.warning("vox sheet %d failed: %s", index + 1, str(exc)[:200])
             if on_note:
@@ -327,7 +434,7 @@ def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None) 
                 log.info("vox picture %s dropped by the check", picture["name"])
                 continue
             cell = image[y:y + h, x:x + w]
-            made = photo(cell, folder / file_name(picture)) if picture.get("kind") == "photo" else cutout(cell, folder / file_name(picture))
+            made = photo(cell, folder / file_name(picture), treatment) if picture.get("kind") == "photo" else cutout(cell, folder / file_name(picture), treatment=treatment)
             if made:
                 ready[picture["name"]] = picture
 

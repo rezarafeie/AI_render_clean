@@ -9,6 +9,9 @@ from contextlib import contextmanager
 description = contextvars.ContextVar('studio_activity_description', default=None)
 # What this work is about (the title of the page being read, the topic of the request): step labels say it instead of a generic "this part of the edit".
 subject = contextvars.ContextVar('studio_activity_subject', default='')
+# Model calls made while this is set are not shown as work steps in the chat (the narration that reports a finished step is not a step itself; its steps would
+# otherwise appear as a new «working» group below the result).
+quiet = contextvars.ContextVar('studio_activity_quiet', default=False)
 LABELS = {
     'audio_generation': ('narration', 'در حال ساخت صدای گویندگی از متن تأییدشده هستم.'),
     'transcription': ('transcription', 'در حال دریافت متن گفتار و زمان‌بندی کلمه‌ها هستم.'),
@@ -109,7 +112,7 @@ def observe_request(function):
     def wrapped(route, *args, **kwargs):
         from brain.lm_gateway import conversation_context
         cid = conversation_context.get()
-        if not cid or kwargs.get('probe'):
+        if not cid or kwargs.get('probe') or quiet.get():
             return function(route, *args, **kwargs)
         stage, message = description.get() or LABELS.get(route, (route, 'در حال پردازش این بخش از تدوین هستم.'))
         topic = subject.get()
