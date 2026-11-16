@@ -130,9 +130,9 @@ def mix(out: Path, *, total: float, events: list[dict], music: Path | None, musi
     raw.write_bytes(mixed.astype(np.float32).tobytes())
     source = ["-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", str(raw)]
     try:
-        log_text = subprocess.run(["ffmpeg", "-hide_banner", *source, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"],
+        log_text = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", *source, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"],
                                   capture_output=True, text=True, check=True).stderr
-        measured = json.loads(log_text[log_text.rindex("{"):])
+        measured, _end = json.JSONDecoder().raw_decode(log_text[log_text.rindex("{"):])        # ffmpeg prints more lines after the report
         chain = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:measured_LRA={measured['input_lra']}:"
                  f"measured_thresh={measured['input_thresh']}:offset={measured['target_offset']}:linear=true,alimiter=limit=0.84:level=false")
         subprocess.run(["ffmpeg", "-v", "error", "-y", *source, "-af", chain, "-ar", "48000", str(out)], check=True)
