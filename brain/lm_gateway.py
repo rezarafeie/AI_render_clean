@@ -677,7 +677,6 @@ def probe_model(mid, capability="chat"):
     return store.patch("models",mid,row,union=("verified",))
 
 
-@observe_request
 def _sources_from_response(response):
     """(answer text, [{title, url, content}]) from a Responses-API result: the cited sources of its message, each with the passage that cites it."""
     text = ""; found = {}
@@ -698,6 +697,7 @@ def _sources_from_response(response):
     return text.strip(), list(found.values())
 
 
+@observe_request
 def search(query, *, count=5, topic=None):
     """Web search through the router's "web_search" route: a Responses-API call carrying the web_search tool, on the models the route lists (an OpenAI
     model searches natively on the provider's side; a model that only hands back a tool call is skipped). Returns the cited sources as
