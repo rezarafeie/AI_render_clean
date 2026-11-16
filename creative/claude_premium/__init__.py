@@ -644,29 +644,44 @@ def write_props(p: Plan, words: list[dict], names: set[str] | None = None, *, fe
             text += f"\nYOUR PREVIOUS CODE:\n{previous[g.name]}\nFIX THIS (return the complete component again): {feedback[g.name][:2500]}"
         return text
 
-    others = [g.name for g in p.props if g not in todo]
-    user = "\n\n".join(["THE KIT, src/gfx.tsx:\n" + kit, "EXAMPLE graphics.tsx (another film; its quality is the standard):\n" + example,
-                         (f"These graphics already exist in this film (stay different from them): {', '.join(others)}\n\n" if others else "") + "WRITE THESE COMPONENTS NOW:\n\n" + "\n\n".join(brief(g) for g in todo)])
     if note:
         for g in todo:
             note(f"g-{g.name}", f"دارم گرافیک «{g.name}» را طراحی و کدنویسی می‌کنم", "active", g.what[:500])
-    code = cm._one_ask(guide, user, 20000, None, tries=3, seconds=900)
-    code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)
-    found: dict[str, str] = {}
-    starts = [(m.start(), m.group(1)) for m in re.finditer(r"^export\s+const\s+G_([a-z0-9_]+?)\s*:", code, re.M)]
-    for n, (pos, name) in enumerate(starts):
-        end = starts[n + 1][0] if n + 1 < len(starts) else len(code)
-        owner = next((g.name for g in todo if name == g.name or name.startswith(g.name + "_")), None)
-        if owner:
-            found[owner] = (found.get(owner, "") + "\n\n" + code[pos:end].strip()).strip()
-    head = code[:starts[0][0]].strip() if starts else ""
-    if head and todo and todo[0].name in found:
-        found[todo[0].name] = head + "\n\n" + found[todo[0].name]
-    for g in todo:
-        if g.name in found and re.search(rf"export\s+const\s+G_{g.name}\s*:", found[g.name]):
-            previous[g.name] = found[g.name]
-            if note:
-                note(f"g-{g.name}", f"گرافیک «{g.name}» کدنویسی شد", "done")
+    chunks = [todo[i:i + 3] for i in range(0, len(todo), 3)]        # three graphics per call: a whole film's graphics in one reply gets cut off (finish=length)
+
+    def ask(group: list[Prop]) -> str:
+        others = [g.name for g in p.props if g not in group]
+        user = "\n\n".join(["THE KIT, src/gfx.tsx:\n" + kit, "EXAMPLE graphics.tsx (another film; its quality is the standard):\n" + example,
+                             (f"These graphics are written by the same designer for this film (yours must differ in structure from them): {', '.join(others)}\n\n" if others else "")
+                             + "WRITE THESE COMPONENTS NOW:\n\n" + "\n\n".join(brief(g) for g in group)])
+
+        def split() -> str:                                             # a call that still fails is asked again one graphic at a time
+            return "\n\n".join(ask([g]) for g in group)
+        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780)
+
+    def one(group: list[Prop]) -> dict[str, str]:
+        code = re.sub(r"^\s*import\s.*?;\s*$", "", ask(group), flags=re.M)
+        found: dict[str, str] = {}
+        starts = [(m.start(), m.group(1)) for m in re.finditer(r"^export\s+const\s+G_([a-z0-9_]+?)\s*:", code, re.M)]
+        for n, (pos, name) in enumerate(starts):
+            end = starts[n + 1][0] if n + 1 < len(starts) else len(code)
+            owner = next((g.name for g in group if name == g.name or name.startswith(g.name + "_")), None)
+            if owner:
+                found[owner] = (found.get(owner, "") + "\n\n" + code[pos:end].strip()).strip()
+        head = code[:starts[0][0]].strip() if starts else ""
+        if head and group and group[0].name in found:
+            found[group[0].name] = head + "\n\n" + found[group[0].name]
+        done: dict[str, str] = {}
+        for g in group:
+            if g.name in found and re.search(rf"export\s+const\s+G_{g.name}\s*:", found[g.name]):
+                done[g.name] = found[g.name]
+                if note:
+                    note(f"g-{g.name}", f"گرافیک «{g.name}» کدنویسی شد", "done")
+        return done
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for result in pool.map(one, chunks):
+            previous.update(result)
     return previous
 
 
