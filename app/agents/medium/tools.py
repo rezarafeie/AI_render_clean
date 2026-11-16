@@ -50,6 +50,10 @@ class DiscoverClips(Asset):
     focus: str = Field(default="", max_length=600, description="What kind of pieces to look for, in the person's words (empty: every standalone piece worth publishing).")
 
 
+class LookAtMedia(Asset):
+    pass
+
+
 class AudioCheck(Asset):
     expected_text: str = Field(default="", max_length=4000, description="The script the audio should say, when known (reported only; speech recognition is not run here).")
     preset: Literal["instagram_reels", "tiktok", "youtube", "podcast", "social_video"] | None = Field(default=None, description="Delivery loudness target to judge the file against.")
@@ -106,6 +110,7 @@ SCHEMAS["search_creative_resources"] = studio_tools.ResourceSearchInput
 SCHEMAS["read_creative_skill"] = studio_tools.SkillReadInput
 SCHEMAS["instagram_content_check"] = studio_tools.InstagramContentCheckInput
 SCHEMAS["audio_check"] = AudioCheck
+SCHEMAS["look_at_media"] = LookAtMedia
 SCHEMAS["plan_audio_direction"] = AudioDirection
 SCHEMAS["find_music"] = FindMusic
 SCHEMAS["generate_music"] = GenerateMusic
@@ -115,8 +120,9 @@ SCHEMAS["read_connected_app"] = ReadInput
 READ_ONLY = {"inspect_media", "inspect_url", "check_render_status", "inspect_project", "search_creative_resources"}
 READ_ONLY.add("instagram_content_check")
 READ_ONLY.add("read_creative_skill")
-READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music"})
+READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music", "look_at_media"})
 EXTRA_DESCRIPTIONS = {
+    "look_at_media": "LOOK at an attached video before deciding anything about it: measured cut rate, loudness and silence, 12 frames judged by a vision model: is it RAW footage or an already PRODUCED edit (burned captions, graphics, stickers, motion graphics), what it shows, what looks plain or weak, its palette, and `advice` on how to treat it. Free and read-only. Use it first for any request to edit, improve, restyle or add motion/graphics to an attached video.",
     "discover_clips": "For a LONG attached video (a podcast, class, interview, meeting): transcribe all speech locally, understand the whole video and find every standalone piece worth publishing as a reel or post; each result opens as a card in this chat. Use it when the person wants many clips from one long video, never for editing one reel. It runs in the background for minutes.",
     "audio_check": "Measure an attached audio or video file's sound, deterministically with ffmpeg: duration, peak and clipping, silence share, integrated loudness (LUFS), true peak and loudness range, judged against a delivery preset. It does not judge naturalness or pronunciation and costs nothing.",
     "find_music": "Find music for a video without making anything: ranks the studio library and music made before, and searches the authorised catalogues that are configured (Jamendo, Epidemic Sound). Every result shows its source, licence, whether it may be used in a published video and a preview where one is allowed. Providers without credentials are listed as skipped, never hidden.",
@@ -229,6 +235,13 @@ def execute(record, step):
         clean, wanted = directives.parse(args.brief)
         plan, notes = direction.plan(clean, wanted)
         return {"plan": plan.model_dump(), "notes": [*notes, *wanted.notes]}
+    if name == "look_at_media":
+        import tempfile
+        from creative import perception
+        asset = run(repo.get_attachments([args.attachment_id], cid, user))[0]
+        if asset["kind"] != "video": raise ValueError("A video attachment is required")
+        with tempfile.TemporaryDirectory(prefix="look-") as folder:
+            return perception.look(Path(asset["path"]), Path(folder))
     if name == "audio_check":
         from creative.audio import quality
         asset = run(repo.get_attachments([args.attachment_id], cid, user))[0]
