@@ -222,6 +222,39 @@ def read_pages(sources: list[dict], folder: Path, notes=None, limit: int = 6) ->
     return sources
 
 
+def wiki_sources(titles: list[str], notes=None, per: int = 2) -> list[dict]:
+    """English Wikipedia articles for the entities of the story: [{title, url, content, text}] — free, needs no key, and independent of the web-search route."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    api = "https://en.wikipedia.org/w/api.php"
+    out: list[dict] = []
+
+    def get(params: dict) -> dict:
+        request = urllib.request.Request(api + "?" + urllib.parse.urlencode({**params, "format": "json", "formatversion": "2"}), headers={"User-Agent": "editorgpt-vox/1 (video engine)"})
+        with urllib.request.urlopen(request, timeout=30) as r:
+            return _json.loads(r.read(3_000_000))
+
+    for title in [t for t in titles if str(t).strip()][:4]:
+        try:
+            with cm.step("wiki", f"دارم مقالهٔ ویکی‌پدیا دربارهٔ «{str(title)[:40]}» را می‌خوانم."):
+                hits = (get({"action": "query", "list": "search", "srsearch": str(title)[:100], "srlimit": per}).get("query") or {}).get("search") or []
+                for hit in hits[:per]:
+                    page = ((get({"action": "query", "prop": "extracts", "explaintext": "1", "exlimit": "1", "titles": hit["title"]}).get("query") or {}).get("pages") or [{}])[0]
+                    text = re.sub(r"\n{2,}", "\n", str(page.get("extract") or "")).strip()
+                    if len(text) > 400:
+                        url = "https://en.wikipedia.org/wiki/" + urllib.parse.quote(hit["title"].replace(" ", "_"))
+                        out.append({"title": f"{hit['title']} — Wikipedia", "url": url, "content": text[:600], "text": text[:7000], "page_title": hit["title"]})
+        except Exception as exc:
+            log.warning("wikipedia %r failed: %s", str(title)[:40], str(exc)[:120])
+    seen, uniq = set(), []
+    for s in out:
+        if s["url"] not in seen:
+            seen.add(s["url"])
+            uniq.append(s)
+    return uniq
+
+
 def research(request: str, context: str = "", notes=None, pages: Path | None = None) -> tuple[bool, list[dict], list[str]]:
     """(is it a finished script, the sources found, the queries) — sources are [{title, url, content, text?}]: the router's web search, then the best pages read in full."""
     from creative import llm
@@ -230,6 +263,7 @@ def research(request: str, context: str = "", notes=None, pages: Path | None = N
         model_config = ConfigDict(extra="ignore")
         script: bool = False
         queries: list[str] = Field(default_factory=list)
+        wiki: list[str] = Field(default_factory=list)
 
     try:
         with cm._long_call(120, 1500), cm.step("research_plan", "دارم پرس‌وجوهای جست‌وجوی وب برای پیدا کردن داستان را می‌نویسم."):
@@ -261,6 +295,10 @@ def research(request: str, context: str = "", notes=None, pages: Path | None = N
             seen.add(url)
             sources.append({"title": str(s.get("title") or "")[:160], "url": url, "content": str(s.get("content") or "")[:1200]})
     sources = sources[:14]
+    cm._say(notes, "research", "دارم مقالهٔ ویکی‌پدیای موضوع را هم می‌خوانم", "active")
+    wiki = wiki_sources(plan.wiki or [q.split(" 20")[0] for q in queries][:3], notes)
+    known = {s["url"] for s in sources}
+    sources = [s for s in wiki if s["url"] not in known] + sources                     # Wikipedia first: a reliable, citable base when the web search is thin
     if sources and pages is not None:
         cm._say(notes, "research", f"{len(sources)} منبع پیدا شد؛ دارم متن کامل بهترین صفحه‌ها را می‌خوانم", "active")
         pages.mkdir(parents=True, exist_ok=True)
@@ -313,7 +351,8 @@ def write_story(request: str, *, context: str = "", sources: list[dict] | None =
             blocks.append(f"[{i}] {s['title']} — {s['url']}" + (" (full page read)" if s.get("text") else " (search snippet only)") + "\n" + body)
         parts.append("SOURCES (web pages; every fact must come from them; cite by publication name AND url in facts[].sources):\n" + "\n\n".join(blocks))
     else:
-        parts.append("SOURCES: none could be searched. Use only widely documented public facts, rounded conservatively («حدود»), and say so in facts[].conflict.")
+        parts.append("SOURCES: none could be read this time. Use only widely documented public facts, rounded conservatively («حدود»), mark every uncertain one in facts[].conflict, and leave "
+                     "sources_footer EMPTY (never name a publication you were not given).")
     with cm._long_call(600, 12000), cm.step("story", "کارگردان دارد داستان، متن ۱۲ تا ۱۶ جمله‌ای با منبع و استوری‌بورد را می‌نویسد."):
         story = cm._retrying(lambda: llm.ask(Story, STORY_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=12000, attempts=2))
     return clean_story(story)
@@ -542,7 +581,7 @@ LAYOUT of the vertical frame: top (y 200-520) headline, year or key word; middle
 ground. Text never leaves the frame: the widest line at most 960 px (Persian at size S is about S*0.5 px per letter; split long lines in two or make them
 smaller). A highlight on a dark ground is RED with CREAM text.
 
-NUMBERS AND YEARS (the studio checks this): every number, year, price or percentage that stands on its own is set with <Num> (Anton, Latin digits), <Counter>
+NUMBERS AND YEARS (the studio checks this; a number must FIT: the widest line at most 960 px, Anton/Bebas digits are about size*0.5 px wide, so «$8,000,000,000» at size 120 is already 840 px — shorten to «$8B» or lower the size): every number, year, price or percentage that stands on its own is set with <Num> (Anton, Latin digits), <Counter>
 (Anton), <Type> (typewriter) or a Stamp with font={ANTON}/{TW}: «2009», «$1.2B», «25%», «1,200,000,000». NEVER put such a number in Doran/Persian digits
 (no fa() for display numbers, no «۲۰۰۹» in T/Label/Wipe): Persian text faces make numbers look wrong. Inside a Persian sentence write small numbers as WORDS
 («سه روز بعد») or put the number in its own <Num>. Size: headline number 140-260 px, supporting number 70-110 px.
