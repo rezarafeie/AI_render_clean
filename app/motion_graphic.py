@@ -583,7 +583,8 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
     try:
         if record.get("vox"):
             from creative import claude_vox
-            _note(directory, "engine", "موتور «ووکس»: مستند توضیحی کلاژ کاغذی — تحقیق و داستان مستند، تصویرهای روزنامه‌ای بریده، علامت‌های ماژیکی و مهر، همه روی کلمه‌های نریشن", "done")
+            _note(directory, "engine", ("موتور اکسپلینر سه‌بعدی (ووکس ۳D): تحقیق و داستان مستند، صحنه‌های سه‌بعدی با دوربین متحرک، همه روی کلمه‌های نریشن" if claude_vox.wants_3d(record.get("request", ""))
+                                        else "موتور «ووکس»: مستند توضیحی با سبکی که به موضوع می‌خورد — تحقیق و داستان مستند، تصویرها، علامت‌ها و عددها روی کلمه‌های نریشن"), "done")
             result = claude_vox.build(directory, record, hooks, change=change)
         else:
             _note(directory, "engine", "موتور «موشن کلاد»: یک مدل کل فیلم را یک‌جا کارگردانی و کدنویسی می‌کند", "done")

@@ -136,6 +136,60 @@ LOOKS: dict[str, dict] = {
                  "labels with thin leader lines that annotate a detail of the picture (Tag); a vignette plate (petri dish, microscope view) filling the frame for the big reveal; "
                  "a year appears huge in Anton-like caps on a skyline. Warm, 1940s science-poster feeling.",
     },
+    # —— 3D looks: every scene is built on a three.js stage (kit/src/stage3d.tsx); the 2D primitives only add titles, numbers and stamps on top ——
+    "clay_3d": {
+        "name": "Soft 3D clay world", "dim": "3d", "look3": "clay",
+        "when": "digital business, online income, apps, e-commerce, startups, creator economy: friendly modern explainers where objects (a phone, coins, parcels, a laptop) tell the story",
+        "ground": "flat", "bg": "#F6E2D3", "ink": "#2B2420", "text": "#2B2420",
+        "palette": ["#F2664B", "#4C7DF0", "#F5B83D"], "picture": "colorcut",
+        "display": "Grotesk", "serif": "DMSerif", "script": "Caveat", "sans": "Grotesk", "transition": "zoom",
+        "guide": "A soft pastel 3D world of matte, rounded toy-like objects under a warm light with long soft shadows (Stage3D look 'clay'). Each scene is ONE little set on a white "
+                 "pedestal (Platform3) or the bare floor: a phone with a shop app, coins stacking, parcels dropping, bars growing, a globe with glowing arcs. The camera is always "
+                 "moving (cam keys on the narration's words: a slow arc around the set, a push-in on the main moment). Persian titles big and heavy at the top (T, size 90-130), "
+                 "numbers in the grotesk display face, labels as white pills pointing at objects (Label3 / label). Change the background tint per scene (Stage3D bg gradient) "
+                 "so the film breathes: peach, sky blue, mint, lilac.",
+    },
+    "keynote_3d": {
+        "name": "Dark keynote 3D", "dim": "3d", "look3": "glossy",
+        "when": "technology, AI, fintech, crypto, SaaS, premium products and launches, 'the machine behind…': sleek, expensive, dramatic",
+        "ground": "flat", "bg": "#0B0E16", "ink": "#0B0E16", "text": "#F4F6FB",
+        "palette": ["#5B8CFF", "#FF5FA8", "#F5C04D"], "picture": "colorcut",
+        "display": "Grotesk", "serif": "Playfair", "script": "Caveat", "sans": "Grotesk", "transition": "zoom",
+        "guide": "A black stage with glossy lacquered objects, studio reflections and blue/pink rim lights (Stage3D look 'glossy', floor 'solid' with floorColor '#0E1118' for a "
+                 "reflective floor). Few objects, big and close, slow dramatic camera moves (a low angle rising, a push-in, a turn around a coin). White text, thin and large; "
+                 "numbers huge in the display face with a glow (textShadow); labels are glass pills. One accent colour per scene. Silence and space: never more than 3 objects.",
+    },
+    "miniature_3d": {
+        "name": "Low-poly miniature world", "dim": "3d", "look3": "lowpoly",
+        "when": "markets, cities, logistics and supply chains, international trade, how a business or a town grows, 'a day in the economy of…'",
+        "ground": "flat", "bg": "#DCEFF7", "ink": "#1F2A33", "text": "#1F2A33",
+        "palette": ["#E8553E", "#2E9E8F", "#F2B33D"], "picture": "colorcut",
+        "display": "Bebas", "serif": "DMSerif", "script": "Caveat", "sans": "Grotesk", "transition": "zoom",
+        "guide": "A faceted low-poly toy world seen from above at an isometric angle (Stage3D look 'lowpoly', orthographic camera: cam keys with ortho = view height 7-12): "
+                 "hexagonal islands (Platform3 shape 'hex'), cities that rise block by block (City3), pawn people (Person3), trees, parcels travelling along arcs between islands "
+                 "(Arc3, move), pins dropping on places. The world GROWS through the film; the camera pulls back on the peak to show the whole world. Condensed caps for numbers, "
+                 "Persian labels in white pills.",
+    },
+    "blueprint_3d": {
+        "name": "Blueprint wireframe 3D", "dim": "3d", "look3": "wire",
+        "when": "how something works inside: platforms, payment systems, algorithms, business models, mechanisms, architecture of a company",
+        "ground": "flat", "bg": "#0C1736", "ink": "#0C1736", "text": "#F4EBD8",
+        "palette": ["#FF6B4A", "#7FA7FF", "#F4D35E"], "picture": "engraving",
+        "display": "Grotesk", "serif": "Playfair", "script": "Caveat", "sans": "Grotesk", "transition": "slide",
+        "guide": "A navy blueprint stage: every object drawn as cream edge lines over a faint translucent fill on a perspective grid (Stage3D look 'wire'). Systems are shown as "
+                 "parts that assemble: boxes for components, arrows (Arrow3) and arcs (Arc3) for flows, a donut for shares; the camera orbits like an engineer inspecting a model. "
+                 "Cream monospace-feeling captions (Type, TW) and thin leader-line labels (Label3 with dx/dy). One accent (RED) marks the part the line talks about.",
+    },
+    "popup_3d": {
+        "name": "Paper pop-up book 3D", "dim": "3d", "look3": "paper",
+        "when": "stories of people and companies, history of a brand, journeys and origin stories told as a children's pop-up book in 3D",
+        "ground": "paper", "bg": "#EEE5D9", "ink": "#1C1B19", "text": "#1C1B19",
+        "palette": ["#D9432F", "#F2B33D", "#2A9D8F"], "picture": "colorcut",
+        "display": "Anton", "serif": "Playfair", "script": "Caveat", "sans": "Grotesk", "transition": "slide",
+        "guide": "A pop-up book on a paper page: the film's pictures stand up as paper cut-out cards (Card3, they unfold from flat with a hinge) among folded flat-shaded paper "
+                 "objects (Box3, Parcel3, City3, Tree3 in paper colours) under one lamp (Stage3D look 'paper' over <Paper/> ground, so the paper texture shows behind). The camera "
+                 "glides low across the page from card to card. Persian titles on torn paper strips (Torn), numbers as stamps.",
+    },
 }
 
 DEFAULT = "paper_collage"
@@ -146,7 +200,11 @@ def get(look: str | None) -> dict:
 
 
 def catalog() -> str:
-    return "\n".join(f"- {key}: {value['name']} — {value['when']}" for key, value in LOOKS.items())
+    return "\n".join(f"- {key}: {value['name']}{' [3D]' if value.get('dim') == '3d' else ''} — {value['when']}" for key, value in LOOKS.items())
+
+
+def is_3d(look_id: str | None) -> bool:
+    return get(look_id).get("dim") == "3d"
 
 
 def theme(look_id: str, overrides: dict | None = None) -> dict:
@@ -154,7 +212,8 @@ def theme(look_id: str, overrides: dict | None = None) -> dict:
     look = get(look_id)
     a, b, c = look["palette"]
     data = {"look": look_id if look_id in LOOKS else DEFAULT, "red": a, "must": b, "teal": c, "bg": look["bg"], "ink": look["ink"], "text": look["text"], "ground": look["ground"],
-            "display": look["display"], "serif": look["serif"], "script": look["script"], "sans": look["sans"], "transition": look["transition"]}
+            "display": look["display"], "serif": look["serif"], "script": look["script"], "sans": look["sans"], "transition": look["transition"],
+            "look3": look.get("look3", "")}
     for key in ("red", "must", "teal", "bg", "ink", "text"):
         value = (overrides or {}).get(key)
         if isinstance(value, str) and len(value) == 7 and value.startswith("#"):

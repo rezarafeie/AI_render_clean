@@ -26,14 +26,24 @@ EXTRA = {"pop": ("short soft cartoon pop, paper cut-out popping onto a table", 0
          "whoosh": ("soft airy whoosh transition, documentary", 0.8),
          "whoosh2": ("quick light whoosh of a paper plane passing", 0.6),
          "cashreg": ("vintage cash register ding with coins, short", 0.9),
-         "sparkle": ("gentle sparkle chime ending sting, light", 1.2)}
+         "sparkle": ("gentle sparkle chime ending sting, light", 1.2),
+         "thud": ("soft wooden toy block landing on a table, short muffled thud", 0.5),
+         "coins": ("a few gold coins dropping and clinking onto a stack, short", 0.9),
+         "rise": ("soft rising swoosh with a light pluck, a chart bar growing, short", 0.9),
+         "air": ("very soft slow camera move air whoosh, subtle", 1.2)}
 STAND_IN = {"pop": PREMIUM_SFX / "tick.mp3", "whoosh": PREMIUM_SFX / "softwhoosh.mp3", "whoosh2": PREMIUM_SFX / "softwhoosh.mp3",
-            "cashreg": PREMIUM_SFX / "chime.mp3", "sparkle": PREMIUM_SFX / "shimmer.mp3"}
+            "cashreg": PREMIUM_SFX / "chime.mp3", "sparkle": PREMIUM_SFX / "shimmer.mp3", "thud": SFX / "paper2.mp3", "coins": PREMIUM_SFX / "chime.mp3",
+            "rise": PREMIUM_SFX / "softwhoosh.mp3", "air": PREMIUM_SFX / "softwhoosh.mp3"}
 
 # primitive → (effect, volume); volumes stay between 0.25 and 0.6: the effects sit UNDER the voice
 BY_TAG = {"Stamp": ("stamp", 0.55), "Type": ("typewriter", 0.3), "Counter": ("typewriter", 0.3), "XMark": ("marker", 0.4), "CheckMark": ("marker", 0.4),
           "CircleMark": ("marker", 0.42), "Underline": ("marker", 0.35), "Arrow": ("marker", 0.32), "HeartMark": ("marker", 0.38), "Marker": ("marker", 0.32),
-          "Flash": ("shutter", 0.55), "Pin": ("pin", 0.45)}
+          "Flash": ("shutter", 0.55), "Pin": ("pin", 0.45),
+          # the 3D stage's objects (kit/src/stage3d.tsx)
+          "Box3": ("pop", 0.34), "Cyl3": ("pop", 0.34), "Ball3": ("pop", 0.34), "Person3": ("pop", 0.3), "Tree3": ("pop", 0.28), "Text3": ("pop", 0.3),
+          "Phone3": ("pop", 0.36), "Laptop3": ("pop", 0.36), "Platform3": ("thud", 0.3), "Parcel3": ("thud", 0.45), "Pin3": ("thud", 0.38), "Coins3": ("coins", 0.42),
+          "Coin3": ("coins", 0.4), "Bars3": ("rise", 0.4), "City3": ("rise", 0.38), "Donut3": ("rise", 0.36), "Arc3": ("whoosh2", 0.36), "Arrow3": ("whoosh2", 0.32),
+          "Globe3": ("whoosh", 0.3), "Card3": ("flip", 0.4)}
 ENTER = {"pop": ("pop", 0.38), "drop": ("paper2", 0.45), "left": ("paper", 0.32), "right": ("paper", 0.32), "up": ("paper2", 0.3), "down": ("paper2", 0.3)}
 
 
@@ -73,7 +83,8 @@ def effect(name: str) -> Path | None:
 
 # ── reading the events out of the code ───────────────────────────────────────
 
-_TAG = re.compile(r"<(Stamp|Type|Counter|XMark|CheckMark|CircleMark|Underline|Arrow|HeartMark|Marker|Flash|Pin|Enter)\b((?:[^<>{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)>", re.S)
+_TAG = re.compile(r"<(Stamp|Type|Counter|XMark|CheckMark|CircleMark|Underline|Arrow|HeartMark|Marker|Flash|Pin|Enter|Stage3D|Box3|Cyl3|Ball3|Person3|Tree3|Text3|Phone3|Laptop3|"
+                  r"Platform3|Parcel3|Pin3|Coins3|Coin3|Bars3|City3|Donut3|Arc3|Arrow3|Globe3|Card3)\b((?:[^<>{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)>", re.S)
 _AT = re.compile(r"\bat=\{((?:[^{}]|\{[^{}]*\})*)\}")
 _FROM = re.compile(r"\bfrom=[\"'{]+(\w+)")
 _CUE = re.compile(r"\bc\(\s*(['\"])(.*?)\1\s*(?:,\s*(\d+)\s*)?\)")
@@ -128,13 +139,20 @@ def events(scenes_code: str, timeline: dict) -> list[tuple[float, str, float]]:
         start = float(scene["start"]) - (IN if i else 0.0)                   # where the scene's own clock starts on the film's clock
         scene = {**scene, "_off": float(scene["start"]) - start, "_span": float(scene.get("end", scene["start"] + scene.get("dur", 0))) - start}
         if i:
-            out.append((float(scene["start"]) - IN, "whoosh" if scene.get("type") in {"big_term", "growth_chart"} else ("paper" if i % 2 else "paper2"), 0.42))
+            three = bool(body and "<Stage3D" in body.group(0))                 # a 3D page arrives with air, not paper
+            out.append((float(scene["start"]) - IN, "whoosh" if three or scene.get("type") in {"big_term", "growth_chart"} else ("paper" if i % 2 else "paper2"), 0.36 if three else 0.42))
         if not body:
             continue
         code = body.group(0)
         consts = {m.group(1): m.group(2) for m in _CONST.finditer(code)}
         for tag in _TAG.finditer(code):
             name, attrs = tag.group(1), tag.group(2)
+            if name == "Stage3D":                                                # camera moves after the first key: a soft air whoosh
+                for key in re.findall(r"\bat:\s*([^,}]+)", attrs)[1:]:
+                    seconds = _evaluate(key, scene, consts)
+                    if seconds is not None and 0.2 < seconds < scene["_span"]:
+                        out.append((start + seconds, "air", 0.22))
+                continue
             at = _AT.search(attrs)
             if not at:
                 continue

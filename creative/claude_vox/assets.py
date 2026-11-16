@@ -419,7 +419,11 @@ def make(pictures: list[dict], folder: Path, *, on_note=None, should_stop=None, 
             if not sheet.is_file():
                 if on_note:
                     on_note(f"دارم برگهٔ تصویر {index + 1} از {len(groups)} را می‌سازم: " + "، ".join(p["name"] for p in group))
-                generate(sheet_prompt(group, PICTURE.get(treatment, PICTURE['halftone'])), sheet)
+                try:
+                    generate(sheet_prompt(group, PICTURE.get(treatment, PICTURE['halftone'])), sheet)
+                except Exception as first:                       # the router may hand the next try to another image model (one was missing on 2026-11-16)
+                    log.warning("vox sheet %d failed once, trying again: %s", index + 1, str(first)[:160])
+                    generate(sheet_prompt(group, PICTURE.get(treatment, PICTURE['halftone'])), sheet)
         except Exception as exc:
             log.warning("vox sheet %d failed: %s", index + 1, str(exc)[:200])
             if on_note:
