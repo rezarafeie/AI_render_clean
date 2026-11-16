@@ -148,7 +148,7 @@ def sync_billing(provider, ledger, *, since):
     return count
 
 
-def reconcile(provider: RunPod, ledger, *, startup_seconds=900, idle_seconds=180, emergency=False) -> list[dict]:
+def reconcile(provider: RunPod, ledger, *, startup_seconds=900, idle_seconds=420, emergency=False) -> list[dict]:
     """Independent crash recovery, not dependent on successful worker callbacks.
 
     An ambiguous create is matched by its durably stored, random name AND image.

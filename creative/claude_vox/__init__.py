@@ -176,7 +176,7 @@ def research(request: str, context: str = "", notes=None) -> tuple[bool, list[di
         queries: list[str] = Field(default_factory=list)
 
     try:
-        with cm._long_call(120, 1500):
+        with cm._long_call(120, 1500), cm.step("research_plan", "دارم پرس‌وجوهای جست‌وجوی وب برای پیدا کردن داستان را می‌نویسم."):
             plan = cm._retrying(lambda: llm.ask(Plan, QUERIES, request[:4000], route=ROUTE, tokens=1500, attempts=2), tries=2, waits=(10,))
     except Exception as exc:
         log.warning("vox research plan unavailable: %s", str(exc)[:160])
@@ -188,7 +188,8 @@ def research(request: str, context: str = "", notes=None) -> tuple[bool, list[di
 
     def one(query: str) -> list[dict]:
         try:
-            return lm_gateway.search(query, count=5)
+            with cm.step("web_search", f"دارم در وب جست‌وجو می‌کنم: «{query[:50]}»"):
+                return lm_gateway.search(query, count=5)
         except Exception as exc:
             log.warning("vox search %r failed: %s", query[:60], str(exc)[:120])
             return []
@@ -218,7 +219,7 @@ def write_story(request: str, *, context: str = "", sources: list[dict] | None =
         parts.append("SOURCES (web search results; cite them by publication name):\n" + "\n\n".join(f"[{i}] {s['title']} — {s['url']}\n{s['content']}" for i, s in enumerate(sources, 1)))
     else:
         parts.append("SOURCES: none could be searched. Use only widely documented public facts, rounded conservatively («حدود»), and say so in facts[].conflict.")
-    with cm._long_call(600, 12000):
+    with cm._long_call(600, 12000), cm.step("story", "کارگردان دارد داستان، متن ۱۲ تا ۱۶ جمله‌ای با منبع و استوری‌بورد را می‌نویسد."):
         story = cm._retrying(lambda: llm.ask(Story, STORY_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=12000, attempts=2))
     return clean_story(story)
 
@@ -249,7 +250,7 @@ strings, no straight double quotes inside strings, no line breaks inside strings
 def revise_story(story: Story, change: str) -> Story:
     from creative import llm
     user = "THE STORY NOW:\n" + story.model_dump_json() + "\n\nTHE CHANGE THE PERSON ASKS FOR:\n" + change.strip()[:2000]
-    with cm._long_call(600, 12000):
+    with cm._long_call(600, 12000), cm.step("story_revise", "دارم داستان را با تغییر خواسته‌شده به‌روز می‌کنم."):
         revised = cm._retrying(lambda: llm.ask(Story, REVISE_GUIDE + "\n\n" + STORY_GUIDE.split("THE ANGLE:")[0], user, route=ROUTE, tokens=12000, attempts=2))
     revised = clean_story(revised)
     return revised if revised.beats else story
@@ -487,7 +488,8 @@ def write_group(story: Story, timeline: dict, pictures: list[dict], ids: list[st
     def split() -> str:
         return "\n\n".join(write_group(story, timeline, pictures, [i], previous=previous, feedback=feedback, change=change, notes=notes) for i in ids)
 
-    code = cm._one_ask(guide, "\n\n".join(parts), 14000, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all)
+    code = cm._one_ask(guide, "\n\n".join(parts), 14000, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all,
+                    label=("scene_code", "دارم صحنهٔ " + "، ".join(str(int(i)) for i in ids) + " را از پریمیتیوهای کلاژ کاغذی می‌سازم."))
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)
     for i in ids:
         cm._say(notes, f"scene{int(i)}", f"صحنهٔ {int(i)} نوشته شد: «{rows[i][0]['text'][:60]}»", "done")
@@ -620,7 +622,7 @@ REVIEW = ("You are the art director of a Vox-style paper-collage documentary che
 
 def review(sheet: Path, story: Story) -> dict:
     from brain.llm import chat_vision
-    with cm._long_call(300, 4000):
+    with cm._long_call(300, 4000), cm.step("visual_review", "طراح ارشد دارد تصویر صحنه‌ها را با چک‌لیست ووکس بررسی می‌کند."):
         raw, _usage = cm._retrying(lambda: chat_vision(REVIEW, json.dumps({"scenes": [b.line for b in story.beats]}, ensure_ascii=False), images=[str(sheet)],
                                                        route="visual_qc", return_json=True, max_tokens=4000, timeout_seconds=300))
     problems = [p for p in (raw.get("problems") or []) if isinstance(p, dict)]
@@ -814,6 +816,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         except Exception as exc:
             log.warning("vox review unavailable: %s", str(exc)[:160])
             verdict = {"ok": True, "problems": []}
+    hooks.note("review", "طراح ارشد بررسی را تمام کرد" + (f": {len(verdict['problems'])} ایراد" if verdict["problems"] else ": ایراد جدی ندید"), "done")
     for n, problem in enumerate(verdict["problems"]):
         hooks.note(f"review-{problem.get('scene', '')}-{n}", f"طراح ارشد دربارهٔ صحنهٔ {str(problem.get('scene', '?')).lstrip('0') or '?'}: {str(problem.get('what', ''))[:160]}", "done",
                    f"پیشنهاد: {problem.get('fix', '')}")
@@ -855,8 +858,6 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         except Exception as exc:
             log.warning("vox revision failed: %s", str(exc)[:200])
             hooks.note("revise", "اصلاح انجام نشد؛ نسخهٔ قبلی نگه داشته شد", "done")
-    else:
-        hooks.note("review", "طراح ارشد ایراد جدی ندید", "done")
     check()
 
     state_file.write_text(json.dumps({"vox": True, "story": story.model_dump(), "film": film.model_dump(), "pictures": pictures,

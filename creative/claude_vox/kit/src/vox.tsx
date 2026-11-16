@@ -93,7 +93,7 @@ export const Enter: React.FC<{at: number; from?: From; dist?: number; rot?: numb
 
 /** a cut-out picture (public/img/NAME.png, white paper border already in the file) */
 export const Cut: React.FC<{src: string; w: number; shadow?: boolean; flip?: boolean}> = ({src, w, shadow = true, flip}) => (
-	<Img src={staticFile('img/' + src)} style={{width: w, display: 'block', transform: flip ? 'scaleX(-1)' : undefined, filter: shadow ? 'drop-shadow(0 14px 18px rgba(40,30,15,0.28)) drop-shadow(0 2px 3px rgba(0,0,0,0.2))' : undefined}} />
+	<Img src={staticFile('img/' + src)} style={{width: w, display: 'block', transform: flip ? 'scaleX(-1)' : undefined, filter: shadow ? 'drop-shadow(0 12px 12px rgba(40,30,15,0.28))' : undefined}} />
 );
 
 export const Tape: React.FC<{w?: number; rot?: number; style?: React.CSSProperties}> = ({w = 170, rot = 0, style}) => (
@@ -475,7 +475,7 @@ export const USMap: React.FC<{at: number; w: number; fill?: Record<string, strin
 	const f = prog(t, fillAt ?? at + 0.6, 0.4);
 	const paths = usmap.paths as Record<string, string>;
 	return (
-		<svg width={w} height={usmap.h * k} viewBox={`0 0 ${usmap.w} ${usmap.h}`} style={{overflow: 'visible', filter: 'drop-shadow(0 10px 14px rgba(40,30,15,0.25))'}}>
+		<svg width={w} height={usmap.h * k} viewBox={`0 0 ${usmap.w} ${usmap.h}`} style={{overflow: 'visible'}}>
 			{Object.entries(paths).map(([n, d], i) => (
 				<path key={n} d={d} fill="#FBF8F1" stroke={INK} strokeWidth={1.4} opacity={clamp(p * 1.6 - (i / 50) * 0.6)} />
 			))}

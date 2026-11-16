@@ -133,6 +133,18 @@ def cloud_retry(call, note=None, tries: int = 3, waits=(30, 90)):
 
 
 @contextmanager
+def step(stage: str, message: str):
+    """Names the model calls made inside it in the chat's step timeline (instead of the generic «در حال پردازش این بخش از تدوین هستم»)."""
+    try:
+        from app.studio_activity import describe
+    except Exception:
+        yield
+        return
+    with describe(stage, message):
+        yield
+
+
+@contextmanager
 def _long_call(seconds: float = 900, tokens: int = 32000):
     """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
     from brain.lm_gateway import call_policy
@@ -299,12 +311,12 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
             return chat_vision(DIRECT_GUIDE, user + note + hint, images=sheets,
                                route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600)
 
-        with _long_call(600, 12000):
+        with _long_call(600, 12000), step("creative_direction", "کارگردان دارد متن، سبک و استوری‌بورد فیلم را می‌نویسد."):
             raw, _usage = _retrying(ask_once, tries=4, waits=(10, 20, 40))
         direction = Direction.model_validate(raw)
     else:
         from creative import llm
-        with _long_call(600, 12000):
+        with _long_call(600, 12000), step("creative_direction", "کارگردان دارد متن، سبک و استوری‌بورد فیلم را می‌نویسد."):
             direction = _retrying(lambda: llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2))
     direction.theme.font = choose_font(request, direction.theme.font)
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
@@ -344,7 +356,7 @@ def polish_speech(lines: list[str]) -> list[str]:
         lines: list[str] = Field(default_factory=list)
 
     try:
-        with _long_call(180, 4000):
+        with _long_call(180, 4000), step("speech_polish", "دارم متن نریشن را برای تلفظ درست آماده می‌کنم."):
             result = _retrying(lambda: llm.ask(Lines, POLISH_GUIDE, json.dumps(lines, ensure_ascii=False), route=ROUTE, tokens=4000, attempts=2), tries=3, waits=(10, 20))
     except Exception as exc:
         log.warning("speech polishing unavailable: %s", str(exc)[:160])
@@ -601,14 +613,15 @@ class _SlowCut(RuntimeError):
     """A call that ran for minutes and was then cut off by the provider."""
 
 
-def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300):
+def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300, label: tuple[str, str] | None = None):
     """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
     def attempt():
         # A long call the provider cut off after ~4 minutes (a stream error, zero tokens counted) would be cut off again at the same size: split at once instead of
         # sending it twice more (each repeat costs another ~250 s).
         started = time.monotonic()
         try:
-            return ask_text(guide, user, tokens=tokens)
+            with step(*(label or ("code", "دارم کد این بخش از فیلم را می‌نویسم."))):
+                return ask_text(guide, user, tokens=tokens)
         except Exception as exc:
             if split is not None and time.monotonic() - started >= SLOW_CUT_SECONDS and _TRANSIENT.search(str(exc)):
                 raise _SlowCut(f"the call was cut off after {time.monotonic() - started:.0f} s") from exc    # no transient keyword in the text: _retrying must not repeat it
@@ -680,14 +693,14 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     if feedback:
         extra.append("FIX THIS:\n" + feedback.strip()[:5000])
     _say(notes, "art-plan", "دارم فهرست تصویرسازی‌های این فیلم را از روی استوری‌بورد درمی‌آورم")
-    with _long_call(120, 4000):
+    with _long_call(120, 4000), step("art_plan", "دارم فهرست تصویرسازی‌های فیلم را از روی استوری‌بورد درمی‌آورم."):
         plan = _retrying(lambda: llm.ask(ArtPlan, ART_PLAN_GUIDE, "\n\n".join(_brief(direction, timeline) + extra), route=ROUTE, tokens=4000, attempts=2),
                          on_retry=lambda t: _say(notes, "art-plan", "فهرست تصویرسازی‌ها: " + t))
     comps = [c for c in plan.components if isinstance(c, dict) and re.fullmatch(r"[A-Z]\w*", str(c.get("name", ""))) and c["name"] not in {"Backdrop", "Defs", "Svg", "Shadow"}][:18]
     _say(notes, "art-plan", f"فهرست تصویرسازی‌ها آماده شد: {len(comps)} شیء", "done",
          "\n".join(f"{c['name']}({c.get('props', '')}) — {c.get('what', '')}" for c in comps))
     _say(notes, "art-base", "دارم پایهٔ تصویرسازی را می‌نویسم: پس‌زمینهٔ متحرک، گرادیان‌ها و سایه")
-    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 28000, tries=4, seconds=720, on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
+    foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 28000, tries=4, seconds=720, label=("art_base", "دارم پایهٔ تصویرسازی فیلم را می‌نویسم: پس‌زمینه، گرادیان‌ها و سایه."), on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
     _say(notes, "art-base", f"پایهٔ تصویرسازی نوشته شد ({len(foundation.splitlines())} خط)", "done")
     chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
 
@@ -701,7 +714,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
         def split() -> str:
             return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 14000, None, tries=3)
 
-        code = _one_ask(ART_PARTS_GUIDE, user, 14000, split if len(group) > 1 else None, tries=3, on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
+        code = _one_ask(ART_PARTS_GUIDE, user, 14000, split if len(group) > 1 else None, tries=3, label=("art_parts", f"دارم تصویرسازی‌های {names} را می‌کشم."), on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
                         on_split=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t))
         _say(notes, key, f"تصویرسازی‌های {names} آماده شد ({len(code.splitlines())} خط)", "done")
         return code
@@ -744,7 +757,8 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     def split() -> str:
         return "\n\n".join(write_group(direction, timeline, art_tsx, [i], previous=previous, feedback=feedback, change=change, notes=notes) for i in ids)
 
-    code = _one_ask(guide, user, 14000, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all)
+    code = _one_ask(guide, user, 14000, split if len(ids) > 1 else None, tries=3 if len(ids) == 1 else 2, on_retry=say_all, on_split=say_all,
+                    label=("scene_code", "دارم صحنهٔ " + "، ".join(str(int(i)) for i in ids) + " را کدنویسی می‌کنم."))
     code = re.sub(r"^\s*import\s.*?;\s*$", "", code, flags=re.M)          # a stray import would duplicate the header
     for i in ids:
         mine = re.search(rf"\bconst\s+S{i}\b.*?(?=\bconst\s+S\d\d\b|\Z)", code, re.S)
@@ -927,7 +941,7 @@ REVIEW = ("You are the art director of a motion studio checking stills of a film
 def review(sheet: Path, reference_sheet: Path | None, direction: Direction) -> dict:
     from brain.llm import chat_vision
     images = [str(sheet)] + ([str(reference_sheet)] if reference_sheet and Path(reference_sheet).is_file() else [])
-    with _long_call(300, 4000):
+    with _long_call(300, 4000), step("visual_review", "طراح ارشد دارد تصویر صحنه‌ها را بررسی می‌کند."):
         raw, _usage = _retrying(lambda: chat_vision(REVIEW, json.dumps({"look": direction.look[:800], "scenes": [b.line for b in direction.beats]}, ensure_ascii=False),
                                                     images=images, route="visual_qc", return_json=True, max_tokens=4000, timeout_seconds=300))
     problems = [p for p in (raw.get("problems") or []) if isinstance(p, dict)]
@@ -1184,6 +1198,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         except Exception as exc:
             log.warning("claude motion review unavailable: %s", str(exc)[:160])
             verdict = {"ok": True, "problems": []}
+    hooks.note("review", f"طراح ارشد بررسی را تمام کرد" + (f": {len(verdict['problems'])} ایراد" if verdict["problems"] else ": ایراد جدی ندید"), "done")
     for problem in verdict["problems"]:
         hooks.note(f"review-{problem.get('scene', '')}-{len(notes)}", f"طراح ارشد دربارهٔ صحنهٔ {str(problem.get('scene', '?')).lstrip('0') or '?'}: {str(problem.get('what', ''))[:160]}", "done",
                    f"پیشنهاد: {problem.get('fix', '')}")

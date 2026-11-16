@@ -134,10 +134,12 @@ def sheet_prompt(group: list[dict]) -> str:
 def generate(prompt: str, out: Path) -> Path:
     """One image from the router's image route (a wide sheet when the model takes that size). Not repeated on failure."""
     from brain.lm_gateway import complete
+    from creative.claude_motion import step
     last: Exception | None = None
     for size in ("1536x1024", "1024x1024"):
         try:
-            response, _record = complete(ROUTE, prompt, endpoint="image", required={"image"}, extra={"n": 1, "size": size})
+            with step("picture_sheet", "دارم برگهٔ تصویرهای سیاه‌وسفید روزنامه‌ای را می‌سازم."):
+                response, _record = complete(ROUTE, prompt, endpoint="image", required={"image"}, extra={"n": 1, "size": size})
         except Exception as exc:
             last = exc
             if "size" in str(exc).lower() and size != "1024x1024":
@@ -171,7 +173,9 @@ def check_sheet(path: Path, group: list[dict]) -> set[int]:
     """Cell numbers (1-based) to drop; an unavailable check drops nothing."""
     try:
         from brain.llm import chat_vision
-        raw, _usage = chat_vision(CHECK.format(n=len(group), items="; ".join(f"{i}) {p.get('name')}" for i, p in enumerate(group, 1))), "Check the sheet.",
+        from creative.claude_motion import step
+        with step("picture_check", "دارم تصویرهای ساخته‌شده را از نظر لوگو، نوشته و چهرهٔ واقعی بررسی می‌کنم."):
+            raw, _usage = chat_vision(CHECK.format(n=len(group), items="; ".join(f"{i}) {p.get('name')}" for i, p in enumerate(group, 1))), "Check the sheet.",
                                   images=[str(path)], route="visual_qc", return_json=True, max_tokens=800, timeout_seconds=120)
         return {int(x) for x in (raw.get("bad") or []) if str(x).isdigit()}
     except Exception as exc:
