@@ -316,13 +316,16 @@ export interface BrandProfile {
 }
 
 const ADMIN_VIEW_KEY = "admin_view_as";
-/** The person whose chat an administrator is reading (admin lists -> a chat link): reads only, the server ignores the header for anything but GET and for non-administrators. */
+/** The person whose chat an administrator opened (admin lists -> a chat link): the administrator acts as that person there (view, download, send, edit, approve); the server ignores it for non-administrators. */
 export function getAdminViewAs(): string { try { return sessionStorage.getItem(ADMIN_VIEW_KEY) || ""; } catch { return ""; } }
 export function setAdminViewAs(id: string | null): void {
   try { if (id) sessionStorage.setItem(ADMIN_VIEW_KEY, id); else sessionStorage.removeItem(ADMIN_VIEW_KEY); } catch { /* private mode */ }
+  // media and download links cannot carry the header: the same id rides in a session cookie the server honours only for administrators
+  if (typeof document !== "undefined") document.cookie = id ? `admin_view_as=${encodeURIComponent(id)}; path=/; samesite=lax${location.protocol === "https:" ? "; secure" : ""}` : "admin_view_as=; path=/; max-age=0";
   if (typeof document !== "undefined") document.documentElement.toggleAttribute("data-admin-view", Boolean(id));
 }
-if (typeof document !== "undefined" && getAdminViewAs()) document.documentElement.setAttribute("data-admin-view", "");
+// a tab without an admin view clears a cookie left from another tab's view, so the administrator's own pages never run as someone else
+if (typeof document !== "undefined") { if (getAdminViewAs()) { document.documentElement.setAttribute("data-admin-view", ""); setAdminViewAs(getAdminViewAs()); } else document.cookie = "admin_view_as=; path=/; max-age=0"; }
 
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {
   await ensureFreshToken();

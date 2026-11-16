@@ -12,16 +12,22 @@ def is_local_auth_bypass(request: Request) -> bool:
 
 
 def admin_view_as(request: Request) -> str | None:
-    """The user an administrator is LOOKING at («مشاهدهٔ چت کاربر»): the X-Admin-View-As header, honoured only for an administrator and only for reads (GET/HEAD).
-    Every write still runs as the administrator's own account, so an administrator can read any chat and file but change none."""
-    target = str(request.headers.get("x-admin-view-as") or "").strip()
-    if not target or request.method not in {"GET", "HEAD"} or not target.isdigit():
+    """The user an administrator is acting for («مشاهدهٔ چت کاربر»): the X-Admin-View-As header, or the admin_view_as cookie (media and download links
+    cannot send headers), honoured only for an administrator. Since 2026-11-16 the administrator can also act in that chat (send, edit, approve), as the
+    owner asked: such requests run as the viewed user and are logged."""
+    target = str(request.headers.get("x-admin-view-as") or request.cookies.get("admin_view_as") or "").strip()
+    if not target or not target.isdigit() or "/admin/" in request.url.path:
         return None
     try:
         from app.routers.lm_admin import allowed
     except Exception:
         return None
-    return target if allowed(request) else None
+    if not allowed(request):
+        return None
+    if request.method not in {"GET", "HEAD"}:
+        import logging
+        logging.getLogger(__name__).warning("administrator acts in user %s's chat: %s %s", target, request.method, request.url.path)
+    return target
 
 
 def verify_job_owner(request: Request, job) -> None:

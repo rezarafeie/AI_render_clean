@@ -258,6 +258,21 @@ async def auth_middleware(request: Request, call_next):
         request.state.user = user
     except ValueError:
         return unauthorized()
+    # An administrator who opened a user's chat from the admin lists acts AS that user (reads, media and downloads, sending, editing, approving): the
+    # X-Admin-View-As header (or the admin_view_as cookie for media links) swaps the request's user; admin endpoints always keep the administrator.
+    viewing = str(request.headers.get("x-admin-view-as") or request.cookies.get("admin_view_as") or "").strip()
+    if viewing.isdigit() and viewing != str(user.id) and "/admin" not in path:
+        from app.routers.lm_admin import allowed as admin_allowed
+        if admin_allowed(request):
+            try:
+                target = await auth.db_get_user_by_id(viewing) if auth.USE_DB else auth._find_by_id(viewing)
+            except Exception:
+                target = None
+            if target is not None:
+                if request.method not in {"GET", "HEAD"}:
+                    logging.getLogger(__name__).warning("administrator %s acts as user %s: %s %s", user.id, viewing, request.method, path)
+                request.state.admin_user = user
+                request.state.user = user = target
     from brain.lm_gateway import user_context
     token = user_context.set(str(user.id))
     try: return await call_next(request)
