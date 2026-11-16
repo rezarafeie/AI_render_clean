@@ -17,7 +17,7 @@ from pathlib import Path
 from app import jobs as jobstore
 
 FIELDS = ("name", "tagline", "cta", "accent_color", "caption_font", "logo_motion", "preferred_style")
-STYLE_IDS = {"talking_1", "talking_2", "talking_3", "talking_4", "talking_5"}
+STYLE_IDS = {"talking_1", "talking_2", "talking_3", "talking_4", "talking_5", "premium"}
 FONTS = {"default", "Vazirmatn"}
 LOGO_MOTIONS = {"pop", "fade", "slide", "none"}
 _lock = threading.Lock()

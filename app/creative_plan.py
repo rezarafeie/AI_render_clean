@@ -49,7 +49,18 @@ STYLES = {
         "captions": "کلمه‌به‌کلمهٔ سفید با کلمهٔ در حال گفتن رنگی", "motion": "پنل‌های طراحی‌شده توسط طراح موشن، افکت‌های ۴۲گانه",
         "broll": "بدون تصویر مکمل؛ پنل‌های موشن", "sfx": "موسیقی زیر صدا با داکینگ", "complexity": "پیشرفته", "pictures": False,
     },
+    # the premium full-frame edit (creative/claude_premium): a «صحبتی ۵» variant with its own renderer (talking_reel.PREMIUM)
+    "premium": {
+        "label": "پریمیوم تمام‌قاب", "summary": "یک قاب کامل روی گوینده با دوربین مجازی، کپشن موشن دوطبقه، کارت‌های شیشه‌ای، متن پشت سر گوینده و رنگ‌بندی سینمایی.",
+        "captions": "کپشن موشن دوطبقه؛ کلمه‌های کلیدی بزرگ و گاهی پشت سر گوینده", "motion": "دوربین مجازی (زوم و حرکت نرم)، کارت‌های شیشه‌ای و گرافیک‌های موشن",
+        "broll": "بدون تصویر مکمل؛ گرافیک و تایپوگرافی روی خود قاب", "sfx": "موسیقی و افکت‌های صوتی زیر صدا با داکینگ", "complexity": "پیشرفته", "pictures": False,
+    },
 }
+
+
+def style_of(status: dict) -> str:
+    """The style card a Talking job shows: the premium variant is its own card even though it runs on the «صحبتی ۵» screen."""
+    return "premium" if status.get("variant") == "premium" else str(status.get("style") or "talking_1")
 
 LOOKS = {
     # The Talking engine's own default grade (app/talking_reel.DEFAULTS); each style adds its own treatment.
@@ -86,7 +97,7 @@ def _time(seconds: float) -> str:
 def build_talking(status: dict, *, sentences: list[dict], video_seconds: float, estimate: dict | None,
                   has_logo: bool, slots: list[dict] | None = None) -> dict:
     """Plain-language plan from the Talking engine's public state after analysis."""
-    style = str(status.get("style") or "talking_1")
+    style = style_of(status)
     info = STYLES.get(style, STYLES["talking_1"])
     creative = status.get("creative_plan") or {}
     brief = creative.get("brief") or {}
@@ -147,7 +158,7 @@ def build_talking(status: dict, *, sentences: list[dict], video_seconds: float, 
                  "moments": [{"sentence": m["sentence"], "title": m["title"]} for m in status.get("timeline") or []][:40]},
         "captions": info["captions"], "motion": info["motion"], "broll": info["broll"], "pictures": pictures,
         "audio": {"music": "" if settings.get("captions_only") else (status.get("music") or "").rsplit("/", 1)[-1], "music_path": "" if settings.get("captions_only") else status.get("music") or "",
-                  "mix": _music_mix(style, settings), "voice": "صدای اصلی گوینده (بدون نریشن جدید)",
+                  "mix": _music_mix("talking_5" if style == "premium" else style, settings), "voice": "صدای اصلی گوینده (بدون نریشن جدید)",
                   "sfx": info["sfx"]},
         "brand": {"name": status.get("name", ""), "tagline": status.get("title", ""), "cta": status.get("cta", ""),
                   "logo": {"enabled": bool(logo.get("enabled", True)), "motion": logo.get("motion", "pop"),
@@ -240,7 +251,7 @@ def talking_edits(content: dict, edits: dict, status: dict) -> dict:
     if unknown:
         raise PlanError(f"این تنظیمات در برنامه قابل ویرایش نیستند: {', '.join(sorted(unknown))}")
     import re
-    style = str(status.get("style") or "talking_1")
+    style = style_of(status)
     settings = copy.deepcopy(status.get("render_settings") or {})
     engine, profile, applied = {}, {}, []
     touched = False

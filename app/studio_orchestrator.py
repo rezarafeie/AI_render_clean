@@ -2193,8 +2193,13 @@ def _reanalyze_talking(conversation_id: str, user_key: str, project: dict, job, 
     stale = {key: {} for key in ("timeline_edits", "broll_edits") if talking_reel.load(job.dir).get(key)}
     if stale:
         talking_reel.update(job.dir, stale)
-    talking_reel.analyze(job.dir, job.dir / "raw" / job.raw_name, style=style,
-                         request=project["state"].get("request", ""), concept=concept)
+    if style == "premium":                              # the premium card: «صحبتی ۵» screen, premium full-frame renderer
+        talking_reel.analyze(job.dir, job.dir / "raw" / job.raw_name, style="talking_5", request=project["state"].get("request", ""), concept=concept, variant="premium")
+    else:
+        if talking_reel.load(job.dir).get("variant") == talking_reel.PREMIUM:
+            talking_reel.update(job.dir, {"variant": None})  # another card chosen after the premium one: back to that style's own renderer
+        talking_reel.analyze(job.dir, job.dir / "raw" / job.raw_name, style=style,
+                             request=project["state"].get("request", ""), concept=concept)
     latest = run(repo.get_project(project["id"], user_key))
     state = {**latest["state"], "workflow": "analyzing", "plan_pending": True, "last_observed": {}}
     run(repo.update_project(project["id"], user_key, status="running", state=state))

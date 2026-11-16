@@ -49,7 +49,8 @@ def steps(engine):
         from engine.talking_reel import style_list
         return [
             {"key": "style", "title": "کدام نوع تدوین صحبتی؟", "input": False,
-             "choices": [choice(s["id"], s["label"], layout=s["id"]) for s in style_list()]},
+             "choices": [choice(s["id"], s["label"], layout=s["id"]) for s in style_list()]
+                        + [choice("premium", "پریمیوم تمام‌قاب", "یک قاب کامل با دوربین مجازی، کپشن موشن، کارت شیشه‌ای و متن پشت گوینده", layout="talking_1")]},
             {"key": "look", "title": "نور و رنگ تصویر", "input": False,
              "choices": [choice("natural", "طبیعی", "رنگ و نور نزدیک به منبع", swatch="#C8BBA6"), choice("warm", "گرم", "کمی گرم‌تر و پرکنتراست", swatch="#C19670"), choice("cool", "سرد و ملایم", swatch="#8998A6")]},
             {"key": "font", "title": "فونت زیرنویس", "input": False,

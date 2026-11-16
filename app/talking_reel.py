@@ -413,6 +413,8 @@ def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, requ
 
     ``concept`` is a concept the user picked from the plan: the director is skipped and only the
     style's own decision step runs with that concept as guidance."""
+    if style == PREMIUM:                                  # the premium style card (or a remembered preference): «صحبتی ۵» screen + premium renderer
+        style, variant = "talking_5", PREMIUM
     key = str(job_dir)
     with _lock:
         if key in _running:
