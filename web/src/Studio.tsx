@@ -4,7 +4,7 @@ import { processingPreferences } from "./local/preferences";
 import { verifyLocalBackend } from "./local/backend";
 import { saveAsset, listAssets, readAsset, removeAsset, saveDraft, loadDraft, mediaMetadata } from "./local/storage";
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioFile, StudioEvent, StudioMessage } from "./api";
+import { api, AgentMode, CloudFile, CloudTransfer, StudioConversation, StudioFile, StudioEvent, StudioMessage, adminChatOwner, getAdminViewAs, setAdminViewAs } from "./api";
 import { AgentRunControls } from "./studio/AgentMode";
 import { useAuth } from "./auth/AuthContext";
 import { Icon } from "./components/Icon";
@@ -185,7 +185,15 @@ export default function Studio() {
         cursorRef.current = Math.max(cursorRef.current, value.events_from || 0);
         setWindowFor(id);
       }
-    } catch (e) { if (!quiet) setError(friendlyError(e, "load conversation")); }
+    } catch (e) {
+      if (quiet) return;
+      // an administrator who opened someone else's chat (a pasted link, a new tab) enters the admin view of its owner; one opening their own chat leaves it
+      const owner = await adminChatOwner(id);
+      const me = String(getUser()?.id ?? "");
+      if (owner && owner !== me && owner !== getAdminViewAs()) { setAdminViewAs(owner); window.location.reload(); return; }
+      if (owner && owner === me && getAdminViewAs()) { setAdminViewAs(null); window.location.reload(); return; }
+      setError(friendlyError(e, "load conversation"));
+    }
   }, [activeId]);
   React.useEffect(() => { void refreshList(); }, [refreshList]);
   // Switching chats: a chat seen (or hovered) before appears at once from memory and is re-read quietly; one never seen shows the skeleton, never the

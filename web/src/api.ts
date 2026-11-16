@@ -346,6 +346,12 @@ export async function aiAdminRequest<T>(path: string, init?: RequestInit): Promi
   return j<T>(await authFetch(`${BASE}/admin/ai${path}`, init));
 }
 
+/** The owner (user id) of a chat, for an administrator; null for everyone else or when the chat does not exist. */
+export async function adminChatOwner(conversationId: string): Promise<string | null> {
+  try { const r = await authFetch(`${BASE}/admin/manage/conversations/${encodeURIComponent(conversationId)}?messages=1`); if (!r.ok) return null; const d = await r.json(); return d?.conversation?.user ? String(d.conversation.user) : null; }
+  catch { return null; }
+}
+
 export async function adminManageRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return j<T>(await authFetch(`${BASE}/admin/manage${path}`, init));
 }
