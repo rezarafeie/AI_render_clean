@@ -887,6 +887,16 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         intent = completed_manual['engine'] if completed_manual else (forced or _brief_intent(brief) or _resolved_intent(text, attachments, current, on_title=set_title if first_turn and automatic_title else None, motion=motion_context, history=history, grounding=grounding))
         if intent == "motion" and not completed_manual and os.environ.get("MOTION_ENGINE", "").strip() == "0":
             intent = "motion_graphic"      # MOTION_ENGINE=0 switches the storyboard/AI-picture engine off: every new «motion» request is then a designed motion graphic
+        if (not completed_manual and not forced and motion_context and motion_context.get("status") == "needs_input" and motion_context.get("intro")
+                and any(item.get("kind") == "video" for item in attachments)):
+            intent = "motion_graphic_answer"       # the footage the intro video asked for (a video here is the presenter's footage, not a new talking edit)
+        if not completed_manual and not forced and intent in {"motion", "motion_graphic", "talking", "question_video", "question_input", "chat", "agent"} and not motion_context:
+            try:
+                from creative import claude_intro
+                if claude_intro.wanted(text):
+                    intent = "motion_graphic"      # «ویدیوی معرفی / اینترو / شوریل»: the intro engines (story, reel, presenter with the attached footage, film3d)
+            except Exception:
+                log.warning("the intro engines could not be checked", exc_info=True)
         _checkpoint(conversation_id)
         intent = _long_video_intent(intent, attachments)
         if completed_manual and completed_manual['engine'] == 'talking':
@@ -912,9 +922,17 @@ def _process_message(conversation_id: str, user_key: str, message_id: int | str,
         # ONE path for every kind of work: the opening reply, the understanding step, then this intake (reference video, linked pages, screenshots, all
         # narrated), then the flow's own tools. Only the tools differ between localize, talking reels, discovery, ads and motion graphics.
         sources = None
-        if intent in _SOURCE_INTENTS and (_urls(text) or _dangling_link(text) or (intent in {"motion", "motion_graphic"} and any(a["kind"] == "video" for a in attachments))):
+        intro_footage = False
+        try:
+            from creative import claude_intro
+            intro_footage = intent == "motion_graphic" and claude_intro.wanted(text) and any(a["kind"] == "video" for a in attachments)
+        except Exception:
+            pass
+        if intro_footage and not (_urls(text) or _dangling_link(text)):
+            pass                                   # the attached video is the presenter's footage of an intro video, not a style reference: nothing to analyse
+        elif intent in _SOURCE_INTENTS and (_urls(text) or _dangling_link(text) or (intent in {"motion", "motion_graphic"} and any(a["kind"] == "video" for a in attachments))):
             sources = _gather_sources(conversation_id, user_key, text, attachments, brief=intent == "motion", max_pages=1 if intent == "motion" else 2,
-                                      video_role="reference" if intent in {"motion", "motion_graphic"} else "source")
+                                      video_role="reference" if intent in {"motion", "motion_graphic"} and not intro_footage else "source")
             if not sources.ok:
                 return                                    # the person has been told what could not be read and what to send instead
             if intent not in {"motion", "motion_graphic"}:
@@ -1320,7 +1338,13 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
                           sources: "Sources | None" = None) -> None:
     from app import motion_graphic
     if sources is None:
-        sources = _gather_sources(conversation_id, user_key, text, attachments or [], max_pages=2)
+        footage = False
+        try:
+            from creative import claude_intro
+            footage = claude_intro.wanted(text) and any(item.get("kind") == "video" for item in attachments or [])
+        except Exception:
+            pass
+        sources = _gather_sources(conversation_id, user_key, text, attachments or [], max_pages=2, video_role="source" if footage else "reference")   # an intro video's attached video is its footage
     if not sources.ok:
         return                                           # the person has been told why nothing could be read, and what to send instead
     state = conversation.get("state") or {}
@@ -1330,6 +1354,12 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
         _assistant(conversation_id, user_key, "نوشته‌اید «با صدای من»، ولی هنوز صدایی از شما کلون نشده است. از تنظیمات ← «کلون صدا»، صدای خودتان را بسازید (ضبط ۳۰ ثانیه یا فایل صدا/ویدیو) و دوباره همین درخواست را بفرستید.")
         return
     image_args={'attachments':attachments} if any(item.get('kind') in ('image','audio') for item in attachments or []) else {}
+    try:
+        from creative import claude_intro
+        if claude_intro.wanted(text) and any(item.get('kind') == 'video' for item in attachments or []):
+            image_args = {'attachments': attachments}       # the presenter's footage of an intro video travels with the request
+    except Exception:
+        pass
     from app import style_bridge
     own_style = sources.style or style_bridge.motion_notes(user_key)                     # a reference video in the chat wins; else what the person taught the studio
     page_photos = []
@@ -1385,7 +1415,7 @@ def _motion_summary(user_key: str, conversation: dict) -> dict | None:
     except (KeyError, OSError, ValueError):
         return None
     latest = record["versions"][-1] if record["versions"] else {}
-    summary = {"id": record["id"], "status": record["status"], "stage": record.get("stage"), "title": latest.get("title", ""), "summary": latest.get("summary", "")[:200],
+    summary = {"id": record["id"], "status": record["status"], "stage": record.get("stage"), "intro": record.get("intro") or "", "title": latest.get("title", ""), "summary": latest.get("summary", "")[:200],
                "versions": len(record["versions"]), "questions_asked": record.get("questions", []), "request": (record.get("request") or "")[:300],
                "narration": {"narrator": record.get("voice_id") or "studio default", "style": record.get("voice_style") or "natural",
                              "music": (record.get("music") or {}).get("mode", "none"), "rhythm": record.get("rhythm") or "speech_first"}}
@@ -1416,7 +1446,7 @@ def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: 
         return False
     record = motion_graphic.load(directory)
     if record["status"] == "needs_input":
-        motion_graphic.answer(directory, text)
+        motion_graphic.answer(directory, text, attachments)
         _assistant(conversation_id, user_key, "ممنون؛ با همین اطلاعات ادامه می‌دهم.")
     elif record["status"] in motion_graphic.ACTIVE:
         _assistant(conversation_id, user_key, "هنوز در حال ساخت نسخهٔ فعلی هستم؛ تا تمام شود صبر کنید و بعد تغییرتان را بنویسید.")

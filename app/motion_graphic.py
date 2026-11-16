@@ -195,8 +195,17 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
     except Exception:
         record["engine"] = "classic"
     try:
+        from creative import claude_intro
+        if record["engine"] == "claude" and claude_intro.wanted(request):
+            footage = next((item for item in attachments or [] if item.get("kind") == "video" and item.get("path")), None)
+            record["intro"] = claude_intro.kind_of(request, bool(footage))      # «ویدیوی معرفی»: story | reel | presenter | film3d (creative/claude_intro)
+            if footage:
+                record["intro_footage"] = str(footage["path"])
+    except Exception:
+        log.warning("the intro engines could not be checked", exc_info=True)
+    try:
         from creative import claude_vox
-        if record["engine"] == "claude" and claude_vox.wanted(request):
+        if record["engine"] == "claude" and not record.get("intro") and claude_vox.wanted(request):
             record["vox"] = True                     # «به سبک ووکس»: the paper-collage documentary engine (creative/claude_vox)
     except Exception:
         log.warning("the vox engine could not be checked", exc_info=True)
@@ -478,7 +487,7 @@ def _run(directory: Path, change: str) -> None:
         except Exception as exc:
             if _cancelled(key):
                 raise _Cancelled()
-            if record.get("vox"):
+            if record.get("vox") or record.get("intro"):
                 # The Vox film keeps its own engine: a failure is shown and «retry» continues from its checkpoint (story, pictures, code), never a classic film.
                 log.exception("vox film %s failed; no fallback to another engine", key)
                 raise
@@ -581,7 +590,11 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
                                 progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills,
                                 say=lambda text: _assistant(cid, user, text))
     try:
-        if record.get("vox"):
+        if record.get("intro"):
+            from creative import claude_intro
+            _note(directory, "engine", f"موتور «ویدیوی معرفی» — سبک {claude_intro.LABELS.get(record['intro'], record['intro'])}: محتوا فقط از واقعیت‌های منبع، زمان‌بندی از صدا، استیل‌ها قبل از رندر بازبینی می‌شوند", "done")
+            result = claude_intro.build(directory, record, hooks, change=change)
+        elif record.get("vox"):
             from creative import claude_vox
             _note(directory, "engine", ("موتور اکسپلینر سه‌بعدی (ووکس ۳D): تحقیق و داستان مستند، صحنه‌های سه‌بعدی با دوربین متحرک، همه روی کلمه‌های نریشن" if claude_vox.wants_3d(record.get("request", ""))
                                         else "موتور «ووکس»: مستند توضیحی با سبکی که به موضوع می‌خورد — تحقیق و داستان مستند، تصویرها، علامت‌ها و عددها روی کلمه‌های نریشن"), "done")
@@ -635,7 +648,10 @@ def finish_claude_external(directory: Path, video: Path) -> None:
                                 progress=lambda percent, message: _progress(directory, "rendering", percent, message, stage="rendering"),
                                 cancelled=lambda: False)
     built = [(label, Path(path)) for label, path in pending["stills"]]
-    if pending.get("vox"):
+    if pending.get("intro"):
+        from creative import claude_intro
+        claude_intro.finish(work, pending["timing"], built, hooks)
+    elif pending.get("vox"):
         from creative import claude_vox
         claude_vox.finish(work, pending["timing"], built, hooks)
     else:
@@ -649,7 +665,8 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
     from creative import motion_graphic as mg
     record = load(directory)
     cid, user, key = record["conversation_id"], record["user_key"], record["id"]
-    page = mg.MotionPage(title=direction.title, summary=direction.summary, format="vertical", duration=timeline["total"])
+    wide = float(timeline.get("width") or 1080) > float(timeline.get("height") or 1920)          # the landscape intro films (reel, presenter, film3d)
+    page = mg.MotionPage(title=direction.title, summary=direction.summary, format="horizontal" if wide else "vertical", duration=timeline["total"])
     with _lock(key):
         if _cancelled(key):
             raise _Cancelled()
@@ -658,7 +675,7 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
         target = directory / f"v{number}"
         shutil.rmtree(target, ignore_errors=True)
         (directory / "work").replace(target)
-        record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_vox" if record.get("vox") else "claude_motion"], "engine": "claude",
+        record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_intro_" + record["intro"] if record.get("intro") else "claude_vox" if record.get("vox") else "claude_motion"], "engine": "claude",
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
         record["versions"] = record["versions"][-MAX_VERSIONS:]
         record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None,
@@ -2174,11 +2191,25 @@ def media_path(directory: Path, kind: str, version: Optional[int] = None) -> Pat
 
 # ── chat-side helpers ────────────────────────────────────────────────────────
 
-def answer(directory: Path, text: str) -> None:
+def answer(directory: Path, text: str, attachments: list[dict] | None = None) -> None:
     """The person answered the questions: continue the same request with the answer."""
     with _lock(directory.name):
         record = load(directory)
         record["answers"] = [*record.get("answers", []), text.strip()[:2000]]
+        if record.get("intro"):                        # an intro video waiting for the presenter's footage, or the person chose another intro style instead
+            footage = next((item for item in attachments or [] if item.get("kind") == "video" and item.get("path")), None)
+            if footage:
+                record["intro_footage"] = str(footage["path"])
+            try:
+                from creative import claude_intro
+                named = claude_intro.kind_of(text, False) if (claude_intro._FILM.search(text) or claude_intro._PRESENTER.search(text) or claude_intro._REEL.search(text)
+                                                               or claude_intro._STORY.search(text)) else ""
+                if named and named != record["intro"]:
+                    record["intro"] = named
+                elif footage and record["intro"] != "presenter" and not named:
+                    record["intro"] = "presenter"
+            except Exception:
+                log.warning("the intro style of the answer could not be read", exc_info=True)
         change = record.get("pending_change") or ""
         record.update(status="queued", questions=[])
         save(directory, record)
