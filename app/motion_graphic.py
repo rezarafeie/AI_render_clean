@@ -817,6 +817,11 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
     from creative.audio import persian
     # What is spoken is derived from the script (digits spelled out, the project's pronunciation entries); the script itself is untouched.
     texts = [persian.speakable(scene.narration, pronunciations) if scene.narration.strip() else scene.narration for scene in plan.scenes]
+    try:
+        from creative.audio import pronounce
+        texts = [new if old.strip() else old for old, new in zip(texts, pronounce.prepare(texts, route=os.environ.get("CLAUDE_MOTION_ROUTE", "motion_graphic_planner")))]
+    except Exception:
+        log.warning("pronunciation pass skipped", exc_info=True)
     if not any(text.strip() for text in texts):
         return plan, [], []
     _soft_progress(directory, 7, "دارم نریشن صحنه‌ها را با صدای انتخابی می‌سازم.")

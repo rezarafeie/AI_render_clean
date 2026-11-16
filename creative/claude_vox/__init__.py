@@ -513,6 +513,8 @@ def voice_timeline(story: Story, folder: Path, record: dict, hooks=None) -> dict
     from creative.audio import persian
     folder.mkdir(parents=True, exist_ok=True)
     texts = [persian.speakable(b.line, record.get("pronunciations") or {}).strip() for b in story.beats]
+    from creative.audio import pronounce
+    texts = pronounce.prepare(texts, route=ROUTE)                   # ambiguous words vowelled, foreign names spelled as pronounced
     voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
     takes = []
     for i, text in enumerate(texts, 1):

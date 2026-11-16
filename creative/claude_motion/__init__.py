@@ -405,6 +405,8 @@ def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None)
     from brain import localize
     from creative.audio import persian
     texts = [persian.speakable(b.line, record.get("pronunciations") or {}).strip() for b in direction.beats]     # the person's pronunciation fixes («مرتب = مُرَتَب») are applied here too
+    from creative.audio import pronounce
+    texts = pronounce.prepare(texts, route=ROUTE)                   # ambiguous words vowelled, foreign names spelled as pronounced
     voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
     scenes, clips, cursor = [], [], LEAD
     for i, text in enumerate(texts, 1):
