@@ -194,6 +194,12 @@ def create(conversation_id: str, user_key: str, request: str, context: str = "",
         record["engine"] = "claude" if claude_motion.enabled() else "classic"
     except Exception:
         record["engine"] = "classic"
+    try:
+        from creative import claude_vox
+        if record["engine"] == "claude" and claude_vox.wanted(request):
+            record["vox"] = True                     # «به سبک ووکس»: the paper-collage documentary engine (creative/claude_vox)
+    except Exception:
+        log.warning("the vox engine could not be checked", exc_info=True)
     if attachments:
         from creative.shotcraft_compare import stage_images
         record['image_inputs']=stage_images(directory,ROOT/_safe(user_key)/conversation_id/'attachments',[a for a in attachments if a.get('kind')=='image'])
@@ -472,6 +478,10 @@ def _run(directory: Path, change: str) -> None:
         except Exception as exc:
             if _cancelled(key):
                 raise _Cancelled()
+            if record.get("vox"):
+                # The Vox film keeps its own engine: a failure is shown and «retry» continues from its checkpoint (story, pictures, code), never a classic film.
+                log.exception("vox film %s failed; no fallback to another engine", key)
+                raise
             if _claude_film_written(directory) and not str(exc).startswith("the film's code did not build"):
                 # The Claude engine already wrote the film's code (and saved it in checkpoint.json): only a later step (render, mix) failed. The film stays on
                 # the Claude engine and fails visibly; retry continues from the saved code instead of restarting on the classic engine.
@@ -569,9 +579,14 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
 
     hooks = claude_motion.Hooks(note=lambda key_, text, state="active", detail=None: _note(directory, key_, text, state, detail=detail),
                                 progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills)
-    _note(directory, "engine", "موتور «موشن کلاد»: یک مدل کل فیلم را یک‌جا کارگردانی و کدنویسی می‌کند", "done")
     try:
-        result = claude_motion.build(directory, record, hooks, change=change, reference_sheet=directory.parent.parent / "reference" / "frame-table.jpg")
+        if record.get("vox"):
+            from creative import claude_vox
+            _note(directory, "engine", "موتور «ووکس»: مستند توضیحی کلاژ کاغذی — تحقیق و داستان مستند، تصویرهای روزنامه‌ای بریده، علامت‌های ماژیکی و مهر، همه روی کلمه‌های نریشن", "done")
+            result = claude_vox.build(directory, record, hooks, change=change)
+        else:
+            _note(directory, "engine", "موتور «موشن کلاد»: یک مدل کل فیلم را یک‌جا کارگردانی و کدنویسی می‌کند", "done")
+            result = claude_motion.build(directory, record, hooks, change=change, reference_sheet=directory.parent.parent / "reference" / "frame-table.jpg")
     except claude_motion.Cancelled:
         raise _Cancelled()
     if result.get("questions"):
@@ -618,7 +633,11 @@ def finish_claude_external(directory: Path, video: Path) -> None:
                                 progress=lambda percent, message: _progress(directory, "rendering", percent, message, stage="rendering"),
                                 cancelled=lambda: False)
     built = [(label, Path(path)) for label, path in pending["stills"]]
-    claude_motion.finish(work, pending["timing"], built, hooks)
+    if pending.get("vox"):
+        from creative import claude_vox
+        claude_vox.finish(work, pending["timing"], built, hooks)
+    else:
+        claude_motion.finish(work, pending["timing"], built, hooks)
     direction = claude_motion.Direction.model_validate(json.loads((directory / "claude_motion.json").read_text())["direction"])
     change = record.get("claude_pending")
     _save_claude_version(directory, direction, pending["timing"], built, list(pending.get("notes") or []), change if isinstance(change, str) else "")
@@ -637,7 +656,7 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
         target = directory / f"v{number}"
         shutil.rmtree(target, ignore_errors=True)
         (directory / "work").replace(target)
-        record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_motion"], "engine": "claude",
+        record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_vox" if record.get("vox") else "claude_motion"], "engine": "claude",
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
         record["versions"] = record["versions"][-MAX_VERSIONS:]
         record.update(current=number, status="completed", stage="completed", progress=100, message="", error=None, questions=[], pending_change=None, edit_pending=None,
