@@ -152,7 +152,8 @@ look_note: one or two sentences on how THIS film bends the look into something i
 ground, which colour carries the story). colors: leave {} unless the story needs another accent (for example the brand's own colour): then give any of
 "red", "must", "teal" (the three accents), "bg", "text" as #rrggbb. A look is a direction, not a cage: the scene writers invent new compositions inside it.
 
-THE LINES (beats[].line): 12-16 lines, 70-100 seconds spoken (about 2.6 words per second before speed-up). Structure: hook (1-2: the big number or contrast
+THE LINES (beats[].line): 12-16 lines, 70-100 seconds spoken (about 2.6 words per second before speed-up). When the REQUEST names a length, it wins: about 60 s =
+9-11 short lines, 45 s = 7-8, 30 s = 5-6. A 3D film keeps to 9-12 lines (each 3D scene costs much more to render) unless the person asked for longer. Structure: hook (1-2: the big number or contrast
 from the END of the story + «ولی…») → context (1-2: year, place, person: «سالِ هزار و نهصد و نود و نه، سان‌فرانسیسکو…») → the idea or problem (2-3) → the
 naming (1: «امروز اسمِ این مدل رو گذاشتیم: …») → growth (1-2: first numbers) → the twist (2-3: an unexpected decision, its reason, a quote) → the peak
 (2: the biggest number, the end of the story) → the lesson (1 quotable line). Spoken colloquial Persian for text-to-speech: half-spaces, kasre-ye ezafe
@@ -824,7 +825,7 @@ def stills(work: Path, timeline: dict, story: Story) -> tuple[bool, str, list[tu
 
 
 REVIEW = ("You are the art director of a Vox-style documentary (paper collage or a 3D stage) checking one still per scene (each tile is a scene just after its main moment) "
-          "before the film is rendered. A still is one frame of an animation: an element still entering or a mark half drawn is NOT a fault. Report ONLY objective "
+          "before the film is rendered. A still is one frame of an animation: an element still entering, a mark half drawn or a number still counting up (a counter below its final value) is NOT a fault. Report ONLY objective "
           "faults a viewer sees at once: text cut by the frame edge or wrapping wrongly; Persian letters broken apart; text over text or a picture hiding a text; "
           "a highlight not behind its word or unreadable text on it; anything in the top 8 % or bottom 8 % of the frame; more than 4 elements piled up so the "
           "message is lost; a blank or plainly unfinished scene; in a 3D scene: the main object cut by the frame edge, the 3D set tiny in an empty frame, or a title over the objects; a picture showing a logo, readable brand text or a real famous person's face; a number on screen "
