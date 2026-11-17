@@ -304,11 +304,36 @@ async def event_history(request: Request, conversation_id: str, after: int = Que
         raise HTTPException(404, 'conversation not found')
 
 
+_SYNCED: dict[tuple[str, str], float] = {}
+_SYNCING: set[tuple[str, str]] = set()
+
+
+def _sync_in_background(conversation_id: str, user_key: str, every: float = 6.0) -> None:
+    """The jobs' state is synced off the request path, at most every few seconds per chat: opening a chat no longer waits ~2 s for it on every load
+    (the page polls; the next answer, and the live event stream, carry what the sync found). 2026-11-17."""
+    key = (conversation_id, user_key)
+    if key in _SYNCING or time.monotonic() - _SYNCED.get(key, 0.0) < every:
+        return
+    _SYNCING.add(key)
+
+    async def go():
+        try:
+            await sync_conversation(conversation_id, user_key)
+        except KeyError:
+            pass
+        except Exception:
+            log.warning("background conversation sync failed", exc_info=True)
+        finally:
+            _SYNCED[key] = time.monotonic()
+            _SYNCING.discard(key)
+    asyncio.get_running_loop().create_task(go())
+
+
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(request: Request, conversation_id: str, messages: Optional[int] = Query(None, ge=1, le=200)):
     """`messages=N` returns only the newest N messages (`messages_has_more`, `events_from` say what lies before); without it, all of them as before."""
     try:
-        await sync_conversation(conversation_id, _user(request))
+        _sync_in_background(conversation_id, _user(request))
         conversation = await repo.get_conversation(conversation_id, _user(request), message_limit=messages)
         from app.studio_orchestrator import conversation_busy
         payload = _public_conversation(conversation)
