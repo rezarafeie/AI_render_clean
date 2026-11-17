@@ -32,7 +32,7 @@ now, and every brand got the SAME film with other words. Your job: design and wr
 way the character or the brand's mark behaves, other transitions and another signature move - while keeping what makes the format work (the story beats, their
 timing, the music and the sound effects on the picture's events).
 
-Return ONLY the file, between these two marker lines (no markdown fence, nothing else):
+Decide the design quickly (the art director already chose it) and spend your effort on the code. Return ONLY the file, between these two marker lines (no markdown fence, nothing else):
 =====FILE=====
 // DESIGN: <one or two sentences: the idea of this film's look, its ground, palette, type attitude and signature move>
 <the code of src/Custom.tsx>
@@ -94,7 +94,8 @@ def write(kind: str, content, timing: dict, events: list[dict], *, recent: str =
         user += "\n\nYOUR PREVIOUS FILE:\n" + previous[:40000]
     if problem:
         user += "\n\nFIX THIS (return the complete file again, keep the design):\n" + problem[:5000]
-    code = cm._one_ask(_system(kind), user, 16000, None, tries=2,
+    # 48K: on Jarvis, Opus's hidden thinking counts against max_tokens; at 16K it once thought for all 12.8K tokens and wrote no code (finish=length, empty text)
+    code = cm._one_ask(_system(kind), user, 48000, None, tries=3, seconds=900,
                        label=("intro_author", "دارم طراحی و کد تازهٔ این ویدیوی معرفی را برای همین برند می‌نویسم." if not problem else "دارم ایرادهای طراحی تازه را درست می‌کنم."))
     return _clean(code)
 
