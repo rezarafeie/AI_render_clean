@@ -328,3 +328,38 @@ async def tool(request: Request):
         return {"ok": True, "result": await _tool(claims, str(body.get("name") or ""), dict(body.get("args") or {}))}
     except (ValueError, KeyError) as exc:
         return {"ok": False, "error": str(exc)[:500]}
+
+
+# ── what the agent is doing, live in the chat ────────────────────────────────
+
+@router.post("/internal/pro/event")
+async def event(request: Request):
+    """The runner reports the agent's own reply text (streamed: started → live deltas → completed and saved) and each tool step (started/done with a
+    Persian label), so the chat shows the work as it happens, like a Claude Code session."""
+    claims = _claims(request)
+    body = await request.json()
+    cid, user, rid = claims["cid"], claims["user"], claims["run"]
+    kind = str(body.get("kind") or "")
+    response_id = str(body.get("response_id") or "")[:80]
+    if kind == "text_start":
+        await repo.emit(cid, "assistant.response.started", {"response_id": response_id, "agent_mode": "pro", "run_id": rid})
+    elif kind == "text_delta":
+        from app import studio_live
+        studio_live.publish(cid, "assistant.response.delta", {"response_id": response_id, "text": str(body.get("text") or "")[:20000]})
+    elif kind == "text_done":
+        text = str(body.get("text") or "").strip()[:20000]
+        if text:
+            saved = await repo.add_message(cid, user, "assistant", text, agent_mode="pro")
+            await repo.emit(cid, "assistant.response.completed", {"response_id": response_id, "text": text, "message_id": saved["id"], "agent_mode": "pro"})
+        else:
+            await repo.emit(cid, "assistant.response.failed", {"response_id": response_id, "agent_mode": "pro"})
+    elif kind in {"tool_start", "tool_done", "tool_failed"}:
+        etype = {"tool_start": "tool.started", "tool_done": "tool.completed", "tool_failed": "tool.failed"}[kind]
+        data = {"tool": "pro_" + str(body.get("tool") or "work")[:40], "activity_id": str(body.get("id") or "")[:80], "stage": "pro",
+                "message": str(body.get("label") or "")[:200], "agent_mode": "pro", "run_id": rid}
+        if body.get("detail"):
+            data["request" if kind == "tool_start" else "response"] = str(body["detail"])[:1500]
+        await repo.emit(cid, etype, data)
+    else:
+        raise HTTPException(400, "unknown event")
+    return {"ok": True}

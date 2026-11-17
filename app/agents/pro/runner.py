@@ -31,6 +31,12 @@ class Api:
         r.raise_for_status()
         return r.json()
 
+    async def event(self, **body) -> None:
+        try:
+            await self.client.post("/internal/pro/event", json=body)
+        except Exception:
+            pass
+
     async def stop_requested(self) -> bool:
         try:
             r = await self.client.get("/internal/pro/status")
@@ -116,21 +122,106 @@ def _policy(work: Path):
     return hook
 
 
-def _activity(api: Api):
-    """PostToolUse: the person sees which kind of work is happening (never raw arguments or output)."""
-    labels = {"Bash": "اجرای ابزار", "Write": "نوشتن فایل", "Edit": "ویرایش فایل", "Read": "بررسی فایل", "Skill": "خواندن راهنما"}
+TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit": "اصلاح فایل", "MultiEdit": "اصلاح فایل", "Glob": "پیدا کردن فایل‌ها",
+           "Grep": "جست‌وجو در فایل‌ها", "Skill": "خواندن راهنمای کار", "TodoWrite": "برنامه‌ریزی مراحل", "Bash": "اجرای ابزار",
+           "mcp__editorgpt__assets_list": "دیدن فایل‌های شما", "mcp__editorgpt__assets_fetch": "دریافت فایل شما",
+           "mcp__editorgpt__show_stills": "نمایش استیل‌ها", "mcp__editorgpt__deliver": "تحویل خروجی", "mcp__editorgpt__say": "پیام",
+           "mcp__editorgpt__step": "مرحله"}
+PERSIAN = re.compile(r"[\u0600-\u06FF]")
 
-    async def hook(data, tool_use_id, context):
-        name = data.get("tool_name", "")
-        if name in {"Bash", "Skill"}:
-            args = data.get("tool_input") or {}
-            label = str(args.get("description") or args.get("skill") or args.get("command", "")[:60] or labels.get(name, name))[:120]
-            try:
-                await api.tool("step", {"label": label, "state": "done"})
-            except Exception:
-                pass
-        return {}
-    return hook
+
+def _detail(name: str, args: dict) -> str:
+    """What the step does, shown when the person opens it (like Claude Code's tool lines): the command, the file, the skill, the arguments."""
+    if name == "Bash":
+        return "$ " + str(args.get("command") or "")[:1400]
+    if name in {"Read", "Write", "Edit", "MultiEdit"}:
+        path = str(args.get("file_path") or "")
+        if name == "Write":
+            body = str(args.get("content") or "")
+            return f"{path}\n({len(body.splitlines())} خط)\n" + body[:900]
+        if name in {"Edit", "MultiEdit"}:
+            return f"{path}\n- {str(args.get('old_string') or '')[:300]}\n+ {str(args.get('new_string') or '')[:500]}"
+        return path
+    if name == "Skill":
+        return str(args.get("skill") or "")
+    if name == "TodoWrite":
+        return "\n".join(("✓ " if t.get("status") == "completed" else "• ") + str(t.get("content") or "") for t in (args.get("todos") or [])[:12])
+    import json
+    return json.dumps(args, ensure_ascii=False)[:1200]
+
+
+def _result_text(block) -> str:
+    content = block.content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(item.get("text") or ("[تصویر]" if item.get("type") == "image" else ""))
+        content = "\n".join(p for p in parts if p)
+    text = str(content or "").strip()
+    return (text[:1500] + "\n…") if len(text) > 1500 else text
+
+
+def _label(name: str, args: dict) -> str:
+    """A Persian label for a tool step (the agent writes Bash descriptions in Persian; anything else gets a plain Persian name)."""
+    if name == "Bash" and PERSIAN.search(str(args.get("description") or "")):
+        return str(args["description"])[:120]
+    if name == "Skill" and args.get("skill"):
+        return "خواندن راهنمای " + str(args["skill"])[:60]
+    if name in {"Read", "Write", "Edit"} and args.get("file_path"):
+        return TOOL_FA[name] + " " + os.path.basename(str(args["file_path"]))[:60]
+    return TOOL_FA.get(name, "در حال کار")
+
+
+async def _forward(api: Api, message, live: dict) -> None:
+    """The agent's reply text streams into the chat (started → live deltas every ~0.4 s → completed, saved as a message) and every tool call is a
+    timeline step that opens when the call starts and closes with its result."""
+    import time
+    import uuid
+    from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock, UserMessage
+
+    async def close_text():
+        if live["id"] is not None:
+            await api.event(kind="text_done", response_id=live["id"], text=live["text"])
+            live.update(text="", id=None)
+
+    if isinstance(message, StreamEvent):
+        event = message.event or {}
+        if event.get("type") == "content_block_delta" and (event.get("delta") or {}).get("type") == "text_delta":
+            if live["id"] is None:
+                live["id"] = "pro-" + uuid.uuid4().hex[:16]
+                await api.event(kind="text_start", response_id=live["id"])
+            live["text"] += event["delta"].get("text", "")
+            if time.monotonic() - live["sent"] > 0.4:
+                live["sent"] = time.monotonic()
+                await api.event(kind="text_delta", response_id=live["id"], text=live["text"])
+        return
+    if isinstance(message, AssistantMessage):
+        for block in message.content:
+            if isinstance(block, ThinkingBlock) and (block.thinking or "").strip():
+                tid = "think-" + uuid.uuid4().hex[:12]           # the agent's reasoning, as one closed step the person can open (like Claude Code)
+                await api.event(kind="tool_start", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
+                await api.event(kind="tool_done", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
+            if isinstance(block, TextBlock) and live["id"] is None and block.text.strip():
+                live["id"] = "pro-" + uuid.uuid4().hex[:16]                # no stream events arrived: the whole text at once
+                await api.event(kind="text_start", response_id=live["id"])
+                live["text"] = block.text
+            if isinstance(block, ToolUseBlock):
+                await close_text()
+                if block.name in {"mcp__editorgpt__say", "mcp__editorgpt__step"}:
+                    continue
+                tool = block.name.split("__")[-1]
+                live["tools"][block.id] = (tool, _label(block.name, block.input or {}))
+                await api.event(kind="tool_start", id=block.id, tool=tool, label=live["tools"][block.id][1], detail=_detail(block.name, block.input or {}))
+        await close_text()
+        return
+    if isinstance(message, UserMessage) and isinstance(message.content, list):
+        for block in message.content:
+            if isinstance(block, ToolResultBlock) and block.tool_use_id in live["tools"]:
+                tool, label = live["tools"].pop(block.tool_use_id)
+                # always closes the same row (a tool.failed event would open a separate one); an error is said in the row's detail
+                await api.event(kind="tool_done", id=block.tool_use_id, tool=tool, label=label,
+                                detail=(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
 
 
 async def run(job: dict) -> None:
@@ -154,13 +245,15 @@ async def run(job: dict) -> None:
         disallowed_tools=["WebFetch", "WebSearch"],
         mcp_servers={"editorgpt": _tools(api)},
         permission_mode="dontAsk",
-        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])], "PostToolUse": [HookMatcher(matcher=None, hooks=[_activity(api)])]},
+        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])]},
         max_turns=int(os.environ.get("PRO_MAX_TURNS", "250")),
         env={"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
              "CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_TELEMETRY": "1",
              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1", "REMOTION_BROWSER_EXECUTABLE": os.environ.get("REMOTION_BROWSER_EXECUTABLE", "")},
         resume=job.get("resume") or None,
+        include_partial_messages=True,
     )
+    live = {"text": "", "id": None, "sent": 0.0, "tools": {}}
     status, error, session, turns, cost, reason = "failed", None, None, None, None, None
     stopped = False
     try:
@@ -177,6 +270,7 @@ async def run(job: dict) -> None:
             try:
                 await client.query(first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
                 async for message in client.receive_response():
+                    await _forward(api, message, live)
                     if isinstance(message, SystemMessage) and message.subtype == "init":
                         session = (message.data or {}).get("session_id") or session
                     elif isinstance(message, ResultMessage):

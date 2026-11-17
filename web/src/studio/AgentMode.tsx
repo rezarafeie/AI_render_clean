@@ -4,14 +4,14 @@ import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 
 export const agentModes = [
-  {id: "lite" as const, name: "EditorGPT Lite", hint: "Fast, everyday editing"},
-  {id: "medium" as const, name: "EditorGPT Medium", hint: "Advanced, multi-step editing"},
-  {id: "pro" as const, name: "EditorGPT Pro (آزمایشی)", hint: "کندتر و قوی‌تر · هزینهٔ بیشتر"},
+  {id: "lite" as const, name: "Lite", hint: "سریع، برای ادیت‌های روزمره"},
+  {id: "medium" as const, name: "Medium", hint: "پیشرفته، کارهای چندمرحله‌ای"},
+  {id: "pro" as const, name: "Pro", hint: "قوی‌ترین؛ کندتر و پرهزینه‌تر (آزمایشی)"},
 ];
 
 export function AgentModeSelector({value, onChange}: {value: AgentMode; onChange: (mode: AgentMode) => void}) {
   return <Menu label="Agent mode" side="top" trigger={props => <button type="button" className="composer-agent" {...props}>
-    <span>{agentModes.find(m => m.id === value)?.name || "EditorGPT Lite"}</span><Icon name="chevronDown" size={12}/>
+    <span>{agentModes.find(m => m.id === value)?.name || "Lite"}</span><Icon name="chevronDown" size={12}/>
   </button>}>
     {close => agentModes.map(mode => <button type="button" key={mode.id} role="menuitem" className="menu-item agent-option"
       aria-current={mode.id === value ? "true" : undefined} onClick={() => {onChange(mode.id); close();}}>
