@@ -519,7 +519,7 @@ def voice_timeline(story: Story, folder: Path, record: dict, hooks=None) -> dict
     from creative.audio import narrate
     if narrate.mode() != "lines":                                   # the whole script read as one take, cut at the real gaps (no speed-up, natural pauses)
         tags = narrate.direct(texts, ROUTE) if narrate.mode() == "directed" else None
-        clips_ = narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=1.05,
+        clips_ = narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=narrate.TEMPO,
                                  on_line=(lambda n, total: cm._say(hooks, "voice", f"نریشن جمله {n} از {total} آماده شد")) if hooks else None)
         scenes, clips, cursor = [], [], LEAD
         for i, (clip, beat) in enumerate(zip(clips_, story.beats), 1):
@@ -530,7 +530,7 @@ def voice_timeline(story: Story, folder: Path, record: dict, hooks=None) -> dict
         total = round(cursor - GAP + TAIL, 3)
         for i, sc in enumerate(scenes):
             sc["end"] = scenes[i + 1]["start"] if i + 1 < len(scenes) else total
-        return {"fps": FPS, "width": W, "height": H, "total": total, "tempo": 1.05, "scenes": scenes, "audio": clips}
+        return {"fps": FPS, "width": W, "height": H, "total": total, "tempo": narrate.TEMPO, "scenes": scenes, "audio": clips}
     takes = []
     for i, text in enumerate(texts, 1):
         audio, alignment = cm._retrying(lambda: cm._tts(text, voice, model, folder, f"{i:02d}"), tries=3, waits=(10, 25))

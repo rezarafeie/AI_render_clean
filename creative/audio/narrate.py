@@ -4,7 +4,7 @@ The engines used to ask ElevenLabs for every line on its own, cut every pause ab
 time-stretch. Each line then started and ended with the same intonation, nobody breathed, and the stretch added a metallic edge. Here the whole script
 (or a few lines at a time when it is long) is read in ONE take, so one sentence leads into the next; the take is cut into per-line clips at the real
 gaps between lines (from the character timestamps), pauses are kept (only an unusually long one is shortened) and no speed-up is applied beyond an
-optional, inaudible 1.0-1.06x. An optional delivery pass gives the reader direction (ElevenLabs v3 audio tags such as [warm], [curious], [serious]),
+a light 1.1x (the owner's pick). An optional delivery pass gives the reader direction (ElevenLabs v3 audio tags such as [warm], [curious], [serious]),
 which are performed, not spoken, and never reach the word timings.
 
     clips = narrate(lines, voice, model, folder)      # [{"text", "path", "dur", "chars", "starts"}], one per line, in order
@@ -20,12 +20,13 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 MAX_CHARS = 2200            # one take reads at most this much (a long film is read in a few takes, cut between lines)
 LEAD_IN, TAIL_OUT = 0.06, 0.16   # what a clip keeps before the line's first sound and after its last
-LONG_PAUSE, KEEP_PAUSE = 0.75, 0.42   # a pause inside a line longer than LONG_PAUSE is shortened to KEEP_PAUSE; shorter ones are the reader's own
+LONG_PAUSE, KEEP_PAUSE = 0.5, 0.3     # a pause inside a line longer than LONG_PAUSE is shortened to KEEP_PAUSE; shorter ones are the reader's own
+TEMPO = 1.1                           # the owner's pick (2026-11-17): the one-take read, a little faster; 1.2 (the old chain) sounded metallic
 def mode() -> str:
     """NARRATION_MODE: lines (each sentence on its own, the old chain) | take (one take, natural pauses) | directed (one take + delivery direction)."""
     import os
-    value = os.environ.get("NARRATION_MODE", "lines").strip().lower()
-    return value if value in {"lines", "take", "directed"} else "lines"
+    value = os.environ.get("NARRATION_MODE", "take").strip().lower()          # the owner chose the one-take read (B) over the old chain and the directed read
+    return value if value in {"lines", "take", "directed"} else "take"
 
 
 TAG = re.compile(r"\[[a-zA-Z][a-zA-Z \-']{1,30}\]\s*")
@@ -92,11 +93,11 @@ def _remap(x: float, kept: list[tuple[float, float]], tempo: float) -> float:
     return offset / tempo
 
 
-def narrate(lines: list[str], voice: str, model: str, folder: Path, *, tags: list[str] | None = None, tempo: float = 1.0, on_line=None) -> list[dict]:
+def narrate(lines: list[str], voice: str, model: str, folder: Path, *, tags: list[str] | None = None, tempo: float = TEMPO, on_line=None) -> list[dict]:
     """Per-line clips cut from whole takes. Each clip: {"text": the line's spoken characters, "path": wav, "dur", "chars": [...], "starts": [seconds in the clip]}."""
     from creative import claude_motion as cm
     folder.mkdir(parents=True, exist_ok=True)
-    tempo = max(1.0, min(1.06, float(tempo or 1.0)))
+    tempo = max(1.0, min(1.14, float(tempo or TEMPO)))
     tags = tags or [""] * len(lines)
     out: list[dict | None] = [None] * len(lines)
     for g, group in enumerate(_groups(lines)):

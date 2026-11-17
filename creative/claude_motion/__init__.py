@@ -411,7 +411,7 @@ def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None)
     from creative.audio import narrate
     if narrate.mode() != "lines":                                   # the whole script read as one take, cut at the real gaps (no speed-up, natural pauses)
         tags = narrate.direct(texts, ROUTE) if narrate.mode() == "directed" else None
-        takes = narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=1.04,
+        takes = narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=narrate.TEMPO,
                                 on_line=(lambda n, total: _say(hooks, "voice", f"نریشن جمله {n} از {total} آماده شد")) if hooks else None)
         scenes, clips, cursor = [], [], LEAD
         for i, clip in enumerate(takes, 1):
