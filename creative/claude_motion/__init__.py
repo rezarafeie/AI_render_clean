@@ -189,6 +189,7 @@ class Direction(BaseModel):
     title: str = ""
     summary: str = ""
     look: str = ""                         # the film's visual language in a paragraph: ground, art style (flat volumetric / line art / paper / glass...), light, density, motion
+    style: str = ""                        # the film-style library id this film's look bends (creative/film_styles.py), or ""
     backdrop: str = ""                     # the film-wide background layer (grid, grain, glow, paper...) and how it moves
     theme: Theme = Field(default_factory=Theme)
     beats: list[Beat] = Field(default_factory=list)
@@ -199,7 +200,7 @@ DIRECT_GUIDE = """You are the creative director of a Persian motion-graphics stu
 narration (there are no separate subtitles): every phrase and every illustration enters on the spoken word that names it, illustrations are crafted vector art
 (soft volume, 2-3 tone gradients, soft shadows, one light direction) or whatever art language the reference uses, and every scene is a small composition with
 1-3 phases. Plan ONE film and return strict JSON:
-{"questions": [], "title": "...", "summary": "...", "look": "...", "backdrop": "...",
+{"questions": [], "title": "...", "summary": "...", "style": "<film-style id or empty>", "look": "...", "backdrop": "...",
  "theme": {"background": "<CSS colour or gradient>", "accent": "#hex", "accentLight": "#hex", "accentDark": "#hex", "ink": "#hex", "muted": "#hex",
            "pillBg": "<CSS>", "pillInk": "#hex", "font": "<font id>"},
  "beats": [{"line": "...", "plan": "..."}]}
@@ -213,7 +214,9 @@ NARRATION (beats[].line, one sentence or two short ones per scene; 6-14 scenes; 
 
 LOOK (look, backdrop, theme): decide THIS film's own visual language. When a REFERENCE is given, match it: its ground (light paper, black, colour), palette (use its
 measured colours; a black-and-white reference stays black-and-white), type scale and weight, art language (line art, flat volume, paper cut, 3D-ish, photo-like),
-density and motion. Without a reference, derive it from the subject and audience; never default to one house style. Text must contrast with the ground
+density and motion. Without a reference, derive it from the subject and audience; never default to one house style. The FILM-STYLE LIBRARY (at the end)
+offers whole film languages (palette, type, motion, camera): pick one in `style` when it makes this subject more specific and memorable, and say in `look` how this
+film bends it; a reference video, when given, wins over any style. RECENT FILMS of this person (when given) must not be repeated. Text must contrast with the ground
 (ink on background 7:1+). pillBg is the dark (or light) chip behind short phrases. The font is the font id from FONTS (the person prefers «doran» unless the
 reference clearly uses another family).
 
@@ -286,9 +289,18 @@ def choose_font(request: str, chosen: str) -> str:
     return "ray" if _font_files("ray") else chosen
 
 
+def _direct_guide() -> str:
+    from creative import film_styles
+    return DIRECT_GUIDE + ("\n\n" + film_styles.catalog() if film_styles.catalog() else "")
+
+
 def direct(request: str, *, context: str = "", style: str = "", reference_sheet: Path | None = None, answers: list[str] | None = None,
-           photos: list[dict] | None = None, photo_sheet: Path | None = None) -> Direction:
+           photos: list[dict] | None = None, photo_sheet: Path | None = None, styles: str = "", recent: str = "") -> Direction:
     parts = [f"REQUEST:\n{request.strip()[:4000]}"]
+    if styles:
+        parts.append(styles)
+    if recent:
+        parts.append(recent)
     if answers:
         parts.append("ANSWERS OF THE PERSON:\n" + "\n".join(answers))
     if style:
@@ -314,7 +326,7 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
             hint = "" if attempts["n"] == 1 else "\n\nYour previous answer was not valid JSON. Answer again with ONE valid JSON object only: «» for quotes inside strings, no straight double quotes inside strings, no line breaks inside strings, no trailing commas, nothing before or after the object."
             note = ("\n\nImage 1 is a numbered sheet of the real photos." if photos and photo_sheet else "") + \
                    ("\n\nThe last attached image is a frame-by-frame sheet of the reference video." if reference_sheet and Path(reference_sheet).is_file() else "")
-            return chat_vision(DIRECT_GUIDE, user + note + hint, images=sheets,
+            return chat_vision(_direct_guide(), user + note + hint, images=sheets,
                                route=ROUTE, return_json=True, max_tokens=12000, timeout_seconds=600)
 
         with _long_call(600, 12000), step("creative_direction", "کارگردان دارد متن، سبک و استوری‌بورد فیلم را می‌نویسد."):
@@ -323,8 +335,10 @@ def direct(request: str, *, context: str = "", style: str = "", reference_sheet:
     else:
         from creative import llm
         with _long_call(600, 12000), step("creative_direction", "کارگردان دارد متن، سبک و استوری‌بورد فیلم را می‌نویسد."):
-            direction = _retrying(lambda: llm.ask(Direction, DIRECT_GUIDE, user, route=ROUTE, tokens=12000, attempts=2))
+            direction = _retrying(lambda: llm.ask(Direction, _direct_guide(), user, route=ROUTE, tokens=12000, attempts=2))
     direction.theme.font = choose_font(request, direction.theme.font)
+    from creative import film_styles
+    direction.style = film_styles.valid(direction.style)
     direction.beats = [b for b in direction.beats if b.line.strip()][:16]
     direction.photos = list(photos or [])
     return direction
@@ -605,10 +619,16 @@ def _photos_block(direction: Direction) -> list[str]:
     return [PHOTO_RULES + "\nFILES (under public/):\n" + _photos.listing(direction.photos)]
 
 
+def _style_guide(direction: Direction) -> str:
+    from creative import film_styles
+    return film_styles.guide(getattr(direction, "style", ""))
+
+
 def _brief(direction: Direction, timeline: dict) -> list[str]:
     beats = [{"scene": s["id"], "line": s["text"], "seconds": s["dur"], "plan": b.plan} for s, b in zip(timeline["scenes"], direction.beats)]
     return [f"THE FILM: {direction.title}\n{direction.summary}", *_photos_block(direction),
             f"LOOK: {direction.look}\nBACKDROP: {direction.backdrop}\nTHEME (already in theme.ts): {direction.theme.model_dump_json()}",
+            *([g] if (g := _style_guide(direction)) else []),
             "TIMING + STORYBOARD (`line` is exactly the text cue() searches):\n" + json.dumps(beats, ensure_ascii=False, indent=1)]
 
 
@@ -1144,8 +1164,13 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
             staged = _photos.stage(record["photos"], directory / "photos")
             if staged:
                 hooks.note("photos", f"{len(staged)} عکس واقعی برای فیلم آماده شد", "done")
+        from creative import film_styles
+        past = film_styles.recent(directory)
         direction = direct(brief, context=record.get("context", ""), style=record.get("style", ""), reference_sheet=reference_sheet,
-                           photos=staged, photo_sheet=(_photos.sheet(staged, directory / "photos" / "sheet.jpg") if staged else None))
+                           photos=staged, photo_sheet=(_photos.sheet(staged, directory / "photos" / "sheet.jpg") if staged else None),
+                           styles=film_styles.menu(brief, [p["style"] for p in past if p.get("style")]), recent=film_styles.recent_block(past))
+        if direction.style:
+            hooks.note("style", f"سبک فیلم از کتابخانه: {direction.style.split(':', 1)[1]} — {direction.look[:160]}", "done")
         if direction.questions and not direction.beats:
             return {"questions": direction.questions}
         hooks.note("direct", f"طرح فیلم آماده شد: «{direction.title}»، {len(direction.beats)} صحنه", "done",

@@ -111,6 +111,7 @@ class Story(BaseModel):
     angle: str = ""
     look: str = "paper_collage"            # the art direction (looks.py)
     look_note: str = ""                    # how THIS film bends it (a signature idea, a colour change)
+    style: str = ""                        # a film style of the library (creative/film_styles.py) whose language the look borrows, or ""
     colors: dict = Field(default_factory=dict)   # optional overrides of the look's red/must/teal/bg/text (#rrggbb)
     palette: str = "classic"
     facts: list[Fact] = Field(default_factory=list)
@@ -127,7 +128,7 @@ stopped drop shipping 2003 inventory», «Amazon acquired Zappos 2009 price»). 
 
 STORY_GUIDE_RAW = """You are the story editor and director of a Persian documentary channel: researched explainers in the spirit of Vox video essays, each in the art direction (look) that suits its subject. Turn the
 request into ONE film and return strict JSON:
-{"questions": [], "title": "...", "summary": "...", "angle": "...", "look": "<look id>", "look_note": "...", "colors": {},
+{"questions": [], "title": "...", "summary": "...", "angle": "...", "look": "<look id>", "style": "<film-style id or empty>", "look_note": "...", "colors": {},
  "facts": [{"claim": "...", "sources": ["..."], "conflict": ""}], "sources_footer": "Sources: Fortune (2012) · Bloomberg (2010) · Wikipedia",
  "beats": [{"line": "...", "type": "...", "bg": "paper|grid|mustard|red|teal|dark", "plan": "...", "moment": "..."}],
  "images": [{"name": "shoebox", "kind": "cut|person|photo", "prompt": "..."}]}
@@ -149,7 +150,9 @@ tell this story best. In a 3D film the `plan` of every scene names the 3D SET: w
 countries, city blocks, pawn people, pins, arrows, a picture standing as a card), where they stand, what appears on which word, and the CAMERA move (an arc around
 the set, a push-in on the moment, a pull-back on the peak). Images in a 3D film: 4-10, used as standing cards or phone screens.
 look_note: one or two sentences on how THIS film bends the look into something its own (a signature motif, an unexpected recurring shape, which scene flips to a dark
-ground, which colour carries the story). colors: leave {} unless the story needs another accent (for example the brand's own colour): then give any of
+ground, which colour carries the story). style (optional): one id of the FILM-STYLE LIBRARY at the end when its film language makes THIS subject more
+specific; the look id is still required (it sets the kit's ground, fonts and picture treatment) and look_note says how the film combines the two. RECENT FILMS of this
+person (when given) must not be repeated: another look, ground and palette. colors: leave {} unless the story needs another accent (for example the brand's own colour): then give any of
 "red", "must", "teal" (the three accents), "bg", "text" as #rrggbb. A look is a direction, not a cage: the scene writers invent new compositions inside it.
 
 THE LINES (beats[].line): 12-16 lines, 70-100 seconds spoken (about 2.6 words per second before speed-up). When the REQUEST names a length, it wins: about 60 s =
@@ -348,9 +351,15 @@ def research_summary(story: "Story", sources: list[dict], own: bool, script: boo
     return "\n".join(lines)
 
 
-def write_story(request: str, *, context: str = "", sources: list[dict] | None = None, script: bool = False, answers: list[str] | None = None) -> Story:
+def _story_guide() -> str:
+    from creative import film_styles
+    return STORY_GUIDE + ("\n\n" + film_styles.catalog() if film_styles.catalog() else "")
+
+
+def write_story(request: str, *, context: str = "", sources: list[dict] | None = None, script: bool = False, answers: list[str] | None = None,
+                recent: str = "", avoid: str = "") -> Story:
     from creative import llm
-    parts = [f"REQUEST:\n{request.strip()[:5000]}"]
+    parts = [f"REQUEST:\n{request.strip()[:5000]}"] + [x for x in (recent, avoid) if x]
     if answers:
         parts.append("ANSWERS OF THE PERSON:\n" + "\n".join(answers))
     if script:
@@ -369,7 +378,7 @@ def write_story(request: str, *, context: str = "", sources: list[dict] | None =
         parts.append("SOURCES: none could be read this time. Use only widely documented public facts, rounded conservatively («حدود»), mark every uncertain one in facts[].conflict, and leave "
                      "sources_footer EMPTY (never name a publication you were not given).")
     with cm._long_call(600, 12000), cm.step("story", "کارگردان دارد داستان، متن ۱۲ تا ۱۶ جمله‌ای با منبع و استوری‌بورد را می‌نویسد."):
-        story = cm._retrying(lambda: llm.ask(Story, STORY_GUIDE, "\n\n".join(parts), route=ROUTE, tokens=12000, attempts=2))
+        story = cm._retrying(lambda: llm.ask(Story, _story_guide(), "\n\n".join(parts), route=ROUTE, tokens=12000, attempts=2))
     story = clean_story(story)
     if wants_3d(request) and not _looks.is_3d(story.look):
         story.look = "clay_3d"                     # the person asked for 3D: never a flat look
@@ -380,6 +389,8 @@ def clean_story(story: Story) -> Story:
     story.beats = [b for b in story.beats if b.line.strip()][:16]
     if story.look not in _looks.LOOKS:
         story.look = _looks.DEFAULT
+    from creative import film_styles
+    story.style = film_styles.valid(story.style)
     if not isinstance(story.colors, dict):
         story.colors = {}
     seen, pictures = set(), []
@@ -670,6 +681,12 @@ def _kit_source() -> str:
     return (KIT / "src" / "vox.tsx").read_text(encoding="utf-8")
 
 
+def _style_guide(story: Story) -> str:
+    from creative import film_styles
+    text = film_styles.guide(getattr(story, "style", ""))
+    return (text + "\n(The LOOK GUIDE above sets the kit's ground, fonts and pictures; borrow this style's colour logic, motion, camera and native moves inside it.)") if text else ""
+
+
 def _brief(story: Story, timeline: dict, pictures: list[dict]) -> list[str]:
     beats = [{"scene": s["id"], "line": s["text"], "seconds": round(s["end"] - s["start"], 2), "type": b.type, "bg": b.bg, "plan": b.plan, "moment": b.moment}
              for s, b in zip(timeline["scenes"], story.beats)]
@@ -680,6 +697,7 @@ def _brief(story: Story, timeline: dict, pictures: list[dict]) -> list[str]:
             f"LOOK GUIDE — {look['name']} ({th['look']}): {look['guide']}\nTOKENS: BG {th['bg']}, TXT {th['text']}, INK {th['ink']}, accents RED {th['red']} / MUST {th['must']} / TEAL {th['teal']}; "
             f"default ground '{th['ground']}'; ANTON={th['display']}, SERIF={th['serif']}, SCRIPT={th['script']}, SANS={th['sans']}; pages change by '{th['transition']}'."
             + (f"\nTHIS FILM'S TWIST ON THE LOOK: {story.look_note}" if story.look_note else ""),
+            *([g] if (g := _style_guide(story)) else []),
             "FACTS:\n" + (facts or "-") + f"\nSOURCES LINE (last scene): {story.sources_footer}" + (f"\nPHOTO CREDITS (small typed line in the last scene, below the sources line): {story.credits}" if story.credits else ""),
             "PICTURES (under public/img; use only these):\n" + _assets.listing(pictures),
             *([THREE_GUIDE.replace("@LOOK3@", look.get("look3", "clay")), "THE 3D KIT (src/stage3d.tsx components):\n" + _three_api()] if _looks.is_3d(story.look) else []),
@@ -939,7 +957,12 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         check()
         hooks.note("story", "کارگردان (Opus) دارد زاویهٔ داستان، متن ۱۲ تا ۱۶ جمله‌ای با منبع، استوری‌بورد صحنه‌ها و فهرست تصویرها را می‌نویسد")
         hooks.progress(8, "دارم داستان، متن و استوری‌بورد را می‌نویسم.")
-        story = write_story(brief, context=record.get("context", ""), sources=sources, script=script, answers=record.get("answers"))
+        from creative import film_styles
+        past = film_styles.recent(directory)
+        story = write_story(brief, context=record.get("context", ""), sources=sources, script=script, answers=record.get("answers"),
+                            recent=film_styles.recent_block(past), avoid=film_styles.menu(brief, [p["style"] for p in past if p.get("style")]))
+        if story.style:
+            hooks.note("style", f"سبک فیلم از کتابخانه: {story.style.split(':', 1)[1]} — {story.look_note[:160]}", "done")
         if story.questions and not story.beats:
             return {"questions": story.questions}
         if hooks.say:

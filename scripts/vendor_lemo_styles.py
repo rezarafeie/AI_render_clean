@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Add the film styles of Lemo-Opuscar (MIT) to vendor/motion-skills/ as skills, without touching the other namespaces.
+"""Add the film styles of Lemo-Opuscar to vendor/motion-skills/ as skills, without touching the other namespaces.
 
     python scripts/vendor_lemo_styles.py /path/to/lemo-opuscar [--remove]
+
+Licence: since 2.0.0 the Markdown (each STYLE.md, DIRECTOR.md) is CC BY-NC 4.0 with an extra permission, and putting it into a commercial service needs Lemomo's
+commercial licence; the owner confirmed on 2026-11-17 that the studio's licence covers this use. Earlier revisions were MIT. The licence recorded below is read from
+the clone's LICENSE file, never assumed.
 
 Only Markdown is copied (never the demo films, code, fonts or audio). Each style becomes one skill `lemo:<slug>`: SKILL.md is a digest made of the style's own sections
 (essence, colour, type, motion, camera: verbatim excerpts) for the scene designers, and the full STYLE.md is kept as its reference file. The director's method
@@ -32,9 +36,11 @@ def sections(text: str) -> list[tuple[str, str]]:
 
 
 def digest(slug: str, title: str, text: str, limit: int = 5200) -> str:
-    head = text.split("\n## ", 1)[0].strip()
-    wanted = [body for name, body in sections(text) if name.startswith(KEEP)]
-    out = head + "\n\n" + "\n\n".join("## " + b.strip() for b in wanted)
+    head = text.split("\n## ", 1)[0].strip()[:700]
+    wanted = [body.strip() for name, body in sections(text) if name.startswith(KEEP)]
+    share = max(500, (limit - len(head) - 120) // max(1, len(wanted)))     # every kept section gets its share (2.x styles are long: colour/motion/camera must not be cut off)
+    wanted = [b if len(b) <= share else b[:share].rsplit("\n", 1)[0] + "\n…" for b in wanted]
+    out = head + "\n\n" + "\n\n".join("## " + b for b in wanted)
     return (out[:limit].rsplit("\n", 1)[0] + "\n[… the full style text is the reference file STYLE.md]") if len(out) > limit else out
 
 
@@ -50,7 +56,11 @@ def main(clone: Path, remove_only: bool = False) -> None:
         holder = re.search(r"Copyright \(c\) (.+)", licence)
         (OUT / "_licenses" / NS).mkdir(parents=True)
         (OUT / "_licenses" / NS / "lemo-opuscar.LICENSE").write_text(licence)
-        sources.append({"namespace": NS, "repo": REPO, "revision": rev, "license": "MIT", "copyright": holder.group(1).strip() if holder else "Lemomo",
+        mit = licence.lstrip().startswith("MIT License")
+        lic = "MIT" if mit else "CC-BY-NC-4.0+commercial-licence"
+        sources.append({"namespace": NS, "repo": REPO, "revision": rev, "license": lic,
+                        **({} if mit else {"licence_note": "Docs CC BY-NC 4.0 (+ Lemomo's additional permission); commercial use in the studio confirmed by the owner on "
+                                                           "2026-11-17 under Lemomo's commercial licence. Credit: \"Lemo-Opuscar by Lemomo (LemoLab)\", https://github.com/lemomo-ai/lemo-opuscar"}), "copyright": holder.group(1).strip() if holder else "Lemomo",
                         "license_file": f"_licenses/{NS}/lemo-opuscar.LICENSE",
                         "vendored": "Markdown of the film styles (a digest of each STYLE.md plus the full text as a reference file) and DIRECTOR.md; no films, code, fonts or audio"})
         for folder in sorted((clone / "styles").iterdir()):
@@ -73,14 +83,14 @@ def main(clone: Path, remove_only: bool = False) -> None:
                      f"{NS}/{folder.name}/references/STYLE.md": hashlib.sha256(style.read_bytes()).hexdigest()}
             index["skills"].append({"id": f"{NS}:{folder.name}", "name": folder.name, "namespace": NS, "pack": "lemo-opuscar", "description": hint, "repo": REPO, "revision": rev,
                                     "path": f"{NS}/{folder.name}/SKILL.md", "subpath": f"styles/{folder.name}", "bytes": len(body.encode()), "references": [f"{NS}/{folder.name}/references/STYLE.md"],
-                                    "tags": tags, "runtime_needed": "", "license": "MIT", "hint": hint, "body_chars": 5200, "files": files})
+                                    "tags": tags, "runtime_needed": "", "license": lic, "hint": hint, "body_chars": 5200, "files": files})
         director = (clone / "DIRECTOR.md").read_bytes()
         (OUT / NS / "director-method").mkdir(parents=True)
         (OUT / NS / "director-method" / "SKILL.md").write_bytes(director)
         d_hint = "How a film is directed: benchmark first, then sound, rhythm, camera and staging before pretty frames; the treatment, the beats and the checks"
         index["skills"].append({"id": f"{NS}:director-method", "name": "director-method", "namespace": NS, "pack": "lemo-opuscar", "description": d_hint, "repo": REPO, "revision": rev,
                                 "path": f"{NS}/director-method/SKILL.md", "subpath": "DIRECTOR.md", "bytes": len(director), "references": [], "tags": ["composition", "film-style"],
-                                "runtime_needed": "", "license": "MIT", "hint": d_hint, "body_chars": 4200,
+                                "runtime_needed": "", "license": lic, "hint": d_hint, "body_chars": 4200,
                                 "files": {f"{NS}/director-method/SKILL.md": hashlib.sha256(director).hexdigest()}})
     (OUT / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
     (OUT / "SOURCES.json").write_text(json.dumps(sources, ensure_ascii=False, indent=1), encoding="utf-8")

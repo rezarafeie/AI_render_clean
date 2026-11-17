@@ -27,13 +27,13 @@ from pydantic import BaseModel
 
 from creative import claude_motion as cm
 from . import audio as _audio
-from . import film3d, presenter, reel, story
+from . import author, film3d, presenter, reel, story
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent
 KIT = HERE / "kit"
 ROUTE = cm.ROUTE
-ENGINE_REV = "intro-1"
+ENGINE_REV = "intro-2"          # intro-2: every Story/Reel film is a new composition written for its brand (author.py); the templates are the fallback
 ENGINES = {"story": story, "reel": reel, "presenter": presenter, "film3d": film3d}
 LABELS = {"story": "قصه (Story)", "reel": "شوریل موشن (Reel)", "presenter": "مجری (Presenter)", "film3d": "فیلم سینمایی سه‌بعدی (Film3D)"}
 SHAPES = {"spark", "circle", "square", "drop", "hex", "diamond", "cloud"}
@@ -452,8 +452,23 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         notes.append("رابط روی لپ‌تاپ بازسازی‌شده است، نه ضبط صفحه؛ اعداد و نام پروژه‌های داخل آن نمونه‌اند. فیلم استایلایز است، نه فوتورئال.")
     check()
 
+    # 3a. a new film for this brand (Story, Reel): its design and code, written by the author; the template is only the fallback
+    custom, design, style_id = None, "", ""
+    if author.enabled(kind):
+        try:
+            custom, design, style_id = _authored(kind, content, timing, events, directory, record, saved, ckpt, change, hooks)
+            checkpoint(custom=custom, design=design, style=style_id)
+        except Cancelled:
+            raise
+        except Exception as exc:
+            log.warning("intro author failed: %s", str(exc)[:300])
+            hooks.note("design", "طراحی تازه نوشته نشد؛ این بار قالب استاندارد همین سبک استفاده می‌شود", "done")
+            notes.append("طراحی اختصاصی این بار ساخته نشد و قالب استاندارد سبک استفاده شد.")
+    check()
+
     def lay(target: Path, body: BaseModel, plan_timing: dict) -> list[str]:
         missing = project(target, kind, body, plan_timing, plates=plates, extra=extra)
+        author.install(target, custom)
         if kind == "presenter":
             (target / "public" / "talk").mkdir(parents=True, exist_ok=True)
             for name in ("footage.mp4", "cut.webm"):
@@ -473,6 +488,25 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         hooks.note("build", "دارم پروژه را می‌سازم و از لحظه‌های کلیدی عکس می‌گیرم")
         hooks.progress(40 + attempt * 6, "دارم استیل‌های کلیدی را می‌گیرم.")
         ok, detail, built = stills(work, times)
+        if not (ok and built) and custom:                 # the new film does not build: its author fixes it once, then the template takes over
+            hooks.note("design", "کد طراحی تازه ساخته نشد؛ دارم خطایش را درست می‌کنم")
+            try:
+                design, custom = author.write(kind, content, timing, events, previous=custom, problem="The build failed with:\n" + detail[-3000:])
+                author.install(work, custom)
+                ok, detail, built = stills(work, times)
+            except Cancelled:
+                raise
+            except Exception as exc:
+                log.warning("intro author fix failed: %s", str(exc)[:200])
+                ok = False
+            if not (ok and built):
+                custom = None
+                author.install(work, None)
+                notes.append("طراحی اختصاصی ساخته نشد و قالب استاندارد سبک استفاده شد.")
+                hooks.note("design", "طراحی تازه درست نشد؛ قالب استاندارد سبک استفاده می‌شود", "done")
+                ok, detail, built = stills(work, times)
+            else:
+                checkpoint(custom=custom, design=design, style=style_id)
         if not (ok and built):
             raise RuntimeError("the intro project did not build: " + detail[:300])
         hooks.note("build", f"از {len(built)} لحظهٔ کلیدی عکس گرفته شد", "done")
@@ -496,6 +530,23 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         if kind == "presenter":                           # the narration is already recorded: its words cannot change now
             notes += [f"{p.get('still')}: {p.get('what')}" for p in verdict["problems"]]
             break
+        if custom:                                        # a fault in the new film's layout: its author fixes the code (the words stay)
+            hooks.note("revise", f"دارم {len(verdict['problems'])} ایراد طراحی را در کد اصلاح می‌کنم (دور {attempt + 1} از ۲)")
+            feedback = "\n".join(f"- still «{p.get('still')}», text «{p.get('text')}»: {p.get('what')} -> {p.get('fix')}" for p in verdict["problems"])
+            try:
+                design2, fixed = author.write(kind, content, timing, events, previous=custom, problem="The key stills show these faults (fix the layout, keep the design and the words):\n" + feedback)
+                design, custom = design2 or design, fixed
+                checkpoint(custom=custom, design=design, style=style_id)
+                shutil.rmtree(work, ignore_errors=True)
+                work.mkdir(parents=True)
+                hooks.note("revise", "کد اصلاح شد؛ دوباره عکس می‌گیرم", "done")
+                continue
+            except Cancelled:
+                raise
+            except Exception as exc:
+                log.warning("intro author revision failed: %s", str(exc)[:200])
+                hooks.note("revise", "اصلاح انجام نشد؛ نسخهٔ قبلی نگه داشته شد", "done")
+                break
         hooks.note("revise", f"دارم {len(verdict['problems'])} ایراد را در متن‌ها اصلاح می‌کنم (دور {attempt + 1} از ۲)")
         feedback = "\n".join(f"- still «{p.get('still')}», text «{p.get('text')}»: {p.get('what')} -> {p.get('fix')}" for p in verdict["problems"])
         try:
@@ -526,7 +577,8 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
                 "music": str(music), "music_gain": engine.MUSIC_GAIN, "fade": engine.FADE}
     title = f"معرفی {content.brand}"
     summary = f"ویدیوی معرفی «{content.brand}» به سبک {LABELS[kind]}، {total:.0f} ثانیه."
-    state_file.write_text(json.dumps({"intro": kind, "content": content.model_dump(), "facts": facts, "direction": {"title": title, "summary": summary}}, ensure_ascii=False))
+    state_file.write_text(json.dumps({"intro": kind, "content": content.model_dump(), "facts": facts, "custom": custom or "",
+                                      "direction": {"title": title, "summary": summary, "look": design, "style": style_id}}, ensure_ascii=False))
     ckpt_file.unlink(missing_ok=True)
     (work / "pending.json").write_text(json.dumps({"timing": timeline, "stills": [[label, str(path)] for label, path in built], "notes": notes, "intro": kind},
                                                   ensure_ascii=False, default=str))
@@ -556,6 +608,50 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
             raise RuntimeError("render failed: " + detail[:300])
     check()
     return finish(work, timeline, built, hooks) | {"direction": direction, "timing": timeline, "stills": built, "notes": notes}
+
+
+DESIGN_PICK = """You art-direct a short Persian intro film for a brand. A template used to give every brand the same film; this one must be its own. From the brand's
+content, its audience and this person's recent intros, decide the film's design idea and, when one fits, a film style of the library to bend for this brand. Return
+strict JSON {"style": "<film-style id or empty>", "design": "<3-5 sentences: ground, palette (keep the brand accent), type attitude, how the brand's mark or
+character behaves, the transitions and ONE signature move; concrete, never words like creative or attractive>"}. It must differ clearly from the recent intros."""
+
+
+def _authored(kind: str, content: BaseModel, timing: dict, events: list[dict], directory: Path, record: dict, saved: dict, ckpt: dict, change: str,
+              hooks: Hooks) -> tuple[str, str, str]:
+    """(code, design, style id) of this brand's own film: from the checkpoint, revised for a change, or designed and written now."""
+    from pydantic import ConfigDict, Field
+    from creative import film_styles, llm
+    if not change and ckpt.get("custom"):
+        hooks.note("design", "ادامه از طراحی تازهٔ قبلی (دوباره نوشته نمی‌شود)", "done", ckpt.get("design") or None)
+        return ckpt["custom"], ckpt.get("design", ""), ckpt.get("style", "")
+    past = film_styles.recent(directory)
+    recent = film_styles.recent_block(past)
+    if change and saved.get("custom"):
+        d = saved.get("direction") or {}
+        hooks.note("design", f"دارم طراحی را با این تغییر به‌روز می‌کنم: «{change[:80]}»")
+        design, code = author.write(kind, content, timing, events, style_guide=film_styles.guide(d.get("style")), previous=saved["custom"],
+                                    problem="The person asks for this change (apply it; the content above is already updated): " + change[:1500])
+        return code, design or d.get("look", ""), d.get("style", "")
+
+    class Pick(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        style: str = ""
+        design: str = ""
+
+    hooks.note("design", f"دارم طراحی اختصاصی این ویدیوی معرفی را برای «{content.brand}» انتخاب می‌کنم (نه قالب ثابت)")
+    hooks.progress(30, "دارم طراحی اختصاصی ویدیو را انتخاب می‌کنم.")
+    user = "\n\n".join(x for x in (f"STYLE OF INTRO: {kind} ({LABELS[kind]})", "CONTENT:\n" + content.model_dump_json(exclude={"questions"}),
+                                     f"REQUEST:\n{record.get('request', '')[:2000]}", recent,
+                                     film_styles.menu("", [p["style"] for p in past if p.get("style")])) if x)
+    with cm._long_call(300, 3000), cm.step("intro_design", "کارگردان هنری دارد ایدهٔ طراحی و سبک این ویدیوی معرفی را انتخاب می‌کند."):
+        pick = cm._retrying(lambda: llm.ask(Pick, DESIGN_PICK + "\n\n" + film_styles.catalog(), user, route=ROUTE, tokens=3000, attempts=2))
+    style_id = film_styles.valid(pick.style)
+    guide = (f"THE DESIGN OF THIS FILM (decided by the art director; follow it):\n{pick.design}\n\n" if pick.design else "") + film_styles.guide(style_id)
+    hooks.note("design", "ایدهٔ طراحی: " + (pick.design[:220] or "—") + (f" · سبک: {style_id[5:]}" if style_id else ""), "done")
+    hooks.progress(34, "دارم کد طراحی تازه را می‌نویسم.")
+    design, code = author.write(kind, content, timing, events, recent=recent, style_guide=guide)
+    hooks.note("design", "کد طراحی تازه نوشته شد", "done", design or None)
+    return code, design or pick.design, style_id
 
 
 def finish(work: Path, timeline: dict, built: list[tuple[str, Path]], hooks: Hooks) -> dict:

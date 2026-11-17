@@ -22,7 +22,7 @@ def test_every_skill_is_one_registry_entry_and_ids_are_unique():
     ids = [i["id"] for i in found["items"]]
     assert len(ids) == len(set(ids))
     for item in found["items"]:
-        assert item["type"] == "skill" and item["integration_status"] == "skill-only" and item["license"]["type"] == ("AGPL-3.0" if item["id"].startswith("openmontage:") else "MIT") and item["license"]["attribution_required"] and not item["license"]["commercial_use_approved"]
+        assert item["type"] == "skill" and item["integration_status"] == "skill-only" and item["license"]["type"] == ("AGPL-3.0" if item["id"].startswith("openmontage:") else "CC-BY-NC-4.0+commercial-licence" if item["id"].startswith("lemo:") else "MIT") and item["license"]["attribution_required"] and not item["license"]["commercial_use_approved"]
         assert item["source_url"].startswith("https://github.com/") and item["source_version"]
 
 
@@ -38,6 +38,8 @@ def test_each_source_keeps_its_licence_and_revision():
         licence = (VENDOR / source["license_file"]).read_text()
         if source["namespace"] == "openmontage":      # the owner accepted AGPL-3.0 for these files; they stay isolated and removable
             assert source["license"] == "AGPL-3.0" and "GNU AFFERO GENERAL PUBLIC LICENSE" in licence.upper()
+        elif source["namespace"] == "lemo" and source["license"] != "MIT":    # Lemo-Opuscar 2.x docs: CC BY-NC 4.0 + commercial licence (owner confirmed 2026-11-17)
+            assert "CC BY-NC 4.0" in licence and "COMMERCIAL USE OF THE DOCS" in licence and source["copyright"] in licence and source.get("licence_note")
         else:
             assert licence.startswith("MIT License") and "Permission is hereby granted" in licence and source["copyright"] in licence
         assert len(source["revision"]) == 12
@@ -179,9 +181,9 @@ def test_the_planner_is_offered_the_skills_that_fit_the_brief_not_the_whole_libr
 
 def test_a_film_style_skill_reaches_the_designer_as_a_digest_with_the_full_text_as_reference():
     row = sl.get("lemo:swiss-motion")
-    assert row and row["license"] == "MIT" and row["body_chars"] >= 5000 and any(r.endswith("STYLE.md") for r in row["references"])
+    assert row and row["license"] in {"MIT", "CC-BY-NC-4.0+commercial-licence"} and row["body_chars"] >= 5000 and any(r.endswith("STYLE.md") for r in row["references"])
     block = sl.designer_block(["lemo:swiss-motion"])
-    assert "Colour logic" in block and "Motion quality" in block and "(from https://github.com/lemomo-ai/lemo-opuscar, MIT)" in block
+    assert "Colour logic" in block and "Motion quality" in block and "(from https://github.com/lemomo-ai/lemo-opuscar, " in block and "Camera grammar" in block
     assert len(sl.reference("lemo:swiss-motion", "STYLE.md", 20000)) > len(sl.body("lemo:swiss-motion"))
 
 
