@@ -683,6 +683,14 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
         with _long_call(seconds, tokens, "low"), step(*(label or ("code", "دارم نسخهٔ فشرده‌تر کد را می‌نویسم."))):
             return ask_text(guide, compact, tokens=tokens)
     except Exception as exc:
+        if "returned no text" in str(exc) and effort != "low":
+            # Opus thought for the whole output budget and wrote nothing (Jarvis counts hidden thinking against max_tokens): the same request once more with
+            # low reasoning effort, which writes the code (2026-11-17: the intro author and scene groups failed this way, low effort fixed it)
+            log.warning("claude motion call returned no text; once more with low reasoning effort")
+            if on_retry:
+                on_retry("مدل پاسخی ننوشت (همهٔ بودجه صرف فکر شد)؛ دوباره با فکرِ کوتاه‌تر می‌پرسم")
+            with _long_call(seconds, tokens, "low"), step(*(label or ("code", "دارم کد این بخش از فیلم را می‌نویسم."))):
+                return ask_text(guide, user, tokens=tokens)
         if split is None or not (isinstance(exc, _SlowCut) or _TRANSIENT.search(str(exc))):
             raise
         log.warning("claude motion call failed (%s); splitting it into smaller calls", str(exc)[:120])

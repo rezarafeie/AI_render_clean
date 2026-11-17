@@ -153,6 +153,12 @@ def parse(text: str, record: dict | None = None) -> Decision:
     else:
         raw["action"] = None
     value = Decision.model_validate({k: raw.get(k) for k in ("say", "action", "done", "consent") if raw.get(k) is not None})
+    if value.action is None and not value.say.strip():
+        # 2026-11-17: Opus wrote its whole answer as prose, then an empty {"say":"","action":null}; taking it ended the run with no message and no work
+        raise ValueError("the JSON object has neither `say` nor `action` (your answer was written outside the object). Put what you tell the person in `say` "
+                         "and the tool you call in `action`; nothing outside the one JSON object")
+    if value.action is None:
+        value.done = True                    # nothing to run: the turn ends with what was said
     if value.action is not None:
         if record is not None:
             tools.validate(record, value.action.model_dump())
