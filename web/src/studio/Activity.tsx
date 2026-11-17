@@ -24,6 +24,25 @@ function Assets({ assets, projectId }: { assets: PreparedAsset[]; projectId?: st
   return <React.Suspense fallback={null}><AssetList assets={assets} projectId={projectId}/></React.Suspense>;
 }
 
+const latin = (text: string) => (text.match(/[A-Za-z]/g) || []).length > (text.match(/[\u0600-\u06FF]/g) || []).length;
+/** What the two halves of a step are called, by the kind of work (a command and its output, a file and what was written, a thought). */
+function inLabel(step: ActivityStep): string {
+  const tool = String(step.tool || "");
+  if (tool === "pro_Bash") return "فرمان";
+  if (tool === "pro_Write") return "فایل و محتوا";
+  if (tool === "pro_Edit" || tool === "pro_MultiEdit") return "تغییر";
+  if (tool === "pro_Read") return "فایل";
+  if (tool === "pro_think") return "فکر";
+  if (tool === "pro_TodoWrite") return "فهرست کارها";
+  return "درخواست";
+}
+function outLabel(step: ActivityStep): string {
+  const tool = String(step.tool || "");
+  if (tool === "pro_Bash") return "خروجی";
+  if (tool === "pro_think") return "نتیجه";
+  return "پاسخ";
+}
+
 function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<ReturnType<typeof stepDetails>> }) {
   const fa = useFa();
   const run = details.run;
@@ -38,9 +57,9 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
   const waiting = step.status === "active" && !details.response && !run?.error;
   return <div className="act-work">
     <Assets assets={details.assets} projectId={details.projectId}/>
-    {details.request ? <section className="act-io"><h5>درخواست</h5><pre dir="auto">{details.request}</pre></section> : null}
-    {details.assets.length && !details.response && !run?.error ? null : <section className="act-io"><h5>پاسخ</h5>
-      {details.response ? <pre dir="auto">{details.response}</pre>
+    {details.request ? <section className="act-io act-in"><h5>{inLabel(step)}</h5><pre dir={latin(details.request) ? "ltr" : "auto"}>{details.request}</pre></section> : null}
+    {details.assets.length && !details.response && !run?.error ? null : <section className={`act-io act-out${/^خطا:/.test(details.response || "") ? " is-error" : ""}`}><h5>{outLabel(step)}</h5>
+      {details.response ? <pre dir={latin(details.response) ? "ltr" : "auto"}>{details.response}</pre>
         : run?.error ? <pre dir="ltr" className="act-error">{run.error}</pre>
         : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار…</p>
         : <p className="act-none">پاسخ متنی ثبت نشده است.</p>}
@@ -122,7 +141,7 @@ export function ActivityBlock({ steps, live, retryHref, onOpenEditor }: { steps:
   const count = `${fa ? faNumber(history.length) : history.length} مرحله`;
   const summary = `${count} انجام شد${!live && total >= 1000 ? ` · ${formatDuration(total, fa)}` : ""}`;
   // Finished with a single step: just show it. Otherwise show the current step(s) and collapse history.
-  const visible = expanded || (!live && !failed && history.length === steps.length && steps.length === 1) ? steps : current.length ? current : history.slice(-1);
+  const visible = expanded || (!live && !failed && history.length === steps.length && steps.length === 1) ? steps : current.length ? current : live ? history.slice(-1) : [];
   const canCollapse = steps.length > 1 && (expanded || visible.length < steps.length || history.length > 1);
   return <section className="act" aria-label="Activity">
     {canCollapse ? <button type="button" className="act-summary" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>

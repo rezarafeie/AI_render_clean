@@ -185,9 +185,28 @@ async def _forward(api: Api, message, live: dict) -> None:
             await api.event(kind="text_done", response_id=live["id"], text=live["text"])
             live.update(text="", id=None)
 
+    root = live.get("root", "")
+
+    def short(text: str) -> str:
+        return text.replace(root + "/", "").replace(root, ".") if root else text
+
     if isinstance(message, StreamEvent):
         event = message.event or {}
-        if event.get("type") == "content_block_delta" and (event.get("delta") or {}).get("type") == "text_delta":
+        kind = event.get("type")
+        if kind == "content_block_start" and (event.get("content_block") or {}).get("type") in {"thinking", "redacted_thinking"}:
+            live["think"] = {"id": "think-" + uuid.uuid4().hex[:12], "index": event.get("index"), "text": ""}
+            await api.event(kind="tool_start", id=live["think"]["id"], tool="think", label="در حال فکر کردن…")      # shown live, like Claude Code
+            return
+        if kind == "content_block_delta" and (event.get("delta") or {}).get("type") == "thinking_delta" and live.get("think"):
+            live["think"]["text"] += event["delta"].get("thinking", "")
+            return
+        if kind == "content_block_stop" and live.get("think") and event.get("index") == live["think"]["index"]:
+            think = live.pop("think")
+            live["thought"] = True
+            await api.event(kind="tool_done", id=think["id"], tool="think", label="فکر کردن دربارهٔ قدم بعدی",
+                            detail=think["text"].strip()[:1500] or "(متن فکر نمایش داده نمی‌شود)")
+            return
+        if kind == "content_block_delta" and (event.get("delta") or {}).get("type") == "text_delta":
             if live["id"] is None:
                 live["id"] = "pro-" + uuid.uuid4().hex[:16]
                 await api.event(kind="text_start", response_id=live["id"])
@@ -198,7 +217,7 @@ async def _forward(api: Api, message, live: dict) -> None:
         return
     if isinstance(message, AssistantMessage):
         for block in message.content:
-            if isinstance(block, ThinkingBlock) and (block.thinking or "").strip():
+            if isinstance(block, ThinkingBlock) and (block.thinking or "").strip() and not live.pop("thought", False):
                 tid = "think-" + uuid.uuid4().hex[:12]           # the agent's reasoning, as one closed step the person can open (like Claude Code)
                 await api.event(kind="tool_start", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
                 await api.event(kind="tool_done", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
@@ -215,7 +234,7 @@ async def _forward(api: Api, message, live: dict) -> None:
                 path = str((block.input or {}).get("file_path") or "")
                 if block.name == "Read" and path.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
                     live["images"][block.id] = path
-                await api.event(kind="tool_start", id=block.id, tool=tool, label=live["tools"][block.id][1], detail=_detail(block.name, block.input or {}))
+                await api.event(kind="tool_start", id=block.id, tool=tool, label=live["tools"][block.id][1], detail=short(_detail(block.name, block.input or {})))
         await close_text()
         return
     if isinstance(message, UserMessage) and isinstance(message.content, list):
@@ -225,7 +244,7 @@ async def _forward(api: Api, message, live: dict) -> None:
                 # always closes the same row (a tool.failed event would open a separate one); an error is said in the row's detail
                 image = live["images"].pop(block.tool_use_id, None)
                 await api.event(kind="tool_done", id=block.tool_use_id, tool=tool, label=label, image=image,
-                                detail=(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
+                                detail=short(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
 
 
 async def run(job: dict) -> None:
@@ -257,7 +276,7 @@ async def run(job: dict) -> None:
         resume=job.get("resume") or None,
         include_partial_messages=True,
     )
-    live = {"text": "", "id": None, "sent": 0.0, "tools": {}, "images": {}}
+    live = {"text": "", "id": None, "sent": 0.0, "tools": {}, "images": {}, "root": str(work)}
     status, error, session, turns, cost, reason = "failed", None, None, None, None, None
     stopped = False
     try:
