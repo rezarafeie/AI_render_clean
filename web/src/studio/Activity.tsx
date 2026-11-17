@@ -3,7 +3,8 @@ import { Icon } from "../components/Icon";
 import { clock, faNumber, formatDuration } from "../format";
 import { useFa } from "./locale";
 import { toolIcon } from "./steps";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { api } from "../api";
 import { ActivityStep, PreparedAsset, WORKING_NOTE, friendlyFailure, stepDetails } from "./model";
 
 /** How long this step has been running, counted live (like a coding agent's status line). */
@@ -49,6 +50,29 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
   </div>;
 }
 
+/** The picture a step looked at (an image the agent read): a small thumbnail at the end of its row, full size on click (like Claude Code). */
+function StepImage({ attachmentId }: { attachmentId: string }) {
+  const { conversationId } = useParams();
+  const [url, setUrl] = React.useState<string | null>(null);
+  const [big, setBig] = React.useState(false);
+  React.useEffect(() => {
+    if (!conversationId) return;
+    let live = true, made: string | null = null;
+    api.authenticatedObjectUrl(api.studioAttachmentUrl(conversationId, attachmentId)).then(value => { made = value; if (live) setUrl(value); else URL.revokeObjectURL(value); }).catch(() => {});
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  }, [conversationId, attachmentId]);
+  if (!url) return null;
+  return <>
+    <button type="button" className="act-thumb" onClick={event => { event.stopPropagation(); setBig(true); }} aria-label="نمایش تصویر">
+      <img src={url} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, display: "block" }}/>
+    </button>
+    {big ? <div role="dialog" aria-modal="true" onClick={() => setBig(false)}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out" }}>
+      <img src={url} alt="" style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 10 }}/>
+    </div> : null}
+  </>;
+}
+
 function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryHref?: string; onOpenEditor?: () => void }) {
   const fa = useFa();
   const details = stepDetails(step);
@@ -64,10 +88,12 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
     <span className={`act-label${active ? " is-active" : ""}`}><span className={active ? "act-shimmer" : undefined}>{step.label}</span></span>
     {details ? <Icon name="chevronDown" size={14} className={`act-chevron${open ? " is-open" : ""}`}/> : null}
   </>;
+  const image = [...step.events].reverse().find(event => typeof event.data.image === "string")?.data.image as string | undefined;
   return <li className="act-step" data-status={step.status}>
     {details
       ? <button type="button" className="act-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{label}</button>
       : <div className="act-row">{label}</div>}
+    {image ? <div className="act-thumb-row" style={{ marginInlineStart: 28, marginTop: 4 }}><StepImage attachmentId={image}/></div> : null}
     {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p></div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
     {active ? <div className="act-timing">

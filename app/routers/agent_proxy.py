@@ -104,6 +104,29 @@ async def _add_spent(claims: dict, credits: int, usage: dict) -> None:
     await repo.emit(claims["cid"], "pro.cost", {"run_id": claims["run"], "spent_credits": state["spent_credits"], "budget_credits": pro.BUDGET_CREDITS})
 
 
+def _lift_tool_images(data: dict) -> bool:
+    """Jarvis drops images that sit INSIDE a tool_result (the model then sees nothing and reads the file again and again: a 2026-11-17 run read one
+    still 13 times). Each such image is moved right after its tool_result in the same user message, where it reaches the model; the result keeps a note."""
+    changed = False
+    for message in data.get("messages") or []:
+        if message.get("role") != "user" or not isinstance(message.get("content"), list):
+            continue
+        out, lifted = [], []
+        for block in message["content"]:
+            if isinstance(block, dict) and block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+                images = [item for item in block["content"] if isinstance(item, dict) and item.get("type") == "image"]
+                if images:
+                    rest = [item for item in block["content"] if not (isinstance(item, dict) and item.get("type") == "image")]
+                    block = {**block, "content": rest + [{"type": "text", "text": f"[{len(images)} image(s) of this result attached right after the tool results]"}]}
+                    lifted += images
+                    changed = True
+            out.append(block)
+        if lifted:
+            first_other = next((i for i, b in enumerate(out) if not (isinstance(b, dict) and b.get("type") == "tool_result")), len(out))
+            message["content"] = out[:first_other] + lifted + out[first_other:]
+    return changed
+
+
 @router.post("/internal/anthropic/v1/messages")
 async def messages(request: Request):
     claims = _claims(request)
@@ -122,6 +145,8 @@ async def messages(request: Request):
         data = json.loads(body)
     except ValueError:
         return _anthropic_error(400, "invalid_request_error", "invalid JSON")
+    if _lift_tool_images(data):
+        body = json.dumps(data, ensure_ascii=False).encode()
     model = str(data.get("model") or "")
     if not model.startswith(pro.ALLOWED_MODELS):
         return _anthropic_error(400, "invalid_request_error", f"model {model!r} is not allowed for EditorGPT Pro")
@@ -359,6 +384,13 @@ async def event(request: Request):
                 "message": str(body.get("label") or "")[:200], "agent_mode": "pro", "run_id": rid}
         if body.get("detail"):
             data["request" if kind == "tool_start" else "response"] = str(body["detail"])[:1500]
+        if body.get("image") and kind != "tool_start":            # the picture the agent looked at: a small thumbnail on its row, larger on click
+            try:
+                path = pro.inside(cid, str(body["image"]))
+                if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"} and path.stat().st_size < 15_000_000:
+                    data["image"] = (await _attach(claims, path))["id"]
+            except Exception:
+                log.warning("pro: thumbnail for %s failed", body.get("image"), exc_info=True)
         await repo.emit(cid, etype, data)
     else:
         raise HTTPException(400, "unknown event")

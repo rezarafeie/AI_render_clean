@@ -212,6 +212,9 @@ async def _forward(api: Api, message, live: dict) -> None:
                     continue
                 tool = block.name.split("__")[-1]
                 live["tools"][block.id] = (tool, _label(block.name, block.input or {}))
+                path = str((block.input or {}).get("file_path") or "")
+                if block.name == "Read" and path.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    live["images"][block.id] = path
                 await api.event(kind="tool_start", id=block.id, tool=tool, label=live["tools"][block.id][1], detail=_detail(block.name, block.input or {}))
         await close_text()
         return
@@ -220,7 +223,8 @@ async def _forward(api: Api, message, live: dict) -> None:
             if isinstance(block, ToolResultBlock) and block.tool_use_id in live["tools"]:
                 tool, label = live["tools"].pop(block.tool_use_id)
                 # always closes the same row (a tool.failed event would open a separate one); an error is said in the row's detail
-                await api.event(kind="tool_done", id=block.tool_use_id, tool=tool, label=label,
+                image = live["images"].pop(block.tool_use_id, None)
+                await api.event(kind="tool_done", id=block.tool_use_id, tool=tool, label=label, image=image,
                                 detail=(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
 
 
@@ -253,7 +257,7 @@ async def run(job: dict) -> None:
         resume=job.get("resume") or None,
         include_partial_messages=True,
     )
-    live = {"text": "", "id": None, "sent": 0.0, "tools": {}}
+    live = {"text": "", "id": None, "sent": 0.0, "tools": {}, "images": {}}
     status, error, session, turns, cost, reason = "failed", None, None, None, None, None
     stopped = False
     try:
