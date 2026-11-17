@@ -92,6 +92,26 @@ def acceptable(before: str, after: str) -> bool:
     return ratio >= 0.86 or (latin and ratio >= 0.7) or abs(len(a) - len(b)) <= 1 and ratio >= 0.8
 
 
+def _key(word: str) -> str:
+    return re.sub(r"[\u200c\u200d«»\"'.,،؛:!?؟…()\[\]-]", "", bare(word)).replace("ي", "ی").replace("ك", "ک")
+
+
+def merge(before: str, after: str) -> str:
+    """The model may only ADD marks to a Persian word: word by word, its version is taken when the bare letters are the same, else the original word stays
+    («اتاوا» never becomes «اُتِوا»). Latin words and the words of a foreign name are the one exception: they may be respelled in Persian letters."""
+    from difflib import SequenceMatcher
+    a, b = before.split(" "), after.split(" ")
+    out: list[str] = []
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, [_key(w) for w in a], [_key(w) for w in b], autojunk=False).get_opcodes():
+        if tag == "equal":
+            out += b[j1:j2]                                   # same letters: the marked version
+        elif any(re.search(r"[A-Za-z]", w) for w in a[i1:i2]):
+            out += b[j1:j2]                                   # a Latin word respelled as pronounced
+        else:
+            out += a[i1:i2]                                   # letters changed: never trusted
+    return " ".join(w for w in out if w)
+
+
 def prepare(lines: list[str], *, route: str = "", notes=None) -> list[str]:
     """The lines as the voice should read them: the lexicon, then the model pass (cached per text). A model failure keeps the lexicon version."""
     persian = re.compile(r"[\u0600-\u06FF]")
@@ -118,7 +138,7 @@ def prepare(lines: list[str], *, route: str = "", notes=None) -> list[str]:
     out = []
     for before, after in zip(base, list(got) + [""] * len(base)):
         after = re.sub(r"[ \t]+", " ", (after or "").strip())
-        out.append(after if acceptable(before, after) else before)
+        out.append(merge(before, after) if acceptable(before, after) else before)
         if after and out[-1] is before:
             log.info("pronunciation pass changed a line too much; kept: %s", before[:80])
     try:
