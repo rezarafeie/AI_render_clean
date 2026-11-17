@@ -27,7 +27,8 @@ VISION = ("You look at 12 frames, in time order, of ONE video (a contact sheet; 
 
 
 def _run(cmd: list[str], timeout: int = 300) -> str:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stderr
+    done = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return (done.stdout or "") + "\n" + (done.stderr or "")            # ffmpeg's metadata=print writes to stdout, its logs to stderr
 
 
 def probe(path: Path) -> dict:
