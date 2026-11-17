@@ -499,6 +499,12 @@ async def _updates(request, db, token, tg, conversation):
             ])
             lines = [*lines, "برنامه آمادهٔ بررسی است"]
             await db.set(timeline_key, json.dumps(lines, ensure_ascii=False), ex=30 * 86400)
+        elif kind == "question.required" and data.get("kind") == "medium_approval" and data.get("run_id"):
+            action = secrets.token_urlsafe(18)
+            await db.set(PREFIX + "agent-approval:" + action,
+                         json.dumps([tg, user, conversation, data["run_id"]]), ex=86400)
+            await _send(token, tg, str(data.get("question") or "ادامهٔ این کار به تأیید شما نیاز دارد.")[:3900],
+                        buttons=[[{"text": "تأیید و ادامه", "callback_data": "studio:agent:" + action}]])
         elif kind == "question.required" and isinstance(data.get("choices"), list):
             choices = [choice for choice in data["choices"] if isinstance(choice, str) and choice.strip()][:8]
             if choices:
@@ -510,7 +516,7 @@ async def _updates(request, db, token, tg, conversation):
                 await _send(token, tg, str(data.get("question") or "یک گزینه را انتخاب کنید.")[:3900], buttons=buttons)
         elif kind == "render.completed" and data.get("project_id"):
             media = await _ready_asset(studio.project_output(request, data["project_id"]))
-            await _output_media(db, token, tg, conversation, cursor_key, media, f"render:{data['project_id']}:{seq}")
+            await _output_media(db, token, tg, conversation, cursor_key, media, f"render:{data['project_id']}")
             line = _activity(event)
             if line and (not lines or lines[-1] != line):
                 lines.append(line)
@@ -1003,7 +1009,7 @@ async def webhook(request: Request):
     force_work = False
     if callback:
         action = str(callback.get("data") or "")
-        if not re.fullmatch(r"studio:(stop|resume):[a-f0-9]{32}", action) and not action.startswith(("studio:plan:", "studio:choice:", "studio:work:")) and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "pro", "settings", "menu", "hermes", "editor", "ref-content", "ref-style", "ref-both", "product", "explainer")}:
+        if not re.fullmatch(r"studio:(stop|resume):[a-f0-9]{32}", action) and not action.startswith(("studio:plan:", "studio:choice:", "studio:work:", "studio:agent:")) and action not in {"studio:" + x for x in ("new", "updates", "output", "cancel", "approve", "lite", "medium", "pro", "settings", "menu", "hermes", "editor", "ref-content", "ref-style", "ref-both", "product", "explainer")}:
             return {"ok": True}
         async with httpx.AsyncClient(timeout=5) as client:
             try:
@@ -1080,6 +1086,23 @@ async def webhook(request: Request):
                 await _send(token, tg, "این انتخاب دیگر برای گفتگوی فعلی معتبر نیست.")
                 return {"ok": True}
             text, command, force_work = option[3], "", True
+
+        if callback and action.startswith("studio:agent:"):
+            approval_key = PREFIX + "agent-approval:" + action.removeprefix("studio:agent:")
+            raw = await db.get(approval_key)
+            details = json.loads(raw) if raw else []
+            if len(details) != 4 or details[:2] != [tg, str(user.id)]:
+                await _send(token, tg, "این دکمه منقضی شده است. همان گفتگو را در Studio باز کنید.")
+                return {"ok": True}
+            try:
+                await studio.resume_agent(request, details[3], studio.AgentResume(decision="approve"))
+            except HTTPException as exc:
+                await _send(token, tg, str(exc.detail)[:500])
+            else:
+                await db.delete(approval_key)
+                await db.zadd(WATCH, {json.dumps([tg, str(user.id), details[2]]): time.time()})
+                await _send(token, tg, "تأیید شد. کار ادامه دارد.")
+            return {"ok": True}
 
         if callback and action.startswith("studio:plan:"):
             raw = await db.get(PREFIX + "approve:" + action.removeprefix("studio:plan:"))
@@ -1162,6 +1185,7 @@ async def webhook(request: Request):
                         buttons=keyboard)
         else:
             mode, _, content = text.partition(" ") if command else ("", "", text)
+            service = await db.get(service_key) or "editor"
             if callback and command in {"/product", "/explainer"}:
                 source = await db.getdel(source_key)
                 if not source:
@@ -1181,7 +1205,7 @@ async def webhook(request: Request):
                     return {"ok": True}
                 force_work = True
                 content = f"با این رفرنس یک ویدیوی تازه بساز. فقط از نقش انتخاب‌شده برای رفرنس استفاده کن: {REFERENCE_CHOICES[text]}.\n{reference}"
-            elif not attachment and not command and text.startswith(("https://www.instagram.com/", "https://instagram.com/")) and len(text.split()) == 1:
+            elif service == "editor" and not attachment and not command and text.startswith(("https://www.instagram.com/", "https://instagram.com/")) and len(text.split()) == 1:
                 await db.set(draft_key, text, ex=900)
                 await _send(token, tg, "این رفرنس را برای چه چیزی استفاده کنم؟", buttons=[[
                     {"text": label, "callback_data": "studio:ref-" + action}
@@ -1193,7 +1217,6 @@ async def webhook(request: Request):
                 await db.set(file_draft_key, json.dumps(attachment), ex=1800)
                 await _send(token, tg, "فایل دریافت شد. بگویید با آن چه کار کنم.")
                 return {"ok": True}
-            service = await db.get(service_key) or "editor"
             if service == "editor" and not attachment and not force_work and re.fullmatch(r"https?://[^\s]+", content):
                 await db.set(source_key, content, ex=900)
                 await _send(token, tg, "از این لینک چه ویدیویی بسازم؟", buttons=[[
@@ -1248,7 +1271,9 @@ async def webhook(request: Request):
                 return {"ok": True}
             finally:
                 user_context.reset(context)
-            await _send(token, tg, "درخواست Studio ثبت شد. روند کار همین‌جا می‌آید.",
-                        buttons=[[{"text": "مشاهدهٔ گفتگو", "web_app": {"url": base + "/studio/" + conversation_id}}]])
-            await db.zadd(WATCH, {watch: time.time()})
+            try:
+                await _send(token, tg, "درخواست Studio ثبت شد. روند کار همین‌جا می‌آید.",
+                            buttons=[[{"text": "مشاهدهٔ گفتگو", "web_app": {"url": base + "/studio/" + conversation_id}}]])
+            finally:
+                await db.zadd(WATCH, {watch: time.time()})
     return {"ok": True}
