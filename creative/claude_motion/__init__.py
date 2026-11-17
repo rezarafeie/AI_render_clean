@@ -151,11 +151,11 @@ def step(stage: str, message: str):
 
 
 @contextmanager
-def _long_call(seconds: float = 900, tokens: int = 32000):
+def _long_call(seconds: float = 900, tokens: int = 32000, effort: str | None = None):
     """A whole film is one long generation: give the call its time, and let ONLY the strong provider answer it (a weaker fallback writes broken films)."""
     from brain.lm_gateway import call_policy
     providers = [p.strip() for p in os.environ.get("CLAUDE_MOTION_PROVIDERS", "jarvis").split(",") if p.strip()]
-    token = call_policy.set({"timeout": seconds, "max_tokens": tokens, "providers": providers, "stream": True})
+    token = call_policy.set({"timeout": seconds, "max_tokens": tokens, "providers": providers, "stream": True, **({"reasoning_effort": effort} if effort else {})})
     try:
         yield
     finally:
@@ -652,7 +652,8 @@ class _SlowCut(RuntimeError):
     """A call that ran for minutes and was then cut off by the provider."""
 
 
-def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300, label: tuple[str, str] | None = None):
+def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, on_retry=None, on_split=None, seconds: float = 300, label: tuple[str, str] | None = None,
+             effort: str | None = None):
     """A code call: tried twice (a 502 on a long call repeats), and when it still fails `split()` (if given) rewrites it as smaller calls."""
     def attempt():
         # A long call the provider cut off after ~4 minutes (a stream error, zero tokens counted) would be cut off again at the same size: split at once instead of
@@ -666,7 +667,7 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
                 raise _SlowCut(f"the call was cut off after {time.monotonic() - started:.0f} s") from exc    # no transient keyword in the text: _retrying must not repeat it
             raise
     try:
-        with _long_call(seconds, tokens):
+        with _long_call(seconds, tokens, effort):
             return _retrying(attempt, tries=tries, waits=(10,), on_retry=on_retry)
     except CutOff as exc:
         # Never the same request again: smaller calls when the work can be split, else one request that asks for the same result in less code.
@@ -679,7 +680,7 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
             on_retry("پاسخ از سقف طول بیرون زد؛ نسخهٔ فشرده‌تر را می‌خواهم")
         compact = user + (f"\n\nYOUR PREVIOUS ANSWER WAS CUT OFF at the output limit. Write the same result in clearly less code: fewer and simpler elements, shared "
                           f"helpers instead of repetition, no comments; it must end with the =====END===== marker well within {int(tokens * 0.65)} tokens.")
-        with _long_call(seconds, tokens), step(*(label or ("code", "دارم نسخهٔ فشرده‌تر کد را می‌نویسم."))):
+        with _long_call(seconds, tokens, "low"), step(*(label or ("code", "دارم نسخهٔ فشرده‌تر کد را می‌نویسم."))):
             return ask_text(guide, compact, tokens=tokens)
     except Exception as exc:
         if split is None or not (isinstance(exc, _SlowCut) or _TRANSIENT.search(str(exc))):

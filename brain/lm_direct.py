@@ -273,6 +273,14 @@ def _prepare(provider: dict, messages: list[dict], *, model: str, tokens: int, t
         body["max_completion_tokens"] = max(int(tokens or 0) * 3, 2500)
         # Big structured jobs (scripts, concepts, plans: thousands of tokens) get real thinking; short answers stay quick.
         body.setdefault("reasoning_effort", "medium" if int(tokens or 0) >= 3500 else "low")
+    try:
+        from .lm_gateway import call_policy
+        effort = (call_policy.get() or {}).get("reasoning_effort")
+    except Exception:
+        effort = None
+    if effort in {"low", "medium", "high"} and provider["id"] == "jarvis":
+        # Opus's hidden thinking counts against max_tokens on Jarvis: a big code task once thought for all of it and wrote nothing (finish=length, empty text)
+        body = {**body, "reasoning_effort": effort}
     if stream:
         body = {**body, "stream": True}
     return key, f"{base}/chat/completions", headers, body

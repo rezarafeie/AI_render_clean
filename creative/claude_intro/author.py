@@ -94,8 +94,9 @@ def write(kind: str, content, timing: dict, events: list[dict], *, recent: str =
         user += "\n\nYOUR PREVIOUS FILE:\n" + previous[:40000]
     if problem:
         user += "\n\nFIX THIS (return the complete file again, keep the design):\n" + problem[:5000]
-    # 48K: on Jarvis, Opus's hidden thinking counts against max_tokens; at 16K it once thought for all 12.8K tokens and wrote no code (finish=length, empty text)
-    code = cm._one_ask(_system(kind), user, 48000, None, tries=3, seconds=900,
+    # low effort: on Jarvis, Opus's hidden thinking counts against max_tokens; at 16K and at 48K it thought for the whole budget and wrote no code (finish=length,
+    # empty text); with reasoning_effort=low the same prompt returned the whole file in 44 s (2026-11-17)
+    code = cm._one_ask(_system(kind), user, 32000, None, tries=3, seconds=900, effort="low",
                        label=("intro_author", "دارم طراحی و کد تازهٔ این ویدیوی معرفی را برای همین برند می‌نویسم." if not problem else "دارم ایرادهای طراحی تازه را درست می‌کنم."))
     return _clean(code)
 
