@@ -547,7 +547,7 @@ export const api = {
       try {
         await api.prepareMediaPlayback();
         const direct = document.createElement("a");
-        direct.href = url;
+        direct.href = api.downloadUrl(url, filename);
         direct.download = filename;
         document.body.appendChild(direct);
         direct.click();
@@ -1500,6 +1500,10 @@ export const api = {
   studioJobFileUrl(id: string, file: string): string { return `${BASE}/studio/projects/${id}/job-files/${file.split('/').map(encodeURIComponent).join('/')}`; },
   studioSceneAudioUrl(id: string, index: number): string { return `${BASE}/studio/projects/${id}/scenes/${index}/audio`; },
   studioOutputUrl(id: string): string { return `${BASE}/studio/projects/${id}/output`; },
+  /** The same media URL served as an attachment (the server sets Content-Disposition for `download=1`): the browser saves it at once, in its own download bar. */
+  downloadUrl(url: string, filename: string): string {
+    return `${url}${url.includes("?") ? "&" : "?"}download=1&name=${encodeURIComponent(filename)}`;
+  },
   async prepareMediaPlayback(): Promise<void> {
     await j(await authFetch(`${BASE}/studio/media-session`, {method:"POST", credentials:"same-origin"}));
   },

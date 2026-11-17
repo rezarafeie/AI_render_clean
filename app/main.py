@@ -217,6 +217,18 @@ app.include_router(admin_manage.router)
 
 
 @app.middleware("http")
+async def download_as_attachment(request: Request, call_next):
+    """`?download=1` on a media URL makes the browser save the file at once (Content-Disposition: attachment), with `name` as the file name. A download link
+    then starts the moment it is clicked instead of the page fetching the whole video into memory first (2026-11-17)."""
+    response = await call_next(request)
+    if request.method == "GET" and request.query_params.get("download") == "1" and response.status_code == 200:
+        from urllib.parse import quote
+        name = re.sub(r'[\x00-\x1f"\\/]', "", request.query_params.get("name") or "")[:150] or "video.mp4"
+        response.headers["content-disposition"] = f"attachment; filename=\"{quote(name)}\"; filename*=UTF-8''{quote(name)}"
+    return response
+
+
+@app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     def unauthorized():
         response = JSONResponse({"detail": "Not authenticated"}, status_code=401)

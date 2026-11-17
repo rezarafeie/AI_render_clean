@@ -190,7 +190,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
         <AuthenticatedMedia as="video" key={`v-${motionId}-${shown.n}`} src={api.motionMediaUrl(motionId, "video", shown.n)} posterSrc={api.motionMediaUrl(motionId, "thumb", shown.n)} controls playsInline preload="metadata" className="rc-video"/>
       </div>}
       <div className="rc-actions">
-        <button className="btn btn-sm" onClick={() => void api.authenticatedObjectUrl(api.motionMediaUrl(motionId, "video", shown.n)).then(url => { const a = document.createElement("a"); a.href = url; a.download = "motion-graphic.mp4"; a.click(); })}><Icon name="download" size={15}/>Download</button>
+        <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(api.motionMediaUrl(motionId, "video", shown.n), "motion-graphic.mp4")}><Icon name="download" size={15}/>Download</button>
         {onOpenPreview ? <button className="btn btn-sm btn-secondary" onClick={onOpenPreview}><Icon name="eye" size={15}/>Open in Preview</button> : null}
         {onEditAgain ? <button className="btn btn-sm btn-ghost" onClick={onEditAgain}><Icon name="edit" size={15}/>Edit again</button> : null}
       </div>
