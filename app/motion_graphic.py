@@ -228,6 +228,26 @@ def _version(record: dict, number: int | None = None) -> dict | None:
 STALE_AFTER = 600          # seconds without any progress save, with no worker thread alive here: nobody is building this clip any more
 
 
+HEARTBEAT_S = 30
+
+
+def _beating(directory: Path) -> bool:
+    """The film's worker is alive somewhere (this process, the Celery worker container...): its heartbeat file was touched in the last 2 minutes.
+    Before (2026-11-17) the web process, which cannot see a worker thread in the Celery container, judged a Vox film dead during a 10-minute story call."""
+    try:
+        return time.time() - (directory / ".alive").stat().st_mtime < 4 * HEARTBEAT_S
+    except OSError:
+        return False
+
+
+def _heartbeat(directory: Path, stop: threading.Event) -> None:
+    while not stop.wait(HEARTBEAT_S if (directory / ".alive").exists() else 0):
+        try:
+            (directory / ".alive").touch()
+        except OSError:
+            pass
+
+
 def heal_if_dead(directory: Path) -> bool:
     """A record that says "working" but whose worker is gone (the server restarted a few seconds after its last save, so the start-up recovery, which only
     takes records silent for 45 s, skipped it) is turned into a retryable failure instead of spinning forever. A worker alive in this process is never touched;
@@ -240,7 +260,7 @@ def heal_if_dead(directory: Path) -> bool:
             return False
         thread = _RUNNING.get(key)
         if (record.get("status") not in ACTIVE or (thread is not None and thread.is_alive())
-                or time.time() - float(record.get("updated_at") or 0) <= STALE_AFTER):
+                or time.time() - float(record.get("updated_at") or 0) <= STALE_AFTER or _beating(directory)):
             return False
         record.update(status="failed", stage="failed", message="ساخت با راه‌اندازی دوبارهٔ سرور قطع شد؛ با «تلاش دوباره» از همان طرح و صحنه‌های آماده ادامه می‌دهد.", error="interrupted")
         save(directory, record)
@@ -400,6 +420,8 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
             _note(directory, 'render', text)              # "رندر ابری: ۴۰٪ · حدود … باقی مانده", the same line every other chat shows
     cloud_token = identity.set((owned.get('user_key'), owned.get('id'), (directory,),
                                 lambda: _cancelled(key), cloud_stage, cloud_detail))
+    beat = threading.Event()
+    threading.Thread(target=_heartbeat, args=(directory, beat), daemon=True, name=f"motion-beat-{key}").start()
     try:
         _run(directory, change)
     except _Cancelled:
@@ -424,6 +446,11 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
         _emit(record["conversation_id"], "job.failed", motion_id=key, message=message, resumable=True)
         _assistant(record["conversation_id"], record["user_key"], f"ساخت موشن‌گرافیک کامل نشد: {message} می‌توانید دوباره امتحان کنید یا درخواست را ساده‌تر بنویسید.")
     finally:
+        beat.set()
+        try:
+            (directory / ".alive").unlink()
+        except OSError:
+            pass
         identity.reset(cloud_token)
         usage_scope.__exit__(None, None, None)
         if _RUNNING.get(key) is threading.current_thread():
@@ -2326,7 +2353,7 @@ def recover_interrupted() -> int:
             record = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if record.get("status") in ACTIVE and time.time() - float(record.get("updated_at") or 0) > 45:       # a worker in another process saves progress every few seconds
+        if record.get("status") in ACTIVE and time.time() - float(record.get("updated_at") or 0) > 45 and not _beating(path.parent):   # a live worker elsewhere keeps its heartbeat
             record.update(status="failed", stage="failed", message="ساخت با راه‌اندازی دوبارهٔ سرور قطع شد.", error="interrupted")
             path.write_text(json.dumps(record, ensure_ascii=False))
             count += 1
