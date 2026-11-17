@@ -30,6 +30,14 @@ class Talking(Asset):
     variant: Literal["premium"] | None = Field(default=None, description="'premium' = the premium FULL-FRAME talking edit (one full screen, designed glass graphics beside the speaker, text passing behind him). "
                                                 "Use it when the person asks for the premium / full-frame engine; it is not a style.")
     request: str = Field(default="", max_length=2000)
+    captions_only: bool | None = Field(default=None, description="True when the person wants ONLY captions on the footage (no cuts, zooms or graphics); None lets the studio decide from the words.")
+    name: str = Field(default="", max_length=80, description="The speaker's name shown on the video (or 'none'). Brand details the person already gave in this chat or that the context's brand profile holds.")
+    tagline: str = Field(default="", max_length=120, description="Tagline / role under the name (or 'none').")
+    cta: str = Field(default="", max_length=160, description="The closing call-to-action text (or 'none').")
+    logo: Literal["off", "pop", "fade", "slide"] | None = Field(default=None, description="End logo motion, or off.")
+    look: Literal["natural", "warm", "cool"] | None = Field(default=None, description="Picture look.")
+    font: str = Field(default="", max_length=60, description="Caption font id of the studio's font library, or 'default'.")
+    color: str = Field(default="", max_length=9, description="Title accent colour #rrggbb.")
 
 
 class Localize(Asset):
@@ -43,7 +51,7 @@ class Storyboard(Args):
 
 class MotionGraphic(Args):
     request: str = Field(min_length=3, max_length=12000)
-    attachment_ids: list[str] = Field(default_factory=list,max_length=9,description='Existing owned image attachment IDs to include, in user-specified order. Never invent IDs or paths.')
+    attachment_ids: list[str] = Field(default_factory=list,max_length=9,description='Existing owned image attachment IDs to include, in user-specified order (for an intro video with a presenter: the presenter\'s VIDEO attachment). Never invent IDs or paths.')
 
 
 class DiscoverClips(Asset):
@@ -52,6 +60,15 @@ class DiscoverClips(Asset):
 
 class LookAtMedia(Asset):
     pass
+
+
+class AnswerMotion(Args):
+    answer: str = Field(min_length=1, max_length=3000, description="The person's reply to the question(s) the motion/intro/Vox designer asked (the context's motion_graphic.status is needs_input). Attached footage goes in attachment_ids.")
+    attachment_ids: list[str] = Field(default_factory=list, max_length=9)
+
+
+class DiscoveryCommand(Args):
+    command: str = Field(min_length=3, max_length=600, description="The person's instruction about the clips found in a long video, in their words: «کلیپ ۳ را ادیت کن», «کلیپ ۵ مثل کلیپ ۲», «بخش‌های انگیزشی بیشتر پیدا کن».")
 
 
 class AudioCheck(Asset):
@@ -111,6 +128,8 @@ SCHEMAS["read_creative_skill"] = studio_tools.SkillReadInput
 SCHEMAS["instagram_content_check"] = studio_tools.InstagramContentCheckInput
 SCHEMAS["audio_check"] = AudioCheck
 SCHEMAS["look_at_media"] = LookAtMedia
+SCHEMAS["answer_motion_graphic"] = AnswerMotion
+SCHEMAS["discovery_command"] = DiscoveryCommand
 SCHEMAS["plan_audio_direction"] = AudioDirection
 SCHEMAS["find_music"] = FindMusic
 SCHEMAS["generate_music"] = GenerateMusic
@@ -122,6 +141,8 @@ READ_ONLY.add("instagram_content_check")
 READ_ONLY.add("read_creative_skill")
 READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music", "look_at_media"})
 EXTRA_DESCRIPTIONS = {
+    "answer_motion_graphic": "Give the motion / intro / Vox designer the person's answer to the question it asked in this chat (when motion_graphic.status is needs_input), including footage they attach (for example the presenter's video an intro film asked for). Continues the SAME film; never start a new one for an answer.",
+    "discovery_command": "Act on the clips found in a long video earlier in this chat: edit clip N (optionally like clip M), or look for more of a kind. Use when the context shows a discovery and the person talks about its clips.",
     "look_at_media": "LOOK at an attached video before deciding anything about it: measured cut rate, loudness and silence, 12 frames judged by a vision model: is it RAW footage or an already PRODUCED edit (burned captions, graphics, stickers, motion graphics), what it shows, what looks plain or weak, its palette, and `advice` on how to treat it. Free and read-only. Use it first for any request to edit, improve, restyle or add motion/graphics to an attached video.",
     "discover_clips": "For a LONG attached video (a podcast, class, interview, meeting): transcribe all speech locally, understand the whole video and find every standalone piece worth publishing as a reel or post; each result opens as a card in this chat. Use it when the person wants many clips from one long video, never for editing one reel. It runs in the background for minutes.",
     "audio_check": "Measure an attached audio or video file's sound, deterministically with ffmpeg: duration, peak and clipping, silence share, integrated loudness (LUFS), true peak and loudness range, judged against a delivery preset. It does not judge naturalness or pronunciation and costs nothing.",
@@ -264,12 +285,21 @@ def execute(record, step):
         if asset["kind"] != "video": raise ValueError("A video attachment is required")
         payload = {"source_path": asset["path"], "filename": asset["filename"], "user_key": user, "request": args.request}
         engine = "talking" if name == "analyze_talking_reel" else "localize"
+        manual_answers: dict = {}
         if isinstance(args, Talking):
             payload["style"] = args.style
             payload["variant"] = args.variant
+            if args.captions_only is not None: payload["captions_only"] = args.captions_only
+            seed = ((run(repo.get_conversation(cid, user)).get("state") or {}).get("seed_transcript_path"))    # a clip cut from a long video: its transcript is already known
+            if seed and Path(seed).is_file():
+                payload["transcript"] = json.loads(Path(seed).read_text())
+            for key in ("name", "tagline", "cta", "logo", "look", "font", "color"):
+                if getattr(args, key, None): manual_answers[key] = getattr(args, key)
+            if "logo" not in manual_answers and manual_answers.get("cta") == "":
+                manual_answers.pop("cta", None)
         result = studio_tools.execute(name, payload)
         value = run(repo.create_project(cid, user, engine, asset["filename"],
-            {"attachment_ids": [args.attachment_id], "auto_render": False, "manual_mode": True,
+            {"attachment_ids": [args.attachment_id], "auto_render": False, "manual_mode": True, "manual_answers": manual_answers,
              "workflow": "analyzing", "request": args.request, "last_observed": {},
              "agent_run_id": record["id"]}, result["external_ref"]))
         run(repo.update_project(value["id"], user, status="running"))
@@ -285,7 +315,7 @@ def execute(record, step):
         from creative.source import article_text
         return {"url": args.url, "title": page.get("title"), "content": article_text(page, 14000),
                 "image_count":len(page.get('images', []))}
-    if name == "revise_motion_graphic":
+    if name in {"revise_motion_graphic", "answer_motion_graphic"}:
         from app import motion_graphic as mg
         conversation = run(repo.get_conversation(cid, user))
         pointer = (conversation.get("state") or {}).get("motion")
@@ -296,12 +326,26 @@ def execute(record, step):
             current = mg.load(directory)
         except (KeyError, OSError, ValueError):
             raise PreflightUnavailable("موشن‌گرافیک قبلی این چت پیدا نشد.")
-        if current["status"] in mg.ACTIVE:
+        if name == "revise_motion_graphic" and current["status"] in mg.ACTIVE:
             raise PreflightUnavailable("نسخهٔ فعلی هنوز در حال ساخت است؛ بعد از پایانش تغییر را اعمال می‌کنم.")
         shared._emit(cid, "motion.created", motion_id=current["id"])
-        mg.revise(directory, args.change)
+        ids = getattr(args, "attachment_ids", None) or list(record["data"]["request"].get("attachment_ids") or [])
+        attachments = run(repo.get_attachments(ids, cid, user)) if ids else []
+        text = args.change if name == "revise_motion_graphic" else args.answer
+        # Lite's own follow-up handler: the narrator or cloned voice named in the words, an attached music track, pronunciation fixes, the answer to a question.
+        handled = shared._continue_motion_graphic(cid, user, conversation, text, answering=name == "answer_motion_graphic", attachments=attachments)
+        if not handled:
+            raise PreflightUnavailable("موشن‌گرافیک این چت پیدا نشد.")
         return {"motion_id": current["id"], "waiting": False,
-                "message": "تغییر را روی همان موشن‌گرافیک اعمال می‌کنم؛ پیشرفت و نسخهٔ جدید در همین چت می‌آید."}
+                "message": "درخواست روی همان فیلم اعمال شد؛ پیشرفت و نسخهٔ جدید در همین چت می‌آید."}
+    if name == "discovery_command":
+        conversation = run(repo.get_conversation(cid, user))
+        pointer = (conversation.get("state") or {}).get("discovery")
+        if not pointer:
+            raise PreflightUnavailable("در این چت ویدیوی بلندی بررسی نشده است؛ اول discover_clips.")
+        if not shared._discovery_command(cid, user, pointer, args.command):
+            raise PreflightUnavailable("این دستور دربارهٔ کلیپ‌ها قابل اجرا نبود؛ شمارهٔ کارت یا خواسته را دقیق‌تر بگویید.")
+        return {"waiting": False, "message": "دستور روی کلیپ‌ها اجرا شد؛ نتیجه به صورت کارت در همین چت می‌آید."}
     if name == "create_motion_graphic":
         conversation = run(repo.get_conversation(cid, user))
         original = shared._ENGINE_MARKER.sub("", record["data"]["request"]["text"], count=1).strip()

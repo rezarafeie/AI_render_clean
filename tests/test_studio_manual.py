@@ -130,7 +130,7 @@ def test_manual_question_is_persisted_and_source_is_not_a_reference(store):
     conv = run(store.create_conversation('u'))
     source = run(store.create_attachment(conv['id'], 'u', kind='video', filename='source.mp4', path='/source', mime_type='video/mp4', size_bytes=1))
     session = manual.begin(conv['id'], 'u', 'talking', 'این را تدوین کن', [source['id']])
-    assert len(manual.question(session)['choices']) == 4      # Talking 4 is retired from every picker
+    assert [c['value'] for c in manual.question(session)['choices']][-1] == 'premium' and len(manual.question(session)['choices']) == 5   # Talking 4 retired; the premium full-frame card added
     loaded = _public_conversation(run(store.get_conversation(conv['id'], 'u')))
     assert loaded['state']['manual_question']['id'] == session['question_id']
     with pytest.raises(ValueError, match='فعال نیست'):
