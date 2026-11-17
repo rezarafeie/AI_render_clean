@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -937,22 +938,45 @@ def project(work: Path, direction: Direction, timeline: dict, code: Code) -> Pat
 
 def _node(work: Path, args: list[str], timeout: float, on_line: Callable[[str], None] | None = None) -> tuple[bool, str]:
     env = {**os.environ, "REMOTION_CONCURRENCY": os.environ.get("CLAUDE_MOTION_CONCURRENCY", "2")}
-    process = subprocess.Popen(["node", "render.mjs", *args], cwd=work, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    # its own process group: a timeout kills node AND the Chromium it started (2026-11-17 a silent stills run hung for 1 h 44 min: the old check ran only when a
+    # line arrived, and killing node alone left Chromium holding hundreds of threads of the worker's pids limit)
+    process = subprocess.Popen(["node", "render.mjs", *args], cwd=work, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, start_new_session=True)
     lines: list[str] = []
-    started = time.monotonic()
+    expired = threading.Event()
+
+    def kill_all() -> None:
+        try:
+            os.killpg(process.pid, 9)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+    def watchdog() -> None:
+        expired.set()
+        kill_all()
+
+    timer = threading.Timer(timeout, watchdog)
+    timer.daemon = True
+    timer.start()
     try:
         for line in process.stdout:
             lines.append(line.rstrip())
             if on_line:
                 on_line(line.rstrip())
-            if time.monotonic() - started > timeout:
-                process.kill()
-                lines.append("RENDER_ERROR timed out")
-                break
         process.wait(timeout=30)
     finally:
+        timer.cancel()
         if process.poll() is None:
-            process.kill()
+            kill_all()
+        else:
+            try:
+                os.killpg(process.pid, 9)            # leftover browser children of a finished run
+            except OSError:
+                pass
+    if expired.is_set():
+        lines.append("RENDER_ERROR timed out")
     text = "\n".join(lines)
     error = next((l[len("RENDER_ERROR "):] for l in lines if l.startswith("RENDER_ERROR")), "")
     return (process.returncode == 0 and not error), (error or text[-3000:])
