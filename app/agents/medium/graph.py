@@ -28,7 +28,34 @@ def config(record):
     return {"configurable": {"thread_id": hashlib.sha256(scope.encode()).hexdigest()}, "recursion_limit": 50}
 
 
+def worker_mode(record):
+    """EditorGPT Medium runs as the worker agent (one decision at a time); a Lite agent run keeps the plan graph."""
+    return record.get("agent_mode", "medium") == "medium"
+
+
+def build_worker(record, checkpoint, guard=lambda: None):
+    from app.agents.medium import worker
+    graph = StateGraph(State)
+    for name, handler in (("context", lambda s: nodes.context(record)), ("think", lambda s: worker.think(record, s)), ("act", lambda s: worker.act(record, s)),
+                          ("wait", lambda s: worker.wait(record, s)), ("finish", lambda s: worker.finish(record, s))):
+        def wrapped(state, fn=handler):
+            guard()
+            result = fn(state)
+            guard()
+            return result
+        graph.add_node(name, wrapped)
+    graph.add_edge(START, "context")
+    graph.add_edge("context", "think")
+    graph.add_conditional_edges("think", worker.after_think)
+    graph.add_conditional_edges("act", worker.after_act)
+    graph.add_edge("wait", "think")
+    graph.add_edge("finish", END)
+    return graph.compile(checkpointer=checkpoint)
+
+
 def build(record, checkpoint, guard=lambda: None):
+    if worker_mode(record):
+        return build_worker(record, checkpoint, guard)
     graph = StateGraph(State)
     for name, handler in (("context", lambda s: nodes.context(record)),
                           ("plan", lambda s: nodes.plan(record, s)),
@@ -77,7 +104,8 @@ def _execute(cid, user, record):
     nodes.event(record, "message.started", message_id=record["message_id"])
     try:
         with studio_flags.working(user, cid), saver() as checkpoint:
-            nodes.opening(record)
+            if not worker_mode(record):
+                nodes.opening(record)                  # the worker speaks for itself in its first decision
             graph = build(record, checkpoint, guard)
             cfg = config(record)
             previous = graph.get_state(cfg)
@@ -110,8 +138,8 @@ def _execute(cid, user, record):
                     nodes.event(record, "question.required", kind="medium_approval", question=waiting["summary"])
                     run(repo.add_message(cid, user, "assistant", waiting["summary"], agent_mode=record.get("agent_mode", "medium")))
                 else:
-                    nodes.event(record, "tool.progress", tool="medium_job", project_id=waiting["project_id"],
-                                message="کار به موتور پروژه تحویل شد؛ ادامهٔ برنامه پس از پایان این مرحله انجام می‌شود.")
+                    nodes.event(record, "tool.progress", tool="medium_job", project_id=waiting.get("project_id"), motion_id=waiting.get("motion_id"),
+                                message="کار در حال ساخت است؛ وقتی تمام شد خروجی را بررسی می‌کنم و ادامه می‌دهم.")
             else:
                 run(store.update(rid, user, status="completed", patch={"waiting": None, "resume": None}))
     except Exception as exc:
@@ -148,8 +176,16 @@ async def resume_ready(cid, user):
     for record in await store.runs(cid, user):
         if not is_agent_run(record) or record["status"] != "waiting_job": continue
         waiting = record["data"].get("waiting") or {}
-        value = await repo.get_project(waiting["project_id"], user)
-        if value["status"] == "running" and value["state"].get("workflow") != "awaiting_approval": continue
+        if waiting.get("motion_id"):                    # the worker waits for a film (motion / Vox / intro), which is not a Studio project
+            from app import motion_graphic as mg
+            try:
+                status = mg.load(mg.locate(waiting["motion_id"], user))["status"]
+            except (KeyError, OSError, ValueError):
+                status = "failed"
+            if status in mg.ACTIVE: continue
+        else:
+            value = await repo.get_project(waiting["project_id"], user)
+            if value["status"] == "running" and value["state"].get("workflow") != "awaiting_approval": continue
         claimed = await store.update(record["id"], user, status="queued", claim={"waiting_job"}, patch={"resume": {"job": True}})
         if claimed: await dispatch(record["id"], user)
 

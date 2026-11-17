@@ -61,6 +61,20 @@ CASES = [
     {"id": "revise_ending", "request": "پایانش خیلی یهویی تموم میشه، یه پایان درست بذار", "motion_graphic": MOTION_DONE, "expect": {"first": ["revise_motion_graphic"]}},
     {"id": "new_subject", "request": "حالا یکی دیگه درباره بهره مرکب بساز", "motion_graphic": MOTION_DONE, "expect": {"first": ["create_motion_graphic"]}},
     {"id": "discovery_clip", "request": "کلیپ ۳ رو ادیت کن", "discovery": True, "expect": {"first": ["discovery_command"]}},
+    {"id": "check_after_film", "request": "یه موشن گرافیک درباره قانون پارتو بساز", "motion_graphic": {**MOTION_DONE, "title": "قانون پارتو"},
+     "observations": [{"tool": "create_motion_graphic", "label": "ساخت موشن‌گرافیک قانون پارتو", "motion_id": "m1", "job_finished": True,
+                       "film": {"status": "completed", "versions": 1, "title": "قانون پارتو", "duration": 52.0, "notes": []}}],
+     "expect": {"first": ["review_output"]}},
+    {"id": "fix_after_review", "request": "یه موشن گرافیک درباره قانون پارتو بساز", "motion_graphic": {**MOTION_DONE, "title": "قانون پارتو"},
+     "observations": [{"tool": "create_motion_graphic", "motion_id": "m1", "job_finished": True, "film": {"status": "completed", "versions": 1}},
+                      {"tool": "review_output", "verdict": "fix", "score": 5, "matches_request": True, "ending": "abrupt",
+                       "problems": [{"where": "50-52 s", "what": "the film stops mid-motion, no final frame", "fix": "end on the key sentence with a 1.5 s hold and the title"},
+                                    {"where": "scenes 3-6", "what": "the same centred-title layout four times", "fix": "vary the layouts: a chart, a split, a full-bleed number"}]}],
+     "expect": {"first": ["revise_motion_graphic"]}},
+    {"id": "deliver_after_good_review", "request": "یه موشن گرافیک درباره قانون پارتو بساز", "motion_graphic": {**MOTION_DONE, "title": "قانون پارتو", "versions": 2},
+     "observations": [{"tool": "revise_motion_graphic", "motion_id": "m1", "job_finished": True, "film": {"status": "completed", "versions": 2}},
+                      {"tool": "review_output", "verdict": "deliver", "score": 8, "matches_request": True, "ending": "good", "problems": [], "praise": "پایان حالا روشن است."}],
+     "expect": {"first": [""], "never": ["revise_motion_graphic", "create_motion_graphic"]}},
     {"id": "loudness", "request": "صدای این ویدیو کلیپ نمی‌کنه؟ بلندیش برای اینستاگرام درسته؟", "assets": VIDEO, "expect": {"first": ["audio_check"]}},
 ]
 
@@ -70,23 +84,30 @@ def _payload(case: dict) -> dict:
                "assets": case.get("assets", []), "projects": [], "manual": False}
     if case.get("motion_graphic"):
         context["motion_graphic"] = case["motion_graphic"]
+    if case.get("cloned_voice", True):
+        context["person_has_cloned_voice"] = True
     if case.get("discovery"):
         context["discovery"] = {"analysis_id": "d1", "clips_found": 9, "note": "nine clip cards from the long video are in this chat"}
-    return {"context": context, "observations": case.get("observations", []), "tools": tools.catalog(), "schema": EditingPlan.model_json_schema()}
+    from app.agents.medium.worker import Decision
+    return {"context": context, "observations": case.get("observations", []), "turn": len(case.get("observations", [])) + 1, "tools": tools.catalog(),
+            "decision_schema": Decision.model_json_schema()}
 
 
 def decide(case: dict) -> dict:
+    """The worker's decision for this state, as {summary, steps} (the worker decides one action at a time)."""
     from brain.llm import _extract_json
     from brain.lm_gateway import complete
     from brain.lm_adapters import text as response_text
+    from app.agents.medium.worker import Decision, GUIDE
 
     def validate(text):
-        return EditingPlan.model_validate(_extract_json(text)).model_dump()
+        return Decision.model_validate(_extract_json(text))
 
-    messages = [{"role": "system", "content": planner.PROMPT + "\nReturn exactly one JSON object, with no text before or after it."},
+    messages = [{"role": "system", "content": GUIDE + "\nReturn exactly one JSON object, with no text before or after it."},
                 {"role": "user", "content": json.dumps(_payload(case), ensure_ascii=False)}]
-    response, _audit = complete("editing_agent", messages, tokens=6000, validate_response=validate)
-    return validate(response_text("chat", response))
+    response, _audit = complete("editing_agent", messages, tokens=5000, validate_response=validate)
+    d = validate(response_text("chat", response))
+    return {"summary": d.say, "steps": [d.action.model_dump()] if d.action else []}
 
 
 def score(case: dict, plan: dict) -> list[str]:

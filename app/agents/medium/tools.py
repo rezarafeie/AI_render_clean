@@ -62,6 +62,11 @@ class LookAtMedia(Asset):
     pass
 
 
+class ReviewOutput(Args):
+    project_id: str | None = Field(default=None, description="The Studio project whose finished video to check; omit to check the film (motion / Vox / intro) this chat holds.")
+    focus: str = Field(default="", max_length=600, description="What to look at especially, in words (for example the person's complaint).")
+
+
 class AnswerMotion(Args):
     answer: str = Field(min_length=1, max_length=3000, description="The person's reply to the question(s) the motion/intro/Vox designer asked (the context's motion_graphic.status is needs_input). Attached footage goes in attachment_ids.")
     attachment_ids: list[str] = Field(default_factory=list, max_length=9)
@@ -129,6 +134,7 @@ SCHEMAS["instagram_content_check"] = studio_tools.InstagramContentCheckInput
 SCHEMAS["audio_check"] = AudioCheck
 SCHEMAS["look_at_media"] = LookAtMedia
 SCHEMAS["answer_motion_graphic"] = AnswerMotion
+SCHEMAS["review_output"] = ReviewOutput
 SCHEMAS["discovery_command"] = DiscoveryCommand
 SCHEMAS["plan_audio_direction"] = AudioDirection
 SCHEMAS["find_music"] = FindMusic
@@ -139,8 +145,9 @@ SCHEMAS["read_connected_app"] = ReadInput
 READ_ONLY = {"inspect_media", "inspect_url", "check_render_status", "inspect_project", "search_creative_resources"}
 READ_ONLY.add("instagram_content_check")
 READ_ONLY.add("read_creative_skill")
-READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music", "look_at_media"})
+READ_ONLY.update({"audio_check", "plan_audio_direction", "find_music", "analyze_music", "look_at_media", "review_output"})
 EXTRA_DESCRIPTIONS = {
+    "review_output": "WATCH a finished video the way a demanding editor would, against the person's request: 16 frames + the last 2.5 s + measured cut rate, loudness and the ending's sound -> verdict deliver/fix, score, whether it matches the request, the ending (good/abrupt/drags), and concrete fixes. Free and read-only. Use it on every film or edit you made before you tell the person it is ready; if it says fix, apply the fixes (revise_motion_graphic or modify_project) and check again.",
     "answer_motion_graphic": "Give the motion / intro / Vox designer the person's answer to the question it asked in this chat (when motion_graphic.status is needs_input), including footage they attach (for example the presenter's video an intro film asked for). Continues the SAME film; never start a new one for an answer.",
     "discovery_command": "Act on the clips found in a long video earlier in this chat: edit clip N (optionally like clip M), or look for more of a kind. Use when the context shows a discovery and the person talks about its clips.",
     "look_at_media": "LOOK at an attached video before deciding anything about it: measured cut rate, loudness and silence, 12 frames judged by a vision model: is it RAW footage or an already PRODUCED edit (burned captions, graphics, stickers, motion graphics), what it shows, what looks plain or weak, its palette, and `advice` on how to treat it. Free and read-only. Use it first for any request to edit, improve, restyle or add motion/graphics to an attached video.",
@@ -256,6 +263,26 @@ def execute(record, step):
         clean, wanted = directives.parse(args.brief)
         plan, notes = direction.plan(clean, wanted)
         return {"plan": plan.model_dump(), "notes": [*notes, *wanted.notes]}
+    if name == "review_output":
+        import tempfile
+        from creative import perception
+        if args.project_id:
+            value = project(record, args.project_id)
+            found = [value["state"].get(k) for k in ("output", "candidate_output")] + [(value["state"].get("last_observed") or {}).get(k) for k in ("output", "candidate_output")]
+            path = next((Path(p) for p in found if isinstance(p, str) and Path(p).is_file()), None)
+        else:
+            from app import motion_graphic as mg
+            pointer = (run(repo.get_conversation(cid, user)).get("state") or {}).get("motion")
+            path = None
+            if pointer:
+                directory = mg.locate(pointer["motion_id"], user)
+                current = mg.load(directory).get("current")
+                path = directory / f"v{current}" / "motion.mp4" if current else None
+        if not path or not Path(path).is_file():
+            raise PreflightUnavailable("هنوز خروجی تمام‌شده‌ای برای بررسی وجود ندارد.")
+        request = record["data"]["request"]["text"] + (f"\nCheck especially: {args.focus}" if args.focus else "")
+        with tempfile.TemporaryDirectory(prefix="review-") as folder:
+            return perception.review(Path(path), request, Path(folder))
     if name == "look_at_media":
         import tempfile
         from creative import perception

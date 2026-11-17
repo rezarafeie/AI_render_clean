@@ -7,7 +7,7 @@ class Step(BaseModel):
     tool: Literal["inspect_media", "inspect_url", "inspect_project", "analyze_talking_reel", "localize_video",
                   "create_storyboard", "modify_project", "render_approved_plan", "check_render_status",
                   "instagram_content_check", "discover_connected_app_tools", "read_connected_app", "create_motion_graphic", "revise_motion_graphic", "audio_check", "plan_audio_direction", "discover_clips",
-                  "find_music", "generate_music", "analyze_music", "look_at_media", "answer_motion_graphic", "discovery_command", "search_creative_resources", "read_creative_skill"]
+                  "find_music", "generate_music", "analyze_music", "look_at_media", "answer_motion_graphic", "discovery_command", "search_creative_resources", "read_creative_skill", "review_output"]
     arguments: dict = Field(default_factory=dict)
     label: str = Field(min_length=1, max_length=180)
 
@@ -32,3 +32,6 @@ class State(TypedDict, total=False):
     failed: list                  # signatures of the errors already seen (the same one twice means a loop: stop)
     plan_feedback: str | None
     heal_tools: list | None       # write tools the person already approved; a replan using the same ones is not asked again
+    decision: dict | None         # the worker's last decision (say, action, done)
+    turns: int                    # decisions made in this run
+    waiting: dict | None          # the job (project or film) the worker is waiting for
