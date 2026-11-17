@@ -431,8 +431,22 @@ def _guard(directory: Path, change: str, run_id: int | None = None) -> None:
             try:
                 if _is_current(key) and load(directory)["status"] not in ACTIVE:     # the last "busy" signal the chat saw is now out of date
                     _emit(load(directory)["conversation_id"], "work.state", busy=False)
+                    _wake_agent(load(directory))
             except (OSError, ValueError, KeyError):
                 pass
+
+
+def _wake_agent(record: dict) -> None:
+    """A Medium agent waiting for this film goes on now (it reviews, fixes or delivers it). Before, it woke only when the chat synced (the person had it open
+    and polling), so a finished film could sit undelivered with the agent still 'waiting' (2026-11-17)."""
+    try:
+        from app.agents.medium.graph import resume_ready
+        from app.studio_store import run as run_sync
+        run_sync(resume_ready(record["conversation_id"], record["user_key"]))
+    except ImportError:
+        pass
+    except Exception:
+        log.warning("the waiting agent could not be woken after film %s", record.get("id"), exc_info=True)
 
 
 def _is_current(key: str) -> bool:
