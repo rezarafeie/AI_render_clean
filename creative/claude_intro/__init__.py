@@ -289,6 +289,14 @@ def narration(lines: list[str], folder: Path, record: dict, hooks: Hooks) -> lis
     texts = [persian.speakable(line, record.get("pronunciations") or {}).strip() for line in lines]
     texts = pronounce.prepare(texts, route=ROUTE)
     voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
+    from creative.audio import narrate as _narrate
+    if _narrate.mode() != "lines":                                  # the whole script read as one take, cut at the real gaps
+        tags = _narrate.direct(texts, ROUTE) if _narrate.mode() == "directed" else None
+        out, cursor = [], presenter.LEAD
+        for clip in _narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=1.03):
+            out.append({"text": clip["text"], "start": round(cursor, 3), "dur": clip["dur"], "words": vx.words_of(clip["text"], clip["starts"], clip["dur"]), "path": clip["path"]})
+            cursor += clip["dur"] + presenter.GAP
+        return out
     scenes, cursor = [], presenter.LEAD
     for i, text in enumerate(texts, 1):
         take, alignment = cm._retrying(lambda: cm._tts(text, voice, model, folder, f"{i:02d}"), tries=3, waits=(10, 25))

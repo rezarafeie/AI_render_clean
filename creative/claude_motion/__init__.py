@@ -408,6 +408,17 @@ def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None)
     from creative.audio import pronounce
     texts = pronounce.prepare(texts, route=ROUTE)                   # ambiguous words vowelled, foreign names spelled as pronounced
     voice, model = localize._cast(" ".join(texts), record.get("voice_id", ""))
+    from creative.audio import narrate
+    if narrate.mode() != "lines":                                   # the whole script read as one take, cut at the real gaps (no speed-up, natural pauses)
+        tags = narrate.direct(texts, ROUTE) if narrate.mode() == "directed" else None
+        takes = narrate.narrate(texts, voice, model, folder / "takes", tags=tags, tempo=1.04,
+                                on_line=(lambda n, total: _say(hooks, "voice", f"نریشن جمله {n} از {total} آماده شد")) if hooks else None)
+        scenes, clips, cursor = [], [], LEAD
+        for i, clip in enumerate(takes, 1):
+            scenes.append({"id": f"{i:02d}", "text": clip["text"], "start": round(cursor, 3), "dur": clip["dur"], "al": {"chars": clip["text"], "starts": clip["starts"]}})
+            clips.append({"path": clip["path"], "start": round(cursor, 3), "duration": clip["dur"]})
+            cursor += clip["dur"] + GAP
+        return {"fps": FPS, "width": W, "height": H, "total": round(cursor + TAIL - GAP, 3), "scenes": scenes, "audio": clips}
     scenes, clips, cursor = [], [], LEAD
     for i, text in enumerate(texts, 1):
         audio, alignment = _retrying(lambda: _tts(text, voice, model, folder, f"{i:02d}"), tries=3, waits=(10, 25))
