@@ -49,6 +49,10 @@ class Cancelled(Exception):
 from contextlib import contextmanager
 
 
+class CutOff(RuntimeError):
+    """The model filled the whole output limit: the same request would be cut off at the same place again (one cost 145K input tokens per repeat)."""
+
+
 def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
     """One long generation as plain text between =====FILE===== and =====END===== (code does not survive being a JSON string). A reply without the end marker was cut off and is an error."""
     from brain.lm_gateway import complete
@@ -64,6 +68,8 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
         # The model finished on its own but forgot the closing marker: the code is complete, so it is taken (a cut-off reply says "length" or nothing).
         found = re.search(r"=====FILE=====\s*\n(.*?)\s*(?:=====END=?=*)?\s*$", reply, re.S)
     if not found:
+        if finish in {"length", "max_tokens"}:
+            raise CutOff(f"the reply was cut off at the output limit ({tokens} tokens asked)")
         raise RuntimeError(f"the model's reply had no complete FILE block (cut off or wrongly formatted; finish={finish or '?'}): " + reply[-200:].replace("\n", " "))
     body = found.group(1).strip()
     body = re.sub(r"^```[a-z]*\n|\n```$", "", body)
@@ -642,6 +648,19 @@ def _one_ask(guide: str, user: str, tokens: int, split=None, *, tries: int = 2, 
     try:
         with _long_call(seconds, tokens):
             return _retrying(attempt, tries=tries, waits=(10,), on_retry=on_retry)
+    except CutOff as exc:
+        # Never the same request again: smaller calls when the work can be split, else one request that asks for the same result in less code.
+        log.warning("claude motion call cut off at the output limit; %s", "splitting it" if split is not None else "asking for a compact version")
+        if split is not None:
+            if on_split:
+                on_split("پاسخ از سقف طول بیرون زد؛ این بخش را به تماس‌های کوچک‌تر می‌شکنم")
+            return split()
+        if on_retry:
+            on_retry("پاسخ از سقف طول بیرون زد؛ نسخهٔ فشرده‌تر را می‌خواهم")
+        compact = user + (f"\n\nYOUR PREVIOUS ANSWER WAS CUT OFF at the output limit. Write the same result in clearly less code: fewer and simpler elements, shared "
+                          f"helpers instead of repetition, no comments; it must end with the =====END===== marker well within {int(tokens * 0.65)} tokens.")
+        with _long_call(seconds, tokens), step(*(label or ("code", "دارم نسخهٔ فشرده‌تر کد را می‌نویسم."))):
+            return ask_text(guide, compact, tokens=tokens)
     except Exception as exc:
         if split is None or not (isinstance(exc, _SlowCut) or _TRANSIENT.search(str(exc))):
             raise
