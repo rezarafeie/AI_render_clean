@@ -94,20 +94,12 @@ def _payload(case: dict) -> dict:
 
 
 def decide(case: dict) -> dict:
-    """The worker's decision for this state, as {summary, steps, model}: the same provider lock and output rules as production."""
-    from brain.llm import _extract_json
-    from brain.lm_gateway import complete
-    from brain.lm_adapters import text as response_text
-    from creative.claude_motion import _long_call
-    from app.agents.medium.worker import Decision, GUIDE
-    messages = [{"role": "system", "content": GUIDE + "\nReturn exactly one JSON object, with no text before or after it."},
-                {"role": "user", "content": json.dumps(_payload(case), ensure_ascii=False)}]
-    with _long_call(240, 5000):
-        response, audit = complete("editing_agent", messages, tokens=5000)
-    raw = _extract_json(response_text("chat", response))
-    action = raw.get("action") if isinstance(raw.get("action"), dict) and raw["action"].get("tool") else None
-    steps = [{"tool": action["tool"], "arguments": action.get("arguments") or {}, "label": str(action.get("label") or "")}] if action else []
-    return {"summary": str(raw.get("say") or ""), "steps": steps, "model": (audit or {}).get("actual_model") or (audit or {}).get("model") or "?"}
+    """The worker's decision for this state through exactly the production path (Opus lock, corrections by the same model): {summary, steps, model}."""
+    from app.agents.medium.worker import ask
+    d, problem = ask(_payload(case))
+    if d is None:
+        raise ValueError("no usable decision: " + problem)
+    return {"summary": d.say, "steps": [d.action.model_dump()] if d.action else [], "model": d.__dict__.get("_model", "?")}
 
 
 def score(case: dict, plan: dict) -> list[str]:
