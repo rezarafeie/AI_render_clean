@@ -106,7 +106,7 @@ class ConversationUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     status_voice_enabled: bool | None = None
     execution_mode: Literal["auto", "manual"] | None = None
-    agent_mode: Literal["lite", "medium"] | None = None
+    agent_mode: Literal["lite", "medium", "pro"] | None = None
 
 
 class MessageCreate(BaseModel):
@@ -115,7 +115,7 @@ class MessageCreate(BaseModel):
     execution_mode: Literal["auto", "manual"] | None = None
     manual_question_id: str | None = Field(default=None, max_length=64)
     render_target: Literal["server", "browser"] | None = None
-    agent_mode: Literal["lite", "medium"] | None = None  # omitted: the chat's own engine (set from the person's default when it was created)
+    agent_mode: Literal["lite", "medium", "pro"] | None = None  # omitted: the chat's own engine (set from the person's default when it was created)
 
 
 class StoryboardUpdate(BaseModel):
@@ -138,7 +138,7 @@ async def create_conversation(request: Request, body: ConversationCreate):
 
 
 class AgentPreference(BaseModel):
-    default_agent_mode: Literal["lite", "medium"]
+    default_agent_mode: Literal["lite", "medium", "pro"]
 
 
 @router.get("/agent-preferences")
@@ -470,11 +470,16 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
     await credits.gate(user_key)                      # a new request needs credit; work already running is never cut
     try:
         conversation = await repo.get_conversation(conversation_id, user_key)
-        agent_mode = body.agent_mode or ("medium" if (conversation.get("state") or {}).get("agent_mode") == "medium" else "lite")
+        saved_mode = (conversation.get("state") or {}).get("agent_mode")
+        agent_mode = body.agent_mode or (saved_mode if saved_mode in {"medium", "pro"} else "lite")
         from app.agents.dispatcher import ensure_available
         from app.agents import store as agent_store
         try: ensure_available(agent_mode)
         except ValueError as exc: raise HTTPException(503, str(exc))
+        if agent_mode == "pro":
+            active = await agent_store.runs(conversation_id, user_key)
+            if any(r["agent_mode"] == "pro" and r["status"] in {"queued", "running"} for r in active):
+                raise HTTPException(409, "EditorGPT Pro در همین گفتگو هنوز در حال کار است؛ صبر کنید یا متوقفش کنید.")
         if agent_mode == "medium":
             active = await agent_store.runs(conversation_id, user_key)
             if any(r["agent_mode"] == "medium" and r["status"] in {"queued", "running", "waiting_approval", "waiting_job"} for r in active):

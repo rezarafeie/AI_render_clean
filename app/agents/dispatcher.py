@@ -5,6 +5,10 @@ from app.studio_store import repo, run
 
 def ensure_available(mode):
     store.validate_mode(mode)
+    if mode == "pro":
+        import os
+        if len(os.environ.get("PRO_WORKER_SECRET", "")) < 32:
+            raise ValueError("EditorGPT Pro روی این سرور فعال نیست.")
     if mode == "medium":
         from app.agents.medium.checkpoints import available
         available()  # Imports only for an explicit Medium request.
@@ -42,6 +46,11 @@ def execute_run(run_id, user):
 
 async def dispatch(run_id, user, *, lite_dispatch=None):
     record = await store.get_run(run_id, user)
+    if record["agent_mode"] == "pro":
+        # the agent worker container takes queued Pro runs itself (/internal/pro/claim); nothing runs in this process
+        from app.studio_store import repo
+        await repo.emit(record["conversation_id"], "work.state", {"busy": True, "agent_mode": "pro", "run_id": run_id})
+        return
     if record["agent_mode"] == "lite" and not record["data"].get("agent"):
         # Preserve Lite's existing Celery task / threading path, not only its prompts.
         from app.studio_orchestrator import dispatch_message

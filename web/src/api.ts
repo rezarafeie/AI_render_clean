@@ -185,7 +185,7 @@ export interface TranscriptionPrefs { engine: "auto" | "elevenlabs" | "whisper";
 export interface StudioFile { id: string; name: string; kind: "video" | "audio" | "image"; size: number; created_at: string; source: "upload" | "cloud" | "output"; conversation_id: string; conversation_title: string }
 export interface StudioFiles { files: StudioFile[]; usage: number; quota: number }
 export interface StudioAttachment { id: string; kind: "video" | "image" | "audio"; filename: string; mime_type: string; size_bytes: number }
-export type AgentMode = "lite" | "medium";
+export type AgentMode = "lite" | "medium" | "pro";
 export interface StudioAgentRun { id: string; message_id: string; agent_mode: AgentMode; status: string; plan?: {summary: string; steps: {tool: string; label: string}[]}; error?: string }
 export interface StudioMessage { id: number; role: "user" | "assistant"; content: string; attachments: string[]; created_at: string; agent_mode?: AgentMode; agent_run_id?: string }
 export interface StudioProject {

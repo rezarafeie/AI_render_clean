@@ -1,0 +1,8 @@
+# EditorGPT Pro agent worker (docs/PRO_AGENT_PLAN.md): the runtime image (python, node + Remotion, Chromium, ffmpeg) plus the Claude Agent SDK
+# (its CLI is bundled in the wheel). Built FROM the running release so the kits match; no keys are ever baked in or passed to this container.
+ARG BASE=ai-render-runtime:latest
+FROM ${BASE}
+RUN /opt/venv/bin/pip install --no-cache-dir "claude-agent-sdk==0.2.183"
+COPY app/agents/pro /app/app/agents/pro
+ENV PRO_RUNS_DIR=/runs PYTHONUNBUFFERED=1
+CMD ["python", "-m", "app.agents.pro.daemon"]

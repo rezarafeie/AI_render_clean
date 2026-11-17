@@ -1,0 +1,41 @@
+# EditorGPT Pro test service. The deploy writes pro.yml from this template with a random PRO_WORKER_SECRET (never committed).
+# app: joins the internal pro network under the name editor.rafiei.co (so its TrustedHost check passes) and shares the runs volume.
+# agent-worker: internal network only (no internet), no provider/storage/database keys, CPU and memory capped.
+services:
+  app:
+    environment:
+      PRO_WORKER_SECRET: "__SECRET__"
+      PRO_RUNS_DIR: /runs
+    volumes:
+      - pro_runs:/runs
+    networks:
+      default: {}
+      pro_net:
+        aliases: [editor.rafiei.co]
+  agent-worker:
+    image: ai-render-runtime:pro-__TAG__
+    entrypoint: []
+    command: ["python", "-m", "app.agents.pro.daemon"]
+    working_dir: /app
+    environment:
+      PRO_WORKER_SECRET: "__SECRET__"
+      PRO_APP_URL: http://editor.rafiei.co:8000
+      PRO_RUNS_DIR: /runs
+      PYTHONPATH: /app
+      HOME: /tmp/agent-home
+      REMOTION_BROWSER_EXECUTABLE: /usr/bin/chromium
+    volumes:
+      - pro_runs:/runs
+      - /opt/ai-render/presets:/app/presets:ro
+    networks: [pro_net]
+    cpus: 2
+    mem_limit: 4g
+    memswap_limit: 4g
+    pids_limit: 2048
+    init: true
+    restart: unless-stopped
+networks:
+  pro_net:
+    internal: true
+volumes:
+  pro_runs: {}

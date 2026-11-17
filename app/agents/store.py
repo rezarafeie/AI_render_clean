@@ -11,7 +11,7 @@ from app import studio_store as s
 from app.models import StudioAgentPreference, StudioAgentRun
 from app.models import StudioConversation
 
-MODES = {"lite", "medium"}
+MODES = {"lite", "medium", "pro"}
 
 
 def _admit(rows, cid):
@@ -128,3 +128,25 @@ async def update(rid, user, *, status=None, patch=None, claim=None):
         value = change(row)
         if value is not None: s._write(data)
         return copy.deepcopy(value)
+
+
+async def claim_pro():
+    """The oldest queued Pro run, moved to `running` in the same transaction (one agent worker never gets a run another one took)."""
+    if not s.DB_AVAILABLE:
+        with s._lock:
+            data = s._read(); rows = data.setdefault("agent_runs", {})
+            for value in sorted(rows.values(), key=lambda r: r["updated_at"]):
+                if value["agent_mode"] == "pro" and value["status"] == "queued":
+                    value["status"] = "running"; value["updated_at"] = s.iso(s.now()); s._write(data)
+                    return copy.deepcopy(value)
+        return None
+    async with s.AsyncSessionLocal() as db:
+        query = select(StudioAgentRun).where(StudioAgentRun.agent_mode == "pro", StudioAgentRun.status == "queued").order_by(StudioAgentRun.updated_at).limit(1)
+        if db.bind.dialect.name == "postgresql":
+            query = query.with_for_update(skip_locked=True)
+        row = (await db.execute(query)).scalar_one_or_none()
+        if row is None:
+            return None
+        row.status, row.updated_at = "running", s.now()
+        await db.commit()
+        return public(row)

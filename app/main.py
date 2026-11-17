@@ -214,6 +214,8 @@ app.include_router(lm_admin.access_router)
 app.include_router(lm_admin.router)
 from app.routers import admin_manage
 app.include_router(admin_manage.router)
+from app.routers import agent_proxy as _agent_proxy
+app.include_router(_agent_proxy.router)
 
 
 @app.middleware("http")
@@ -247,7 +249,9 @@ async def auth_middleware(request: Request, call_next):
         finally: user_context.reset(token)
 
     path = request.url.path
-    if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/") or path == "/webhook/rafieipay" or path == "/webhook/rafieipay/return":
+    if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/") or path == "/webhook/rafieipay" or path == "/webhook/rafieipay/return" \
+            or path.startswith(("/internal/anthropic/", "/internal/pro/")):        # EditorGPT Pro: run token / worker secret checked by app.routers.agent_proxy
+
         return await call_next(request)
     # The CEP panel cannot hold the user's web-app JWT. These protocol routes
     # are protected by loopback checks, one-time pairing codes, and the

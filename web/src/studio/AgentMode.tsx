@@ -6,6 +6,7 @@ import { Menu } from "../components/Menu";
 export const agentModes = [
   {id: "lite" as const, name: "EditorGPT Lite", hint: "Fast, everyday editing"},
   {id: "medium" as const, name: "EditorGPT Medium", hint: "Advanced, multi-step editing"},
+  {id: "pro" as const, name: "EditorGPT Pro (آزمایشی)", hint: "کندتر و قوی‌تر · هزینهٔ بیشتر"},
 ];
 
 export function AgentModeSelector({value, onChange}: {value: AgentMode; onChange: (mode: AgentMode) => void}) {
