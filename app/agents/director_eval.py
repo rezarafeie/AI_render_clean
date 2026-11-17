@@ -94,20 +94,20 @@ def _payload(case: dict) -> dict:
 
 
 def decide(case: dict) -> dict:
-    """The worker's decision for this state, as {summary, steps} (the worker decides one action at a time)."""
+    """The worker's decision for this state, as {summary, steps, model}: the same provider lock and output rules as production."""
     from brain.llm import _extract_json
     from brain.lm_gateway import complete
     from brain.lm_adapters import text as response_text
+    from creative.claude_motion import _long_call
     from app.agents.medium.worker import Decision, GUIDE
-
-    def validate(text):
-        return Decision.model_validate(_extract_json(text))
-
     messages = [{"role": "system", "content": GUIDE + "\nReturn exactly one JSON object, with no text before or after it."},
                 {"role": "user", "content": json.dumps(_payload(case), ensure_ascii=False)}]
-    response, _audit = complete("editing_agent", messages, tokens=5000, validate_response=validate)
-    d = validate(response_text("chat", response))
-    return {"summary": d.say, "steps": [d.action.model_dump()] if d.action else []}
+    with _long_call(240, 5000):
+        response, audit = complete("editing_agent", messages, tokens=5000)
+    raw = _extract_json(response_text("chat", response))
+    action = raw.get("action") if isinstance(raw.get("action"), dict) and raw["action"].get("tool") else None
+    steps = [{"tool": action["tool"], "arguments": action.get("arguments") or {}, "label": str(action.get("label") or "")}] if action else []
+    return {"summary": str(raw.get("say") or ""), "steps": steps, "model": (audit or {}).get("actual_model") or (audit or {}).get("model") or "?"}
 
 
 def score(case: dict, plan: dict) -> list[str]:
@@ -149,7 +149,7 @@ def main(argv: list[str]) -> int:
             plan, fails = {"summary": "", "steps": []}, [f"error: {str(exc)[:160]}"]
         passed += not fails
         steps = " → ".join(s["tool"] for s in plan.get("steps") or []) or "(answer)"
-        rows.append(f"{'PASS' if not fails else 'FAIL'}  {case['id']:<24} {time.monotonic() - started:5.1f}s  {steps}" + (f"\n      {'; '.join(fails)}" if fails else "")
+        rows.append(f"{'PASS' if not fails else 'FAIL'}  {case['id']:<24} {time.monotonic() - started:5.1f}s  [{plan.get('model', '?')}]  {steps}" + (f"\n      {'; '.join(fails)}" if fails else "")
                     + (f"\n      «{plan.get('summary', '')[:220]}»" if not plan.get("steps") else ""))
         print(rows[-1], flush=True)
     print(f"\nSCORE {passed}/{len(chosen)}")

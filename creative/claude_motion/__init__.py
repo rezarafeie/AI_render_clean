@@ -767,19 +767,19 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
         sc, b = beats[i]
         _say(notes, f"scene{int(i)}", f"دارم صحنهٔ {int(i)} را کدنویسی می‌کنم: «{sc['text'][:60]}»", "active",
              f"صحنهٔ {int(i)} · {sc['start']:g} تا {sc['start'] + sc['dur']:g} ثانیه\nنریشن: {sc['text']}\nطرح: {b.plan}" + (f"\nاصلاح: {feedback[:300]}" if feedback else ""))
-    parts = _brief(direction, timeline)
+    # Ordered for the provider's prompt cache (an identical beginning is read from cache at a fraction of the cost): what every film shares first
+    # (the guide, the kit, the example), then what this film's groups share (its header, art and brief), then this group's own part.
+    system = (SCENES_GUIDE.replace("@HEADER@", "(the header is given at the end of these instructions)") + "\n\nTHE KIT, src/lib.tsx:\n" + _kit_api()
+              + "\n\nEXAMPLE Scenes.tsx (another film; a craft reference, never its topic or texts):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
+    guide = system + "\n\nYOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only its names):\n" + header(art_tsx)
+    parts = ["THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx, *_brief(direction, timeline)]
     parts.append(f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues).")
-    parts.append("THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx)
     if previous:
         parts.append("YOUR PREVIOUS CODE FOR THESE SCENES:\n" + previous)
     if change:
         parts.append("THE PERSON ASKS FOR THIS CHANGE (apply it, keep everything else): " + change.strip()[:1500])
     if feedback:
         parts.append("FIX THIS (return the complete code of these scenes again):\n" + feedback.strip()[:5000])
-    parts.append("THE KIT, src/lib.tsx:\n" + _kit_api())
-    if not previous:
-        parts.append("EXAMPLE Scenes.tsx (another film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
-    guide = SCENES_GUIDE.replace("@HEADER@", header(art_tsx))
     user = "\n\n".join(parts)
 
     def say_all(text: str) -> None:
@@ -835,6 +835,10 @@ def write(direction: Direction, timeline: dict, *, previous: "Film | None" = Non
         note = "\n".join(feedback[i] for i in group if i in feedback)
         return group[0], write_group(direction, timeline, art, group, previous=blocks.get(group[0], "") if previous else "", feedback=note, change=change, notes=notes)
 
+    if len(wanted) > 1:                       # the first group alone writes the provider's prompt cache; the others then read the shared prefix from it
+        first, code = one(wanted[0])
+        blocks[first] = code
+        wanted = wanted[1:]
     with ThreadPoolExecutor(max_workers=3) as pool:
         for first, code in pool.map(one, wanted):
             blocks[first] = code

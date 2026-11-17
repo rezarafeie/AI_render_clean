@@ -692,6 +692,11 @@ def write_group(story: Story, timeline: dict, pictures: list[dict], ids: list[st
         sc, b = rows[i]
         cm._say(notes, f"scene{int(i)}", f"دارم صحنهٔ {int(i)} را می‌سازم ({b.type or 'صحنهٔ تازه'}): «{sc['text'][:60]}»", "active",
                 f"صحنهٔ {int(i)} · {sc['start']:g} تا {sc['end']:g} ثانیه\nنوع: {b.type}\nنریشن: {sc['text']}\nطرح: {b.plan}\nلحظهٔ اصلی روی: {b.moment}")
+    # Ordered for the provider's prompt cache: what every film shares (the guide with the header, the kit, the example) is the system prompt; the film's
+    # brief and this group's part follow in the user message.
+    example = (EXAMPLES / ("Scenes3d.example.tsx" if _looks.is_3d(story.look) else "Scenes.example.tsx")).read_text(encoding="utf-8")
+    guide = (SCENES_GUIDE.replace("@HEADER@", SCENES_HEADER) + "\n\nTHE KIT, src/vox.tsx:\n" + _kit_source()
+             + ("\n\nEXAMPLE 3D scenes (craft reference for the 3D stage; another topic):\n" if _looks.is_3d(story.look) else "\n\nEXAMPLE Scenes.tsx (the reference film):\n") + example)
     parts = _brief(story, timeline, pictures)
     parts.append(f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues).")
     if previous:
@@ -700,13 +705,6 @@ def write_group(story: Story, timeline: dict, pictures: list[dict], ids: list[st
         parts.append("THE PERSON ASKS FOR THIS CHANGE (apply what concerns these scenes, keep everything else): " + change.strip()[:1500])
     if feedback:
         parts.append("FIX THIS (return the complete code of these scenes again):\n" + feedback.strip()[:5000])
-    parts.append("THE KIT, src/vox.tsx:\n" + _kit_source())
-    if _looks.is_3d(story.look):
-        parts.append("EXAMPLE 3D scenes (craft reference for the 3D stage; another topic):\n" + (EXAMPLES / "Scenes3d.example.tsx").read_text(encoding="utf-8"))
-    else:
-        parts.append("EXAMPLE Scenes.tsx (the reference film):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
-    guide = SCENES_GUIDE.replace("@HEADER@", SCENES_HEADER)
-
     def say_all(text: str) -> None:
         for i in ids:
             cm._say(notes, f"scene{int(i)}", f"صحنهٔ {int(i)}: {text}")
@@ -753,6 +751,10 @@ def write(story: Story, timeline: dict, pictures: list[dict], *, previous: Film 
         note = "\n".join(feedback[i] for i in group if i in feedback)
         return group[0], write_group(story, timeline, pictures, group, previous=blocks.get(group[0], "") if previous else "", feedback=note, change=change, notes=notes)
 
+    if len(wanted_groups) > 1:                # the first group alone writes the provider's prompt cache; the others then read the shared prefix from it
+        first, code = one(wanted_groups[0])
+        blocks[first] = code
+        wanted_groups = wanted_groups[1:]
     with ThreadPoolExecutor(max_workers=3) as pool:
         for first, code in pool.map(one, wanted_groups):
             blocks[first] = code

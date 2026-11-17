@@ -119,7 +119,7 @@ def post(record: dict, text: str, key: str) -> None:
 
 def think(record: dict, state: dict) -> dict:
     from brain.llm import _extract_json
-    from brain.lm_gateway import complete, defaults
+    from brain.lm_gateway import complete
     from brain.lm_adapters import text as response_text
     turn = state.get("turns", 0) + 1
     if turn > MAX_TURNS:
@@ -127,35 +127,43 @@ def think(record: dict, state: dict) -> dict:
     planner.event(record, "tool.started", tool="medium_think", stage="thinking", message="دارم وضعیت و نتیجه‌ها را می‌سنجم و قدم بعدی را انتخاب می‌کنم.")
     payload = {"context": _context(record, state), "observations": _observations(state), "turn": turn,
                "tools": tools.catalog(), "decision_schema": Decision.model_json_schema()}
-    feedback = ""
-
-    def validate(text):
-        nonlocal feedback
-        try:
-            value = Decision.model_validate(_extract_json(text))
-        except ValueError:
-            feedback = "Return exactly ONE JSON object matching decision_schema."
-            raise ValueError(feedback) from None
+    def parse(text: str) -> Decision:
+        """Lenient on shape (extra fields are ignored, a long label is shortened), strict on what matters: a real tool with valid, owned arguments."""
+        raw = _extract_json(text)
+        if not isinstance(raw, dict):
+            raise ValueError("the answer is not one JSON object")
+        action = raw.get("action")
+        if isinstance(action, dict) and action.get("tool"):
+            raw["action"] = {"tool": action["tool"], "arguments": action.get("arguments") or {}, "label": (str(action.get("label") or action["tool"]))[:170]}
+        else:
+            raw["action"] = None
+        value = Decision.model_validate({k: raw.get(k) for k in ("say", "action", "done", "consent") if raw.get(k) is not None})
         if value.action is not None:
-            try:
-                tools.validate(record, value.action.model_dump())
-            except (KeyError, ValueError) as exc:
-                feedback = f"The action's arguments are invalid or name IDs that do not exist ({str(exc)[:200]}). Use only real IDs from the context and observations."
-                raise ValueError(feedback) from None
+            tools.validate(record, value.action.model_dump())
         return value
 
+    # Only Opus on Jarvis decides (the router's direct fallback once handed a rejected Opus answer to gpt-4.1-mini); a flawed answer is sent back to the
+    # same model with the exact reason instead of falling through to another model.
+    from creative.claude_motion import _long_call, step
     messages = [{"role": "system", "content": GUIDE + "\nReturn exactly one JSON object, with no text before or after it."},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)}]
-    decision = None
-    for attempt in range(2):
-        try:
-            response, _audit = complete("editing_agent", messages, tokens=5000, stream=bool(defaults()["editing_agent"].get("streaming")), validate_response=validate)
-            decision = validate(response_text("chat", response))
-            break
-        except Exception as exc:
-            if attempt or not feedback:
-                raise
-            messages.append({"role": "user", "content": "Your last answer was rejected: " + feedback})
+    decision, problem = None, ""
+    with _long_call(240, 5000):
+        for attempt in range(3):
+            with step("agent_decide", "دارم نتیجهٔ کارها را می‌سنجم و قدم بعدی را انتخاب می‌کنم." if state.get("results") else "دارم درخواست و فایل‌ها را می‌فهمم و تصمیم می‌گیرم چه کنم."):
+                response, _audit = complete("editing_agent", messages, tokens=5000)
+            text = response_text("chat", response)
+            try:
+                decision = parse(text)
+                break
+            except Exception as exc:
+                problem = str(exc)[:400]
+                log.warning("worker decision rejected (%s); asking the same model to correct it", problem)
+                messages += [{"role": "assistant", "content": text[:6000]},
+                             {"role": "user", "content": f"That answer could not be used: {problem}. Answer again with ONE JSON object per decision_schema, "
+                                                         "using only tools from the catalog and only real IDs from the context and observations."}]
+    if decision is None:
+        raise ValueError("تصمیم مدل پس از سه بار اصلاح هم قابل استفاده نبود: " + problem[:200])
     planner.event(record, "tool.completed", tool="medium_think", message=(decision.action.label if decision.action else "تصمیم گرفته شد."))
     data = decision.model_dump()
     if decision.action is not None and decision.action.tool in CONSENT and not decision.consent.strip():
