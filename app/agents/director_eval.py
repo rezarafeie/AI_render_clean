@@ -47,12 +47,12 @@ CASES = [
      "expect": {"first": ["analyze_talking_reel"], "args": {"analyze_talking_reel": {"variant": "premium"}}}},
     {"id": "long_to_reels", "request": "از این پادکست چندتا ریلز خوب دربیار", "assets": LONG, "observations": [LONG_LOOK], "expect": {"first": ["discover_clips"]}},
     {"id": "dub_english", "request": "این ویدیو رو به انگلیسی دوبله کن", "assets": VIDEO, "expect": {"first": ["look_at_media", "localize_video"]}},
-    {"id": "vox", "request": "یه ویدیو به سبک ووکس درباره اینکه بیت‌کوین چطور ساخته شد", "expect": {"first": ["create_motion_graphic"], "args": {"create_motion_graphic": {"request": "ووکس"}}}},
-    {"id": "explainer_3d", "request": "یه اکسپلینر سه‌بعدی درباره اینکه پرداخت آنلاین چطور کار می‌کنه بساز", "expect": {"first": ["create_motion_graphic"], "args": {"create_motion_graphic": {"request": "سه"}}}},
+    {"id": "vox", "request": "یه ویدیو به سبک ووکس درباره اینکه بیت‌کوین چطور ساخته شد", "expect": {"direction": True, "first": ["create_motion_graphic"], "args": {"create_motion_graphic": {"request": "ووکس"}}}},
+    {"id": "explainer_3d", "request": "یه اکسپلینر سه‌بعدی درباره اینکه پرداخت آنلاین چطور کار می‌کنه بساز", "expect": {"direction": True, "first": ["create_motion_graphic"], "args": {"create_motion_graphic": {"request": "سه"}}}},
     {"id": "intro_story", "request": "یه ویدیوی معرفی به سبک قصه برای Notion بساز", "expect": {"first": ["create_motion_graphic"], "args": {"create_motion_graphic": {"request": "معرفی"}}}},
     {"id": "intro_vague", "request": "یه ویدیوی معرفی برای کسب‌وکارم بساز", "expect": {"first": [""], "says": ["چه", "کسب‌وکار", "لینک", "؟"]}},
     {"id": "product_link", "request": "از این محصول یه تبلیغ کوتاه بساز https://shop.example.com/p/123", "expect": {"first": ["inspect_url"]}},
-    {"id": "motion_topic", "request": "یه موشن گرافیک ۴۵ ثانیه‌ای درباره قانون پارتو بساز", "expect": {"first": ["create_motion_graphic"]}},
+    {"id": "motion_topic", "request": "یه موشن گرافیک ۴۵ ثانیه‌ای درباره قانون پارتو بساز", "expect": {"direction": True, "first": ["create_motion_graphic"]}},
     {"id": "greeting", "request": "سلام، چه کارهایی می‌تونی برام انجام بدی؟", "expect": {"first": [""], "never": ["create_motion_graphic", "analyze_talking_reel"]}},
     {"id": "answer_with_footage", "request": "اینم فوتیج مجری", "assets": VIDEO, "motion_graphic": MOTION_ASKS,
      "expect": {"first": ["answer_motion_graphic", "look_at_media"], "never": ["create_motion_graphic", "analyze_talking_reel"]}},
@@ -126,6 +126,12 @@ def score(case: dict, plan: dict) -> list[str]:
         for key, sub in wanted.items():
             if step is None or sub.lower() not in str(step.get("arguments", {}).get(key, "")).lower():
                 out.append(f"{tool}.{key} lacks «{sub}»")
+    if expect.get("direction"):
+        step = next((s for s in steps if s["tool"] == "create_motion_graphic"), None)
+        text = str((step or {}).get("arguments", {}).get("request", ""))
+        empty = [w for w in ("خلاقانه", "جذاب", "حرفه‌ای", "انیمیشن‌های زیبا") if w in text.replace(case["request"], "")]
+        if step and (len(text) - len(case["request"]) < 220 or empty):
+            out.append(f"generic direction ({len(text) - len(case['request'])} chars added" + (f", empty words: {', '.join(empty)}" if empty else "") + ")")
     if expect.get("says") and not steps and not any(w.lower() in plan.get("summary", "").lower() for w in expect["says"]):
         out.append("the answer misses: " + " / ".join(expect["says"]))
     return out
