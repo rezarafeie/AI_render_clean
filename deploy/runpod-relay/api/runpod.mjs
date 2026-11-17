@@ -1,9 +1,30 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 
-const origin = 'https://rest.runpod.io/v1/';
+// RunPod retired REST v1 (rest.runpod.io, gone from DNS since 2026-11-16). Every call goes to v2; the relay keeps
+// speaking the v1 shapes to EditorGPT (pods as {id, name, imageName, costPerHr, memoryInGb, vcpuCount, ...},
+// billing as {podId, amount, time}) so the server, the reaper and the billing sync need no change.
 const catalog = 'https://api.runpod.io/v2/';
+const origin = catalog;
 const canaryName = /^editorgpt-containment-[a-f0-9]{16}$/;
-const podFields = ['id', 'name', 'image', 'imageName', 'costPerHr', 'adjustedCostPerHr', 'memoryInGb', 'vcpuCount'];
+const podFields = ['id', 'name', 'image', 'imageName', 'costPerHr', 'adjustedCostPerHr', 'memoryInGb', 'vcpuCount',
+  'desiredStatus', 'status', 'dataCenterId'];
+// v2 pod -> the v1 fields EditorGPT reads (only plain values survive `fields`; env, ssh, runtime never leave).
+const v1Pod = pod => ({
+  id: pod?.id, name: pod?.name, image: pod?.image, imageName: pod?.image, costPerHr: pod?.cost,
+  memoryInGb: pod?.cpu?.memory ?? pod?.gpu?.memory, vcpuCount: pod?.cpu?.vcpuCount ?? pod?.gpu?.vcpuCount,
+  desiredStatus: ['EXITED', 'TERMINATED'].includes(pod?.status) ? pod.status : (pod?.status ? 'RUNNING' : undefined),
+  status: pod?.status, dataCenterId: pod?.dataCenterId,
+});
+// v1 create payload (already validated) -> v2 CreatePodRequest.
+function v2Create(payload) {
+  const body = { name: payload.name, image: payload.imageName, cloud: 'SECURE', disk: payload.containerDiskInGb };
+  if (payload.env !== undefined) body.env = payload.env;
+  if (payload.containerRegistryAuthId) body.registry = payload.containerRegistryAuthId;
+  if (payload.dataCenterIds) body.dataCenterIds = payload.dataCenterIds;
+  if (payload.computeType === 'CPU') body.cpu = { id: payload.cpuFlavorIds[0], vcpuCount: payload.vcpuCount };
+  else body.gpu = { id: payload.gpuTypeIds[0], count: payload.gpuCount ?? 1 };
+  return body;
+}
 const createFields = ['name', 'imageName', 'computeType', 'cloudType', 'interruptible', 'containerDiskInGb',
   'volumeInGb', 'ports', 'env', 'cpuFlavorIds', 'vcpuCount', 'gpuTypeIds', 'gpuCount', 'containerRegistryAuthId', 'dataCenterIds'];
 const fields = (value, keys) => Object.fromEntries(keys.filter(k =>
@@ -39,13 +60,17 @@ function upstreamRequest(input) {
     return [new URL('catalog/cpus?include=AVAILABILITY&product=POD&vcpuCount=2', catalog), { method }];
   if (method === 'GET' && typeof path === 'string' && /^canary\/registries\/[\w-]{1,128}$/.test(path))
     return [new URL(path.slice('canary/'.length), catalog), { method }];
-  if (method === 'GET' && path === 'pods') return [new URL('pods', origin), { method }];
+  if (method === 'GET' && path === 'pods') {
+    const url = new URL('pods', origin);
+    url.search = new URLSearchParams({ limit: '1000' });
+    return [url, { method }];
+  }
   if (method === 'DELETE' && typeof path === 'string' && /^pods\/[\w-]{1,100}$/.test(path))
     return [new URL(path, origin), { method }];
   if (method === 'GET' && path === 'billing/pods' && typeof query?.startTime === 'string' &&
       query.startTime.length <= 40 && Number.isFinite(Date.parse(query.startTime))) {
     const url = new URL(path, origin);
-    url.search = new URLSearchParams({ grouping: 'podId', bucketSize: 'day', startTime: query.startTime });
+    url.search = new URLSearchParams({ bucketSize: 'day', startTime: query.startTime });
     return [url, { method }];
   }
   const canary = path === 'canary/pods';
@@ -61,7 +86,9 @@ function upstreamRequest(input) {
       payload.interruptible === false && payload.volumeInGb === 0 &&
       Array.isArray(payload.ports) && !payload.ports.length &&
       Number.isInteger(payload.containerDiskInGb) && payload.containerDiskInGb >= 10 &&
-      payload.containerDiskInGb <= 200) {
+      payload.containerDiskInGb <= 200 &&
+      (payload.env === undefined || (payload.env && typeof payload.env === 'object' && !Array.isArray(payload.env) &&
+        Object.values(payload.env).every(v => typeof v === 'string')))) {
     if (canary) {
       if (!canaryName.test(payload.name) || payload.computeType !== 'CPU' || payload.vcpuCount !== 2 ||
           payload.env !== undefined || !payload.containerRegistryAuthId ||
@@ -74,7 +101,12 @@ function upstreamRequest(input) {
         entrypoint: ['python'], cmd: ['-m', 'app.render_cloud.containment_probe'],
       }) }];
     }
-    return [new URL(path, origin), { method, body: JSON.stringify(payload) }];
+    if (payload.computeType === 'CPU' ? !(Array.isArray(payload.cpuFlavorIds) && payload.cpuFlavorIds.length >= 1 &&
+        payload.cpuFlavorIds.every(id => typeof id === 'string' && /^cpu[0-9]+[a-z]+$/.test(id)) &&
+        Number.isInteger(payload.vcpuCount) && payload.vcpuCount >= 2 && payload.vcpuCount <= 64)
+      : !(Array.isArray(payload.gpuTypeIds) && payload.gpuTypeIds.length >= 1 && typeof payload.gpuTypeIds[0] === 'string'))
+      return null;
+    return [new URL('pods', origin), { method, body: JSON.stringify(v2Create(payload)) }];
   }
   return null;
 }
@@ -168,9 +200,27 @@ export default async function handler(req, res) {
       if (body.path === 'canary/pods') return res.status(200).json({
         upstream_status: upstream.status, result: fields(data, [...podFields, 'cost']),
       });
-      if (options.method === 'GET' && !Array.isArray(data)) throw new Error('Unexpected result');
-      result = options.method === 'POST' ? fields(data, podFields) :
-        data.map(item => fields(item, url.pathname.endsWith('/billing/pods') ? ['podId', 'amount', 'time'] : podFields));
+      if (url.pathname.endsWith('/billing/pods')) {
+        if (!Array.isArray(data?.records)) throw new Error('Unexpected result');
+        result = data.records.map(r => fields({ podId: r?.podId, amount: r?.totalAmount, time: r?.startTime }, ['podId', 'amount', 'time']));
+      } else if (options.method === 'POST') {
+        result = fields(v1Pod(data), podFields);
+      } else {
+        if (!Array.isArray(data?.pods)) throw new Error('Unexpected result');
+        const pods = [...data.pods];
+        let next = data.pagination?.hasNextPage ? data.pagination.nextCursor : null;
+        for (let page = 0; next && page < 9; page++) {         // 1000 a page: more than EditorGPT ever holds
+          const more = new URL(url); more.searchParams.set('cursor', next);
+          const reply = await fetch(more, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.timeout(8_000) });
+          if (!reply.ok) throw new Error('Unexpected page');
+          const extra = await reply.json();
+          if (!Array.isArray(extra?.pods)) throw new Error('Unexpected page');
+          pods.push(...extra.pods);
+          next = extra.pagination?.hasNextPage ? extra.pagination.nextCursor : null;
+        }
+        if (next) throw new Error('Too many pods');
+        result = pods.map(item => fields(v1Pod(item), podFields));
+      }
     }
     return res.status(200).json({ upstream_status: upstream.status, result });
   } catch {
