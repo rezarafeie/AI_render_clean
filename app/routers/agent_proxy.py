@@ -275,8 +275,9 @@ MIME = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", "
 
 
 async def _attach(claims: dict, path: Path) -> dict:
-    """A file of the run's folder becomes an attachment of the chat (the person sees and downloads it)."""
-    from app.studio_ingest import attachment_folder, finalize
+    """A file of the chat's folder becomes an attachment of the chat (the person sees and downloads it). What the agent MADE (stills, thumbnails, the
+    delivered video) is not an upload: it does not go through the upload quota (a full quota made every thumbnail and delivery fail, 2026-11-17)."""
+    from app.studio_ingest import attachment_folder
     suffix = path.suffix.lower()
     kind = KIND_BY_SUFFIX.get(suffix)
     if not kind:
@@ -284,8 +285,17 @@ async def _attach(claims: dict, path: Path) -> dict:
     folder = attachment_folder(claims["user"], claims["cid"])
     temporary = folder / f".pro-{claims['run']}-{int(time.time() * 1000)}{suffix}"
     await asyncio.to_thread(shutil.copy2, path, temporary)
-    return await finalize(claims["user"], claims["cid"], temporary, path.name, kind, MIME[suffix], temporary.stat().st_size,
-                          {"source": "pro", "run_id": claims["run"]})
+    row = await repo.create_attachment(claims["cid"], claims["user"], kind=kind, filename=path.name[:255], path=str(temporary),
+                                       mime_type=MIME[suffix], size_bytes=temporary.stat().st_size, metadata={"source": "pro", "run_id": claims["run"]})
+    target = folder / f"{row['id']}{suffix}"
+    temporary.replace(target)
+    from app.studio_store import AsyncSessionLocal, DB_AVAILABLE
+    if DB_AVAILABLE:
+        from app.models import StudioAttachment
+        async with AsyncSessionLocal() as db:
+            item = await db.get(StudioAttachment, row["id"]); item.path = str(target); await db.commit()
+    row["path"] = str(target)
+    return row
 
 
 async def _tool(claims: dict, name: str, args: dict):
