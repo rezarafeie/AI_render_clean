@@ -38,7 +38,15 @@ async def usage(user: str) -> int:
     return sum(int(a.get("size_bytes") or 0) for a in await repo.list_user_attachments(user))
 
 
+def unlimited(user: str) -> bool:
+    """Administrators (AI_ADMIN_USER_IDS) have no storage quota."""
+    from app.config import settings
+    return str(user) in {x.strip() for x in str(settings.AI_ADMIN_USER_IDS or "").split(",") if x.strip()}
+
+
 async def ensure_room(user: str, size: int) -> None:
+    if unlimited(user):
+        return
     used = await usage(user)
     if used + int(size or 0) > QUOTA_BYTES:
         raise QuotaExceeded(f"فضای فایل‌های شما پر است ({_mb(used)} از {_mb(QUOTA_BYTES)}). از بخش Files چند فایل را حذف کنید و دوباره امتحان کنید.")
@@ -102,7 +110,7 @@ async def library(user: str) -> dict:
         return found
     items.extend(await asyncio.to_thread(outputs))
     items.sort(key=lambda item: item["created_at"], reverse=True)
-    return {"files": items, "usage": used, "quota": QUOTA_BYTES}
+    return {"files": items, "usage": used, "quota": None if unlimited(user) else QUOTA_BYTES}
 
 
 def _iso(timestamp: float) -> str:

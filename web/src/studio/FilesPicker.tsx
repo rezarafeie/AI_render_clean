@@ -49,7 +49,7 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
         <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18}/></button></div>
       {data ? <div className="files-usage" role="group" aria-label="Storage used">
         <div className="files-usage-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}><span style={{ width: `${percent}%` }} data-high={percent > 90 || undefined}/></div>
-        <small>{formatBytes(used)} of {formatBytes(quota)} used by uploads</small>
+        <small>{quota ? `${formatBytes(used)} of ${formatBytes(quota)} used by uploads` : `${formatBytes(used)} used by uploads · no limit`}</small>
       </div> : <span/>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="input" style={{ flex: "1 1 200px" }} type="search" placeholder="Search your files" aria-label="Search your files" value={query} onChange={event => setQuery(event.target.value)}/>
