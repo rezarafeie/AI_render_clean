@@ -631,7 +631,13 @@ def _run_claude(directory: Path, record: dict, change: str) -> bool:
                                 progress=progress, cancelled=lambda: _cancelled(key), snapshots=publish_stills,
                                 say=lambda text: _assistant(cid, user, text))
     try:
-        if record.get("intro"):
+        if record.get("intro") == "story":
+            # a Story intro is a whole Claude-motion film made for this brand (creative/claude_intro.story_as_film), not the fixed Story template
+            from creative import claude_intro
+            _note(directory, "engine", "موتور «ویدیوی معرفی — قصه»: کارگردان برای همین برند داستان و طراحی تازه می‌نویسد، تصویرسازی‌ها جدا کشیده می‌شوند، هر صحنه جدا کدنویسی و با چشم بازبینی می‌شود", "done")
+            result = claude_motion.build(directory, claude_intro.story_as_film(record, directory, hooks), hooks, change=change,
+                                         reference_sheet=directory.parent.parent / "reference" / "frame-table.jpg")
+        elif record.get("intro"):
             from creative import claude_intro
             _note(directory, "engine", f"موتور «ویدیوی معرفی» — سبک {claude_intro.LABELS.get(record['intro'], record['intro'])}: محتوا فقط از واقعیت‌های منبع، زمان‌بندی از صدا، استیل‌ها قبل از رندر بازبینی می‌شوند", "done")
             result = claude_intro.build(directory, record, hooks, change=change)

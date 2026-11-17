@@ -62,3 +62,19 @@ def test_the_intro_author_returns_a_custom_component_and_the_project_routes_to_i
     assert author.enabled("story") and author.enabled("reel") and not author.enabled("presenter") and not author.enabled("film3d")
     index = (author.KIT / "index.ts").read_text()
     assert "(content as any).custom ? (Custom" in index
+
+
+def test_a_story_intro_is_a_claude_motion_film_with_the_brand_guide(tmp_path):
+    from creative import claude_intro as ci
+    notes = []
+    hooks = cm.Hooks(note=lambda *a, **k: notes.append(a), progress=lambda *a: None, cancelled=lambda: False)
+    rec = {"request": "معرفی Canva", "context": "Canva is an online design platform. " * 20}
+    out = ci.story_as_film(rec, tmp_path, hooks)
+    assert out["film_guide"] == ci.STORY_FILM_GUIDE and "old template" in out["film_guide"] and out["context"].startswith("Canva")
+    assert (tmp_path / "intro_facts.txt").read_text().startswith("Canva")
+    again = ci.story_as_film({**rec, "context": ""}, tmp_path, hooks)          # a retry keeps the same facts (the plan's checkpoint depends on them)
+    assert again["context"] == out["context"]
+    import inspect
+    from app import motion_graphic as mg
+    src = inspect.getsource(mg._run_claude)
+    assert 'record.get("intro") == "story"' in src and "claude_intro.story_as_film" in src

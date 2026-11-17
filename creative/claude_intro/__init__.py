@@ -142,6 +142,35 @@ def facts_for(record: dict, directory: Path, hooks: Hooks) -> str:
     return text.strip()
 
 
+# ── Story intros are made by the Claude motion pipeline (2026-11-17) ──────────
+# The Story template (one fixed tale: terminal, name, dictionary, three steps, moral) gave every brand the same film, and one-shot authored code was crude.
+# A Story intro is now a whole Claude-motion film: the director invents THIS brand's story and look (the 99-style library, the person's recent films), the art
+# library is drawn component by component, every scene is coded on its own and the stills are reviewed by eye. The facts come from the person or from research.
+
+STORY_FILM_GUIDE = """THIS FILM IS A BRAND INTRO («ویدیوی معرفی»), not an explainer about a topic. Make the viewer understand in one watch what this product is, who it is
+for and why it is different, and remember its name.
+- Invent a story concept that belongs to THIS brand alone (a metaphor from its own world, a day in its user's life, a before/after, the product building
+  something on screen...). Never the generic order «a terminal types a request, a dictionary definition, step one/two/three, a moral»: that is the old template.
+- Show the product, not adjectives: crafted vector stand-ins of its real interface, its real outputs and its real objects (from the FACTS), animated on the
+  words that name them. Every capability, number and claim comes from the FACTS; nothing invented.
+- The brand: its name as a strong wordmark (type, not a drawn logo), its colours when the FACTS give them (else a palette that suits it), one recurring
+  signature motif. A first line that hooks in two seconds.
+- The end: a held end card (about 2.5 s) with the brand name, its web address when the FACTS give one, and one short call to action.
+- 35-55 seconds unless the person asked otherwise; narration in warm, natural spoken Persian, like a person introducing something they love, never an advert voice."""
+
+
+def story_as_film(record: dict, directory: Path, hooks: Hooks) -> dict:
+    """The record a Story intro gives the Claude motion engine: the facts (kept in intro_facts.txt so a retry continues from the same plan) and the brand-intro guide."""
+    cache = directory / "intro_facts.txt"
+    if cache.is_file():
+        facts = cache.read_text(encoding="utf-8")
+        hooks.note("facts", "واقعیت‌های برند از قبل جمع شده است", "done")
+    else:
+        facts = facts_for(record, directory, hooks)
+        cache.write_text(facts, encoding="utf-8")
+    return {**record, "context": facts[:14000], "film_guide": STORY_FILM_GUIDE}
+
+
 def write_content(kind: str, request: str, facts: str, *, answers: list[str] | None = None, previous: BaseModel | None = None, change: str = "",
                   feedback: str = "") -> BaseModel:
     from creative import llm

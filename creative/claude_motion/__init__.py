@@ -296,8 +296,10 @@ def _direct_guide() -> str:
 
 
 def direct(request: str, *, context: str = "", style: str = "", reference_sheet: Path | None = None, answers: list[str] | None = None,
-           photos: list[dict] | None = None, photo_sheet: Path | None = None, styles: str = "", recent: str = "") -> Direction:
+           photos: list[dict] | None = None, photo_sheet: Path | None = None, styles: str = "", recent: str = "", film_guide: str = "") -> Direction:
     parts = [f"REQUEST:\n{request.strip()[:4000]}"]
+    if film_guide:
+        parts.append(film_guide)
     if styles:
         parts.append(styles)
     if recent:
@@ -1201,7 +1203,8 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         past = film_styles.recent(directory)
         direction = direct(brief, context=record.get("context", ""), style=record.get("style", ""), reference_sheet=reference_sheet,
                            photos=staged, photo_sheet=(_photos.sheet(staged, directory / "photos" / "sheet.jpg") if staged else None),
-                           styles=film_styles.menu(brief, [p["style"] for p in past if p.get("style")]), recent=film_styles.recent_block(past))
+                           styles=film_styles.menu(brief, [p["style"] for p in past if p.get("style")]), recent=film_styles.recent_block(past),
+                           film_guide=record.get("film_guide", ""))
         if direction.style:
             hooks.note("style", f"سبک فیلم از کتابخانه: {direction.style.split(':', 1)[1]} — {direction.look[:160]}", "done")
         if direction.questions and not direction.beats:
