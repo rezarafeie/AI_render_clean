@@ -125,7 +125,7 @@ async def messages(request: Request):
     model = str(data.get("model") or "")
     if not model.startswith(pro.ALLOWED_MODELS):
         return _anthropic_error(400, "invalid_request_error", f"model {model!r} is not allowed for EditorGPT Pro")
-    base, key = _provider()
+    base, key = await asyncio.to_thread(_provider)          # lm_direct reads its settings with asyncio.run: never on the event loop
     headers = {"x-api-key": key, "anthropic-version": request.headers.get("anthropic-version", "2023-06-01"), "content-type": "application/json"}
     if request.headers.get("anthropic-beta"):
         headers["anthropic-beta"] = request.headers["anthropic-beta"]
