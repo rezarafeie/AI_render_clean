@@ -36,6 +36,7 @@ def redact_sensitive(value: str) -> str:
     value = _BEARER_RE.sub("Bearer " + _REDACTED, value)
     value = _JWT_RE.sub(_REDACTED, value)
     value = _KEY_RE.sub(_REDACTED, value)
+    value = re.sub(r"(?<=/bot)[0-9]{5,}:[A-Za-z0-9_-]+", _REDACTED, value)
     value = _EMAIL_RE.sub(_REDACTED, value)
     value = _IPV4_RE.sub(lambda match: _REDACTED if _is_ip(match.group(0)) else match.group(0), value)
     value = _IPV6_CANDIDATE_RE.sub(lambda match: _REDACTED if _is_ip(match.group(0)) else match.group(0), value)

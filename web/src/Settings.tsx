@@ -100,7 +100,16 @@ export default function Settings() {
           <DeviceSettings/>
         </> : null}
 
-        {tab === "connections" && authenticated ? <IntegrationsSettings/> : null}
+        {tab === "connections" && authenticated ? <>
+          <IntegrationsSettings/>
+          <section className="set-section" aria-labelledby="set-telegram">
+            <h2 id="set-telegram">Telegram</h2>
+            <div className="set-controls"><div className="set-control">
+              <span><b>EditorGPT bot</b><small>Connect your account and use Studio from Telegram.</small></span>
+              <NavLink className="btn btn-sm btn-secondary" to="/telegram/link">Manage connection</NavLink>
+            </div></div>
+          </section>
+        </> : null}
 
         {tab === "tools" ? <>
           {groups.map((group, index) => <section className="set-section" key={group.title} aria-labelledby={`set-g${index}`}>

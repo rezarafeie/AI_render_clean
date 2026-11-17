@@ -98,8 +98,16 @@ async def lifespan(app: FastAPI):
     recovered_talking = recover_interrupted_talking(jobstore.JOBS_ROOT)
     if recovered_talking:
         log.warning("marked %d interrupted talking reel task(s) as failed", recovered_talking)
-    yield
-    await close_db()
+    from contextlib import suppress
+    from app.routers.telegram_studio import telegram_loop
+    telegram = asyncio.create_task(telegram_loop())
+    try:
+        yield
+    finally:
+        telegram.cancel()
+        with suppress(asyncio.CancelledError):
+            await telegram
+        await close_db()
 
 
 production = settings.APP_ENV == "production"
@@ -204,6 +212,8 @@ app.include_router(localize.router)
 app.include_router(studio.router)
 from app.routers.rafieipay_webhook import router as rafieipay_webhook_router
 app.include_router(rafieipay_webhook_router)
+from app.routers.telegram_studio import router as telegram_studio_router
+app.include_router(telegram_studio_router)
 from app import dns_cache as _dns_cache
 _dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
@@ -257,9 +267,10 @@ async def auth_middleware(request: Request, call_next):
     # are protected by loopback checks, one-time pairing codes, and the
     # operation-scoped bearer token validated by premiere_bridge itself.
     if path in {
+        "/integrations/telegram/webhook",
         "/integrations/premiere/bridge/pending",
         "/integrations/premiere/bridge/pair",
-    } or re.fullmatch(r"/jobs/[0-9a-f]{12}/premiere/bridge/receipt", path):
+    } or (request.method in {"GET", "HEAD"} and re.fullmatch(r"/integrations/telegram/media/[A-Za-z0-9_-]{43}", path)) or re.fullmatch(r"/jobs/[0-9a-f]{12}/premiere/bridge/receipt", path):
         return await call_next(request)
     header = request.headers.get("Authorization", "")
     from app.media_session import COOKIE, allowed as media_cookie_allowed
@@ -313,7 +324,7 @@ async def request_log(request: Request, call_next):
             "event": "http_request",
             "request_id": request_id,
             "method": request.method,
-            "path": request.url.path,
+            "path": "/integrations/telegram/media/[ticket]" if request.url.path.startswith("/integrations/telegram/media/") else request.url.path,
             "status_code": response.status_code,
             "duration_ms": duration_ms,
         }
