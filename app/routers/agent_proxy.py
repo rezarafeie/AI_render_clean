@@ -349,7 +349,74 @@ async def _tool(claims: dict, name: str, args: dict):
             state["outputs"] = list(state.get("outputs") or []) + [{"attachment_id": attached[0]["id"], "title": str(args.get("title") or "")[:200]}]
             await store.update(rid, user, patch={"pro": state})
         return {"ok": True, "attachments": [a["id"] for a in attached]}
+    if name == "render_cloud":
+        return await _render_cloud(claims, str(args.get("project_dir") or "project"), str(args.get("output") or "out/video.mp4"))
+    if name == "render_status":
+        return _render_state(cid, str(args.get("job_id") or ""))
     raise ValueError(f"unknown tool {name}")
+
+
+# ── renders on the render cloud (RunPod), not in the agent container ─────────
+
+def _render_file(cid: str, job: str) -> Path:
+    if not job.isalnum():
+        raise ValueError("bad job id")
+    folder = pro.RUNS / cid / ".renders"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"{job}.json"
+
+
+def _render_state(cid: str, job: str) -> dict:
+    path = _render_file(cid, job)
+    if not path.is_file():
+        raise ValueError("no such render job")
+    return json.loads(path.read_text())
+
+
+async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
+    """A Remotion project of the chat's folder rendered on the render cloud (the same verified claude_motion worker the studio's films use: vertical
+    1080x1920, 30 fps, muted video). Returns at once with a job id; render_status follows it. The project needs src/timing.json
+    {"total": seconds, "width": 1080, "height": 1920, "fps": 30} and a composition with id Main."""
+    import threading
+    import uuid
+    cid, user = claims["cid"], claims["user"]
+    project = pro.inside(cid, project_dir)
+    target = pro.inside(cid, output)
+    try:
+        timing = json.loads((project / "src" / "timing.json").read_text())
+        size = (int(timing["width"]), int(timing["height"]), int(timing["fps"]))
+        float(timing["total"])
+    except (OSError, ValueError, KeyError) as exc:
+        raise ValueError("the project needs src/timing.json with total, width, height and fps") from exc
+    if size != (1080, 1920, 30):
+        raise ValueError("the render cloud takes vertical 1080x1920 at 30 fps; render other formats in the container (node render.mjs video ...)")
+    job = uuid.uuid4().hex[:12]
+    state_file = _render_file(cid, job)
+
+    def save(**values):
+        current = json.loads(state_file.read_text()) if state_file.is_file() else {}
+        current.update(values)
+        state_file.write_text(json.dumps(current, ensure_ascii=False))
+
+    save(job_id=job, state="queued", progress=0, output=output)
+
+    def work():
+        from app.render_cloud import hooks
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            done = hooks.claude_motion(project, target, timeout=3600, user=str(user), project_id="pro" + claims["run"], owned_roots=(pro.workdir(cid),),
+                                       on_progress=lambda p: save(state="rendering", progress=int(p)),
+                                       on_stage=lambda stage: save(stage=str(stage)), on_detail=lambda text: save(detail=str(text)[:200]))
+            if done and target.is_file() and target.stat().st_size > 1000:
+                save(state="done", progress=100, size_bytes=target.stat().st_size)
+            else:
+                save(state="failed", error="the render cloud did not take this project (no matching profile or the cloud is off); render it in the container")
+        except Exception as exc:
+            log.warning("pro cloud render %s failed", job, exc_info=True)
+            save(state="failed", error=f"{type(exc).__name__}: {str(exc)[:300]}")
+    threading.Thread(target=work, daemon=True, name=f"pro-render-{job}").start()
+    await repo.emit(cid, "tool.progress", {"tool": "pro_render", "stage": "pro", "message": "رندر روی سرور ابری شروع شد", "agent_mode": "pro", "run_id": claims["run"]})
+    return {"job_id": job, "state": "queued", "note": "poll render_status every 20-30 s (sleep with Bash between polls)"}
 
 
 @router.post("/internal/pro/tool")

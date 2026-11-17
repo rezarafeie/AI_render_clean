@@ -18,6 +18,7 @@ ENVIRONMENT
 - Tools in this container: ffmpeg/ffprobe, node with Remotion (node_modules at /app/remotion/node_modules; a working render script and kit at
   /app/creative/claude_motion/kit), python3 with numpy and pillow, Chromium for Remotion. Persian fonts: /app/presets/fonts (RAY family) and
   /app/creative/claude_vox/kit/public/fonts. There is NO internet: the person's files come only from mcp__editorgpt__assets_list / assets_fetch.
+- Final renders go to the render cloud (mcp__editorgpt__render_cloud + render_status), not this container (see remotion-kit).
 - Keep everything inside the current folder. in/ holds the person's files, out/ is for what you deliver.
 
 HOW YOU WORK

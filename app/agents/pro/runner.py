@@ -88,10 +88,20 @@ def _tools(api: Api):
     async def deliver(args):
         return result(await api.tool("deliver", args))
 
-    return create_sdk_mcp_server(name="editorgpt", tools=[say, step, assets_list, assets_fetch, show_stills, deliver])
+    @tool("render_cloud", "Render a Remotion project of the working folder on the render cloud (vertical 1080x1920, 30 fps, muted video). The project "
+          "needs src/timing.json {total, width, height, fps} and a composition with id Main. Returns a job_id at once.",
+          {"type": "object", "properties": {"project_dir": {"type": "string"}, "output": {"type": "string"}}, "required": ["project_dir"]})
+    async def render_cloud(args):
+        return result(await api.tool("render_cloud", args))
+
+    @tool("render_status", "The state of a cloud render: queued | rendering (progress %) | done | failed.", {"job_id": str})
+    async def render_status(args):
+        return result(await api.tool("render_status", args))
+
+    return create_sdk_mcp_server(name="editorgpt", tools=[say, step, assets_list, assets_fetch, show_stills, deliver, render_cloud, render_status])
 
 
-TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deliver"]
+TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deliver", "render_cloud", "render_status"]
 
 
 def _policy(work: Path):
@@ -126,7 +136,8 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "Grep": "جست‌وجو در فایل‌ها", "Skill": "خواندن راهنمای کار", "TodoWrite": "برنامه‌ریزی مراحل", "Bash": "اجرای ابزار",
            "mcp__editorgpt__assets_list": "دیدن فایل‌های شما", "mcp__editorgpt__assets_fetch": "دریافت فایل شما",
            "mcp__editorgpt__show_stills": "نمایش استیل‌ها", "mcp__editorgpt__deliver": "تحویل خروجی", "mcp__editorgpt__say": "پیام",
-           "mcp__editorgpt__step": "مرحله"}
+           "mcp__editorgpt__step": "مرحله", "mcp__editorgpt__render_cloud": "ارسال برای رندر ابری",
+           "mcp__editorgpt__render_status": "پیگیری رندر ابری"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
 
 

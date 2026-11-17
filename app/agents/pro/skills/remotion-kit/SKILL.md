@@ -21,8 +21,12 @@ registerRoot(() => <Composition id="Main" component={Film} durationInFrames={300
 `staticFile('name.png')`; fonts with an `@font-face` in a `<style>` tag using `staticFile('fonts/RAY-BOLD.TTF')`.
 
 ## Render
-- Stills (half size, to look at): `node render.mjs stills 1.5 4 7.2` → `stills/s_1.5.jpg` ... then Read them.
-- Video (muted H.264): `node render.mjs video ../out/video.mp4` (prints PROGRESS n). Add sound afterwards with ffmpeg.
+- Stills (half size, to look at) in the container: `node render.mjs stills 1.5 4 7.2` → `stills/s_1.5.jpg` ... then Read them.
+- The FINAL video goes to the render cloud (much faster than this container): write `src/timing.json`
+  `{"total": <seconds>, "width": 1080, "height": 1920, "fps": 30}`, call `mcp__editorgpt__render_cloud` with `project_dir: "project"`,
+  `output: "out/video.mp4"`, then poll `mcp__editorgpt__render_status` every 20-30 s (`sleep 25` with Bash between polls) until done.
+  The cloud takes vertical 1080x1920 at 30 fps; another format: `node render.mjs video ../out/video.mp4` here. The result is muted: add sound
+  afterwards with ffmpeg.
 - An error prints one line `RENDER_ERROR ...`: read it, fix the code, render again.
 
 ## Craft and limits
