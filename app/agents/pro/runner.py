@@ -309,7 +309,8 @@ async def _forward(api: Api, message, live: dict) -> None:
 
 
 async def run(job: dict) -> None:
-    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, ResultMessage, SystemMessage
+    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, ResultMessage, SystemMessage
+    from claude_agent_sdk.types import StreamEvent
     api = Api(job["token"])
     cid = job["cid"]
     work = workdir(cid)
@@ -333,7 +334,7 @@ async def run(job: dict) -> None:
         max_turns=int(os.environ.get("PRO_MAX_TURNS", "250")),
         env={"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
              "CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_TELEMETRY": "1",
-             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "MCP_TOOL_TIMEOUT": "900000", "DISABLE_AUTOUPDATER": "1", "REMOTION_BROWSER_EXECUTABLE": os.environ.get("REMOTION_BROWSER_EXECUTABLE", "")},
+             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "MCP_TOOL_TIMEOUT": "900000", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", "DISABLE_AUTOUPDATER": "1", "REMOTION_BROWSER_EXECUTABLE": os.environ.get("REMOTION_BROWSER_EXECUTABLE", "")},
         resume=job.get("resume") or None,
         include_partial_messages=True,
     )
@@ -356,19 +357,27 @@ async def run(job: dict) -> None:
                 retries = 0
                 while True:
                     live["api_error"] = False
-                    async for message in client.receive_response():
-                        await _forward(api, message, live)
-                        if isinstance(message, SystemMessage) and message.subtype == "init":
-                            session = (message.data or {}).get("session_id") or session
-                        elif isinstance(message, ResultMessage):
-                            session = message.session_id or session
-                            turns, cost = message.num_turns, message.total_cost_usd
-                            reason = getattr(message, "stop_reason", None) or message.subtype
-                            status = "stopped" if stopped else ("completed" if not message.is_error else "failed")
-                            if message.is_error:
-                                error = str(getattr(message, "result", "") or message.subtype)[:400]
-                            if API_ERROR.search(str(getattr(message, "result", "") or "")):
-                                live["api_error"] = True
+                    spoke, strays = False, 0
+                    while True:                       # a resumed session may first emit a result for a leftover background-task notice (0 turns, no model call): keep reading until our own turn's result
+                        async for message in client.receive_response():
+                            await _forward(api, message, live)
+                            if isinstance(message, (AssistantMessage, StreamEvent)):
+                                spoke = True
+                            if isinstance(message, SystemMessage) and message.subtype == "init":
+                                session = (message.data or {}).get("session_id") or session
+                            elif isinstance(message, ResultMessage):
+                                session = message.session_id or session
+                                turns, cost = message.num_turns, message.total_cost_usd
+                                reason = getattr(message, "stop_reason", None) or message.subtype
+                                status = "stopped" if stopped else ("completed" if not message.is_error else "failed")
+                                if message.is_error:
+                                    error = str(getattr(message, "result", "") or message.subtype)[:400]
+                                if API_ERROR.search(str(getattr(message, "result", "") or "")):
+                                    live["api_error"] = True
+                        if spoke or strays >= 3 or stopped:
+                            break
+                        strays += 1
+                        log.info("pro run %s: stray result without a model turn, reading on", job["run"])
                     if not stopped and not live.get("api_error"):
                         # the agent ended its turn while a cloud render still runs ("I'll wait for it"): the runner waits and continues the same session
                         waiting = await api.active_renders()
