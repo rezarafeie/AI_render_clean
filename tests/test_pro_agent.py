@@ -105,6 +105,26 @@ def test_first_message_marks_a_follow_up():
     assert first_message("یک ویدیو بساز", ["a1"], False) != first_message("یک ویدیو بساز", ["a1"], True)
 
 
+def test_policy_stops_reading_the_same_image_again_and_again():
+    from app.agents.pro.runner import _policy
+    work = pro.workdir("pol2")
+    (work / "out").mkdir(parents=True, exist_ok=True)
+    sheet = work / "out" / "sheet.jpg"
+    sheet.write_bytes(b"\xff\xd8\xff")
+    hook = _policy(work)
+    decisions = [_decide(hook, "Read", {"file_path": str(sheet)}) for _ in range(4)]
+    assert decisions == ["allow", "allow", "deny", "deny"], decisions
+    os.utime(sheet, (time.time() + 5, time.time() + 5))      # a changed file may be looked at again
+    assert _decide(hook, "Read", {"file_path": str(sheet)}) == "allow"
+
+
+def test_runner_knows_when_the_model_service_is_out_of_tokens():
+    from app.agents.pro.runner import API_ERROR, NO_ALLOCATION
+    text = "API Error: 402 This request would exceed your remaining token allocation."
+    assert API_ERROR.search(text) and NO_ALLOCATION.search(text)
+    assert not NO_ALLOCATION.search("API Error: 500 Internal server error")
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

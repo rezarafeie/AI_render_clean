@@ -146,6 +146,7 @@ TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deli
 def _policy(work: Path):
     """PreToolUse: the second line of defence (the container has no internet and no keys): no network or system commands, files only in the chat's folder."""
     root = str(work.resolve())
+    seen: dict = {}
 
     def deny(reason: str) -> dict:
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}
@@ -163,6 +164,15 @@ def _policy(work: Path):
         if name in {"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep"}:
             target = str(args.get("file_path") or args.get("path") or root)
             full = os.path.realpath(target if os.path.isabs(target) else os.path.join(root, target))
+            if name == "Read" and full.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                try:
+                    key = (full, os.path.getmtime(full))
+                except OSError:
+                    key = (full, 0)
+                seen[key] = seen.get(key, 0) + 1
+                if seen[key] > 2:                  # a loop seen on 2026-11-18: one contact sheet read 25 times in a row
+                    return deny("You have already viewed this exact image (it is attached right after its earlier tool result). Do not read it "
+                                "again: decide from what you saw, or change the file first.")
             writable = full.startswith(root)
             readable = writable or full.startswith(READ_ROOTS)
             if (name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and not writable) or not readable:
@@ -183,6 +193,7 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__person_matte": "جدا کردن سوژه از پس‌زمینه", "mcp__editorgpt__qc_report": "بررسی فنی خروجی",
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
+NO_ALLOCATION = re.compile(r"(\b402\b|token allocation|billing_error|insufficient (credit|balance))", re.I)
 API_ERROR = re.compile(r"(API Error|could not authenticate with the provider|Internal server error|overloaded_error|stream ended before|Request timed out)", re.I)
 
 
@@ -238,6 +249,8 @@ async def _forward(api: Api, message, live: dict) -> None:
 
     async def close_text():
         text = live["text"] or ""
+        if text and NO_ALLOCATION.search(text) and API_ERROR.search(text):
+            live["no_allocation"] = True
         if text and API_ERROR.search(text):
             if live["id"] is not None:
                 await api.event(kind="text_done", response_id=live["id"], text="")    # a provider error is not the agent's message
@@ -382,6 +395,8 @@ async def run(job: dict) -> None:
                                     error = str(getattr(message, "result", "") or message.subtype)[:400]
                                 if API_ERROR.search(str(getattr(message, "result", "") or "")):
                                     live["api_error"] = True
+                                    if NO_ALLOCATION.search(str(getattr(message, "result", "") or "")):
+                                        live["no_allocation"] = True
                         if spoke or strays >= 3 or stopped:
                             break
                         strays += 1
@@ -400,6 +415,9 @@ async def run(job: dict) -> None:
                                 await client.query("The cloud render you were waiting for has ended: check it with render_status and continue the work to the end "
                                                    "(sound, checks, deliver). Do not end your turn while a render is still running; poll render_status instead.")
                                 continue
+                    if live.get("no_allocation"):          # the model service has no tokens left: retrying only fails again
+                        status, error = "failed", "اعتبار سرویس مدل هوش مصنوعی فعلاً تمام شده است؛ بعد از شارژ، با پیام «ادامه بده» از همین‌جا ادامه می‌دهد."
+                        break
                     if stopped or not live.get("api_error") or retries >= 3:
                         if live.get("api_error"):
                             status, error = "failed", "سرویس مدل چند بار پشت سر هم خطا داد؛ با پیام «ادامه بده» از همین‌جا ادامه می‌دهد."
