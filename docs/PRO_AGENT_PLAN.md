@@ -104,6 +104,10 @@ Credits are the studio's weighted tokens (1 = one fresh Opus input token, output
 5. Text without any Persian never reaches the chat (it becomes an internal note step in the timeline); the language rule is the prompt's first rule.
 6. The person's upload quota must not block agent outputs → agent files are attached without the quota; admins have unlimited storage.
 7. ElevenLabs Scribe JSON has `sentences`/`words`, no `text` → the stt tool returns timed sentences.
+8. The agent can still loop on one image (a Vox run read one contact sheet 25 times on 2026-11-18, ≈ 1.2 M credits) → the policy denies the
+   third read of an unchanged image.
+9. Jarvis answers `402 billing_error` "would exceed your remaining token allocation" when the account allocation is low (the CLI asks
+   `max_tokens` 128 K, so it fails first while small calls still pass) → the run ends at once with a Persian message, no retries.
 
 ## Operations
 
