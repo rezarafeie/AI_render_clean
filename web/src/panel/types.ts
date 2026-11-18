@@ -1,10 +1,10 @@
-export type Engine = "talking" | "localize" | "motion" | "vox" | "story" | "product" | "clips";
+export type Engine = "talking" | "localize" | "motion" | "vox" | "story" | "product" | "clips" | "storyboard" | "discovery";
 export type PanelMode = "manual" | "assisted" | "auto";
 export type Setup = {
   title: string; engine: Engine; mode: PanelMode; style: string;
-  topic: string; aspect: "source" | "vertical" | "square" | "landscape"; seconds: 15 | 30 | 45 | 60; source_url: string; attachment_ids: string[];
+  topic: string; motion_so?: boolean; aspect: "source" | "vertical" | "square" | "landscape"; seconds: 15 | 30 | 45 | 60; source_url: string; attachment_ids: string[];
 };
-export type Capabilities = { talking_styles: {id: string; label: string}[]; claude_motion: boolean };
+export type Capabilities = { talking_styles: {id: string; label: string}[]; claude_motion: boolean; motion_so: boolean };
 export type SpeechWord = {text: string; start: number; end: number};
 export type PanelTranscript = {
   source_job: string; editable: boolean; version_id: string | null;

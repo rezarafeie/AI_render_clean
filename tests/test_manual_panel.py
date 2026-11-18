@@ -166,3 +166,56 @@ def test_layer_asset_path_stays_local_and_reusable(tmp_path):
     assert panel._stage_layer_attachment(job, record) == (relative, None)
     source.unlink()
     assert created.read_bytes() == b"the uploaded clip"
+
+
+def test_panel_storyboard_requires_approval_and_does_not_queue_paid_production(editor, monkeypatch):
+    from app import studio_orchestrator
+
+    def create(conversation, user, key, request, attachments):
+        async def record():
+            assert key == f"panel:{conversation}"
+            assert not attachments and "45 ثانیه" in request
+            project = await studio_store.repo.create_project(conversation, user, "motion", "Storyboard")
+            await studio_store.repo.create_action(conversation, project["id"], "generate_motion_video", {}, key)
+            await studio_store.repo.update_project(project["id"], user, status="awaiting_confirmation")
+        asyncio.run(record())
+
+    monkeypatch.setattr(studio_orchestrator, "_create_motion", create)
+
+    async def scenario():
+        cid = (await panel.draft(editor))["id"]
+        await panel.save_setup(editor, cid, panel.ProjectSetup(engine="storyboard", topic="معرفی یک نرم‌افزار", seconds=45))
+        await panel.start(editor, cid)
+        await panel.start(editor, cid)
+        chat = await studio_store.repo.get_conversation(cid, "owner")
+        assert chat["messages"] == []
+        assert [item["status"] for item in chat["projects"]] == ["awaiting_confirmation"]
+        assert [item["status"] for item in chat["actions"]] == ["pending"]
+        assert credits.gate.await_count == 1
+    asyncio.run(scenario())
+
+
+def test_panel_long_video_dispatch_reuses_the_same_analysis(editor, monkeypatch, tmp_path):
+    from app import studio_orchestrator
+
+    def discover(conversation, user, row, attachments, focus):
+        assert focus == "استخراج نکات کلاس"
+        state = {**row["state"], "discovery": {"analysis_id": "analyzed", "attachment_id": attachments[0]["id"]}}
+        asyncio.run(studio_store.repo.set_conversation(conversation, user, state=state))
+
+    monkeypatch.setattr(studio_orchestrator, "_start_discovery", discover)
+
+    async def scenario():
+        cid = (await panel.draft(editor))["id"]
+        media = await studio_store.repo.create_attachment(cid, "owner", kind="video", filename="class.mp4",
+                                                           path=str(tmp_path / "class.mp4"), mime_type="video/mp4", size_bytes=27)
+        config = panel.ProjectSetup(engine="discovery", topic="استخراج نکات کلاس", attachment_ids=[media["id"]])
+        await panel.save_setup(editor, cid, config)
+        await panel.start(editor, cid)
+        await panel.start(editor, cid)
+        assert credits.gate.await_count == 1
+        with pytest.raises(HTTPException) as locked:
+            await panel.save_setup(editor, cid, config)
+        assert locked.value.status_code == 409
+        assert (await studio_store.repo.get_conversation(cid, "owner"))["state"]["discovery"]["analysis_id"] == "analyzed"
+    asyncio.run(scenario())

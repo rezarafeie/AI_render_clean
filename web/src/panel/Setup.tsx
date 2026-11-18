@@ -10,6 +10,8 @@ const CloudPicker = React.lazy(() => import("../studio/CloudPicker").then(m => (
 export const engines: {id: Engine; name: string; detail: string; icon: IconName; claude?: boolean}[] = [
   { id: "clips", name: "برش و تدوین دستی", detail: "از یک ویدیو شروع کنید و برش‌ها را روی تایم‌لاین بسازید", icon: "film" },
   { id: "talking", name: "ریلز صحبتی", detail: "تحلیل گفتار، زیرنویس و تدوین از روی ویدیو", icon: "mic2" },
+  { id: "discovery", name: "کشف کلیپ از ویدیوی بلند", detail: "پیدا کردن بخش‌های مستقل از پادکست، کلاس یا مصاحبه", icon: "eye" },
+  { id: "storyboard", name: "ساخت با استوری‌بورد", detail: "بررسی و ویرایش صحنه‌ها پیش از تولید تصویر و نریشن", icon: "projects" },
   { id: "localize", name: "فارسی‌سازی و دوبله", detail: "ترجمه و گویندگی روی ویدیوی موجود", icon: "globe" },
   { id: "motion", name: "موشن توضیحی", detail: "ساخت صحنه و نریشن از موضوع یا رفرنس", icon: "motion" },
   { id: "vox", name: "اکسپلینر Vox", detail: "طراحی مستند و کلاژ", icon: "film", claude: true },
@@ -31,7 +33,7 @@ export function Setup({id, initial, capabilities, onStarted}: Props) {
   const queue = React.useRef(Promise.resolve());
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
-  const sourceVideo = data.engine === "talking" || data.engine === "localize" || data.engine === "clips";
+  const sourceVideo = data.engine === "talking" || data.engine === "localize" || data.engine === "clips" || data.engine === "discovery";
   React.useEffect(() => {
     let active = true;
     api.panelDraftMedia(id).then(rows => {
@@ -123,7 +125,7 @@ export function Setup({id, initial, capabilities, onStarted}: Props) {
       <legend className="mp-section-label">نوع ویدیو</legend>
       <div className="mp-engine-grid">
         {engines.map(engine => <button key={engine.id} className="mp-engine" aria-pressed={data.engine === engine.id}
-          disabled={engine.claude && !capabilities.claude_motion} onClick={() => update({engine: engine.id, style: ""})}>
+          disabled={engine.claude && !capabilities.claude_motion} onClick={() => update({engine: engine.id, style: "", motion_so: false})}>
           <span className="mp-engine-icon"><Icon name={engine.icon} size={21}/></span><span><b>{engine.name}</b>
             <small>{engine.claude && !capabilities.claude_motion ? "روی این سرور فعال نیست" : engine.detail}</small></span>
         </button>)}
@@ -142,6 +144,12 @@ export function Setup({id, initial, capabilities, onStarted}: Props) {
           <option value="source">همان منبع</option><option value="vertical">عمودی ۹:۱۶</option>
           <option value="square">مربع ۱:۱</option><option value="landscape">افقی ۱۶:۹</option>
         </select></label>}
+        {data.engine === "discovery" && <label>محور کلیپ‌ها (اختیاری)<input className="input" maxLength={600}
+          value={data.topic} onChange={e => update({topic: e.target.value})} placeholder="مثلاً بخش‌هایی دربارهٔ جذب مشتری"/></label>}
+        {data.engine === "storyboard" && capabilities.motion_so && <label className="mp-check">
+          <input type="checkbox" checked={Boolean(data.motion_so)} onChange={e => update({motion_so: e.target.checked})}/>
+          کلیپ موشن هوشمند با Motion.so · تولید پس از تأیید
+        </label>}
         {!sourceVideo && <>
           <label>موضوع<input className="input" maxLength={1000} value={data.topic} onChange={e => update({topic: e.target.value})} placeholder="مثلاً معرفی یک اپ یادگیری زبان"/></label>
           <label>لینک صفحهٔ منبع<input type="url" dir="ltr" className="input" value={data.source_url} onChange={e => update({source_url: e.target.value})} placeholder="https://"/></label>

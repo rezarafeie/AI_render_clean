@@ -11,6 +11,7 @@ import "./panel.css";
 const Workspace = React.lazy(() => import("../studio/Workspace").then(m => ({default: m.Workspace})));
 const NativeTimeline = React.lazy(() => import("./NativeTimeline").then(m => ({default: m.NativeTimeline})));
 const TimelineView = React.lazy(() => import("../studio/TimelineView").then(m => ({default: m.TimelineView})));
+const PanelDiscovery = React.lazy(() => import("./PanelDiscovery").then(m => ({default: m.PanelDiscovery})));
 const Speech = React.lazy(() => import("./Speech").then(m => ({default: m.Speech})));
 const Resources = React.lazy(() => import("./Resources").then(m => ({default: m.Resources})));
 const MotionEditPane = React.lazy(() => import("../studio/MotionWorkspace").then(m => ({default: m.MotionEditPane})));
@@ -61,9 +62,9 @@ function PanelHome() {
     <section className="mp-projects">
       <div className="mp-section-head"><h2>پروژه‌های من</h2><input type="search" className="input" aria-label="جستجوی پروژه" placeholder="جستجوی پروژه…" value={query} onChange={e => setQuery(e.target.value)}/></div>
       <div className="mp-engine-grid">
-        {rows.filter(item => (item.state?.current_project_id || item.state?.motion || item.state?.panel) && item.title.includes(query.trim())).map(item =>
+        {rows.filter(item => (item.state?.current_project_id || item.state?.motion || item.state?.discovery || item.state?.panel) && item.title.includes(query.trim())).map(item =>
           <Link key={item.id} className="mp-engine" to={`/panel/${item.id}`}><span className="mp-engine-icon"><Icon name="film" size={20}/></span>
-            <span><b dir="auto">{item.title}</b><small>{item.state?.panel && !item.state?.current_project_id && !item.state?.motion ? "پیش‌نویس" : "باز کردن پروژه"}</small></span>
+            <span><b dir="auto">{item.title}</b><small>{item.state?.panel && !item.state?.current_project_id && !item.state?.motion && !item.state?.discovery ? "پیش‌نویس" : "باز کردن پروژه"}</small></span>
           </Link>)}
       </div>
     </section>
@@ -101,12 +102,13 @@ function AuthorizedPanel({id}: {id: string}) {
   const request = React.useRef(0);
   const alive = React.useRef(true);
   const setup = chat?.state?.panel?.setup as SetupData | undefined;
+  const discoveryId = String(chat?.state?.discovery?.analysis_id || "");
   const motionId = String(chat?.state?.motion?.motion_id || "");
   const projects = chat?.projects ?? [];
   const project = projects.find(row => row.id === (projectId || chat?.state?.current_project_id)) ?? projects[projects.length - 1];
   const currentMotion = !project ? motion : null;
   const workflowMode = editMode || setup?.mode || "manual";
-  const isDraft = Boolean(setup && !project && !motionId);
+  const isDraft = Boolean(setup && !project && !motionId && !discoveryId);
   const action = chat?.actions?.find(row => row.project_id === project?.id && row.status === "pending");
   const renderActive = Boolean(currentMotion?.active || (project && ACTIVE.has(project.status)));
   const sourceAttachment = (project?.state?.attachment_ids?.[0] || setup?.attachment_ids?.[0]) as string | undefined;
@@ -227,11 +229,13 @@ function AuthorizedPanel({id}: {id: string}) {
       <div className="mp-bar-title"><b dir="auto">{chat?.title || "ادیتور دستی"}</b><small>{busy || (renderActive ? "پردازش در جریان است" : isDraft ? "پیش‌نویس" : "پروژهٔ Studio")}</small></div>
       <div className="mp-bar-actions">
         <Link to={`/studio/${id}`} className="btn btn-secondary btn-sm"><Icon name="spark" size={16}/><span>چت</span></Link>
-        {!isDraft && <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(busy)} onClick={() => void download()}><Icon name="download" size={16}/>{currentOutput ? "خروجی" : "رندر"}</button>}
+        {!isDraft && !discoveryId && <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(busy)} onClick={() => void download()}><Icon name="download" size={16}/>{currentOutput ? "خروجی" : "رندر"}</button>}
       </div>
     </header>
     {error && <p className="mp-error notice" role="alert" data-tone="error">{error}</p>}
-    {!chat ? (!error && <Loading/>) : isDraft ? (capabilities && setup ? <Setup id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/> : <Loading/>) : <>
+    {!chat ? (!error && <Loading/>) : isDraft ? (capabilities && setup ? <Setup id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/> : <Loading/>) : discoveryId ? <div className="mp-home">
+      <React.Suspense fallback={<Loading/>}><PanelDiscovery key={discoveryId} id={discoveryId} events={events}/></React.Suspense>
+    </div> : <>
       <div className="mp-workspace" data-view={effective}>
         <section className="mp-preview" aria-label="پیش‌نمایش پروژه">
           <div className="mp-section-head"><h2>پیش‌نمایش</h2>

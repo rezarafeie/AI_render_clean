@@ -220,6 +220,40 @@ try {
     await page.close();
     console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo → camera → library effect and transitions → uploaded B-roll and SFX`);
   }
+  const discoveryPage = await browser.newPage({viewport: {width: 375, height: 800}, isMobile: true, hasTouch: true});
+  const parent = await (await discoveryPage.request.post(`${base}/api/panel/draft`)).json();
+  const child = await (await discoveryPage.request.post(`${base}/api/panel/draft`)).json();
+  const id = "test-discovery";
+  const initial = {id: "test-clip", title: "کلیپ مصاحبه", hook: "شروع مصاحبه", summary: "نکتهٔ اول", preview_ready: false,
+    hidden: false, ranges: [[1, 12]], revision: [], revisions: [], duration: 11, estimated_duration: 11, status: "discovered"};
+  let candidate = initial;
+  await discoveryPage.route(`**/api/studio/conversations/${parent.id}?messages=1`, route => route.fulfill({
+    json: {...parent, projects: [], messages: [], state: {...parent.state, discovery: {analysis_id: id}}},
+  }));
+  await discoveryPage.route(`**/api/studio/discovery/${id}`, route => route.fulfill({json: {
+    id, filename: "interview.mp4", duration: 65, stage: "done", running: false, candidates: [candidate],
+    progress: {percent: 100, eta_s: null},
+  }}));
+  await discoveryPage.route(`**/api/studio/discovery/${id}/candidates/${initial.id}`, async route => {
+    const updated = route.request().postDataJSON();
+    candidate = {...candidate, ...updated};
+    await route.fulfill({json: candidate});
+  });
+  await discoveryPage.route(`**/api/studio/discovery/${id}/candidates/${initial.id}/start`, route => route.fulfill({
+    json: {conversation_id: child.id, created: true},
+  }));
+  await discoveryPage.goto(`${base}/panel/${parent.id}`);
+  await discoveryPage.getByRole("heading", {name: "کشف کلیپ از ویدیوی بلند"}).waitFor();
+  await discoveryPage.getByRole("button", {name: "تنظیم کلیپ", exact: true}).click();
+  await discoveryPage.getByLabel("عنوان کلیپ", {exact: true}).fill("نسخهٔ کوتاه مصاحبه");
+  await discoveryPage.getByRole("button", {name: "ذخیرهٔ کلیپ", exact: true}).click();
+  await discoveryPage.getByText("نسخهٔ کوتاه مصاحبه", {exact: true}).waitFor();
+  await discoveryPage.getByRole("button", {name: "شروع تدوین", exact: true}).click();
+  const childLink = discoveryPage.getByRole("link", {name: "باز کردن در ادیتور", exact: true});
+  await childLink.waitFor();
+  assert.equal(await childLink.getAttribute("href"), `/panel/${child.id}`);
+  await discoveryPage.close();
+  console.log("Manual panel discovery: browse, edit candidate and open existing child workspace (mocked analysis)");
   console.log(`Screenshots: ${folder}`);
 } finally {
   for (const media of [fixture, broll, customAudio]) rmSync(media, {force: true});

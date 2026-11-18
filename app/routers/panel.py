@@ -15,7 +15,7 @@ from engine.schema import CaptionStyle
 router = APIRouter(prefix="/panel", tags=["manual-editor"])
 repo = studio.repo
 Modes = Literal["manual", "assisted", "auto"]
-Engines = Literal["talking", "localize", "motion", "vox", "story", "product", "clips"]
+Engines = Literal["talking", "localize", "motion", "vox", "story", "product", "clips", "storyboard", "discovery"]
 
 
 class ProjectSetup(BaseModel):
@@ -27,6 +27,7 @@ class ProjectSetup(BaseModel):
     seconds: Literal[15, 30, 45, 60] = 30
     aspect: Literal["source", "vertical", "square", "landscape"] = "source"
     source_url: str = Field(default="", max_length=2000)
+    motion_so: bool = False
     attachment_ids: list[str] = Field(default_factory=list, max_length=16)
 
 
@@ -59,8 +60,9 @@ def _motion_enabled():
 
 @router.get("/capabilities")
 async def capabilities():
+    from brain import motion_so
     from engine.talking_reel import style_list
-    return {"talking_styles": style_list(), "claude_motion": _motion_enabled()}
+    return {"talking_styles": style_list(), "claude_motion": _motion_enabled(), "motion_so": motion_so.configured()}
 
 
 @router.post("/draft", status_code=201)
@@ -76,7 +78,7 @@ async def save_setup(request: Request, conversation: str, setup: ProjectSetup):
     with _lock(user, conversation):
         _, chat = await _owned(request, conversation)
         panel = chat["state"].get("panel")
-        if panel is None or chat["projects"] or chat["state"].get("motion"):
+        if panel is None or chat["projects"] or (chat["state"].get("motion") or chat["state"].get("discovery")):
             raise HTTPException(409, "پیکربندی منبع فقط برای پیش‌نویس جدید قابل تغییر است.")
         try:
             await repo.get_attachments(setup.attachment_ids, conversation, user)
@@ -187,7 +189,7 @@ async def start(request: Request, conversation: str):
     user, _ = await _owned(request, conversation)
     with _lock(user, conversation):
         _, chat = await _owned(request, conversation)
-        if chat["projects"] or chat["state"].get("motion"):
+        if chat["projects"] or (chat["state"].get("motion") or chat["state"].get("discovery")):
             return {"id": conversation, "started": True}
         panel = chat["state"].get("panel")
         if not panel:
@@ -198,14 +200,22 @@ async def start(request: Request, conversation: str):
         except KeyError as exc:
             raise HTTPException(404, "یکی از فایل‌ها پیدا نشد.") from exc
         source = next((item for item in attachments if item["kind"] == "video"), None)
-        if setup.engine in ("talking", "localize", "clips") and not source:
+        if setup.engine in ("talking", "localize", "clips", "discovery") and not source:
             raise HTTPException(422, "یک فایل ویدیو انتخاب کنید.")
         if setup.engine in ("vox", "story", "product") and not _motion_enabled():
             raise HTTPException(409, "موتور طراحی این سبک روی سرور فعال نیست.")
-        if setup.engine in _MOTION_BRIEFS and not (
-            setup.topic.strip() or setup.source_url or any(media["kind"] in ("image", "audio") for media in attachments)
+        allowed_sources = {"video", "image"} if setup.engine == "storyboard" else {"video", "image", "audio"}
+        if (setup.engine in _MOTION_BRIEFS or setup.engine == "storyboard") and not (
+            setup.topic.strip() or setup.source_url or any(item["kind"] in allowed_sources for item in attachments)
         ):
             raise HTTPException(422, "موضوع، لینک منبع یا فایل مرتبط را وارد کنید.")
+        if setup.engine == "storyboard":
+            from brain import motion_so
+            source_text = f"{setup.topic} {setup.source_url}".lower()
+            if ("motion.so" in source_text or "کلیپ موشن هوشمند" in source_text) and not setup.motion_so:
+                raise HTTPException(422, "برای این درخواست، گزینهٔ Motion.so را فعال کنید.")
+            if setup.motion_so and not motion_so.configured():
+                raise HTTPException(409, "سرویس Motion.so روی این نصب فعال نیست.")
         if setup.source_url:
             from urllib.parse import urlsplit
             try:
@@ -231,6 +241,22 @@ async def start(request: Request, conversation: str):
                 _, updated = await _owned(request, conversation)
                 if not updated["state"].get("motion"):
                     raise HTTPException(422, "منبع برای ساخت موشن قابل استفاده نبود.")
+            elif setup.engine == "storyboard":
+                from app.studio_orchestrator import _create_motion
+                brief = "\n".join(filter(None, ["یک ویدیوی تصویری با استوری‌بورد قابل‌ویرایش بساز.",
+                                               setup.topic.strip(), f"مدت حدود {setup.seconds} ثانیه",
+                                               "Motion.so" if setup.motion_so else "", setup.source_url]))
+                try:
+                    await asyncio.to_thread(_create_motion, conversation, user, f"panel:{conversation}", brief, attachments)
+                except ValueError as exc:
+                    raise HTTPException(422, "موتور نتوانست از ورودی، استوری‌بورد قابل تأیید بسازد.") from exc
+                _, updated = await _owned(request, conversation)
+                if not updated["projects"]:
+                    raise HTTPException(422, "منبع برای ساخت استوری‌بورد قابل استفاده نبود.")
+            elif setup.engine == "discovery":
+                from app.studio_orchestrator import _start_discovery
+                focus = setup.topic.strip() or "بخش‌های مستقل و قابل انتشار این ویدیوی بلند را پیدا کن."
+                await asyncio.to_thread(_start_discovery, conversation, user, chat, attachments, focus)
             elif setup.engine == "clips":
                 from app import jobs
                 try:
