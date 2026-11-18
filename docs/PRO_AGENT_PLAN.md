@@ -74,7 +74,7 @@ Credits are the studio's weighted tokens (1 = one fresh Opus input token, output
 | 10 s title film from a photo (phase 1) | 1080×1920, 10 s | 0.26 M | 1.0 | 23 | 13 min | |
 | talking reel from a discovered clip (39 s source) | 1080×1920, 36 s, −14.4 LUFS, cloud render | 1.36 M | 5.5 | 42 | 33 min | three runs: base edit; mix + render; mux + QC + deliver (one more run lost to the resume bug, now fixed) |
 | motion explainer «نخِ ناتمام» (Zeigarnik effect) | 1080×1920, 46 s, narration, music, sfx, generated images | 2.46 M | 9.9 | 31 | 78 min | the big run spent 2.0 M; provider errors forced two continues |
-| 4:5 talking post (25 s source) | TALK2_RESULT | | | | | |
+| 4:5 talking post (25 s source) | 1080×1350, 27.7 s, warm grade, word captions, question card, comment CTA | 0.76 M | 3.0 | 43 | 28 min | one run; 78 % of input read from cache (shows what steady caching saves) |
 
 ### Where the money goes
 
