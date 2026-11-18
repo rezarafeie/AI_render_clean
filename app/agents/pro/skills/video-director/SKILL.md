@@ -20,6 +20,12 @@ type, motion), what each beat shows. Tell the person the idea in one or two sent
 - Timing: if there is a voice or music, cut on it (words or beats), not on round numbers.
 - Persian text: never letter by letter; whole words or a wipe from the right; Persian digits (۰-۹); keep 60 px margins; no text over faces.
 
+## Cost discipline (every picture you Read stays in the context and is paid again on every later call)
+- Look at stills as ONE contact sheet: `ffmpeg -i stills/s_%*.jpg ...` or python/PIL to tile 4-9 stills into one image (max ~1600 px wide), then Read
+  that single image. Never Read the same image twice; never Read every still one by one.
+- Read only the part of a file you need (offset/limit); do not re-read files you just wrote.
+- Show the person stills with show_stills from their paths (you do not need to Read them first).
+
 ## 4. Check before the full render
 - Render 4-8 stills at the key moments, Read them yourself and fix: cut text, overlaps, empty frames, low contrast, wrong numbers.
 - Show the best 3-6 to the person (`show_stills`, one Persian caption).

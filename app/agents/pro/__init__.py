@@ -17,7 +17,7 @@ from pathlib import Path
 
 RUNS = Path(os.environ.get("PRO_RUNS_DIR", "/runs"))
 MODEL = os.environ.get("PRO_MODEL", "claude-opus-5-5")
-BUDGET_CREDITS = int(os.environ.get("PRO_BUDGET_CREDITS", "2000000"))          # ≈ $8 at 4 $ per million credits
+BUDGET_CREDITS = int(os.environ.get("PRO_BUDGET_CREDITS", "3000000"))          # ≈ $12 at 4 $ per million credits (an explainer with images used ~$8)
 TOKEN_HOURS = 6
 ALLOWED_MODELS = ("claude-opus-", "claude-sonnet-", "claude-haiku-")
 
