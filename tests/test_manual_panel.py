@@ -219,3 +219,16 @@ def test_panel_long_video_dispatch_reuses_the_same_analysis(editor, monkeypatch,
         assert locked.value.status_code == 409
         assert (await studio_store.repo.get_conversation(cid, "owner"))["state"]["discovery"]["analysis_id"] == "analyzed"
     asyncio.run(scenario())
+
+
+def test_native_cutaways_are_stored_in_render_order_and_cannot_overlap():
+    base = {"canvas": {"fps": 30}, "segments": [{"id": "one", "in": 0, "out": 7}]}
+    later = panel.LayerChange(kind="broll", operation="add", start=4, end=5)
+    earlier = panel.LayerChange(kind="broll", operation="add", start=1, end=2)
+    overlap = panel.LayerChange(kind="broll", operation="add", start=1.5, end=3)
+    one = panel._apply_layer(base, later, "late.mp4")
+    two = panel._apply_layer(one, earlier, "early.mp4")
+    assert [row["file"] for row in two["broll"]] == ["early.mp4", "late.mp4"]
+    assert [row["at"] for row in two["broll"]] == [1, 4]
+    with pytest.raises(HTTPException, match="هم‌پوشانی"):
+        panel._apply_layer(two, overlap, "overlap.mp4")

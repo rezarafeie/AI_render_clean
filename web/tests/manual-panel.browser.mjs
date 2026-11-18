@@ -17,6 +17,9 @@ execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "c
 const customAudio = join(folder, "chime.wav");
 execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.7", customAudio]);
 
+const still = join(folder, "reference.png");
+execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=lime:s=512x512", "-frames:v", "1", still]);
+
 const chrome = process.env.CHROME_PATH || (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined);
 const browser = await chromium.launch({headless: true, executablePath: chrome});
 try {
@@ -174,9 +177,19 @@ try {
     await page.getByLabel("شروع در خروجی (ثانیه)", {exact: true}).fill("2");
     await page.getByRole("button", {name: "افزودن", exact: true}).click();
     await page.getByRole("button", {name: "chime.wav", exact: true}).waitFor();
+    await kind.selectOption("broll");
+    await page.getByLabel("آپلود فایل لایه", {exact: true}).setInputFiles(still);
+    await page.getByText("reference.png", {exact: true}).waitFor();
+    await page.getByLabel("شروع در خروجی (ثانیه)", {exact: true}).fill("1.1");
+    await page.getByLabel("پایان در خروجی (ثانیه)", {exact: true}).fill("1.9");
+    await page.getByRole("button", {name: "پیش‌نمایش فایل", exact: true}).click();
+    await page.getByRole("img", {name: "reference.png", exact: true}).waitFor();
+    await page.getByRole("button", {name: "افزودن", exact: true}).click();
+    await page.getByRole("button", {name: "reference.png", exact: true}).waitFor();
     plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     assert.equal(plan.layers.find(layer => layer.label === "cutaway.mp4").source_in, .3);
     assert.ok(plan.layers.find(layer => layer.label === "chime.wav").attachment_id);
+    assert.equal(plan.layers.find(layer => layer.label === "reference.png").attachment_kind, "image");
     await page.locator('[aria-label="ترنزیشن‌های تایم‌لاین"]').getByText("محو نرم", {exact: true}).first().waitFor();
     await page.locator("summary").getByText("اندازه و کیفیت خروجی", {exact: true}).click();
     await page.getByRole("combobox", {name: "اندازهٔ خروجی", exact: true}).selectOption("480x480");
@@ -211,6 +224,10 @@ try {
         "-vf", "scale=8:8", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
       const middle = (8 * 4 + 4) * 3;
       assert.ok(pixels[middle] > 200 && pixels[middle + 2] < 45, "uploaded red B-roll must replace the blue source in its interval");
+      const stillPixels = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "1.7", "-i", rendered, "-frames:v", "1",
+        "-vf", "scale=8:8", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      assert.ok(stillPixels[middle + 1] > 200 && stillPixels[middle] < 45 && stillPixels[middle + 2] < 45,
+        "uploaded image must be visible over the source in its chosen interval");
       const sound = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "2.1", "-i", rendered, "-t", "0.2",
         "-vn", "-f", "s16le", "-ac", "1", "-"]);
       let peak = 0;
@@ -256,6 +273,6 @@ try {
   console.log("Manual panel discovery: browse, edit candidate and open existing child workspace (mocked analysis)");
   console.log(`Screenshots: ${folder}`);
 } finally {
-  for (const media of [fixture, broll, customAudio]) rmSync(media, {force: true});
+  for (const media of [fixture, broll, customAudio, still]) rmSync(media, {force: true});
   await browser.close();
 }

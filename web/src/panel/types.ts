@@ -18,7 +18,7 @@ export type NativeTimeline = {
   segments: Segment[]; job_id: string; version: number | null; fps: number; duration: number; busy: boolean; arrange: boolean;
   versions: {version: number; source: string}[];
   caption_font: string | null; caption_font_id: string | null;
-  layers: {attachment_id: string | null; source_in: number; caption_style: CaptionStyle; highlight: string; kind: LayerKind; index: number; start: number; end: number; label: string; position: "top" | "bottom"; volume_db: number}[];
+  layers: {attachment_id: string | null; attachment_kind: "video" | "image" | "audio" | null; source_in: number; caption_style: CaptionStyle; highlight: string; kind: LayerKind; index: number; start: number; end: number; label: string; position: "top" | "bottom"; volume_db: number}[];
 };
 export type SegmentChange = {version: number | null} & (
   {operation: "trim"; segment_id: string; start: number; end: number}

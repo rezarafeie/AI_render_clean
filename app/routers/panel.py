@@ -1,6 +1,7 @@
 """Visual editor entry points. All media, plans and render jobs belong to Studio."""
 import asyncio
 import fcntl
+import re
 from contextlib import contextmanager
 from typing import Literal
 
@@ -440,10 +441,12 @@ async def native_segments(request: Request, project_id: str):
             start = row.get("start", row.get("at", 0))
             end = row.get("end", start + row.get("duration", 0))
             path = Path(row.get("file") or "")
-            attachment_id = path.parts[2] if len(path.parts) == 4 and path.parts[:2] == ("assets", "panel-media") else None
+            attachment_id = path.parts[2] if len(path.parts) == 4 and path.parts[0] == "assets" and path.parts[1] in {"panel-media", "panel-stills"} else None
+            still = _STILL_ASSET.fullmatch(path.name) if attachment_id and path.parts[1] == "panel-stills" else None
             layers.append({"kind": kind, "index": index, "start": start,
                            "end": spans[-1].end if kind == "music" else end,
-                           "label": row.get("text") or path.name, "attachment_id": attachment_id,
+                           "label": row.get("text") or (still["name"] if still else path.name), "attachment_id": attachment_id,
+                           "attachment_kind": ("image" if still else ("video" if kind == "broll" else "audio")) if attachment_id else None,
                            "source_in": row.get("in", 0), "caption_style": row.get("style", "normal"),
                            "highlight": row.get("highlighted_word") or "",
                            "position": row.get("position", "bottom"), "volume_db": row.get("volume_db", -14)})
@@ -722,20 +725,31 @@ def _library_file(kind: str, filename: str):
     return str(path)
 
 
-def _stage_layer_attachment(job, source: dict):
+_STILL_ASSET = re.compile(r"(?P<name>.+)\.panel-still-[0-9]+\.mp4")
+
+
+def _stage_layer_attachment(job, source: dict, still_duration: float | None = None):
     from pathlib import Path
     import os
     import shutil
     from tempfile import NamedTemporaryFile
 
     original = Path(source["path"])
-    relative = Path("assets", "panel-media", source["id"], Path(source["filename"]).name)
+    name = Path(source["filename"]).name
+    if still_duration is not None:
+        from math import ceil
+        frames = ceil(still_duration * 15)
+        name = f"{name[:210]}.panel-still-{frames}.mp4"
+    relative = Path("assets", "panel-stills" if still_duration is not None else "panel-media", source["id"], name)
     dest = job.dir / relative
     if not original.is_file():
         raise HTTPException(404, "فایل بارگذاری‌شده دیگر در دسترس نیست.")
     if dest.is_file():
         return relative.as_posix(), None
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if still_duration is not None:
+        _prepare_still(original, dest, frames)
+        return relative.as_posix(), dest
     try:
         os.link(original, dest)
     except OSError:
@@ -752,6 +766,40 @@ def _stage_layer_attachment(job, source: dict):
         except OSError as exc:
             raise HTTPException(422, "رسانه برای آماده‌سازی رندر قابل خواندن نیست.") from exc
     return relative.as_posix(), dest
+
+
+def _prepare_still(original, destination, frames: int):
+    """Adapt an owned still to the existing EditPlan video B-roll contract."""
+    import os
+    import subprocess
+    from pathlib import Path
+    from tempfile import NamedTemporaryFile
+
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    with NamedTemporaryFile(dir=destination.parent, suffix=".png", delete=False) as still:
+        still_path = Path(still.name)
+    video_path = still_path.with_suffix(".mp4")
+    try:
+        with Image.open(original) as image:
+            if image.width * image.height > 24_000_000:
+                raise ValueError("Image exceeds renderer pixel budget")
+            if image.format not in {"JPEG", "PNG", "WEBP"} or getattr(image, "is_animated", False):
+                raise ValueError("A static JPEG, PNG or WebP is required")
+            content = ImageOps.exif_transpose(image)
+            content.thumbnail((1920, 1920))
+            content.convert("RGB").save(still_path)
+        subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                        "-loop", "1", "-framerate", "15", "-i", str(still_path), "-frames:v", str(frames),
+                        "-an", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-threads", "2",
+                        "-preset", "veryfast", "-pix_fmt", "yuv420p", str(video_path)],
+                       check=True, capture_output=True, timeout=75)
+        os.replace(video_path, destination)
+    except (ValueError, OSError, Image.DecompressionBombError, UnidentifiedImageError, subprocess.SubprocessError) as exc:
+        raise HTTPException(422, "عکس قابل پردازش نیست. یک JPEG، PNG یا WebP ثابت بارگذاری کنید.") from exc
+    finally:
+        still_path.unlink(missing_ok=True)
+        video_path.unlink(missing_ok=True)
 
 
 def _apply_layer(plan: dict, change: LayerChange, asset_path: str | None = None) -> dict:
@@ -803,6 +851,20 @@ def _apply_layer(plan: dict, change: LayerChange, asset_path: str | None = None)
         rows.append(item)
     else:
         raise HTTPException(422, "حداکثر تعداد لایه‌های این نوع ثبت شده است.")
+    if change.kind == "broll":
+        # MLT's single cutaway playlist places entries sequentially. Preserve
+        # the user's output coordinates instead of letting an overlap shift them.
+        fps = result["canvas"]["fps"]
+        rows.sort(key=lambda row: row["at"])
+        last_frame = 0
+        for row in rows:
+            start = round(row["at"] * fps)
+            length = round(row["duration"] * fps)
+            if length < 1:
+                raise HTTPException(422, "لایهٔ بی‌رول باید دست‌کم یک فریم باشد.")
+            if start < last_frame:
+                raise HTTPException(422, "بازه‌های بی‌رول روی این ردیف نباید هم‌پوشانی داشته باشند.")
+            last_frame = start + length
     return result
 
 
@@ -827,10 +889,14 @@ async def change_layer(request: Request, project_id: str, body: LayerChange):
                 source, = await repo.get_attachments([body.attachment_id], project["conversation_id"], user)
             except KeyError as exc:
                 raise HTTPException(404, "فایل در همین پروژه پیدا نشد.") from exc
-            expected = "video" if body.kind == "broll" else "audio"
-            if source["kind"] != expected:
+            if source["kind"] not in ({"image", "video"} if body.kind == "broll" else {"audio"}):
                 raise HTTPException(422, "نوع فایل با لایه سازگار نیست.")
-            asset_path, staged = await asyncio.to_thread(_stage_layer_attachment, job, source)
+            still_duration = None
+            if source["kind"] == "image":
+                still_duration = body.end - body.start
+                if not 0 < still_duration <= 60 or body.source_in != 0:
+                    raise HTTPException(422, "برای عکس یک بازهٔ حداکثر ۶۰ ثانیه‌ای انتخاب کنید.")
+            asset_path, staged = await asyncio.to_thread(_stage_layer_attachment, job, source, still_duration)
         try:
             candidate = await asyncio.to_thread(_apply_layer, plan, body, asset_path)
             if candidate != plan:
