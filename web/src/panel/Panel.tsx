@@ -96,7 +96,7 @@ function AuthorizedPanel({id}: {id: string}) {
   const [agent, setAgent] = React.useState<AgentMode>("lite");
   const [editMode, setEditMode] = React.useState<SetupData["mode"] | null>(null);
   const [motionAnswer, setMotionAnswer] = React.useState("");
-  const [speechSeek, setSpeechSeek] = React.useState<number | null>(null);
+  const [pendingSeek, setPendingSeek] = React.useState<{seconds: number; play: boolean} | null>(null);
   const video = React.useRef<HTMLVideoElement>(null);
   const request = React.useRef(0);
   const alive = React.useRef(true);
@@ -196,15 +196,16 @@ function AuthorizedPanel({id}: {id: string}) {
     finally { setBusy(""); }
   }
 
-  function seek(seconds: number) {
+  function seek(seconds: number, play = true) {
     setSourceOnly(true);
-    setSpeechSeek(seconds);
-    if (!video.current) return;
-    if (sourceOnly || !currentOutput) {
-      video.current.currentTime = seconds;
-      void video.current.play().catch(() => {});
-      setSpeechSeek(null);
+    const player = video.current;
+    if (!player?.readyState || (!sourceOnly && currentOutput)) {
+      setPendingSeek({seconds, play});
+      return;
     }
+    player.currentTime = seconds;
+    if (play) void player.play().catch(() => {});
+    else player.pause();
   }
 
   async function download() {
@@ -238,7 +239,11 @@ function AuthorizedPanel({id}: {id: string}) {
           <div className="mp-monitor">
             {shown ? <>
               <AuthenticatedMedia as="video" key={shown} ref={video} src={shown} controls playsInline preload="none" onLoadedMetadata={(event: React.SyntheticEvent<HTMLVideoElement>) => {
-                if (speechSeek !== null) { event.currentTarget.currentTime = speechSeek; void event.currentTarget.play().catch(() => {}); setSpeechSeek(null); }
+                if (pendingSeek) {
+                  event.currentTarget.currentTime = pendingSeek.seconds;
+                  if (pendingSeek.play) void event.currentTarget.play().catch(() => {});
+                  setPendingSeek(null);
+                }
               }}/>
               {safe && <div className="mp-safe" aria-hidden="true"/>}
             </> : <div className="mp-preview-empty"><Icon name="film" size={32}/><p>{renderActive ? "پیش‌نمایش پس از آماده‌شدن می‌آید" : "ویدیویی برای پیش‌نمایش آماده نیست"}</p></div>}
@@ -264,7 +269,7 @@ function AuthorizedPanel({id}: {id: string}) {
         <section className="mp-control" aria-label="کنترل‌های پروژه" data-preview={effective === "preview" || undefined}>
           <div className="mp-context">
             {projects.length > 1 && <label>پروژه<select className="input" value={project?.id || ""} onChange={e => {
-              setProjectId(e.target.value); setOutput(""); setFileVersions([]); setSourceOnly(false);
+              setProjectId(e.target.value); setOutput(""); setFileVersions([]); setSourceOnly(false); setPendingSeek(null);
             }}>{projects.map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
             <label>گردش کار<select className="input" value={workflowMode} onChange={e => {
               const next = e.target.value as SetupData["mode"]; setEditMode(next); if (next !== "manual") setView("assistant");
@@ -293,7 +298,7 @@ function AuthorizedPanel({id}: {id: string}) {
               </details>}
             </> : motionId ? <MotionEditPane motionId={motionId} events={events}/> : <p className="mp-muted">ابزاری برای این پروژه هنوز آماده نیست.</p>)}
             {effective === "timeline" && project && <>
-              {project.engine === "motion" && <NativeTimeline key={project.id} project={project} refresh={refresh}/>}
+              {project.engine === "motion" && <NativeTimeline key={project.id} project={project} refresh={refresh} seek={src && project.state?.panel_native ? seconds => seek(seconds, false) : undefined}/>}
               {project.state?.panel_native
                 ? <TimelineDetails project={project} refresh={refresh} output={currentOutput}/>
                 : <TimelineView key={project.id} project={project} onChanged={() => void refresh()} currentOutput={currentOutput || undefined}/>}

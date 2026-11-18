@@ -88,8 +88,8 @@
   .mp-workspace {display: block; padding: 8px}
   .mp-preview {position: static}
   .mp-control {margin-top: 8px}
-  .mp-workspace:not([data-view="preview"]):not([data-view="speech"]) > .mp-preview {display: none}
-  .mp-workspace[data-view="speech"] video {max-height: 29dvh}
+  .mp-workspace:not([data-view="preview"]):not([data-view="speech"]):not([data-view="timeline"]) > .mp-preview {display: none}
+  .mp-workspace:is([data-view="speech"], [data-view="timeline"]) video {max-height: 29dvh}
   .mp-bar {gap: 7px}
   .mp-engine-grid {grid-template-columns: repeat(2,minmax(0,1fr))}
   .mp-engine {min-height: 70px; padding: 8px; gap: 6px; font-size: .83rem}
@@ -112,5 +112,8 @@
 .mp-timeline-details {border-top: 1px solid var(--mp-border); padding-block-start: 10px}
 .mp-timeline-details summary {cursor: pointer}
 .mp-layer-tools {display: grid; gap: 9px; padding-block-start: 10px; border-top: 1px solid var(--mp-border)}
-.mp-layer-tools .mp-chips > button {max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+.mp-lanes, .mp-lane {display: grid; gap: 4px}
+.mp-lane-label {color: var(--text-2); font-size: .8rem; text-align: left}
+.mp-lane button {min-width: 14px; text-overflow: ellipsis; white-space: nowrap; padding-inline: 4px; text-align: start}
 .mp-layer-tools video {max-height: 220px; margin-inline: auto}
+.mp-playhead {position: absolute; inset-block: 0; width: 2px; background: var(--text); pointer-events: none}

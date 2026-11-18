@@ -4,7 +4,7 @@ import { friendlyError } from "../ui";
 import { NativeLayers } from "./NativeLayers";
 import type { LayerChange, NativeTimeline as Timeline, Segment, SegmentChange } from "./types";
 
-export function NativeTimeline({project, refresh}: {project: StudioProject; refresh: () => Promise<unknown>}) {
+export function NativeTimeline({project, refresh, seek}: {project: StudioProject; refresh: () => Promise<unknown>; seek?: (seconds: number) => void}) {
   const [data, setData] = React.useState<Timeline | null>(null);
   const [selected, setSelected] = React.useState<Segment | null>(null);
   const [range, setRange] = React.useState({start: "0", end: "0"});
@@ -18,6 +18,7 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
   const [error, setError] = React.useState("");
   const [hint, setHint] = React.useState("");
   const [mode, setMode] = React.useState<"trim" | "remove_range">("trim");
+  const [cursor, setCursor] = React.useState(0);
   const [zoom, setZoom] = React.useState(45);
   React.useEffect(() => {
     let active = true;
@@ -27,8 +28,12 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
 
   if (!data) return null; // The project's existing document view remains available for other motion engines.
   const blocked = busy || data.busy;
+  const width = Math.max(280, data.duration * zoom);
+  const lastFrame = Math.max(0, Math.round(data.duration * data.fps) - 1);
   function select(segment: Segment) {
     setSelected(segment);
+    setCursor(segment.start);
+    seek?.(segment.source_in);
     setRange({start: segment.start.toFixed(3), end: segment.end.toFixed(3)});
     setTrim({start: segment.source_in.toFixed(3), end: segment.source_out.toFixed(3)});
     setSplit(((segment.source_in + segment.source_out) / 2).toFixed(3));
@@ -47,6 +52,7 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
         }
       }
       setSelected(null);
+      setCursor(0);
       setHint("نسخهٔ جدید ذخیره شد. برای دیدن تغییرات، دوباره رندر بگیرید.");
       await refresh();
       return true;
@@ -88,8 +94,17 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
         <button className="btn btn-secondary btn-sm" disabled={blocked || !future.length} onClick={() => restoreHistory("redo")}>انجام دوباره</button>
       </div></div>
     <label>بزرگ‌نمایی تایم‌لاین<input type="range" min={14} max={110} value={zoom} onChange={e => setZoom(Number(e.target.value))}/></label>
-    <div className="mp-native-scroll" dir="ltr">
-      <div className="mp-native-track" style={{width: Math.max(280, data.duration * zoom) }}>
+    {seek && <label>جابه‌جایی در تایم‌لاین · {cursor.toFixed(2)} ثانیه
+      <input aria-label="جابه‌جایی در تایم‌لاین" type="range" dir="ltr" min={0} max={lastFrame}
+        value={Math.min(Math.round(cursor * data.fps), lastFrame)} onChange={event => {
+          const position = Number(event.target.value) / data.fps;
+          const segment = [...data.segments].reverse().find(item => position >= item.start && position < item.end);
+          setCursor(position);
+          if (segment) seek(Math.min(segment.source_out, segment.source_in + position - segment.start));
+        }}/>
+    </label>}
+    <NativeLayers data={data} blocked={blocked} width={width} cursor={cursor} onChange={editLayer}>
+      <div className="mp-native-track" aria-label="قطعه‌های ویدیو">
         {data.segments.map((segment, i) => <button key={segment.id} type="button"
           style={{left: `${segment.start / data.duration * 100}%`, width: `${(segment.end - segment.start) / data.duration * 100}%`}}
           aria-pressed={selected?.id === segment.id} onClick={() => select(segment)}
@@ -106,8 +121,9 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
             setDragged(null);
           }}
           title={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}>{i + 1}</button>)}
+        {seek && <span className="mp-playhead" aria-hidden="true" style={{left: `${Math.min(100, cursor / data.duration * 100)}%`}}/>}
       </div>
-    </div>
+    </NativeLayers>
     <div className="mp-actions">
       <button className="btn btn-secondary btn-sm" aria-pressed={mode === "trim"} onClick={() => setMode("trim")}>کوتاه‌کردن قطعه</button>
       <button className="btn btn-secondary btn-sm" aria-pressed={mode === "remove_range"} onClick={() => setMode("remove_range")}>حذف بازهٔ خروجی</button>
@@ -138,7 +154,6 @@ export function NativeTimeline({project, refresh}: {project: StudioProject; refr
       <button className="btn btn-secondary" disabled={Number(split) <= selected.source_in || Number(split) >= selected.source_out}
         onClick={() => void submit({version: data.version, operation: "split", segment_id: selected.id, start: Number(split)})}>تقسیم قطعه</button>
     </fieldset>}
-    <NativeLayers data={data} blocked={blocked} onChange={editLayer}/>
     {data.versions.length > 1 && <label>بازگردانی برنامه<select className="input" value={restore} disabled={blocked} onChange={e => setRestore(e.target.value)}>
       <option value="">نسخه را انتخاب کنید</option>
       {[...data.versions].reverse().map(item => <option value={item.version} key={item.version}>نسخهٔ {item.version}</option>)}

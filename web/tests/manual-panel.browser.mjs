@@ -27,7 +27,7 @@ try {
     await page.getByRole("button", {name: "باز کردن تایم‌لاین", exact: true}).click();
     await page.getByRole("button", {name: "تایم‌لاین", exact: true}).click();
     await page.getByRole("heading", {name: "برش‌های تدوین"}).waitFor({timeout: 20000});
-    await page.locator(".mp-native-track button").first().click();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").first().click();
     await page.getByLabel("از", {exact: true}).fill("0.5");
     await page.getByRole("button", {name: "ذخیرهٔ برش", exact: true}).click();
     await page.getByText("نسخهٔ جدید ذخیره شد", {exact: false}).waitFor();
@@ -47,19 +47,27 @@ try {
     plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     assert.equal(plan.segments[0].source_in, 0);
     assert.ok(plan.version >= 3);
-    await page.locator(".mp-native-track button").first().click();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").first().click();
     await page.getByRole("button", {name: "تقسیم قطعه", exact: true}).click();
-    await page.locator(".mp-native-track button").nth(1).waitFor();
-    await page.locator(".mp-native-track button").last().click();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").nth(1).waitFor();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").last().click();
     await page.getByRole("button", {name: "تکثیر", exact: true}).click();
-    await page.locator(".mp-native-track button").nth(2).waitFor();
-    await page.locator(".mp-native-track button").first().click();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").nth(2).waitFor();
+    await page.locator("[aria-label=\"قطعه‌های ویدیو\"] button").first().click();
     await page.getByRole("button", {name: "یک قطعه جلوتر", exact: true}).click();
     await page.getByText("نسخهٔ جدید ذخیره شد", {exact: false}).waitFor();
     plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     assert.equal(plan.segments.length, 3);
     assert.equal(plan.segments[0].source_in, 1.5);
     assert.equal(plan.duration, 4.5);
+    const scrubber = page.getByRole("slider", {name: "جابه‌جایی در تایم‌لاین"});
+    await scrubber.focus();
+    await scrubber.press("Home");
+    await scrubber.press("ArrowRight");
+    await page.waitForFunction(() => {
+      const video = document.querySelector(".mp-monitor video");
+      return video?.readyState >= 1 && Math.abs(video.currentTime - (1.5 + 1 / 30)) < .06;
+    });
     const versionBeforeCaption = plan.version;
     await page.getByRole("button", {name: "افزودن لایه", exact: true}).click();
     await page.getByLabel("متن", {exact: true}).fill("Panel verified");
@@ -92,13 +100,17 @@ try {
       const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", rendered], {encoding: "utf8"}));
       assert.ok(Math.abs(Number(probe.format.duration) - 4.5) < .15, JSON.stringify(probe.format.duration));
       assert.ok(probe.streams.some(stream => stream.codec_type === "video" && stream.width === 320));
-      const frame = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "0.5", "-i", rendered, "-frames:v", "1",
-        "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], {maxBuffer: 1024 * 1024});
-      let white = 0;
-      for (let pixel = 0; pixel + 2 < frame.length; pixel += 3) {
-        if (Math.min(frame[pixel], frame[pixel + 1], frame[pixel + 2]) > 180) white++;
-      }
-      assert.ok(white > 12, "white caption pixels must be visible over the solid blue source");
+      const countLightPixels = time => {
+        const frame = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", time, "-i", rendered, "-frames:v", "1",
+          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], {maxBuffer: 1024 * 1024});
+        let light = 0;
+        for (let pixel = 0; pixel + 2 < frame.length; pixel += 3) {
+          if (Math.min(frame[pixel], frame[pixel + 1], frame[pixel + 2]) > 120) light++;
+        }
+        return light;
+      };
+      assert.ok(countLightPixels("0.5") > 12, "caption must be visible over the solid blue source");
+      assert.equal(countLightPixels("3.5"), 0, "caption must disappear after its editable interval");
     }
     await page.close();
     console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo`);

@@ -10,7 +10,9 @@ type Draft = {kind: LayerKind; index?: number; text: string; filename: string; s
 const empty = (kind: LayerKind, duration: number): Draft => ({kind, text: "", filename: "", start: "0",
   end: String(Math.min(duration, 3)), volume: kind === "sfx" ? -6 : -14, position: "bottom"});
 
-export function NativeLayers({data, blocked, onChange}: {data: NativeTimeline; blocked: boolean; onChange: (edit: LayerChange) => Promise<boolean>}) {
+export function NativeLayers({data, blocked, width, cursor, onChange, children}: {
+  data: NativeTimeline; blocked: boolean; width: number; cursor: number; onChange: (edit: LayerChange) => Promise<boolean>; children: React.ReactNode;
+}) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState(() => empty("caption", data.duration));
   const [assets, setAssets] = React.useState<LibraryAsset[] | null>(null);
@@ -46,9 +48,27 @@ export function NativeLayers({data, blocked, onChange}: {data: NativeTimeline; b
   const hasRange = draft.kind === "caption" || draft.kind === "broll";
   const hasVolume = draft.kind === "music" || draft.kind === "sfx";
   return <div className="mp-layer-tools">
+    <div className="mp-native-scroll" dir="ltr">
+      <div className="mp-lanes" style={{width}}>
+        {children}
+        {(Object.keys(labels) as LayerKind[]).map(kind => {
+          const layers = data.layers.filter(layer => layer.kind === kind);
+          if (!layers.length) return null;
+          return <div key={kind} className="mp-lane">
+            <span className="mp-lane-label" dir="rtl">{labels[kind]}</span>
+            <div className="mp-native-track" aria-label={labels[kind]}>
+              {layers.map(layer => <button type="button" key={layer.index}
+                aria-pressed={selected === layer} aria-label={layer.label} title={layer.label}
+                style={{left: `${layer.start / data.duration * 100}%`,
+                        width: `${Math.max(0, layer.end - layer.start) / data.duration * 100}%`}}
+                onClick={() => choose(layer)}><span dir="auto">{layer.label}</span></button>)}
+              <span className="mp-playhead" aria-hidden="true" style={{left: `${cursor / data.duration * 100}%`}}/>
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
     <div className="mp-chips">
-      {data.layers.map(layer => <button type="button" className="btn btn-secondary btn-sm" key={`${layer.kind}:${layer.index}`}
-        aria-pressed={selected === layer} onClick={() => choose(layer)}><span dir="auto">{layer.label}</span></button>)}
       <button type="button" className="btn btn-secondary btn-sm" aria-expanded={open} onClick={() => {
         setOpen(v => !v);
         if (!open) setDraft(empty("caption", data.duration));
