@@ -158,7 +158,33 @@ async def messages(request: Request):
     started = time.monotonic()
     from brain.http_ssl import ssl_context
     client = httpx.AsyncClient(timeout=httpx.Timeout(900, connect=20), verify=ssl_context())
-    upstream = await client.send(client.build_request("POST", url, headers=headers, content=body), stream=True)
+    upstream, head = None, b""
+    for attempt in range(4):
+        # Jarvis now and then answers 200 with an SSE `error` event "could not authenticate with the provider" (or a 5xx) before any token: nothing has reached
+        # the agent yet, so the same request is sent again (a run once ended on it after 40 turns, 2026-11-18)
+        upstream = await client.send(client.build_request("POST", url, headers=headers, content=body), stream=True)
+        if upstream.status_code in {500, 502, 503, 504, 529} and attempt < 3:
+            await upstream.aread(); await upstream.aclose(); await asyncio.sleep(2 + attempt * 3); continue
+        if upstream.status_code != 200 or not data.get("stream"):
+            break
+        stream_iter = upstream.aiter_raw()
+        head = b""
+        try:
+            while b"data:" not in head or b"\n\n" not in head[head.index(b"data:"):]:
+                chunk = await stream_iter.__anext__()
+                head += chunk
+                if len(head) > 65536:
+                    break
+        except StopAsyncIteration:
+            pass
+        first = head[head.index(b"data:"):] if b"data:" in head else b""
+        if b'"type":"error"' in first.replace(b" ", b"") or b'"error":{' in first.replace(b" ", b"")[:400]:
+            log.warning("pro proxy: upstream stream error before any token (attempt %d) for run %s", attempt + 1, claims["run"])
+            await upstream.aclose()
+            if attempt < 3:
+                await asyncio.sleep(2 + attempt * 3); continue
+        upstream._pro_iter = stream_iter
+        break
     if upstream.status_code != 200 or not data.get("stream"):
         raw = await upstream.aread()
         await upstream.aclose(); await client.aclose()
@@ -178,8 +204,14 @@ async def messages(request: Request):
 
     async def relay():
         buffer = b""
+
+        async def chunks():
+            if head:
+                yield head
+            async for piece in upstream._pro_iter:
+                yield piece
         try:
-            async for chunk in upstream.aiter_raw():
+            async for chunk in chunks():
                 yield chunk
                 buffer += chunk
                 while b"\n" in buffer:

@@ -177,6 +177,7 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__person_matte": "جدا کردن سوژه از پس‌زمینه", "mcp__editorgpt__qc_report": "بررسی فنی خروجی",
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
+API_ERROR = re.compile(r"(API Error|could not authenticate with the provider|Internal server error|overloaded_error|stream ended before|Request timed out)", re.I)
 
 
 def _detail(name: str, args: dict) -> str:
@@ -230,6 +231,11 @@ async def _forward(api: Api, message, live: dict) -> None:
     from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock, UserMessage
 
     async def close_text():
+        if live["id"] is not None and API_ERROR.search(live["text"] or ""):
+            await api.event(kind="text_done", response_id=live["id"], text="")        # a provider error is not the agent's message
+            live.update(text="", id=None)
+            live["api_error"] = True
+            return
         if live["id"] is not None:
             await api.event(kind="text_done", response_id=live["id"], text=live["text"])
             live.update(text="", id=None)
@@ -341,17 +347,29 @@ async def run(job: dict) -> None:
             watcher = asyncio.create_task(watch())
             try:
                 await client.query(first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
-                async for message in client.receive_response():
-                    await _forward(api, message, live)
-                    if isinstance(message, SystemMessage) and message.subtype == "init":
-                        session = (message.data or {}).get("session_id") or session
-                    elif isinstance(message, ResultMessage):
-                        session = message.session_id or session
-                        turns, cost = message.num_turns, message.total_cost_usd
-                        reason = getattr(message, "stop_reason", None) or message.subtype
-                        status = "stopped" if stopped else ("completed" if not message.is_error else "failed")
-                        if message.is_error:
-                            error = str(getattr(message, "result", "") or message.subtype)[:400]
+                retries = 0
+                while True:
+                    live["api_error"] = False
+                    async for message in client.receive_response():
+                        await _forward(api, message, live)
+                        if isinstance(message, SystemMessage) and message.subtype == "init":
+                            session = (message.data or {}).get("session_id") or session
+                        elif isinstance(message, ResultMessage):
+                            session = message.session_id or session
+                            turns, cost = message.num_turns, message.total_cost_usd
+                            reason = getattr(message, "stop_reason", None) or message.subtype
+                            status = "stopped" if stopped else ("completed" if not message.is_error else "failed")
+                            if message.is_error:
+                                error = str(getattr(message, "result", "") or message.subtype)[:400]
+                            if API_ERROR.search(str(getattr(message, "result", "") or "")):
+                                live["api_error"] = True
+                    if stopped or not live.get("api_error") or retries >= 3:
+                        if live.get("api_error"):
+                            status, error = "failed", "سرویس مدل چند بار پشت سر هم خطا داد؛ با پیام «ادامه بده» از همین‌جا ادامه می‌دهد."
+                        break
+                    retries += 1                      # the provider failed mid-run: the same session goes on from where it stopped (nothing is redone)
+                    await asyncio.sleep(10 * retries)
+                    await client.query("The model service failed for a moment. Continue exactly where you stopped; do not redo finished steps.")
             finally:
                 watcher.cancel()
     except Exception as exc:
