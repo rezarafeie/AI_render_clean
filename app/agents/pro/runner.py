@@ -37,6 +37,12 @@ class Api:
         except Exception:
             pass
 
+    async def active_renders(self) -> list[dict]:
+        try:
+            return (await self.client.get("/internal/pro/renders")).json().get("active") or []
+        except Exception:
+            return []
+
     async def stop_requested(self) -> bool:
         try:
             r = await self.client.get("/internal/pro/status")
@@ -363,6 +369,20 @@ async def run(job: dict) -> None:
                                 error = str(getattr(message, "result", "") or message.subtype)[:400]
                             if API_ERROR.search(str(getattr(message, "result", "") or "")):
                                 live["api_error"] = True
+                    if not stopped and not live.get("api_error"):
+                        # the agent ended its turn while a cloud render still runs ("I'll wait for it"): the runner waits and continues the same session
+                        waiting = await api.active_renders()
+                        if waiting:
+                            await api.event(kind="tool_start", id="wait-render", tool="render_status", label="منتظر تمام شدن رندر ابری")
+                            for _ in range(240):
+                                if stopped or not await api.active_renders():
+                                    break
+                                await asyncio.sleep(15)
+                            await api.event(kind="tool_done", id="wait-render", tool="render_status", label="منتظر تمام شدن رندر ابری", detail="رندر تمام شد")
+                            if not stopped:
+                                await client.query("The cloud render you were waiting for has ended: check it with render_status and continue the work to the end "
+                                                   "(sound, checks, deliver). Do not end your turn while a render is still running; poll render_status instead.")
+                                continue
                     if stopped or not live.get("api_error") or retries >= 3:
                         if live.get("api_error"):
                             status, error = "failed", "سرویس مدل چند بار پشت سر هم خطا داد؛ با پیام «ادامه بده» از همین‌جا ادامه می‌دهد."

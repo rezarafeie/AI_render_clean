@@ -279,6 +279,22 @@ async def status(request: Request):
     return {"stop": stopped, "spent_credits": _spent(record), "budget_credits": pro.BUDGET_CREDITS}
 
 
+@router.get("/internal/pro/renders")
+async def renders(request: Request):
+    """The chat's cloud renders that have not ended yet (the runner keeps the session alive and continues it when they end)."""
+    claims = _claims(request)
+    folder = pro.RUNS / claims["cid"] / ".renders"
+    out = []
+    for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            state = json.loads(path.read_text())
+        except ValueError:
+            continue
+        if state.get("state") in {"queued", "rendering"} and time.time() - path.stat().st_mtime < 3 * 3600:
+            out.append(state)
+    return {"active": out}
+
+
 @router.post("/internal/pro/finish")
 async def finish(request: Request):
     claims = _claims(request)
