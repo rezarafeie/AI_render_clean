@@ -11,6 +11,12 @@ const fixture = join(folder, "source.mp4");
 execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=640x480:d=3:r=30",
   "-c:v", "libx264", "-pix_fmt", "yuv420p", fixture]);
 
+const broll = join(folder, "cutaway.mp4");
+execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=640x480:d=1.5:r=30",
+  "-c:v", "libx264", "-pix_fmt", "yuv420p", broll]);
+const customAudio = join(folder, "chime.wav");
+execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.7", customAudio]);
+
 const chrome = process.env.CHROME_PATH || (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined);
 const browser = await chromium.launch({headless: true, executablePath: chrome});
 try {
@@ -151,8 +157,27 @@ try {
     await page.getByText("در تایم‌لاین ذخیره شد", {exact: false}).waitFor();
     const withEffect = await (await page.request.get(`${base}/api/jobs/${plan.job_id}/creative-resources`)).json();
     assert.deepEqual(withEffect.plan.visual_effects, [{segment_id: plan.segments[2].id, type: "slow_push__neutral", locked: true}]);
+    await page.getByRole("button", {name: "تایم‌لاین", exact: true}).click();
+    await page.getByRole("button", {name: "افزودن لایه", exact: true}).click();
+    const kind = page.getByRole("combobox", {name: "نوع لایه", exact: true});
+    await kind.selectOption("broll");
+    await page.getByLabel("آپلود فایل لایه", {exact: true}).setInputFiles(broll);
+    await page.getByText("cutaway.mp4", {exact: true}).waitFor();
+    await page.getByLabel("پایان در خروجی (ثانیه)", {exact: true}).fill("4");
+    await page.getByLabel("شروع در خروجی (ثانیه)", {exact: true}).fill("3");
+    await page.getByLabel("شروع از فایل بی‌رول (ثانیه)", {exact: true}).fill("0.3");
+    await page.getByRole("button", {name: "افزودن", exact: true}).click();
+    await page.getByRole("button", {name: "cutaway.mp4", exact: true}).waitFor();
+    await kind.selectOption("sfx");
+    await page.getByLabel("آپلود فایل لایه", {exact: true}).setInputFiles(customAudio);
+    await page.getByText("chime.wav", {exact: true}).waitFor();
+    await page.getByLabel("شروع در خروجی (ثانیه)", {exact: true}).fill("2");
+    await page.getByRole("button", {name: "افزودن", exact: true}).click();
+    await page.getByRole("button", {name: "chime.wav", exact: true}).waitFor();
+    plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
+    assert.equal(plan.layers.find(layer => layer.label === "cutaway.mp4").source_in, .3);
+    assert.ok(plan.layers.find(layer => layer.label === "chime.wav").attachment_id);
     if (process.env.PANEL_TEST_RENDER === "1" && width === 1360) {
-      await page.getByRole("button", {name: "تایم‌لاین", exact: true}).click();
       const accepted = page.waitForResponse(response => response.request().method() === "POST" &&
         response.url().endsWith("/segments/render"));
       await page.getByRole("button", {name: "رندر خروجی", exact: true}).click();
@@ -171,12 +196,21 @@ try {
       const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1", rendered], {encoding: "utf8"}));
       assert.ok(Math.abs(duration - 4.1) < .09, JSON.stringify(duration));
+      const pixels = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "3.6", "-i", rendered, "-frames:v", "1",
+        "-vf", "scale=8:8", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      const middle = (8 * 4 + 4) * 3;
+      assert.ok(pixels[middle] > 200 && pixels[middle + 2] < 45, "uploaded red B-roll must replace the blue source in its interval");
+      const sound = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "2.1", "-i", rendered, "-t", "0.2",
+        "-vn", "-f", "s16le", "-ac", "1", "-"]);
+      let peak = 0;
+      for (let offset = 0; offset + 1 < sound.length; offset += 2) peak = Math.max(peak, Math.abs(sound.readInt16LE(offset)));
+      assert.ok(peak > 700, "uploaded sound effect must be audible in the rendered output");
     }
     await page.close();
-    console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo → camera → library effect and transitions`);
+    console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo → camera → library effect and transitions → uploaded B-roll and SFX`);
   }
   console.log(`Screenshots: ${folder}`);
 } finally {
-  rmSync(fixture, {force: true});
+  for (const media of [fixture, broll, customAudio]) rmSync(media, {force: true});
   await browser.close();
 }

@@ -130,3 +130,39 @@ def test_split_with_output_layers_preserves_frame_count_and_caption_timing():
     assert zoom["segments"][0]["zoom"] == {"from": 1, "to": 1.39}
     with pytest.raises(HTTPException, match="زمان‌بندی"):
         panel._arrange_segments(zoom, panel.SegmentChange(operation="split", segment_id="one", start=1))
+
+
+def test_layer_attachment_is_scoped_to_the_project_conversation(editor, monkeypatch, tmp_path):
+    from app import plan_versions
+
+    job = SimpleNamespace(dir=tmp_path / "job", render=SimpleNamespace(status="idle"))
+    monkeypatch.setattr(panel, "_native_job", AsyncMock(return_value=(job, {})))
+    monkeypatch.setattr(plan_versions, "latest_version", lambda _: {"version": 2})
+    staged = AsyncMock()
+    monkeypatch.setattr(panel, "_stage_layer_attachment", staged)
+
+    async def scenario():
+        target = (await panel.draft(editor))["id"]
+        origin = (await panel.draft(editor))["id"]
+        project = await studio_store.repo.create_project(target, "owner", "motion", "Demo")
+        attachment = await studio_store.repo.create_attachment(origin, "owner", kind="video", filename="sample.mp4",
+                                                               path=str(tmp_path / "sample.mp4"), mime_type="video/mp4", size_bytes=27)
+        body = panel.LayerChange(version=2, operation="add", kind="broll", attachment_id=attachment["id"], start=0, end=1)
+        with pytest.raises(HTTPException) as missing:
+            await panel.change_layer(editor, project["id"], body)
+        assert missing.value.status_code == 404
+        staged.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_layer_asset_path_stays_local_and_reusable(tmp_path):
+    source = tmp_path / "uploaded.mp4"
+    source.write_bytes(b"the uploaded clip")
+    record = {"id": "f" * 32, "path": str(source), "filename": "cutaway.mp4"}
+    job = SimpleNamespace(dir=tmp_path / "job")
+    relative, created = panel._stage_layer_attachment(job, record)
+    assert relative == f"assets/panel-media/{record['id']}/cutaway.mp4"
+    assert created.read_bytes() == source.read_bytes()
+    assert panel._stage_layer_attachment(job, record) == (relative, None)
+    source.unlink()
+    assert created.read_bytes() == b"the uploaded clip"

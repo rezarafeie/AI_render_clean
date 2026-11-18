@@ -108,7 +108,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
           if (segment) seek(Math.min(segment.source_out, segment.source_in + position - segment.start));
         }}/>
     </label>}
-    <NativeLayers data={data} blocked={blocked} width={width} cursor={cursor} onChange={editLayer}>
+    <NativeLayers conversationId={project.conversation_id} data={data} blocked={blocked} width={width} cursor={cursor} onChange={editLayer}>
       <div className="mp-native-track" aria-label="قطعه‌های ویدیو">
         {data.segments.map((segment, i) => <button key={segment.id} type="button"
           style={{left: `${segment.start / data.duration * 100}%`, width: `${(segment.end - segment.start) / data.duration * 100}%`}}

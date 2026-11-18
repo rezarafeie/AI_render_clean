@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.routers import studio
 from engine.operations import ResourceTransitionSettings
+from engine.schema import CaptionStyle
 
 
 router = APIRouter(prefix="/panel", tags=["manual-editor"])
@@ -408,9 +409,13 @@ async def native_segments(request: Request, project_id: str):
         for index, row in enumerate(rows):
             start = row.get("start", row.get("at", 0))
             end = row.get("end", start + row.get("duration", 0))
+            path = Path(row.get("file") or "")
+            attachment_id = path.parts[2] if len(path.parts) == 4 and path.parts[:2] == ("assets", "panel-media") else None
             layers.append({"kind": kind, "index": index, "start": start,
                            "end": spans[-1].end if kind == "music" else end,
-                           "label": row.get("text") or Path(row.get("file") or "").name,
+                           "label": row.get("text") or path.name, "attachment_id": attachment_id,
+                           "source_in": row.get("in", 0), "caption_style": row.get("style", "normal"),
+                           "highlight": row.get("highlighted_word") or "",
                            "position": row.get("position", "bottom"), "volume_db": row.get("volume_db", -14)})
     return {"segments": [span_payload(span) for span in spans], "duration": spans[-1].end,
             "layers": layers,
@@ -625,6 +630,10 @@ class LayerChange(BaseModel):
     index: int | None = Field(default=None, ge=0, lt=1000)
     text: str = Field(default="", max_length=400)
     filename: str = Field(default="", max_length=255)
+    attachment_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    source_in: float = Field(default=0, ge=0, allow_inf_nan=False)
+    caption_style: CaptionStyle | None = None
+    highlight: str | None = Field(default=None, max_length=80)
     start: float = Field(default=0, ge=0, allow_inf_nan=False)
     end: float = Field(default=0, ge=0, allow_inf_nan=False)
     volume_db: float = Field(default=-14, ge=-80, le=12, allow_inf_nan=False)
@@ -648,7 +657,39 @@ def _library_file(kind: str, filename: str):
     return str(path)
 
 
-def _apply_layer(plan: dict, change: LayerChange) -> dict:
+def _stage_layer_attachment(job, source: dict):
+    from pathlib import Path
+    import os
+    import shutil
+    from tempfile import NamedTemporaryFile
+
+    original = Path(source["path"])
+    relative = Path("assets", "panel-media", source["id"], Path(source["filename"]).name)
+    dest = job.dir / relative
+    if not original.is_file():
+        raise HTTPException(404, "فایل بارگذاری‌شده دیگر در دسترس نیست.")
+    if dest.is_file():
+        return relative.as_posix(), None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(original, dest)
+    except OSError:
+        try:
+            with NamedTemporaryFile(dir=dest.parent, delete=False) as stream:
+                temporary = Path(stream.name)
+                try:
+                    with original.open("rb") as read:
+                        shutil.copyfileobj(read, stream, 1024 * 1024)
+                    stream.flush()
+                    os.replace(temporary, dest)
+                finally:
+                    temporary.unlink(missing_ok=True)
+        except OSError as exc:
+            raise HTTPException(422, "رسانه برای آماده‌سازی رندر قابل خواندن نیست.") from exc
+    return relative.as_posix(), dest
+
+
+def _apply_layer(plan: dict, change: LayerChange, asset_path: str | None = None) -> dict:
     from copy import deepcopy
     from engine.operations import segment_spans
 
@@ -656,7 +697,7 @@ def _apply_layer(plan: dict, change: LayerChange) -> dict:
     result = deepcopy(plan)
     if change.kind == "music":
         result[key] = None if change.operation == "remove" else {
-            **(result.get(key) or {}), "file": _library_file(change.kind, change.filename), "volume_db": change.volume_db,
+            **(result.get(key) or {}), "file": asset_path or _library_file(change.kind, change.filename), "volume_db": change.volume_db,
         }
         return result
     rows = result.setdefault(key, [])
@@ -675,12 +716,19 @@ def _apply_layer(plan: dict, change: LayerChange) -> dict:
         if not change.text.strip():
             raise HTTPException(422, "متن را وارد کنید.")
         item = {"start": change.start, "end": change.end, "text": change.text.strip(), "position": change.position}
+        if change.caption_style is not None:
+            item["style"] = change.caption_style
+        if change.highlight is not None:
+            word = change.highlight.strip()
+            if word and word not in item["text"]:
+                raise HTTPException(422, "عبارت برجسته باید داخل متن زیرنویس باشد.")
+            item["highlighted_word"] = word or None
     else:
-        item = {"at": change.start, "file": _library_file(change.kind, change.filename)}
+        item = {"at": change.start, "file": asset_path or _library_file(change.kind, change.filename)}
         if change.kind == "sfx":
             item["volume_db"] = change.volume_db
         else:
-            item.update(duration=change.end - change.start, **{"in": 0})
+            item.update(duration=change.end - change.start, **{"in": change.source_in, "query": None})
     if change.operation == "replace":
         updated = {**rows[change.index], **item}
         if change.kind == "caption" and (updated.get("highlighted_word") or "") not in updated["text"]:
@@ -704,12 +752,33 @@ async def change_layer(request: Request, project_id: str, body: LayerChange):
         latest = await asyncio.to_thread(plan_versions.latest_version, job)
         if (latest["version"] if latest else None) != body.version or job.render.status in {"queued", "running"}:
             raise HTTPException(409, "برنامه تغییر کرده یا در حال رندر است.")
-        candidate = await asyncio.to_thread(_apply_layer, plan, body)
-        if candidate != plan:
-            _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",
-                                               operations=[{"op": body.operation, "kind": body.kind}])
-            if errors:
-                raise HTTPException(422, "این لایه با رسانه یا قالب رندر فعلی سازگار نیست.")
+        asset_path = None
+        staged = None
+        if body.attachment_id and body.operation != "remove":
+            if body.filename or body.kind == "caption":
+                raise HTTPException(422, "برای لایه فقط یک منبع متناسب انتخاب کنید.")
+            project = await repo.get_project(project_id, user)
+            try:
+                source, = await repo.get_attachments([body.attachment_id], project["conversation_id"], user)
+            except KeyError as exc:
+                raise HTTPException(404, "فایل در همین پروژه پیدا نشد.") from exc
+            expected = "video" if body.kind == "broll" else "audio"
+            if source["kind"] != expected:
+                raise HTTPException(422, "نوع فایل با لایه سازگار نیست.")
+            asset_path, staged = await asyncio.to_thread(_stage_layer_attachment, job, source)
+        try:
+            candidate = await asyncio.to_thread(_apply_layer, plan, body, asset_path)
+            if candidate != plan:
+                _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",
+                                                   operations=[{"op": body.operation, "kind": body.kind}])
+                if errors:
+                    if body.kind == "broll":
+                        raise HTTPException(422, "بازهٔ بی‌رول باید داخل طول فایل ویدیویی انتخاب‌شده باشد.")
+                    raise HTTPException(422, "این لایه با رسانه یا قالب رندر فعلی سازگار نیست.")
+        except HTTPException:
+            if staged:
+                staged.unlink(missing_ok=True)
+            raise
     return await native_segments(request, project_id)
 
 

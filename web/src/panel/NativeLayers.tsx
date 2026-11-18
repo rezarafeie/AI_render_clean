@@ -1,23 +1,30 @@
 import React from "react";
-import {api, type LibraryAsset} from "../api";
+import {api, type LibraryAsset, type StudioAttachment, type StudioFile} from "../api";
 import {AuthenticatedMedia} from "../AuthenticatedMedia";
 import {friendlyError} from "../ui";
-import type {LayerKind, NativeTimeline, LayerChange} from "./types";
+import type {CaptionStyle, LayerKind, NativeTimeline, LayerChange} from "./types";
+
+const FilesPicker = React.lazy(() => import("../studio/FilesPicker").then(m => ({default: m.FilesPicker})));
 
 const labels: Record<LayerKind, string> = {caption: "متن و زیرنویس", broll: "بی‌رول", music: "موسیقی", sfx: "افکت صوتی"};
 type Layer = NativeTimeline["layers"][number];
-type Draft = {kind: LayerKind; index?: number; text: string; filename: string; start: string; end: string; volume: number; position: "top" | "bottom"};
-const empty = (kind: LayerKind, duration: number): Draft => ({kind, text: "", filename: "", start: "0",
-  end: String(Math.min(duration, 3)), volume: kind === "sfx" ? -6 : -14, position: "bottom"});
+type Draft = {kind: LayerKind; index?: number; text: string; highlight: string; style: CaptionStyle;
+  filename: string; attachmentId?: string; start: string; end: string; sourceIn: string; volume: number; position: "top" | "bottom"};
+const empty = (kind: LayerKind, duration: number): Draft => ({kind, text: "", highlight: "", style: "normal",
+  filename: "", start: "0", end: String(Math.min(duration, 3)), sourceIn: "0", volume: kind === "sfx" ? -6 : -14, position: "bottom"});
 
-export function NativeLayers({data, blocked, width, cursor, onChange, children}: {
-  data: NativeTimeline; blocked: boolean; width: number; cursor: number; onChange: (edit: LayerChange) => Promise<boolean>; children: React.ReactNode;
+export function NativeLayers({conversationId, data, blocked, width, cursor, onChange, children}: {
+  conversationId?: string; data: NativeTimeline; blocked: boolean; width: number; cursor: number;
+  onChange: (edit: LayerChange) => Promise<boolean>; children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState(() => empty("caption", data.duration));
   const [assets, setAssets] = React.useState<LibraryAsset[] | null>(null);
   const [error, setError] = React.useState("");
   const [preview, setPreview] = React.useState(false);
+  const [filesOpen, setFilesOpen] = React.useState(false);
+  const [transfer, setTransfer] = React.useState<number | null>(null);
+  const mediaKind = draft.kind === "broll" ? "video" : "audio";
 
   React.useEffect(() => {
     if (!open || draft.kind === "caption" || assets) return;
@@ -31,20 +38,48 @@ export function NativeLayers({data, blocked, width, cursor, onChange, children}:
     setOpen(true);
     setPreview(false);
     setDraft({kind: layer.kind, index: layer.index, text: layer.kind === "caption" ? layer.label : "",
-              filename: layer.kind === "caption" ? "" : layer.label, start: layer.start.toFixed(3), end: layer.end.toFixed(3),
-              volume: layer.volume_db, position: layer.position});
+              highlight: layer.highlight, style: layer.caption_style, attachmentId: layer.attachment_id || undefined,
+              filename: layer.kind === "caption" ? "" : layer.label, start: layer.start.toFixed(6), end: layer.end.toFixed(6),
+              sourceIn: layer.source_in.toFixed(6), volume: layer.volume_db, position: layer.position});
+  }
+
+  function useAttachment(file: StudioAttachment) {
+    setDraft(old => ({...old, attachmentId: file.id, filename: file.filename, sourceIn: "0"}));
+    setPreview(false);
+  }
+
+  async function upload(file?: File) {
+    if (!file || !conversationId) return;
+    setTransfer(0);
+    setError("");
+    try {
+      const attachment = await api.uploadStudioMedia(conversationId, file, setTransfer);
+      if (attachment.kind !== mediaKind) throw new Error(mediaKind === "video" ? "یک فایل ویدیویی انتخاب کنید." : "یک فایل صوتی انتخاب کنید.");
+      useAttachment(attachment);
+    } catch (e) { setError(friendlyError(e, "upload the layer media")); }
+    finally { setTransfer(null); }
+  }
+
+  async function attach(files: StudioFile[]) {
+    if (!conversationId || files.length !== 1 || files[0].kind !== mediaKind) {
+      throw new Error(mediaKind === "video" ? "یک فایل ویدیویی انتخاب کنید." : "یک فایل صوتی انتخاب کنید.");
+    }
+    useAttachment(await api.attachStudioFile(conversationId, files[0].id));
   }
 
   async function apply() {
     const ok = await onChange({version: data.version, kind: draft.kind, operation: draft.index === undefined ? "add" : "replace", index: draft.index,
-      text: draft.text, filename: draft.filename, start: Number(draft.start), end: Number(draft.end),
-      position: draft.position, volume_db: draft.volume});
+      text: draft.text, filename: draft.attachmentId ? undefined : draft.filename, attachment_id: draft.attachmentId,
+      start: Number(draft.start), end: Math.min(Number(draft.end), data.duration), source_in: Number(draft.sourceIn),
+      caption_style: draft.kind === "caption" ? draft.style : undefined,
+      highlight: draft.kind === "caption" ? draft.highlight : undefined, position: draft.position, volume_db: draft.volume});
     if (ok) { setDraft(empty(draft.kind, data.duration)); setPreview(false); }
   }
 
   const selected = draft.index === undefined ? undefined : data.layers.find(layer => layer.kind === draft.kind && layer.index === draft.index);
   const filters = assets?.filter(asset => asset.category === draft.kind) ?? [];
-  const mediaUrl = draft.kind !== "caption" && draft.filename ? api.libraryPreviewUrl(draft.kind, draft.filename) : "";
+  const mediaUrl = draft.attachmentId && conversationId ? api.studioAttachmentUrl(conversationId, draft.attachmentId)
+    : draft.kind !== "caption" && draft.filename ? api.libraryPreviewUrl(draft.kind, draft.filename) : "";
   const hasRange = draft.kind === "caption" || draft.kind === "broll";
   const hasVolume = draft.kind === "music" || draft.kind === "sfx";
   return <div className="mp-layer-tools">
@@ -74,22 +109,37 @@ export function NativeLayers({data, blocked, width, cursor, onChange, children}:
         if (!open) setDraft(empty("caption", data.duration));
       }}>{open ? "بستن ابزار لایه" : "افزودن لایه"}</button>
     </div>
-    {open && <fieldset className="mp-reset" disabled={blocked}>
+    {open && <fieldset className="mp-reset" disabled={blocked || transfer !== null}>
       <legend>{selected ? "ویرایش لایه" : "لایهٔ جدید"}</legend>
       <label>نوع لایه<select className="input" value={draft.kind} onChange={e => {
         setDraft(empty(e.target.value as LayerKind, data.duration)); setPreview(false); setError("");
       }}>{Object.entries(labels).map(([kind, name]) => <option key={kind} value={kind}>{name}</option>)}</select></label>
       {draft.kind === "caption" ? <>
         <label>متن<input className="input" maxLength={400} value={draft.text} onChange={e => setDraft({...draft, text: e.target.value})}/></label>
+        <label>سبک زیرنویس<select className="input" value={draft.style} onChange={e => setDraft({...draft, style: e.target.value as CaptionStyle})}>
+          <option value="normal">معمولی</option><option value="emphasis">تأکیدی</option>
+          <option value="cta">دعوت به اقدام</option><option value="cover">عنوان</option>
+        </select></label>
+        <label>عبارت برجسته<input className="input" maxLength={80} value={draft.highlight}
+          onChange={e => setDraft({...draft, highlight: e.target.value})}/></label>
         <label>موقعیت<select className="input" value={draft.position} onChange={e => setDraft({...draft, position: e.target.value as Draft["position"]})}>
           <option value="bottom">پایین</option><option value="top">بالا</option>
         </select></label>
       </> : <>
-        <label>فایل کتابخانه<select className="input" value={draft.filename} onChange={e => {setDraft({...draft, filename: e.target.value}); setPreview(false);}}>
+        <label>فایل کتابخانه<select className="input" value={draft.attachmentId ? "" : draft.filename} onChange={e => {
+          setDraft({...draft, filename: e.target.value, attachmentId: undefined, sourceIn: "0"}); setPreview(false);
+        }}>
           <option value="">انتخاب فایل</option>
-          {draft.filename && !filters.some(asset => asset.filename === draft.filename) && <option value={draft.filename}>{draft.filename}</option>}
+          {!draft.attachmentId && draft.filename && !filters.some(asset => asset.filename === draft.filename) && <option value={draft.filename}>{draft.filename}</option>}
           {filters.map(asset => <option key={asset.filename} value={asset.filename}>{asset.filename}</option>)}
         </select></label>
+        {conversationId && <div className="mp-actions">
+          <label>آپلود فایل لایه<input className="input" type="file" accept={`${mediaKind}/*`}
+            onChange={e => {void upload(e.target.files?.[0]); e.target.value = "";}}/></label>
+          <button className="btn btn-secondary btn-sm" onClick={() => setFilesOpen(true)}>فایل‌های حساب</button>
+          {draft.attachmentId && <span dir="auto">{draft.filename}</span>}
+        </div>}
+        {transfer !== null && <p role="status">بارگذاری لایه · {Math.round(transfer)}٪</p>}
         {mediaUrl && <button className="btn btn-secondary btn-sm" onClick={() => setPreview(v => !v)}>{preview ? "بستن پیش‌نمایش" : "پیش‌نمایش فایل"}</button>}
         {preview && mediaUrl && <AuthenticatedMedia as={draft.kind === "broll" ? "video" : "audio"} src={mediaUrl} controls playsInline preload="none"/>}
       </>}
@@ -99,10 +149,14 @@ export function NativeLayers({data, blocked, width, cursor, onChange, children}:
         {hasRange && <label>پایان در خروجی (ثانیه)<input className="input" type="number" min={0} max={data.duration} step={1 / data.fps} value={draft.end}
           onChange={e => setDraft({...draft, end: e.target.value})}/></label>}
       </div>}
+      {draft.kind === "broll" && <label>شروع از فایل بی‌رول (ثانیه)
+        <input className="input" type="number" min={0} step={1 / data.fps} value={draft.sourceIn}
+          onChange={e => setDraft({...draft, sourceIn: e.target.value})}/>
+      </label>}
       {hasVolume && <label>بلندی صدا ({draft.volume} dB)<input type="range" min={-60} max={6} value={draft.volume}
         onChange={e => setDraft({...draft, volume: Number(e.target.value)})}/></label>}
       <div className="mp-actions">
-        <button className="btn btn-primary" disabled={(draft.kind === "caption" ? !draft.text.trim() : !draft.filename) ||
+        <button className="btn btn-primary" disabled={(draft.kind === "caption" ? !draft.text.trim() || (!!draft.highlight.trim() && !draft.text.includes(draft.highlight.trim())) : !draft.filename) ||
           (hasRange && Number(draft.end) <= Number(draft.start))} onClick={() => void apply()}>{selected ? "ذخیرهٔ لایه" : "افزودن"}</button>
         {selected && <button className="btn btn-secondary" onClick={() => {
           void onChange({version: data.version, kind: selected.kind, index: selected.index, operation: "remove"}).then(ok => {
@@ -111,6 +165,9 @@ export function NativeLayers({data, blocked, width, cursor, onChange, children}:
         }}>برداشتن لایه</button>}
       </div>
     </fieldset>}
+    {filesOpen && <React.Suspense fallback={<p role="status">در حال خواندن فایل‌ها…</p>}>
+      <FilesPicker onClose={() => setFilesOpen(false)} onAttach={attach}/>
+    </React.Suspense>}
     {error && <p className="notice" role="alert" data-tone="error">{error}</p>}
   </div>;
 }
