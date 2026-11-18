@@ -335,7 +335,7 @@ async def run(job: dict) -> None:
         cwd=str(work),
         setting_sources=["project"],
         allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "TodoWrite", *[f"mcp__editorgpt__{n}" for n in TOOL_NAMES]],
-        disallowed_tools=["WebFetch", "WebSearch"],
+        disallowed_tools=["WebFetch", "WebSearch", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger", "TaskStop"],
         mcp_servers={"editorgpt": _tools(api)},
         permission_mode="dontAsk",
         hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])]},
