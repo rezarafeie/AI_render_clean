@@ -1,0 +1,116 @@
+.manual-panel {
+  --mp-border: var(--line, var(--border, #80808045));
+  --mp-surface: var(--surface, var(--bg));
+  color: var(--text);
+  background: var(--bg);
+  min-height: var(--app-h, 100dvh);
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+.manual-panel h1, .manual-panel h2, .manual-panel p {margin: 0}
+.manual-panel h1 {font-size: clamp(1.45rem, 4vw, 2.25rem); line-height: 1.25}
+.manual-panel h2 {font-size: 1.05rem}
+.manual-panel label:not(.mp-check) {display: grid; gap: 7px; font-size: .9rem; min-width: 0}
+.manual-panel .input {width: 100%; min-width: 0}
+.mp-bar {
+  display: flex; align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 9;
+  background: var(--bg); border-bottom: 1px solid var(--mp-border);
+  padding: max(9px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 9px max(16px, env(safe-area-inset-left));
+}
+.mp-bar-title {display: grid; gap: 3px; flex: 1; min-width: 0}
+.mp-bar-title b {text-overflow: ellipsis; overflow: hidden; white-space: nowrap}
+.mp-bar-title small, .mp-muted, .mp-section-head p, .mp-engine small, .mp-asset small {color: var(--text-2)}
+.mp-bar-actions, .mp-actions, .mp-chips {display: flex; align-items: center; flex-wrap: wrap; gap: 8px}
+.mp-bar-actions {flex-wrap: nowrap}
+.mp-home, .mp-setup {width: min(calc(100% - 32px), 1000px); margin: 32px auto; display: grid; gap: 20px}
+.mp-section-head {display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px}
+.mp-section-head > div:first-child {display: grid; gap: 4px}
+.mp-section-head > .input {max-width: 220px}
+.mp-projects, .mp-inspector {display: grid; gap: 14px; min-width: 0}
+.mp-reset {border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 14px}
+.mp-section-label {font-size: .9rem; font-weight: 600; margin-bottom: 8px}
+.mp-engine-grid, .mp-form-grid, .mp-gallery {display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(min(100%, 225px),1fr))}
+.mp-engine {
+  min-width: 0; min-height: 76px; display: flex; align-items: center; text-align: start; gap: 10px;
+  padding: 10px 13px; border: 1px solid var(--mp-border); background: var(--mp-surface);
+  border-radius: 14px; color: inherit; text-decoration: none;
+}
+.mp-engine:enabled, a.mp-engine {cursor: pointer}
+.mp-engine[aria-pressed=true], .mp-chips [aria-pressed=true], .mp-sentence[aria-pressed=true] {box-shadow: inset 0 0 0 1px var(--text)}
+.mp-engine:disabled {opacity: .5}
+.mp-engine > span:last-child, .mp-asset > div {display: grid; min-width: 0}
+.mp-engine-icon {flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--mp-border); border-radius: 10px}
+.mp-files, .mp-speech {list-style: none; margin: 0; padding: 0; display: grid; gap: 5px}
+.mp-files li {display: flex; gap: 5px; align-items: center}
+.mp-files li > :first-child {max-width: min(300px, 75vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis}
+.mp-setup-media {max-width: 100%; max-height: 260px; border-radius: 12px}
+.mp-workspace {padding: 14px; display: grid; grid-template-columns: minmax(260px, .9fr) minmax(0, 1.25fr); gap: 12px; width: min(100%, 1500px); margin-inline: auto}
+.mp-preview, .mp-control {min-width: 0; align-self: start; background: var(--mp-surface); border: 1px solid var(--mp-border); border-radius: 15px; display: grid; gap: 12px; padding: 13px}
+.mp-preview {position: sticky; top: 70px}
+.mp-preview .mp-section-head, .mp-inspector .mp-section-head {min-height: 38px}
+.mp-context {display: flex; align-items: end; gap: 8px; flex-wrap: wrap}
+.mp-context .badge {margin-bottom: 5px}
+.mp-approval, .mp-motion-question {display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--mp-border); border-radius: 12px}
+.mp-monitor {min-height: 100px; position: relative; display: grid; place-items: center; overflow: hidden; background: #111; color: #eee; border-radius: 11px; isolation: isolate}
+.mp-monitor video {display: block; width: auto; max-width: 100%; max-height: min(55dvh, 680px); min-height: min(25dvh, 150px)}
+.mp-preview-empty {display: grid; justify-items: center; gap: 12px; padding: 30px 10px; text-align: center}
+.mp-safe {position: absolute; inset: 10% 8% 16%; border: 1px dashed #fff9; box-shadow: 0 0 0 100vw #0002; pointer-events: none}
+.mp-stills {display: flex; gap: 6px; overflow-x: auto}
+.mp-stills img {width: 58px; aspect-ratio: 9/16; object-fit: contain; background: #111; border-radius: 6px}
+.mp-tabs {
+  position: fixed; bottom: 0; z-index: 9; inset-inline: 0; padding-inline: max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-left)); padding-block: 4px max(4px, env(safe-area-inset-bottom));
+  display: flex; justify-content: center; border-top: 1px solid var(--mp-border); background: var(--bg);
+}
+.mp-tab {display: grid; justify-items: center; align-content: center; gap: 4px; min-height: 51px; min-width: 0; flex: 0 1 120px; padding: 4px; border: 0; background: none; color: var(--text-2); cursor: pointer}
+.mp-tab[aria-current=true] {color: var(--text); font-weight: 700}
+.mp-tab span {font-size: .75rem; white-space: nowrap}
+.mp-control .workspace {width: 100%; min-height: 0; min-width: 0; position: relative}
+.mp-control .workspace .ws-body {max-height: none; overflow: visible}
+.mp-control .workspace .ws-head {display: none}
+.mp-speech {max-height: 440px; overflow: auto; overscroll-behavior: contain}
+.mp-sentence {display: flex; align-items: center; gap: 10px; min-height: 42px; width: 100%; padding: 6px 10px; text-align: start; border: 1px solid var(--mp-border); border-radius: 10px; background: none; color: inherit}
+.mp-sentence time {color: var(--text-2); font-size: .73rem; flex: none}
+.mp-speech li[data-cut=true] .mp-sentence span {text-decoration: line-through}
+.mp-speech-tools, .mp-word-list {display: grid; gap: 8px}
+.mp-word-list {display: flex; flex-wrap: wrap}
+.mp-gallery {grid-template-columns: repeat(auto-fit,minmax(min(100%, 160px),1fr))}
+.mp-asset {min-width: 0; overflow-wrap: anywhere; display: grid; align-content: start; gap: 7px; border: 1px solid var(--mp-border); padding: 8px; border-radius: 12px}
+.mp-asset img, .mp-asset video, .mp-asset-empty {width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #171717; border-radius: 8px}
+.mp-asset audio {width: 100%; min-width: 0}
+.mp-asset .mp-asset-empty {place-items: center; align-content: center; font-size: .72rem; color: #bbb}
+.mp-check {display: flex; gap: 8px; align-items: center}
+.mp-reply {white-space: pre-wrap}
+.mp-error {margin: 10px 14px}
+.mp-progress progress {width: 100%; accent-color: var(--text)}
+.mp-actions .btn, .mp-tab, .mp-engine {touch-action: manipulation}
+@media (max-width: 760px) {
+  .mp-home, .mp-setup {margin-block: 18px; gap: 14px}
+  .mp-workspace {display: block; padding: 8px}
+  .mp-preview {position: static}
+  .mp-control {margin-top: 8px}
+  .mp-workspace:not([data-view="preview"]):not([data-view="speech"]) > .mp-preview {display: none}
+  .mp-workspace[data-view="speech"] video {max-height: 29dvh}
+  .mp-bar {gap: 7px}
+  .mp-engine-grid {grid-template-columns: repeat(2,minmax(0,1fr))}
+  .mp-engine {min-height: 70px; padding: 8px; gap: 6px; font-size: .83rem}
+  .mp-engine small {font-size: .69rem; line-height: 1.25}
+  .mp-engine-icon {width: 30px; height: 30px}
+  .mp-tab {flex: 1 1 0}
+}
+@media (max-width: 360px) {
+  .mp-tab span {font-size: .65rem}
+  .mp-engine {align-items: start}
+}
+.mp-native-scroll {overflow-x: auto; padding-block: 3px 8px}
+.mp-native-track {position: relative; min-height: 44px; background: var(--bg); border: 1px solid var(--mp-border); border-radius: 9px}
+.mp-native-track button {position: absolute; inset-block: 3px; min-width: 7px; padding: 0; border-radius: 6px; border: 1px solid var(--mp-border); background: var(--surface-2, #7774); overflow: hidden}
+.mp-native-track button[aria-pressed=true] {color: var(--bg); background: var(--text)}
+@media (max-width: 760px) {
+  html[data-keyboard-open] .manual-panel {position: fixed; inset-inline: 0; top: var(--app-top, 0px); height: var(--app-h); overflow: auto; padding-bottom: 12px}
+  html[data-keyboard-open] .mp-tabs {display: none}
+}
+.mp-timeline-details {border-top: 1px solid var(--mp-border); padding-block-start: 10px}
+.mp-timeline-details summary {cursor: pointer}
+.mp-layer-tools {display: grid; gap: 9px; padding-block-start: 10px; border-top: 1px solid var(--mp-border)}
+.mp-layer-tools .mp-chips > button {max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+.mp-layer-tools video {max-height: 220px; margin-inline: auto}

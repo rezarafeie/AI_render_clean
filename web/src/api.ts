@@ -1,3 +1,4 @@
+import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange } from "./panel/types";
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
 const BASE = "/api";
@@ -266,7 +267,7 @@ export interface PlanContent {
   grade_auto?: boolean; framing?: { auto: boolean; shift_x: number; shift_y: number };
   moments: { sentence: number; title: string }[] };
   captions: string; motion: string; broll: string; pictures: { sentence: number; title: string; source: string; new: boolean }[];
-  audio: { music: string; voice: string; sfx: string };
+  audio: { music: string; music_path?: string; mix?: MusicMix; voice: string; sfx: string };
   brand: { name: string; tagline: string; cta: string; logo: { enabled: boolean; motion: string; has_logo: boolean } };
   format: { aspect: string; resolution: string; fps: number };
   engines: string[];
@@ -538,6 +539,48 @@ export type LocalizeSummary = Pick<LocalizeProject, "id" | "name" | "status" | "
 };
 
 export const api = {
+  async panelCapabilities(): Promise<PanelCapabilities> {
+    return j(await authFetch(`${BASE}/panel/capabilities`));
+  },
+  async createPanelDraft(): Promise<StudioConversation> {
+    return j(await authFetch(`${BASE}/panel/draft`, { method: "POST" }));
+  },
+  async savePanelSetup(id: string, setup: PanelSetup): Promise<StudioConversation> {
+    return j(await authFetch(`${BASE}/panel/${id}/setup`, { method: "PUT",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(setup) }));
+  },
+  async startPanelWork(id: string): Promise<{id: string; started: boolean}> {
+    return j(await authFetch(`${BASE}/panel/${id}/start`, { method: "POST" }));
+  },
+  async panelDraftMedia(id: string): Promise<StudioAttachment[]> {
+    return j(await authFetch(`${BASE}/panel/${id}/media`));
+  },
+  async answerPanelMotion(id: string, answer: string): Promise<{ok: boolean}> {
+    return j(await authFetch(`${BASE}/panel/${id}/motion/answer`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({answer}) }));
+  },
+  async panelSegments(id: string): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/segments`));
+  },
+  async renderPanelSegments(id: string, version: number | null, preview: boolean): Promise<{status: string}> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/segments/render`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version, preview }) }));
+  },
+  async editPanelLayer(id: string, change: LayerChange): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/layers`, { method: "PATCH",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }));
+  },
+  async editPanelSegments(id: string, change: SegmentChange): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/segments`, { method: "PATCH",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }));
+  },
+  async panelTranscript(id: string): Promise<PanelTranscript> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/transcript`));
+  },
+  async editPanelSentence(id: string, version_id: string, sentence: number, remove: boolean): Promise<{ok: boolean}> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/transcript`, { method: "PATCH",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version_id, sentence, remove }) }));
+  },
   authenticatedObjectUrl,
   async downloadAuthenticated(url: string, filename: string, openInNewTab = false,
     onProgress?: (percent: number | null) => void): Promise<void> {
@@ -1426,6 +1469,9 @@ export const api = {
   async uploadStudioPicture(id: string, file: File): Promise<{ name: string; size: number }> {
     const form = new FormData(); form.append("file", file);
     return j(await authFetch(`${BASE}/studio/projects/${id}/media`, { method: "POST", body: form }));
+  },
+  async panelMusic(): Promise<{path: string; name?: string; label?: string}[]> {
+    return j(await authFetch(`${BASE}/studio/music`));
   },
   studioMusicUrl(path: string): string { return `${BASE}/studio/music/${encodeURIComponent(path.split("/").pop() || "")}`; },
   studioPictureUrl(id: string, slot: number): string { return `${BASE}/studio/projects/${id}/pictures/${slot}`; },
