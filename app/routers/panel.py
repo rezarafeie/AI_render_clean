@@ -21,11 +21,18 @@ Modes = Literal["manual", "assisted", "auto"]
 Engines = Literal["talking", "localize", "motion", "vox", "story", "product", "clips", "storyboard", "discovery"]
 
 
+class StyleReference(BaseModel):
+    model_config = {"extra": "forbid"}
+    style_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")
+    version: int = Field(ge=1, le=10000, strict=True)
+
+
 class ProjectSetup(BaseModel):
     title: str = Field(default="پروژهٔ جدید", max_length=100)
     engine: Engines = "talking"
     mode: Modes = "manual"
     style: str = Field(default="", max_length=50)
+    style_profile: StyleReference | None = None
     topic: str = Field(default="", max_length=1000)
     seconds: Literal[15, 30, 45, 60] = 30
     aspect: Literal["source", "vertical", "square", "landscape"] = "source"
@@ -177,7 +184,7 @@ _MOTION_BRIEFS = {
 }
 
 
-def _create_clip_job(user: str, source: dict, aspect: str):
+def _create_clip_job(user: str, source: dict, aspect: str, style: StyleReference | None = None):
     """Seed a plain native EditPlan from a validated Studio source."""
     from fractions import Fraction
     from pathlib import Path
@@ -208,6 +215,19 @@ def _create_clip_job(user: str, source: dict, aspect: str):
     width, height = presets.get(aspect, (width // 2 * 2, height // 2 * 2))
     if min(width, height) < 2 or max(width, height) > 4096:
         raise ValueError("برای این ویدیو یکی از ابعاد استاندارد را انتخاب کنید.")
+    selection = None
+    if style:
+        from engine.style_library import list_library, resolve_preset
+
+        profile = next((row for row in list_library()["profiles"]
+                        if row.get("state") == "approved" and row["style_id"] == style.style_id and row["version"] == style.version), None)
+        if not profile:
+            raise HTTPException(422, "این نسخهٔ سبک دیگر برای پروژهٔ جدید در دسترس نیست.")
+        try:
+            resolve_preset(style.style_id, style.version)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(422, "نسخهٔ سبک با موتور تدوین سازگار نیست.") from exc
+        selection = {**style.model_dump(), "name": profile["name"], "state": "pinned"}
     job = jobs.create_job(user_id=user)
     try:
         with path.open("rb") as media:
@@ -219,6 +239,8 @@ def _create_clip_job(user: str, source: dict, aspect: str):
         _, errors = jobs.save_plan(job, plan)
         if errors:
             raise ValueError("برنامهٔ اولیه با فرمت این ویدیو سازگار نیست.")
+        if selection:
+            (job.dir / "style_selection.json").write_text(json.dumps(selection, ensure_ascii=False), encoding="utf-8")
     except Exception:
         jobs.delete_job(job.id)
         raise
@@ -305,7 +327,7 @@ async def start(request: Request, conversation: str):
             elif setup.engine == "clips":
                 from app import jobs
                 try:
-                    ref = await asyncio.to_thread(_create_clip_job, user, source, setup.aspect)
+                    ref = await asyncio.to_thread(_create_clip_job, user, source, setup.aspect, setup.style_profile)
                 except (ValueError, OSError) as exc:
                     raise HTTPException(422, "آماده‌سازی ویدیو برای برش انجام نشد.") from exc
                 state = {"attachment_ids": [source["id"]], "panel_native": True, "confirmed": False,
@@ -510,7 +532,7 @@ async def native_segments(request: Request, project_id: str):
 class SegmentChange(BaseModel):
     model_config = {"extra": "forbid"}
     version: int | None = None
-    operation: Literal["trim", "remove_range", "restore", "split", "duplicate", "move", "zoom"]
+    operation: Literal["trim", "remove_range", "restore", "split", "duplicate", "move", "zoom", "paste"]
     segment_id: str | None = Field(default=None, max_length=80)
     start: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     end: float | None = Field(default=None, gt=0, allow_inf_nan=False)
@@ -532,7 +554,7 @@ def _arrange_segments(plan: dict, body: SegmentChange) -> dict:
     from copy import deepcopy
     from uuid import uuid4
 
-    if body.operation in {"duplicate", "move"} and not _can_arrange(plan):
+    if body.operation in {"duplicate", "move", "paste"} and not _can_arrange(plan):
         raise HTTPException(409, "این برنامه لایه‌هایی دارد که با جابه‌جایی قطعه همگام نمی‌شوند.")
     result = deepcopy(plan)
     clips = result["segments"]
@@ -540,10 +562,17 @@ def _arrange_segments(plan: dict, body: SegmentChange) -> dict:
     if index is None:
         raise HTTPException(422, "قطعه پیدا نشد.")
     clip = clips[index]
-    if body.operation in {"duplicate", "split"} and len(clips) >= 500:
+    if body.operation in {"duplicate", "split", "paste"} and len(clips) >= 500:
         raise HTTPException(422, "سقف تعداد قطعه‌های این برنامه رسیده است.")
     if body.operation == "duplicate":
         clips.insert(index + 1, {**clip, "id": "clip-" + uuid4().hex[:12]})
+    elif body.operation == "paste":
+        fps = plan["canvas"]["fps"]
+        if (body.start is None or body.end is None or round((body.end - body.start) * fps) < 1
+                or body.zoom_from is None or body.zoom_to is None):
+            raise HTTPException(422, "قطعهٔ کپی‌شده بازهٔ معتبر ندارد.")
+        clips.insert(index + 1, {"id": "clip-" + uuid4().hex[:12], "in": body.start, "out": body.end,
+                                 "zoom": {"from": body.zoom_from, "to": body.zoom_to}})
     elif body.operation == "zoom":
         if any(row["segment_id"] == clip["id"] for row in plan.get("visual_effects") or []):
             raise HTTPException(409, "افکت این قطعه، حرکت دوربین را تعیین می‌کند.")
@@ -612,7 +641,7 @@ async def change_segment(request: Request, project_id: str, body: SegmentChange)
                     operations=[{"op": "restore", "from_version": body.restore_version}])
                 if errors:
                     raise HTTPException(422, "بعضی از رسانه‌های این نسخه در دسترس نیستند.")
-            elif body.operation in {"split", "duplicate", "move", "zoom"}:
+            elif body.operation in {"split", "duplicate", "move", "zoom", "paste"}:
                 candidate = _arrange_segments(plan, body)
                 if candidate != plan:
                     _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",

@@ -249,3 +249,39 @@ def test_panel_preferences_preserve_studio_agent_and_isolate_accounts(editor, mo
             await panel.get_preferences(other, cid)
         assert denied.value.status_code == 404
     asyncio.run(scenario())
+
+
+def test_manual_clip_pins_only_an_approved_style_version_for_render(tmp_path, monkeypatch):
+    import json
+    from app import jobs
+    from engine import probe, style_library
+
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    drafted = tmp_path / "drafts"
+    drafted.mkdir()
+    monkeypatch.setattr(style_library, "PROFILES", profiles)
+    monkeypatch.setattr(style_library, "DRAFTS", drafted)
+    monkeypatch.setattr(probe, "probe", lambda path: {
+        "streams": [{"codec_type": "video", "width": 640, "height": 480, "avg_frame_rate": "30"}],
+        "format": {"duration": "4"},
+    })
+    job = SimpleNamespace(dir=tmp_path / "job", id="job")
+    job.dir.mkdir()
+    monkeypatch.setattr(jobs, "create_job", lambda **kwargs: job)
+    monkeypatch.setattr(jobs, "save_raw", lambda job, name, *args, **kwargs: job.dir / name)
+    monkeypatch.setattr(jobs, "save_plan", lambda job, data: (data, []))
+    source = tmp_path / "example.mp4"
+    source.write_bytes(b"attached test asset")
+    record = {"path": str(source), "filename": source.name, "size_bytes": source.stat().st_size}
+    selected = panel.StyleReference(style_id="brand", version=2)
+    with pytest.raises(HTTPException, match="سبک"):
+        panel._create_clip_job("owner", record, "source", selected)
+    (profiles / "brand-v2.json").write_text(json.dumps({
+        "style_id": "brand", "version": 2, "name": "Brand", "state": "approved", "profile": {"zoom": {"punch_frames": 7}},
+    }))
+    assert panel._create_clip_job("owner", record, "source", selected) == "job"
+    assert json.loads((job.dir / "style_selection.json").read_text()) == {
+        "style_id": "brand", "version": 2, "name": "Brand", "state": "pinned",
+    }
+    assert style_library.resolve_preset("brand", 2)["zoom"]["punch_frames"] == 7

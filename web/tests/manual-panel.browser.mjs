@@ -69,6 +69,18 @@ try {
     assert.equal(plan.segments.length, 3);
     assert.equal(plan.segments[0].source_in, 1.5);
     assert.equal(plan.duration, 4.5);
+    const clips = page.locator('[aria-label="قطعه‌های ویدیو"] button');
+    await clips.first().click();
+    await page.getByRole("button", {name: "کپی قطعه", exact: true}).click();
+    await clips.last().click();
+    await page.getByRole("button", {name: "چسباندن بعد از این قطعه", exact: true}).click();
+    await clips.nth(3).waitFor();
+    const withCopy = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
+    assert.equal(withCopy.segments[3].source_in, plan.segments[0].source_in);
+    assert.notEqual(withCopy.segments[3].id, plan.segments[0].id);
+    await page.getByRole("button", {name: "واگرد", exact: true}).click();
+    await clips.nth(3).waitFor({state: "detached"});
+    plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     const scrubber = page.getByRole("slider", {name: "جابه‌جایی در تایم‌لاین"});
     await scrubber.focus();
     await scrubber.press("Home");

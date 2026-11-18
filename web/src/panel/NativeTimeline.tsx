@@ -15,6 +15,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
   const [range, setRange] = React.useState({start: "0", end: "0"});
   const [trim, setTrim] = React.useState({start: "0", end: "0"});
   const [restore, setRestore] = React.useState("");
+  const [copied, setCopied] = React.useState<Segment | null>(null);
   const [camera, setCamera] = React.useState({from: 1, to: 1});
   const [split, setSplit] = React.useState("");
   const [dragged, setDragged] = React.useState<string | null>(null);
@@ -91,11 +92,28 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
     if (selected && neighbor) void submit({version: data!.version, operation: "move", segment_id: selected.id,
                                             target_id: neighbor.id, after: offset === 1});
   }
+  function copy() {
+    if (!selected || blocked || !data?.arrange) return;
+    setCopied(selected);
+    setHint("قطعه کپی شد. قطعهٔ مقصد را انتخاب کنید.");
+  }
+  function paste() {
+    if (!selected || !copied || blocked || !data?.arrange) return;
+    void submit({version: data.version, operation: "paste", segment_id: selected.id,
+                 start: copied.source_in, end: copied.source_out, zoom_from: copied.zoom.from, zoom_to: copied.zoom.to});
+  }
+  function keyboard(event: React.KeyboardEvent<HTMLElement>) {
+    if ((!event.ctrlKey && !event.metaKey) || !(event.target instanceof HTMLElement) ||
+        event.target.closest("input, textarea, select, [contenteditable]") || blocked || !data?.arrange || !selected) return;
+    const key = event.key.toLowerCase();
+    if (key === "c" && !window.getSelection()?.toString()) { event.preventDefault(); copy(); }
+    if (key === "v" && copied) { event.preventDefault(); paste(); }
+  }
   const serverTarget = project.state?.render_target !== "browser";
   const valid = activeRange.start !== "" && activeRange.end !== "" &&
     Number(activeRange.start) >= 0 && Number(activeRange.end) > Number(activeRange.start);
 
-  return <section className="mp-inspector">
+  return <section className="mp-inspector" onKeyDown={keyboard}>
     <div className="mp-section-head"><h2>برش‌های تدوین</h2><span className="badge" dir="ltr">{data.duration.toFixed(2)} s · {data.width} × {data.height} · {data.fps} fps</span>
       <div className="mp-actions">
         <button className="btn btn-secondary btn-sm" disabled={blocked || !past.length} onClick={() => restoreHistory("undo")}>واگرد</button>
@@ -165,6 +183,10 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
         <button className="btn btn-secondary btn-sm" disabled={selectedIndex <= 0} onClick={() => move(-1)}>یک قطعه عقب‌تر</button>
         <button className="btn btn-secondary btn-sm" disabled={selectedIndex >= data.segments.length - 1} onClick={() => move(1)}>یک قطعه جلوتر</button>
         <button className="btn btn-secondary btn-sm" onClick={() => void submit({version: data.version, operation: "duplicate", segment_id: selected.id})}>تکثیر</button>
+        <button className="btn btn-secondary btn-sm" onClick={copy}>کپی قطعه</button>
+        <button className="btn btn-secondary btn-sm" disabled={!copied} onClick={paste}>چسباندن بعد از این قطعه</button>
+        {data.segments.length > 1 && <button className="btn btn-secondary btn-sm" onClick={() =>
+          void submit({version: data.version, operation: "remove_range", start: selected.start, end: selected.end})}>حذف قطعه</button>}
       </div>}
       {selected.splittable && <>
       <label>زمان تقسیم در منبع<input className="input" type="number" dir="ltr" min={selected.source_in} max={selected.source_out}

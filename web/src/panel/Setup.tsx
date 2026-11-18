@@ -5,6 +5,7 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { friendlyError } from "../ui";
 import type { Capabilities, Engine, Setup as SetupData } from "./types";
 
+const NativeStyles = React.lazy(() => import("./NativeStyles").then(m => ({default: m.NativeStyles})));
 const FilesPicker = React.lazy(() => import("../studio/FilesPicker").then(m => ({ default: m.FilesPicker })));
 const CloudPicker = React.lazy(() => import("../studio/CloudPicker").then(m => ({ default: m.CloudPicker })));
 export const engines: {id: Engine; name: string; detail: string; icon: IconName; claude?: boolean}[] = [
@@ -22,6 +23,7 @@ export const engines: {id: Engine; name: string; detail: string; icon: IconName;
 type Props = { id: string; initial: SetupData; capabilities: Capabilities; onStarted: () => Promise<unknown> };
 
 export function Setup({id, initial, capabilities, onStarted}: Props) {
+  const [showStyles, setShowStyles] = React.useState(false);
   const [data, setData] = React.useState(initial);
   const [picker, setPicker] = React.useState<"files" | "cloud" | null>(null);
   const [assets, setAssets] = React.useState<Record<string, StudioAttachment>>({});
@@ -125,7 +127,7 @@ export function Setup({id, initial, capabilities, onStarted}: Props) {
       <legend className="mp-section-label">نوع ویدیو</legend>
       <div className="mp-engine-grid">
         {engines.map(engine => <button key={engine.id} className="mp-engine" aria-pressed={data.engine === engine.id}
-          disabled={engine.claude && !capabilities.claude_motion} onClick={() => update({engine: engine.id, style: "", motion_so: false})}>
+          disabled={engine.claude && !capabilities.claude_motion} onClick={() => update({engine: engine.id, style: "", style_profile: null, motion_so: false})}>
           <span className="mp-engine-icon"><Icon name={engine.icon} size={21}/></span><span><b>{engine.name}</b>
             <small>{engine.claude && !capabilities.claude_motion ? "روی این سرور فعال نیست" : engine.detail}</small></span>
         </button>)}
@@ -157,6 +159,12 @@ export function Setup({id, initial, capabilities, onStarted}: Props) {
               {[15, 30, 45, 60].map(n => <option key={n} value={n}>{n} ثانیه</option>)}</select></label>
         </>}
       </div>
+      {data.engine === "clips" && <details onToggle={event => setShowStyles(event.currentTarget.open)}>
+        <summary>سبک تصویری پروژه</summary>
+        {showStyles && <React.Suspense fallback={<p role="status">در حال دریافت سبک‌ها…</p>}>
+          <NativeStyles value={data.style_profile} onChange={style_profile => update({style_profile})}/>
+        </React.Suspense>}
+      </details>}
       <h2 className="mp-section-label">رسانه</h2>
       <div className="mp-actions">
         <button className="btn btn-secondary" onClick={() => fileRef.current?.click()} disabled={data.attachment_ids.length >= 16}><Icon name="paperclip" size={17}/>آپلود</button>

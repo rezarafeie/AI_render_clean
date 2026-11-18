@@ -1,8 +1,9 @@
 export type Engine = "talking" | "localize" | "motion" | "vox" | "story" | "product" | "clips" | "storyboard" | "discovery";
 export type PanelMode = "manual" | "assisted" | "auto";
 export type PanelPreferences = {mode?: PanelMode | null; agent_mode?: "lite" | "medium" | "pro" | null};
+export type StyleReference = {style_id: string; version: number};
 export type Setup = {
-  title: string; engine: Engine; mode: PanelMode; style: string;
+  title: string; engine: Engine; mode: PanelMode; style: string; style_profile?: StyleReference | null;
   topic: string; motion_so?: boolean; aspect: "source" | "vertical" | "square" | "landscape"; seconds: 15 | 30 | 45 | 60; source_url: string; attachment_ids: string[];
 };
 export type Capabilities = { talking_styles: {id: string; label: string}[]; claude_motion: boolean; motion_so: boolean };
@@ -27,6 +28,7 @@ export type SegmentChange = {version: number | null} & (
   | {operation: "restore"; restore_version: number}
   | {operation: "split"; segment_id: string; start: number}
   | {operation: "duplicate"; segment_id: string}
+  | {operation: "paste"; segment_id: string; start: number; end: number; zoom_from: number; zoom_to: number}
   | {operation: "zoom"; segment_id: string; zoom_from: number; zoom_to: number}
   | {operation: "move"; segment_id: string; target_id: string; after: boolean}
 );
