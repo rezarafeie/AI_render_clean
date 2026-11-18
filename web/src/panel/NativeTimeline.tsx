@@ -2,7 +2,9 @@ import React from "react";
 import { api, type StudioProject } from "../api";
 import { friendlyError } from "../ui";
 import { NativeLayers } from "./NativeLayers";
-import type { LayerChange, NativeTimeline as Timeline, Segment, SegmentChange } from "./types";
+import type { CaptionFont, LayerChange, NativeTimeline as Timeline, Segment, SegmentChange } from "./types";
+
+const Typography = React.lazy(() => import("./Typography").then(m => ({default: m.Typography})));
 
 export function NativeTimeline({project, refresh, seek}: {project: StudioProject; refresh: () => Promise<unknown>; seek?: (seconds: number) => void}) {
   const [data, setData] = React.useState<Timeline | null>(null);
@@ -10,6 +12,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
   const [range, setRange] = React.useState({start: "0", end: "0"});
   const [trim, setTrim] = React.useState({start: "0", end: "0"});
   const [restore, setRestore] = React.useState("");
+  const [camera, setCamera] = React.useState({from: 1, to: 1});
   const [split, setSplit] = React.useState("");
   const [dragged, setDragged] = React.useState<string | null>(null);
   const [past, setPast] = React.useState<number[]>([]);
@@ -19,6 +22,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
   const [hint, setHint] = React.useState("");
   const [mode, setMode] = React.useState<"trim" | "remove_range">("trim");
   const [cursor, setCursor] = React.useState(0);
+  const [showTypography, setShowTypography] = React.useState(false);
   const [zoom, setZoom] = React.useState(45);
   React.useEffect(() => {
     let active = true;
@@ -35,6 +39,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
     setCursor(segment.start);
     seek?.(segment.source_in);
     setRange({start: segment.start.toFixed(3), end: segment.end.toFixed(3)});
+    setCamera(segment.zoom);
     setTrim({start: segment.source_in.toFixed(3), end: segment.source_out.toFixed(3)});
     setSplit(((segment.source_in + segment.source_out) / 2).toFixed(3));
   }
@@ -142,18 +147,39 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
         if (mode === "remove_range") void submit({...values, operation: "remove_range"});
       }}>{mode === "trim" ? "ذخیرهٔ برش" : "حذف این بازه و جابه‌جایی ادامهٔ تایم‌لاین"}</button>
     </fieldset>}
-    {data.arrange && selected && <fieldset className="mp-reset" disabled={blocked}>
+    {selected && (data.arrange || selected.splittable || selected.zoom_editable) && <fieldset className="mp-reset" disabled={blocked}>
       <legend>چیدمان قطعه</legend>
-      <div className="mp-actions">
+      {data.arrange && <div className="mp-actions">
         <button className="btn btn-secondary btn-sm" disabled={selectedIndex <= 0} onClick={() => move(-1)}>یک قطعه عقب‌تر</button>
         <button className="btn btn-secondary btn-sm" disabled={selectedIndex >= data.segments.length - 1} onClick={() => move(1)}>یک قطعه جلوتر</button>
         <button className="btn btn-secondary btn-sm" onClick={() => void submit({version: data.version, operation: "duplicate", segment_id: selected.id})}>تکثیر</button>
-      </div>
+      </div>}
+      {selected.splittable && <>
       <label>زمان تقسیم در منبع<input className="input" type="number" dir="ltr" min={selected.source_in} max={selected.source_out}
         value={split} step={1 / data.fps} onChange={e => setSplit(e.target.value)}/></label>
       <button className="btn btn-secondary" disabled={Number(split) <= selected.source_in || Number(split) >= selected.source_out}
         onClick={() => void submit({version: data.version, operation: "split", segment_id: selected.id, start: Number(split)})}>تقسیم قطعه</button>
+      </>}
+      {selected.zoom_editable && <details>
+        <summary>حرکت دوربین</summary>
+        <div className="mp-form-grid">
+          <label>زوم آغاز · {camera.from.toFixed(2)}<input type="range" min={1} max={1.5} step={.01} value={camera.from}
+            onChange={e => setCamera({...camera, from: Number(e.target.value)})}/></label>
+          <label>زوم پایان · {camera.to.toFixed(2)}<input type="range" min={1} max={1.5} step={.01} value={camera.to}
+            onChange={e => setCamera({...camera, to: Number(e.target.value)})}/></label>
+        </div>
+        <button className="btn btn-secondary" disabled={camera.from === selected.zoom.from && camera.to === selected.zoom.to}
+          onClick={() => void submit({version: data.version, operation: "zoom", segment_id: selected.id,
+                                      zoom_from: camera.from, zoom_to: camera.to})}>ذخیرهٔ حرکت دوربین</button>
+      </details>}
     </fieldset>}
+    {data.layers.some(layer => layer.kind === "caption") && <details onToggle={e => setShowTypography(e.currentTarget.open)}>
+      <summary>فونت زیرنویس</summary>
+      {showTypography && <React.Suspense fallback={<p role="status">در حال بارگذاری فونت‌ها…</p>}>
+        <Typography family={data.caption_font} approvedId={data.caption_font_id} disabled={blocked}
+          onSave={(font: CaptionFont | null) => save(() => api.setPanelCaptionFont(project.id, data.version, font))}/>
+      </React.Suspense>}
+    </details>}
     {data.versions.length > 1 && <label>بازگردانی برنامه<select className="input" value={restore} disabled={blocked} onChange={e => setRestore(e.target.value)}>
       <option value="">نسخه را انتخاب کنید</option>
       {[...data.versions].reverse().map(item => <option value={item.version} key={item.version}>نسخهٔ {item.version}</option>)}

@@ -4,18 +4,21 @@ import { api, type CreativeResource, type LibraryAsset, type StyleProfile } from
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { friendlyError } from "../ui";
+import { canApplyResource, ResourceApply } from "./ResourceApply";
 import { useAuth } from "../auth/AuthContext";
 
 const MotionLibrary = React.lazy(() => import("../MotionLibrary"));
-const FontLibrary = React.lazy(() => import("../FontLibrary").then(m => ({default: m.FontLibrary})));
+const Typography = React.lazy(() => import("./Typography").then(m => ({default: m.Typography})));
 
 type Category = "gallery" | "registry" | "assets" | "fonts" | "styles" | "favorites";
 const groups: [Category, string][] = [["registry", "رجیستری افکت و ترنزیشن"], ["gallery", "گالری موشن"], ["assets", "رسانه و صدا"], ["fonts", "فونت‌ها"], ["styles", "سبک‌ها"], ["favorites", "علاقه‌مندی‌ها"]];
 
-export function Resources({onTools}: {onTools?: () => void}) {
+export function Resources({onTools, job, projectId, onApplied}: {onTools?: () => void; job?: string; projectId?: string; onApplied?: () => Promise<unknown>}) {
   const {user} = useAuth();
   const storageKey = `editorgpt.panel.favorites.${user?.id ?? "local"}`;
   const [category, setCategory] = React.useState<Category>("registry");
+  const [apply, setApply] = React.useState<CreativeResource | null>(null);
+  const [saved, setSaved] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [onlyWorking, setOnlyWorking] = React.useState(false);
   const [rows, setRows] = React.useState<CreativeResource[]>([]);
@@ -74,11 +77,14 @@ export function Resources({onTools}: {onTools?: () => void}) {
   return <section className="mp-inspector" aria-label="کتابخانهٔ خلاقیت">
     <div className="mp-section-head"><h2>کتابخانه</h2><Link className="btn btn-sm btn-secondary" to="/motion-library">گالری موشن</Link></div>
     <div className="mp-chips">{groups.map(([key, label]) => <button key={key} className="btn btn-sm btn-secondary" aria-pressed={category === key}
-      onClick={() => {setCategory(key); setOffset(0); setCurrent(null); setError(""); setLoading(false);}}>{label}</button>)}</div>
+      onClick={() => {setCategory(key); setOffset(0); setCurrent(null); setApply(null); setError(""); setLoading(false);}}>{label}</button>)}</div>
     {category !== "fonts" && category !== "gallery" && <input className="input" type="search" aria-label="جستجو در منابع" placeholder="جستجو در منابع…" value={query}
       onChange={e => {setOffset(0); setQuery(e.target.value);}}/>}
     {category === "registry" && <label className="mp-check"><input type="checkbox" checked={onlyWorking} onChange={e => {setOffset(0); setOnlyWorking(e.target.checked);}}/>فقط موارد متصل به موتور</label>}
     {error && <p className="notice" data-tone="error" role="alert">{error}</p>}
+    {saved && <p role="status" className="mp-muted">در تایم‌لاین ذخیره شد. برای دیدن جلوهٔ نهایی، رندر پیش‌نمایش بگیرید.</p>}
+    {apply && job && projectId && <ResourceApply key={`${job}:${apply.id}`} item={apply} job={job} projectId={projectId} onClose={() => setApply(null)}
+      onSaved={async () => {setApply(null); setSaved(true); await onApplied?.();}}/>}
     {loading && <p className="mp-muted" role="status">در حال دریافت منابع…</p>}
     {(category === "registry" || category === "favorites") && <>
       <div className="mp-gallery">
@@ -89,6 +95,9 @@ export function Resources({onTools}: {onTools?: () => void}) {
           <div><b dir="auto">{item.name}</b><small dir="auto">{item.category} · {item.engine}</small><small>{item.availability === "existing-pipeline" ? "متصل به موتور سازگار" : item.availability === "catalog-only" ? "فقط مرجع" : "پشتیبانی نمی‌شود"}</small></div>
           <div className="mp-actions">
             {item.preview_video && <button className="btn btn-sm btn-secondary" onClick={() => setCurrent(current === item.id ? null : item.id)}>{current === item.id ? "بستن پخش" : "پیش‌نمایش"}</button>}
+            {job && projectId && canApplyResource(item) && <button className="btn btn-sm btn-primary" onClick={() => {
+              setApply(item); setSaved(false);
+            }} aria-label={`اعمال ${item.name}`}>اعمال</button>}
             <button className="btn btn-sm btn-secondary" aria-pressed={Boolean(favorites[item.id])} onClick={() => favorite(item)}>{favorites[item.id] ? "★" : "☆"} <span className="sr-only">علاقه‌مندی</span></button>
           </div>
           {item.limitations.length > 0 && <details><summary>سازگاری و محدودیت‌ها</summary><p>{item.limitations.join(" · ")}</p></details>}
@@ -117,7 +126,8 @@ export function Resources({onTools}: {onTools?: () => void}) {
       <Link className="btn btn-secondary btn-sm" to="/style-library">پیش‌نمایش و مدیریت سبک‌ها</Link>
     </div>}
     {category === "gallery" && <React.Suspense fallback={<p role="status">در حال بارگذاری گالری…</p>}><MotionLibrary/></React.Suspense>}
-    {category === "fonts" && <React.Suspense fallback={<p role="status">در حال باز کردن نمونهٔ فونت‌ها…</p>}><FontLibrary selectable={false}/></React.Suspense>}
+    {category === "fonts" && <React.Suspense fallback={<p role="status">در حال باز کردن نمونهٔ فونت‌ها…</p>}><Typography/>
+      <Link className="btn btn-secondary btn-sm" to="/style-library#fonts">مدیریت و ورود فونت</Link></React.Suspense>}
     <div className="mp-actions">
       {onTools && <button className="btn btn-secondary" onClick={onTools}>اعمال منابع سازگار در ابزار پروژه</button>}
       <Link className="btn btn-secondary btn-sm" to="/templates">تمپلیت‌ها</Link>

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.routers import studio
+from engine.operations import ResourceTransitionSettings
 
 
 router = APIRouter(prefix="/panel", tags=["manual-editor"])
@@ -391,9 +392,15 @@ async def native_segments(request: Request, project_id: str):
     job, plan = await _native_job(request, project_id)
     spans = segment_spans(plan)
     versions = await asyncio.to_thread(plan_versions.list_versions, job)
+    effects = {item["segment_id"] for item in plan.get("visual_effects") or []}
+    transitioned = {item[key] for item in plan.get("transitions") or [] for key in ("from_segment_id", "to_segment_id")}
     def span_payload(span):
+        row = plan["segments"][span.index]
+        zoom = row.get("zoom") or {"from": 1.0, "to": 1.0}
         return {"id": span.id, "start": span.start, "end": span.end,
-                "source_in": span.source_in, "source_out": span.source_out}
+                "source_in": span.source_in, "source_out": span.source_out, "zoom": zoom,
+                "zoom_editable": span.id not in effects,
+                "splittable": span.id not in effects and span.id not in transitioned and zoom["from"] == zoom["to"]}
     from pathlib import Path
     layers = []
     for kind, key in _LAYER_KEYS.items():
@@ -407,6 +414,8 @@ async def native_segments(request: Request, project_id: str):
                            "position": row.get("position", "bottom"), "volume_db": row.get("volume_db", -14)})
     return {"segments": [span_payload(span) for span in spans], "duration": spans[-1].end,
             "layers": layers,
+            "caption_font": plan["canvas"].get("caption_font"),
+            "caption_font_id": plan["canvas"].get("caption_font_id"),
             "arrange": _can_arrange(plan),
             "fps": plan["canvas"]["fps"], "job_id": job.id,
             "version": versions[-1]["version"] if versions else None,
@@ -417,13 +426,15 @@ async def native_segments(request: Request, project_id: str):
 class SegmentChange(BaseModel):
     model_config = {"extra": "forbid"}
     version: int | None = None
-    operation: Literal["trim", "remove_range", "restore", "split", "duplicate", "move"]
+    operation: Literal["trim", "remove_range", "restore", "split", "duplicate", "move", "zoom"]
     segment_id: str | None = Field(default=None, max_length=80)
     start: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     end: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     restore_version: int | None = Field(default=None, ge=1)
     target_id: str | None = Field(default=None, max_length=80)
     after: bool = False
+    zoom_from: float | None = Field(default=None, ge=1.0, le=1.5, allow_inf_nan=False)
+    zoom_to: float | None = Field(default=None, ge=1.0, le=1.5, allow_inf_nan=False)
 
 
 def _can_arrange(plan: dict) -> bool:
@@ -437,7 +448,7 @@ def _arrange_segments(plan: dict, body: SegmentChange) -> dict:
     from copy import deepcopy
     from uuid import uuid4
 
-    if not _can_arrange(plan):
+    if body.operation in {"duplicate", "move"} and not _can_arrange(plan):
         raise HTTPException(409, "این برنامه لایه‌هایی دارد که با جابه‌جایی قطعه همگام نمی‌شوند.")
     result = deepcopy(plan)
     clips = result["segments"]
@@ -449,19 +460,34 @@ def _arrange_segments(plan: dict, body: SegmentChange) -> dict:
         raise HTTPException(422, "سقف تعداد قطعه‌های این برنامه رسیده است.")
     if body.operation == "duplicate":
         clips.insert(index + 1, {**clip, "id": "clip-" + uuid4().hex[:12]})
+    elif body.operation == "zoom":
+        if any(row["segment_id"] == clip["id"] for row in plan.get("visual_effects") or []):
+            raise HTTPException(409, "افکت این قطعه، حرکت دوربین را تعیین می‌کند.")
+        if body.zoom_from is None or body.zoom_to is None:
+            raise HTTPException(422, "مقدار آغاز و پایان زوم را وارد کنید.")
+        clip["zoom"] = {"from": body.zoom_from, "to": body.zoom_to}
     elif body.operation == "split":
+        zoom = clip.get("zoom") or {"from": 1.0, "to": 1.0}
+        if (zoom["from"] != zoom["to"]
+                or any(row["segment_id"] == clip["id"] for row in plan.get("visual_effects") or [])
+                or any(clip["id"] in (row["from_segment_id"], row["to_segment_id"])
+                       for row in plan.get("transitions") or [])):
+            raise HTTPException(409, "تقسیم این قطعه زمان‌بندی افکت، زوم یا ترنزیشن آن را تغییر می‌دهد.")
         if body.start is None:
             raise HTTPException(422, "زمان برش را انتخاب کنید.")
         frame = 1 / plan["canvas"]["fps"]
         start, end = clip["in"], clip["out"]
-        cut = round(body.start / frame) * frame
-        if cut - start < frame or end - cut < frame:
+        cut_frames = round((body.start - start) / frame)
+        total_frames = round((end - start) / frame)
+        if cut_frames < 1 or cut_frames >= total_frames:
             raise HTTPException(422, "در هر طرف برش دست‌کم یک فریم لازم است.")
-        zoom = clip.get("zoom") or {"from": 1.0, "to": 1.0}
-        middle = zoom["from"] + (zoom["to"] - zoom["from"]) * (cut - start) / (end - start)
-        left = {**clip, "out": cut, "zoom": {**zoom, "to": middle}}
-        right = {**clip, "id": "clip-" + uuid4().hex[:12], "in": cut, "zoom": {**zoom, "from": middle}}
-        clips[index:index + 1] = [left, right]
+        cut = start + cut_frames * frame
+        if cut >= end:
+            raise HTTPException(422, "زمان تقسیم باید داخل قطعه باشد.")
+        # Snap relative to the source in-point so the two rendered frame
+        # counts sum to the original and output-timed layers stay aligned.
+        clips[index:index + 1] = [{**clip, "out": cut},
+                                  {**clip, "id": "clip-" + uuid4().hex[:12], "in": cut}]
     else:
         if body.target_id == body.segment_id:
             return plan
@@ -502,7 +528,7 @@ async def change_segment(request: Request, project_id: str, body: SegmentChange)
                     operations=[{"op": "restore", "from_version": body.restore_version}])
                 if errors:
                     raise HTTPException(422, "بعضی از رسانه‌های این نسخه در دسترس نیستند.")
-            elif body.operation in {"split", "duplicate", "move"}:
+            elif body.operation in {"split", "duplicate", "move", "zoom"}:
                 candidate = _arrange_segments(plan, body)
                 if candidate != plan:
                     _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",
@@ -512,6 +538,51 @@ async def change_segment(request: Request, project_id: str, body: SegmentChange)
             else:
                 await asyncio.to_thread(jobs.apply_plan_operations, job, [operation],
                                         base_version=body.version, base_plan=plan)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    return await native_segments(request, project_id)
+
+
+class NativeResourceChange(BaseModel):
+    model_config = {"extra": "forbid"}
+    version: int | None = None
+    kind: Literal["effect", "transition"]
+    resource_id: str = Field(min_length=1, max_length=160)
+    targets: list[str] = Field(min_length=1, max_length=500)
+    settings: ResourceTransitionSettings = Field(default_factory=ResourceTransitionSettings)
+
+
+@router.patch("/projects/{project_id}/resource")
+async def apply_native_resource(request: Request, project_id: str, body: NativeResourceChange):
+    from app import jobs, plan_versions
+
+    user = studio._user(request)
+    await _native_job(request, project_id)
+    with _lock(user, project_id):
+        job, plan = await _native_job(request, project_id)
+        latest = await asyncio.to_thread(plan_versions.latest_version, job)
+        if (latest["version"] if latest else None) != body.version or job.render.status in {"queued", "running"}:
+            raise HTTPException(409, "برنامه تغییر کرده یا در حال رندر است.")
+        ids = [row["id"] for row in plan["segments"]]
+        neighbors = dict(zip(ids, ids[1:]))
+        operations = []
+        for target in dict.fromkeys(body.targets):
+            if body.kind == "effect" and target in ids:
+                operations.extend([
+                    {"op": "set_resource_effect", "segment_id": target, "resource_id": body.resource_id},
+                    {"op": "lock", "target": "effect", "segment_id": target},
+                ])
+            elif body.kind == "transition" and target in neighbors:
+                operations.append({"op": "set_resource_transition", "from_segment_id": target,
+                                   "to_segment_id": neighbors[target], "resource_id": body.resource_id,
+                                   "settings": body.settings.model_dump()})
+            else:
+                raise HTTPException(422, "قطعه یا اتصال در برنامهٔ ذخیره‌شده پیدا نشد.")
+        try:
+            await asyncio.to_thread(jobs.apply_plan_operations, job, operations,
+                                    base_version=body.version, base_plan=plan)
+        except jobs.PlanVersionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
     return await native_segments(request, project_id)
@@ -639,4 +710,67 @@ async def change_layer(request: Request, project_id: str, body: LayerChange):
                                                operations=[{"op": body.operation, "kind": body.kind}])
             if errors:
                 raise HTTPException(422, "این لایه با رسانه یا قالب رندر فعلی سازگار نیست.")
+    return await native_segments(request, project_id)
+
+
+class CaptionFontChange(BaseModel):
+    model_config = {"extra": "forbid"}
+    version: int | None = None
+    family: str | None = Field(default=None, min_length=1, max_length=160)
+    font_id: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+@router.get("/caption-fonts")
+def caption_fonts(request: Request, persian: bool = False):
+    from engine.font_library import planner_font_options
+
+    studio._user(request)
+    return planner_font_options(persian=persian)
+
+
+@router.get("/caption-fonts/file")
+def bundled_caption_font(request: Request, family: str):
+    from fastapi.responses import FileResponse
+    from engine.font_library import render_font_path
+    from engine.schema import Canvas
+
+    studio._user(request)
+    if not 1 <= len(family) <= 160:
+        raise HTTPException(404, "فونت پیدا نشد.")
+    path = render_font_path(Canvas(width=2, height=2, fps=30, caption_font=family))
+    if not path:
+        raise HTTPException(404, "فونت پیدا نشد.")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.patch("/projects/{project_id}/caption-font")
+async def set_caption_font(request: Request, project_id: str, body: CaptionFontChange):
+    from app import jobs, plan_versions
+    from engine.font_library import render_font_path, resolve_font
+    from engine.schema import Canvas
+
+    user = studio._user(request)
+    await _native_job(request, project_id)
+    with _lock(user, project_id):
+        job, plan = await _native_job(request, project_id)
+        latest = await asyncio.to_thread(plan_versions.latest_version, job)
+        if (latest["version"] if latest else None) != body.version or job.render.status in {"queued", "running"}:
+            raise HTTPException(409, "برنامه تغییر کرده یا در حال رندر است.")
+        canvas = {**plan["canvas"], "caption_font": body.family, "caption_font_id": body.font_id}
+        try:
+            if body.font_id:
+                entry = await asyncio.to_thread(resolve_font, body.font_id)
+                if entry.get("archived_at"):
+                    raise ValueError("Archived font")
+                canvas["caption_font"] = entry["family"]
+            elif body.family and not await asyncio.to_thread(render_font_path, Canvas.model_validate(canvas)):
+                raise ValueError("Missing renderer font")
+        except ValueError as exc:
+            raise HTTPException(422, "فونت انتخاب‌شده برای رندر در دسترس نیست.") from exc
+        candidate = {**plan, "canvas": canvas}
+        if candidate != plan:
+            _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",
+                                               operations=[{"op": "caption_font", "family": canvas["caption_font"], "font_id": body.font_id}])
+            if errors:
+                raise HTTPException(422, "فونت با برنامهٔ رندر سازگار نیست.")
     return await native_segments(request, project_id)

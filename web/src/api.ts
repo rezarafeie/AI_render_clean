@@ -1,4 +1,4 @@
-import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange } from "./panel/types";
+import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange, ResourceChange, CaptionFont } from "./panel/types";
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
 const BASE = "/api";
@@ -565,6 +565,21 @@ export const api = {
   async renderPanelSegments(id: string, version: number | null, preview: boolean): Promise<{status: string}> {
     return j(await authFetch(`${BASE}/panel/projects/${id}/segments/render`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version, preview }) }));
+  },
+  async panelCaptionFonts(persian: boolean, signal?: AbortSignal): Promise<CaptionFont[]> {
+    return j(await authFetch(`${BASE}/panel/caption-fonts?persian=${persian}`, {signal}));
+  },
+  panelCaptionFontFile(family: string): string {
+    return `${BASE}/panel/caption-fonts/file?${new URLSearchParams({family})}`;
+  },
+  async setPanelCaptionFont(id: string, version: number | null, font: CaptionFont | null): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/caption-font`, {method: "PATCH",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({version, family: font?.family ?? null,
+        font_id: font?.caption_font_id ?? null})}));
+  },
+  async applyPanelResource(id: string, change: ResourceChange): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/resource`, { method: "PATCH",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }));
   },
   async editPanelLayer(id: string, change: LayerChange): Promise<NativeTimeline> {
     return j(await authFetch(`${BASE}/panel/projects/${id}/layers`, { method: "PATCH",

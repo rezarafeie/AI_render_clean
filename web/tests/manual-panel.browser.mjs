@@ -8,7 +8,7 @@ import {chromium} from "playwright";
 const base = process.env.PANEL_TEST_URL || "http://127.0.0.1:5197";
 const folder = mkdtempSync(join(tmpdir(), "editor-manual-browser-"));
 const fixture = join(folder, "source.mp4");
-execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=3:r=30",
+execFileSync("ffmpeg", ["-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=640x480:d=3:r=30",
   "-c:v", "libx264", "-pix_fmt", "yuv420p", fixture]);
 
 const chrome = process.env.CHROME_PATH || (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined);
@@ -80,11 +80,23 @@ try {
     plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     assert.equal(plan.layers[0].label, "Panel verified");
     assert.ok(plan.version > versionBeforeCaption);
+    await page.locator("summary").getByText("فونت زیرنویس", {exact: true}).click();
+    const fontPicker = page.getByRole("combobox", {name: "فونت سازگار با رندر"});
+    await fontPicker.getByRole("option", {name: "Vazirmatn · Regular", exact: true}).waitFor({state: "attached"});
+    await fontPicker.selectOption("bundled:Vazirmatn");
+    await page.locator(".mp-font-sample").waitFor();
+    await page.getByRole("button", {name: "اعمال به زیرنویس‌ها", exact: true}).click();
+    await page.getByText("نسخهٔ جدید ذخیره شد", {exact: false}).waitFor();
+    plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
+    assert.equal(plan.caption_font, "Vazirmatn");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2), true);
     assert.deepEqual(errors, []);
     await page.screenshot({path: join(folder, `panel-${width}.png`), fullPage: true});
     if (process.env.PANEL_TEST_RENDER === "1" && width === 1360) {
+      const accepted = page.waitForResponse(response => response.request().method() === "POST" &&
+        response.url().endsWith("/segments/render"));
       await page.getByRole("button", {name: "رندر خروجی", exact: true}).click();
+      assert.equal((await accepted).status(), 202);
       let state;
       for (let i = 0; i < 35; i++) {
         state = await (await page.request.get(`${base}/api/jobs/${plan.job_id}/render/status`)).json();
@@ -99,7 +111,7 @@ try {
       writeFileSync(rendered, bytes);
       const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", rendered], {encoding: "utf8"}));
       assert.ok(Math.abs(Number(probe.format.duration) - 4.5) < .15, JSON.stringify(probe.format.duration));
-      assert.ok(probe.streams.some(stream => stream.codec_type === "video" && stream.width === 320));
+      assert.ok(probe.streams.some(stream => stream.codec_type === "video" && stream.width === 640));
       const countLightPixels = time => {
         const frame = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", time, "-i", rendered, "-frames:v", "1",
           "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], {maxBuffer: 1024 * 1024});
@@ -112,8 +124,56 @@ try {
       assert.ok(countLightPixels("0.5") > 12, "caption must be visible over the solid blue source");
       assert.equal(countLightPixels("3.5"), 0, "caption must disappear after its editable interval");
     }
+    await page.locator('[aria-label="قطعه‌های ویدیو"] button').first().click();
+    await page.locator("summary").getByText("حرکت دوربین", {exact: true}).click();
+    const camera = page.getByRole("slider", {name: /زوم پایان/});
+    await camera.fill("1.5");
+    await page.getByRole("button", {name: "ذخیرهٔ حرکت دوربین", exact: true}).click();
+    await page.getByText("نسخهٔ جدید ذخیره شد", {exact: false}).waitFor();
+    plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
+    assert.deepEqual(plan.segments[0].zoom, {from: 1, to: 1.5});
+    assert.equal(plan.segments[0].splittable, false);
+    await page.getByRole("button", {name: "کتابخانه", exact: true}).click();
+    await page.getByRole("searchbox", {name: "جستجو در منابع", exact: true}).fill("Crossfade");
+    await page.getByRole("button", {name: "اعمال Crossfade", exact: true}).click();
+    const applyForm = page.getByRole("region", {name: "اعمال منبع"});
+    await applyForm.getByRole("button", {name: "انتخاب همه", exact: true}).click();
+    await applyForm.getByRole("button", {name: "اعمال به تایم‌لاین", exact: true}).click();
+    await page.getByText("در تایم‌لاین ذخیره شد", {exact: false}).waitFor();
+    const updated = await (await page.request.get(`${base}/api/jobs/${plan.job_id}/creative-resources`)).json();
+    assert.equal(updated.plan.transitions.length, 2);
+    assert.ok(updated.plan.transitions.every(row => row.type === "crossfade" && row.duration_frames === 6 && row.locked));
+    await page.getByRole("searchbox", {name: "جستجو در منابع", exact: true}).fill("slow_push__neutral");
+    const applyEffect = page.locator("article").filter({hasText: "Slow Push · Neutral"}).getByRole("button", {name: /اعمال/});
+    await applyEffect.click();
+    await applyForm.getByRole("checkbox").last().check();
+    await applyForm.getByRole("button", {name: "اعمال به تایم‌لاین", exact: true}).click();
+    await page.getByText("در تایم‌لاین ذخیره شد", {exact: false}).waitFor();
+    const withEffect = await (await page.request.get(`${base}/api/jobs/${plan.job_id}/creative-resources`)).json();
+    assert.deepEqual(withEffect.plan.visual_effects, [{segment_id: plan.segments[2].id, type: "slow_push__neutral", locked: true}]);
+    if (process.env.PANEL_TEST_RENDER === "1" && width === 1360) {
+      await page.getByRole("button", {name: "تایم‌لاین", exact: true}).click();
+      const accepted = page.waitForResponse(response => response.request().method() === "POST" &&
+        response.url().endsWith("/segments/render"));
+      await page.getByRole("button", {name: "رندر خروجی", exact: true}).click();
+      assert.equal((await accepted).status(), 202);
+      let state;
+      for (let i = 0; i < 35; i++) {
+        state = await (await page.request.get(`${base}/api/jobs/${plan.job_id}/render/status`)).json();
+        if (["done", "error"].includes(state.status)) break;
+        await new Promise(resolve => setTimeout(resolve, 850));
+      }
+      assert.equal(state.status, "done", JSON.stringify(state));
+      const output = await page.request.get(`${base}/api/jobs/${plan.job_id}/exports/${encodeURIComponent(state.output)}`);
+      assert.ok(output.ok());
+      const rendered = join(folder, "rendered-effects.mp4");
+      writeFileSync(rendered, await output.body());
+      const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", rendered], {encoding: "utf8"}));
+      assert.ok(Math.abs(duration - 4.1) < .09, JSON.stringify(duration));
+    }
     await page.close();
-    console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo`);
+    console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo → camera → library effect and transitions`);
   }
   console.log(`Screenshots: ${folder}`);
 } finally {

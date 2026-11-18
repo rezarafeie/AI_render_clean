@@ -305,7 +305,8 @@ function AuthorizedPanel({id}: {id: string}) {
             </>}
             {effective === "audio" && project && <Audio key={project.id} project={project} refresh={refresh}/>}
             {effective === "speech" && project && <Speech key={project.id} project={project} seek={seek} onChanged={refresh}/>}
-            {effective === "library" && <Resources onTools={project ? () => setView("tools") : undefined}/>}
+            {effective === "library" && <Resources key={project?.id || "library"} projectId={project?.id} job={project?.state?.panel_native ? project.external_ref || undefined : undefined}
+              onTools={project ? () => setView("tools") : undefined} onApplied={refresh}/>}
             {effective === "assistant" && <div className="mp-inspector">
               <h2>دستیار پروژه</h2>
               <label>موتور عامل<select className="input" value={agent} onChange={e => setAgent(e.target.value as AgentMode)}>

@@ -11,10 +11,11 @@ export type PanelTranscript = {
   sentences: (SpeechWord & {id: number; dropped: boolean; words: SpeechWord[]})[];
 };
 
-export type Segment = {id: string; start: number; end: number; source_in: number; source_out: number};
+export type Segment = {id: string; start: number; end: number; source_in: number; source_out: number; zoom: {from: number; to: number}; zoom_editable: boolean; splittable: boolean};
 export type NativeTimeline = {
   segments: Segment[]; job_id: string; version: number | null; fps: number; duration: number; busy: boolean; arrange: boolean;
   versions: {version: number; source: string}[];
+  caption_font: string | null; caption_font_id: string | null;
   layers: {kind: LayerKind; index: number; start: number; end: number; label: string; position: "top" | "bottom"; volume_db: number}[];
 };
 export type SegmentChange = {version: number | null} & (
@@ -23,6 +24,7 @@ export type SegmentChange = {version: number | null} & (
   | {operation: "restore"; restore_version: number}
   | {operation: "split"; segment_id: string; start: number}
   | {operation: "duplicate"; segment_id: string}
+  | {operation: "zoom"; segment_id: string; zoom_from: number; zoom_to: number}
   | {operation: "move"; segment_id: string; target_id: string; after: boolean}
 );
 
@@ -32,3 +34,10 @@ export type LayerChange = {
   index?: number; text?: string; filename?: string; start?: number; end?: number;
   volume_db?: number; position?: "top" | "bottom";
 };
+
+
+export type ResourceChange = {version: number | null; kind: "effect" | "transition"; resource_id: string; targets: string[];
+  settings: {duration_frames: number; direction?: "left" | "right" | "up" | "down"; intensity?: number;
+    zoom_mode?: "zoom_in" | "zoom_out"; zoom_scale?: number}};
+
+export type CaptionFont = {family: string; style: string; caption_font_id?: string};

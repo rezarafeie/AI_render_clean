@@ -113,3 +113,20 @@ def test_native_layer_bounds_and_no_destructive_reorder():
     with pytest.raises(HTTPException) as invalid_time:
         panel._apply_layer(plan, panel.LayerChange(kind="caption", operation="add", start=3, end=6, text="Outside"))
     assert invalid_time.value.status_code == 422
+
+
+def test_split_with_output_layers_preserves_frame_count_and_caption_timing():
+    from engine.operations import output_duration
+
+    plan = {
+        "canvas": {"fps": 30}, "segments": [{"id": "one", "in": .06, "out": 3.48}],
+        "captions": [{"start": 0, "end": 2, "text": "سلام"}],
+    }
+    split = panel._arrange_segments(plan, panel.SegmentChange(operation="split", segment_id="one", start=1))
+    assert output_duration(split) == output_duration(plan)
+    assert split["captions"] == plan["captions"]
+    assert split["segments"][0]["out"] == split["segments"][1]["in"]
+    zoom = panel._arrange_segments(plan, panel.SegmentChange(operation="zoom", segment_id="one", zoom_from=1, zoom_to=1.39))
+    assert zoom["segments"][0]["zoom"] == {"from": 1, "to": 1.39}
+    with pytest.raises(HTTPException, match="زمان‌بندی"):
+        panel._arrange_segments(zoom, panel.SegmentChange(operation="split", segment_id="one", start=1))

@@ -117,3 +117,7 @@
 .mp-lane button {min-width: 14px; text-overflow: ellipsis; white-space: nowrap; padding-inline: 4px; text-align: start}
 .mp-layer-tools video {max-height: 220px; margin-inline: auto}
 .mp-playhead {position: absolute; inset-block: 0; width: 2px; background: var(--text); pointer-events: none}
+.mp-resource-apply {border: 1px solid var(--mp-border); border-radius: 12px; padding: 12px}
+.mp-resource-targets {display: flex; flex-wrap: wrap; gap: 8px; max-height: 180px; overflow: auto}
+.mp-resource-targets label {border: 1px solid var(--mp-border); border-radius: 8px; padding: 6px 10px}
+.mp-font-sample {padding: 12px; min-height: 52px; font-size: clamp(1.25rem, 4vw, 2rem); border: 1px solid var(--mp-border); border-radius: 8px; overflow-wrap: anywhere}
