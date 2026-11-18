@@ -1,6 +1,8 @@
 """Visual editor entry points. All media, plans and render jobs belong to Studio."""
 import asyncio
 import fcntl
+import json
+import os
 import re
 from contextlib import contextmanager
 from typing import Literal
@@ -64,6 +66,48 @@ async def capabilities():
     from brain import motion_so
     from engine.talking_reel import style_list
     return {"talking_styles": style_list(), "claude_motion": _motion_enabled(), "motion_so": motion_so.configured()}
+
+
+class PanelPreferences(BaseModel):
+    model_config = {"extra": "forbid"}
+    mode: Modes | None = None
+    agent_mode: Literal["lite", "medium", "pro"] | None = None
+
+
+def _preferences_path(user: str, conversation: str):
+    from app.studio_flags import conversation_dir
+
+    return conversation_dir(user, conversation) / "panel-preferences.json"
+
+
+def _read_panel_preferences(path) -> PanelPreferences:
+    try:
+        return PanelPreferences.model_validate_json(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return PanelPreferences()
+
+
+@router.get("/{conversation}/preferences")
+async def get_preferences(request: Request, conversation: str):
+    user, _ = await _owned(request, conversation)
+    return await asyncio.to_thread(_read_panel_preferences, _preferences_path(user, conversation))
+
+
+@router.patch("/{conversation}/preferences")
+async def save_preferences(request: Request, conversation: str, body: PanelPreferences):
+    user, _ = await _owned(request, conversation)
+    with _lock(user, conversation):
+        path = _preferences_path(user, conversation)
+        prior = _read_panel_preferences(path)
+        updated = prior.model_copy(update=body.model_dump(exclude_unset=True))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        try:
+            temporary.write_text(json.dumps(updated.model_dump(), ensure_ascii=False), encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return updated
 
 
 @router.post("/draft", status_code=201)

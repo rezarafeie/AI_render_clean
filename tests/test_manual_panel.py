@@ -232,3 +232,20 @@ def test_native_cutaways_are_stored_in_render_order_and_cannot_overlap():
     assert [row["at"] for row in two["broll"]] == [1, 4]
     with pytest.raises(HTTPException, match="هم‌پوشانی"):
         panel._apply_layer(two, overlap, "overlap.mp4")
+
+
+def test_panel_preferences_preserve_studio_agent_and_isolate_accounts(editor, monkeypatch, tmp_path):
+    monkeypatch.setattr(panel, "_preferences_path", lambda user, conversation: tmp_path / user / conversation / "panel.json")
+
+    async def scenario():
+        cid = (await panel.draft(editor))["id"]
+        initial = await studio_store.repo.get_conversation(cid, "owner")
+        await panel.save_preferences(editor, cid, panel.PanelPreferences(mode="assisted"))
+        await panel.save_preferences(editor, cid, panel.PanelPreferences(agent_mode="pro"))
+        assert (await panel.get_preferences(editor, cid)).model_dump() == {"mode": "assisted", "agent_mode": "pro"}
+        assert (await studio_store.repo.get_conversation(cid, "owner"))["state"] == initial["state"]
+        other = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id="other")), headers={}, cookies={})
+        with pytest.raises(HTTPException) as denied:
+            await panel.get_preferences(other, cid)
+        assert denied.value.status_code == 404
+    asyncio.run(scenario())

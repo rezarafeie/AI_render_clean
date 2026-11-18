@@ -234,6 +234,19 @@ try {
       for (let offset = 0; offset + 1 < sound.length; offset += 2) peak = Math.max(peak, Math.abs(sound.readInt16LE(offset)));
       assert.ok(peak > 700, "uploaded sound effect must be audible in the rendered output");
     }
+    const mode = page.getByRole("combobox", {name: "گردش کار", exact: true});
+    await mode.selectOption("assisted");
+    const choice = page.getByRole("combobox", {name: "موتور عامل", exact: true});
+    const preferenceSaved = page.waitForResponse(response => response.request().method() === "PATCH" &&
+      response.url().endsWith("/preferences"));
+    await choice.selectOption("pro");
+    assert.equal((await preferenceSaved).status(), 200);
+    await page.reload();
+    await page.getByRole("button", {name: "دستیار", exact: true}).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("select")].some(select =>
+      select.value === "pro" && [...select.options].some(option => option.text === "Pro")));
+    assert.equal(await mode.inputValue(), "assisted");
+    assert.notEqual((await (await page.request.get(`${base}/api/studio/conversations/${cid}?messages=1`)).json()).state.agent_mode, "pro");
     await page.close();
     console.log(`Manual panel at ${width}px: upload → persisted plan → trim → reload → restore → split → duplicate → reorder → caption → undo/redo → camera → library effect and transitions → uploaded B-roll and SFX`);
   }

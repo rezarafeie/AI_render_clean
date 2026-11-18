@@ -1,5 +1,6 @@
 export type Engine = "talking" | "localize" | "motion" | "vox" | "story" | "product" | "clips" | "storyboard" | "discovery";
 export type PanelMode = "manual" | "assisted" | "auto";
+export type PanelPreferences = {mode?: PanelMode | null; agent_mode?: "lite" | "medium" | "pro" | null};
 export type Setup = {
   title: string; engine: Engine; mode: PanelMode; style: string;
   topic: string; motion_so?: boolean; aspect: "source" | "vertical" | "square" | "landscape"; seconds: 15 | 30 | 45 | 60; source_url: string; attachment_ids: string[];

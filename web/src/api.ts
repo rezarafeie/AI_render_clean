@@ -1,4 +1,4 @@
-import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange, ResourceChange, CaptionFont } from "./panel/types";
+import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange, ResourceChange, CaptionFont, PanelPreferences } from "./panel/types";
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
 const BASE = "/api";
@@ -551,6 +551,13 @@ export const api = {
   },
   async startPanelWork(id: string): Promise<{id: string; started: boolean}> {
     return j(await authFetch(`${BASE}/panel/${id}/start`, { method: "POST" }));
+  },
+  async panelPreferences(id: string): Promise<PanelPreferences> {
+    return j(await authFetch(`${BASE}/panel/${id}/preferences`));
+  },
+  async savePanelPreferences(id: string, values: PanelPreferences): Promise<PanelPreferences> {
+    return j(await authFetch(`${BASE}/panel/${id}/preferences`, {method: "PATCH",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(values)}));
   },
   async panelDraftMedia(id: string): Promise<StudioAttachment[]> {
     return j(await authFetch(`${BASE}/panel/${id}/media`));

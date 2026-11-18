@@ -5,7 +5,7 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon, type IconName } from "../components/Icon";
 import { friendlyError } from "../ui";
 import { Setup } from "./Setup";
-import type { Capabilities, Setup as SetupData } from "./types";
+import type { Capabilities, PanelPreferences, Setup as SetupData } from "./types";
 import "./panel.css";
 
 const Workspace = React.lazy(() => import("../studio/Workspace").then(m => ({default: m.Workspace})));
@@ -94,8 +94,9 @@ function AuthorizedPanel({id}: {id: string}) {
   const [advanced, setAdvanced] = React.useState(false);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState("");
-  const [agent, setAgent] = React.useState<AgentMode>("lite");
-  const [editMode, setEditMode] = React.useState<SetupData["mode"] | null>(null);
+  const [preferences, setPreferences] = React.useState<PanelPreferences>({});
+  const [preferencesLoaded, setPreferencesLoaded] = React.useState(false);
+  const [savingPreferences, setSavingPreferences] = React.useState(false);
   const [motionAnswer, setMotionAnswer] = React.useState("");
   const [pendingSeek, setPendingSeek] = React.useState<{seconds: number; play: boolean} | null>(null);
   const video = React.useRef<HTMLVideoElement>(null);
@@ -107,7 +108,8 @@ function AuthorizedPanel({id}: {id: string}) {
   const projects = chat?.projects ?? [];
   const project = projects.find(row => row.id === (projectId || chat?.state?.current_project_id)) ?? projects[projects.length - 1];
   const currentMotion = !project ? motion : null;
-  const workflowMode = editMode || setup?.mode || "manual";
+  const workflowMode = preferences.mode || setup?.mode || "manual";
+  const agent: AgentMode = preferences.agent_mode || chat?.state?.agent_mode || "lite";
   const isDraft = Boolean(setup && !project && !motionId && !discoveryId);
   const action = chat?.actions?.find(row => row.project_id === project?.id && row.status === "pending");
   const renderActive = Boolean(currentMotion?.active || (project && ACTIVE.has(project.status)));
@@ -126,7 +128,7 @@ function AuthorizedPanel({id}: {id: string}) {
     try {
       const value = await api.getStudioConversation(id, {messages: 1});
       if (!alive.current || ticket !== request.current) return;
-      setChat(value); setAgent(value.state?.agent_mode || "lite"); setError("");
+      setChat(value); setError("");
     } catch (e) {
       if (alive.current && ticket === request.current) setError(friendlyError(e, "open this project"));
     }
@@ -147,6 +149,25 @@ function AuthorizedPanel({id}: {id: string}) {
   }, [isDraft]);
 
   const opened = Boolean(chat && !isDraft);
+  React.useEffect(() => {
+    if (!opened) return;
+    let live = true;
+    api.panelPreferences(id).then(value => { if (live) setPreferences(value); })
+      .catch(e => { if (live) setError(friendlyError(e, "load editor preferences")); })
+      .finally(() => { if (live) setPreferencesLoaded(true); });
+    return () => { live = false; };
+  }, [id, opened]);
+
+  async function savePreferences(values: PanelPreferences) {
+    if (savingPreferences) return;
+    setSavingPreferences(true);
+    setError("");
+    try {
+      setPreferences(await api.savePanelPreferences(id, values));
+      if (values.mode) setView(values.mode === "manual" ? "preview" : "assistant");
+    } catch (e) { setError(friendlyError(e, "save editor preferences")); }
+    finally { setSavingPreferences(false); }
+  }
   React.useEffect(() => {
     if (!opened) return;
     const controller = new AbortController();
@@ -275,9 +296,8 @@ function AuthorizedPanel({id}: {id: string}) {
             {projects.length > 1 && <label>پروژه<select className="input" value={project?.id || ""} onChange={e => {
               setProjectId(e.target.value); setOutput(""); setFileVersions([]); setSourceOnly(false); setPendingSeek(null);
             }}>{projects.map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
-            <label>گردش کار<select className="input" value={workflowMode} onChange={e => {
-              const next = e.target.value as SetupData["mode"]; setEditMode(next); if (next !== "manual") setView("assistant");
-            }}>
+            <label>گردش کار<select className="input" value={workflowMode} disabled={!preferencesLoaded || savingPreferences}
+              onChange={e => void savePreferences({mode: e.target.value as SetupData["mode"]})}>
               <option value="manual">دستی</option><option value="assisted">با کمک دستیار</option><option value="auto">ساخت خودکار</option>
             </select></label>
             <span className="badge">{project?.engine === "talking" || currentMotion ? "۹:۱۶ پیش‌فرض" : "ابعاد ویدیوی پروژه"}</span>
@@ -313,14 +333,15 @@ function AuthorizedPanel({id}: {id: string}) {
               onTools={project ? () => setView("tools") : undefined} onApplied={refresh}/>}
             {effective === "assistant" && <div className="mp-inspector">
               <h2>دستیار پروژه</h2>
-              <label>موتور عامل<select className="input" value={agent} onChange={e => setAgent(e.target.value as AgentMode)}>
+              <label>موتور عامل<select className="input" value={agent} disabled={!preferencesLoaded || savingPreferences}
+                onChange={e => void savePreferences({agent_mode: e.target.value as AgentMode})}>
                 <option value="lite">Lite</option><option value="medium">Medium</option><option value="pro">Pro</option>
               </select></label>
               <div className="mp-actions">{[
                 ["بازبینی", "پروژهٔ فعلی را بررسی کن و فقط پیشنهادهای اولویت‌دار و قابل اجرا بده."],
                 ["پیشنهاد هوک", "سه هوک کوتاه و دقیق برای محتوای همین پروژه پیشنهاد کن."],
                 ["پیشنهاد ریتم", "از داده‌های همین پروژه، پیشنهاد عملی برای بهتر کردن ریتم بده."],
-              ].map(([label, content]) => <button className="btn btn-secondary" key={label} disabled={Boolean(busy) || renderActive}
+              ].map(([label, content]) => <button className="btn btn-secondary" key={label} disabled={Boolean(busy) || renderActive || !preferencesLoaded || savingPreferences}
                 onClick={() => void run(label, () => api.sendStudioMessage(id, content, [], {agent_mode: agent, render_target: "server"}))}>{label}</button>)}</div>
               <AgentRunControls runs={chat.agent_runs || []} onChanged={() => void refresh()}/>
               {chat.messages?.[chat.messages.length - 1]?.role === "assistant" && <p className="mp-reply" dir="auto">{chat.messages[chat.messages.length - 1]?.content}</p>}

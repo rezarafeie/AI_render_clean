@@ -4,7 +4,7 @@
 Studio conversation and its project records. Panel drafts use the same
 authenticated attachments and Studio repository. Creating or cutting a clip
 does not send a user message to the Studio orchestrator. The optional assistant
-uses that conversation's existing agent and credit accounting.
+uses that conversation's existing agent and credit accounting. Panel workflow and explicit agent selections persist separately in the project’s owned Studio storage. Visiting the chat still uses its own preference until a user sends an assisted action.
 
 The application registers one router and one lazy client route. Rendering,
 the existing renderer selection policy, agent dispatch, Studio chat, and the
