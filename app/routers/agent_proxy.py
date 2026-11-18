@@ -728,3 +728,72 @@ def _t_qc(claims: dict, args: dict) -> dict:
 
 MEDIA_TOOLS = {"tts": _t_tts, "music_generate": _t_music_generate, "music_library": _t_music_library, "sfx": _t_sfx, "image_generate": _t_image_generate,
                "stt": _t_stt, "web_read": _t_web_read, "fonts": _t_fonts, "brand_profile": _t_brand, "person_matte": _t_person_matte, "qc_report": _t_qc}
+
+
+# ── admin: every Pro run, its cost and what the agent did ───────────────────
+
+admin_router = APIRouter(prefix="/admin/pro", tags=["admin"])
+
+
+def _admin(request: Request) -> None:
+    from app.routers.lm_admin import allowed
+    if not allowed(request):
+        raise HTTPException(403, "admin only")
+
+
+@admin_router.get("/runs")
+async def admin_runs(request: Request, limit: int = 100):
+    _admin(request)
+    from sqlalchemy import select
+    from app.models import StudioAgentRun
+    from app.studio_store import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(select(StudioAgentRun).where(StudioAgentRun.agent_mode == "pro").order_by(StudioAgentRun.updated_at.desc()).limit(min(limit, 500)))).scalars().all()
+    out = []
+    for row in rows:
+        data = row.data or {}
+        state = data.get("pro") or {}
+        out.append({"id": row.id, "user": row.user_key, "conversation_id": row.conversation_id, "status": row.status, "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "request": str((data.get("request") or {}).get("text") or "")[:200], "spent_credits": state.get("spent_credits"), "usd": round((state.get("spent_credits") or 0) * 4 / 1_000_000, 3),
+                    "calls": state.get("calls"), "turns": state.get("turns"), "outputs": len(state.get("outputs") or []), "error": data.get("error")})
+    return {"runs": out}
+
+
+@admin_router.get("/runs/{run_id}/log")
+async def admin_log(request: Request, run_id: str):
+    """What the agent did in a run (its own transcript): its texts and every tool call with a short result. Admin only."""
+    _admin(request)
+    from sqlalchemy import select
+    from app.models import StudioAgentRun
+    from app.studio_store import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(select(StudioAgentRun).where(StudioAgentRun.id == run_id))).scalar_one_or_none()
+    if not row or row.agent_mode != "pro":
+        raise HTTPException(404, "run not found")
+    session = ((row.data or {}).get("pro") or {}).get("session_id")
+    files = list((pro.RUNS / row.conversation_id / ".claude-config" / "projects").glob(f"*/{session}.jsonl")) if session else []
+    if not files:
+        return {"entries": [], "note": "no transcript"}
+    entries, seen = [], set()
+    for line in files[0].read_text(errors="replace").splitlines():
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        content = (item.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            key = block.get("id") or block.get("tool_use_id") or (block.get("text") or "")[:80]
+            if (block.get("type"), key) in seen:
+                continue
+            seen.add((block.get("type"), key))
+            if block.get("type") == "text" and item.get("type") == "assistant":
+                entries.append({"kind": "text", "text": block["text"][:3000]})
+            elif block.get("type") == "tool_use":
+                entries.append({"kind": "tool", "name": block.get("name"), "input": json.dumps(block.get("input"), ensure_ascii=False)[:1500]})
+            elif block.get("type") == "tool_result":
+                c = block.get("content")
+                text = c if isinstance(c, str) else " ".join(x.get("text", "[image]") for x in c if isinstance(x, dict)) if isinstance(c, list) else ""
+                entries.append({"kind": "result", "error": bool(block.get("is_error")), "text": str(text)[:1200]})
+    return {"entries": entries[-600:]}

@@ -1,6 +1,6 @@
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
-const BASE = "/api";
+export const BASE = "/api";
 const RESUMABLE_FROM = 100 * 1024 ** 2;   // nginx accepts at most 500 MB in one request; pieces are 8 MB
 
 type JobCacheListener = () => void;
@@ -186,7 +186,8 @@ export interface StudioFile { id: string; name: string; kind: "video" | "audio" 
 export interface StudioFiles { files: StudioFile[]; usage: number; quota: number | null }
 export interface StudioAttachment { id: string; kind: "video" | "image" | "audio"; filename: string; mime_type: string; size_bytes: number }
 export type AgentMode = "lite" | "medium" | "pro";
-export interface StudioAgentRun { id: string; message_id: string; agent_mode: AgentMode; status: string; plan?: {summary: string; steps: {tool: string; label: string}[]}; error?: string }
+export interface StudioAgentRun { id: string; message_id: string; agent_mode: AgentMode; status: string; plan?: {summary: string; steps: {tool: string; label: string}[]}; error?: string;
+  pro?: { spent_credits?: number; budget_credits?: number; turns?: number; calls?: number } }
 export interface StudioMessage { id: number; role: "user" | "assistant"; content: string; attachments: string[]; created_at: string; agent_mode?: AgentMode; agent_run_id?: string }
 export interface StudioProject {
   id: string; conversation_id: string; engine: "localize" | "talking" | "motion";
@@ -327,7 +328,7 @@ export function setAdminViewAs(id: string | null): void {
 // a tab without an admin view clears a cookie left from another tab's view, so the administrator's own pages never run as someone else
 if (typeof document !== "undefined") { if (getAdminViewAs()) { document.documentElement.setAttribute("data-admin-view", ""); setAdminViewAs(getAdminViewAs()); } else document.cookie = "admin_view_as=; path=/; max-age=0"; }
 
-async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
   await ensureFreshToken();
   const token = getToken();
   const headers = new Headers(init?.headers);

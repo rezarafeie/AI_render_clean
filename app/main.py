@@ -216,6 +216,7 @@ from app.routers import admin_manage
 app.include_router(admin_manage.router)
 from app.routers import agent_proxy as _agent_proxy
 app.include_router(_agent_proxy.router)
+app.include_router(_agent_proxy.admin_router)
 
 
 @app.middleware("http")

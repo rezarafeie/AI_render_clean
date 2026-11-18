@@ -113,6 +113,7 @@ export default function Settings() {
           <section className="set-section" aria-labelledby="set-admin"><h2 id="set-admin">People &amp; projects</h2>
             <div className="set-grid">
               <NavLink className="set-tile" to="/settings/users"><span className="set-tile-icon"><Icon name="user" size={18}/></span><span className="set-tile-text"><b>Users &amp; projects</b><small>Every user with their chats, projects, renders and files, in full detail.</small></span></NavLink>
+              <NavLink className="set-tile" to="/settings/pro-runs"><span className="set-tile-icon"><Icon name="advanced" size={18}/></span><span className="set-tile-text"><b>اجراهای Pro</b><small>هزینه، وضعیت و لاگ کامل کار عامل در هر اجرا.</small></span></NavLink>
               <NavLink className="set-tile" to="/settings/ai"><span className="set-tile-icon"><Icon name="settings" size={18}/></span><span className="set-tile-text"><b>AI models &amp; logs</b><small>Routing, priorities and request history.</small></span></NavLink>
             </div></section>
           <details className="set-details set-collapsible">

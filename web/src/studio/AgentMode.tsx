@@ -63,7 +63,15 @@ export function AgentRunControls({runs, onChanged}: {runs: StudioAgentRun[]; onC
     catch {setError("عملیات انجام نشد؛ گفتگو را تازه‌سازی و دوباره بررسی کنید.");}
     finally {setBusy(null);}
   };
-  return <>{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
+  const pro = [...runs].reverse().find(r => r.agent_mode === "pro" && r.pro?.spent_credits != null);
+  const fa = (n: number) => n.toLocaleString("fa-IR");
+  const proLine = pro ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
+    {pro.status === "running" || pro.status === "queued" ? "Pro در حال کار · " : "آخرین اجرای Pro · "}
+    {fa(Math.round((pro.pro?.spent_credits || 0) / 1000))} هزار اعتبار مصرف شد
+    {pro.pro?.budget_credits ? ` از سقف ${fa(Math.round(pro.pro.budget_credits / 1000))} هزار` : ""}
+    {pro.pro?.calls ? ` · ${fa(pro.pro.calls)} تماس با مدل` : ""}
+  </p> : null;
+  return <>{proLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
     <div className="action-card" key={record.id} aria-label="EditorGPT Medium plan">
       <h3>{record.status === "waiting_approval" ? "تأیید برنامهٔ EditorGPT Medium" : "اجرای Medium کامل نشد"}</h3>
       <p className="bidi" dir="auto">{record.status === "failed" ? record.error : record.plan?.summary}</p>

@@ -339,7 +339,9 @@ async def get_conversation(request: Request, conversation_id: str, messages: Opt
         payload = _public_conversation(conversation)
         from app.agents.store import runs
         payload["agent_runs"] = [{"id": r["id"], "message_id": r["message_id"], "agent_mode": r["agent_mode"],
-                                  "status": r["status"], "plan": r["data"].get("plan"), "error": r["data"].get("error")}
+                                  "status": r["status"], "plan": r["data"].get("plan"), "error": r["data"].get("error"),
+                                  **({"pro": {k: (r["data"].get("pro") or {}).get(k) for k in ("spent_credits", "budget_credits", "turns", "calls")}}
+                                     if r["agent_mode"] == "pro" else {})}
                                  for r in await runs(conversation_id, _user(request))]
         payload["busy"] = await asyncio.to_thread(conversation_busy, conversation, _user(request))      # the server's own word, whichever process is working
         return payload

@@ -28,6 +28,7 @@ const Settings = React.lazy(() => import("./Settings"));
 const AIModels = React.lazy(() => import("./AIModels"));
 const CreditsPage = React.lazy(() => import("./CreditsPage"));
 const AdminUsers = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUsers })));
+const ProRuns = React.lazy(() => import("./settings/ProRuns").then(module => ({ default: module.ProRuns })));
 const AdminUserDetail = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUserDetail })));
 const Render = React.lazy(() => import("./Render"));
 const MyEffects = React.lazy(() => import("./MyEffects"));
@@ -101,6 +102,7 @@ function App() {
       <Route path="settings/ai" element={<RequireAuth><AIModels/></RequireAuth>}/>
       <Route path="credits" element={<RequireAuth><CreditsPage/></RequireAuth>}/>
       <Route path="settings/users" element={<RequireAuth><AdminUsers/></RequireAuth>}/>
+      <Route path="settings/pro-runs" element={<RequireAuth><ProRuns/></RequireAuth>}/>
       <Route path="settings/users/:id" element={<RequireAuth><AdminUserDetail/></RequireAuth>}/>
       <Route path="new" element={<Navigate to="/studio" replace/>}/><Route path="content" element={<RequireAuth><ContentCreator/></RequireAuth>}/><Route path="localize" element={<RequireAuth><Localize/></RequireAuth>}/><Route path="talking" element={<RequireAuth><TalkingReels/></RequireAuth>}/>
       <Route path="jobs" element={<Navigate to="/projects" replace/>}/><Route path="jobs/:id" element={<RequireAuth><LegacyJobRedirect/></RequireAuth>}/><Route path="jobs/:id/render" element={<RequireAuth><Render/></RequireAuth>}/>
