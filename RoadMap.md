@@ -20,6 +20,13 @@ The feature history is in [docs/stages.md](docs/stages.md) and [plan.md](plan.md
 | User acceptance | Real login, upload, render, export, Hermes flow as applicable in browser | Not proven on VPS in this repository |
 | Hermes credential entry | Users enter App ID, App Secret, Access Token, and Instagram User ID in Hermes; no Instagram credential environment fallback | Implemented in source on 2026-10-12; local API tests passed; VPS/browser acceptance pending |
 
+## 2026-11-18: EditorGPT Pro agent — phases 0–5 shipped
+
+Spec `~/Desktop/motionclaude/pro_agent/EDITORGPT_PRO_AGENT.md`; status, measurements and traps in [docs/PRO_AGENT_PLAN.md](docs/PRO_AGENT_PLAN.md).
+Next: (1) Jarvis session affinity so prompt caching hits steadily (≈ 3× cheaper runs); (2) credit start gate and package price; (3) a second
+agent worker on a dedicated-CPU host or RunPod CPU pod; (4) five measured runs per skill (intro, whiteboard, ad, Vox) to refine the table;
+(5) Sonnet for sub-agents once quality is compared.
+
 ## 2026-10-12: Match reference reel quality — captions, effects, transitions, pre-play cover
 
 - **Reference:** `ig_dash_t3djcci2.mp4` — 1080×1920 / 30 fps / 48.1 s, VP9+AAC-HE, Rafiei Holding reel.

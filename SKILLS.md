@@ -9,6 +9,7 @@ This is the entry point for capabilities needed to ship this project. The detail
 | API and persistence | `app/`, `hermes/`, `alembic/` | Focused API tests, migration review, database-backed workflow |
 | User experience | `web/` | Build plus visible browser checks of the changed flow |
 | Background processing | `app/celery_app.py`, `app/tasks.py`, Redis | Job transitions, worker health, retry/failure behavior |
+| EditorGPT Pro agent (`agent_mode` pro) | `app/agents/pro/` (runner, daemon, prompt, skills), `app/routers/agent_proxy.py`, `Dockerfile.agent` | `tests/test_pro_agent.py`; a real chat request delivered end to end; cost and time recorded in [docs/PRO_AGENT_PLAN.md](docs/PRO_AGENT_PLAN.md) |
 | Deployment and operations | Compose files, `nginx/`, `scripts/deploy.sh`, `deploy.sh` | Config/build checks, PostgreSQL backup and migration, readiness, HTTPS, rollback plan |
 
 For each planned change, identify the affected rows, name the owner and acceptance evidence, and record any missing skill or dependency in [RoadMap.md](RoadMap.md) or a linked scoped plan. Use [Prompts/README.md](Prompts/README.md) for a repeatable task handoff and [GuideLine.md](GuideLine.md) for the release workflow.

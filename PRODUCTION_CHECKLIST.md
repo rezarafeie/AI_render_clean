@@ -1,5 +1,17 @@
 # Production readiness checklist — 2026-10-09
 
+## 2026-11-18: EditorGPT Pro agent (thin layers on `release-ee08af6`, agent worker `ai-render-runtime:pro-8d4fce9`)
+
+Adds the third agent mode «Pro»: a Claude Agent SDK session per chat in its own container (`ai-render-agent-worker-1`, internal network only, no
+provider keys), model calls through the app's proxy `/internal/anthropic/v1/messages` (run token, model allow-list, credits, 402 at the 3 M budget).
+**No database migration** (state lives in `studio_agent_runs.data.pro`). Owner: Reza. Rollback: stop `ai-render-agent-worker-1` (Pro requests then
+fail clearly, Lite/Medium untouched) and redeploy the previous app image.
+
+Evidence: `tests/test_pro_agent.py` passes in the app and agent containers; three real jobs delivered from the studio chat (10 s title film,
+36 s talking reel −14.4 LUFS, 46 s motion explainer), all final renders on the render cloud; cost/time table in `docs/PRO_AGENT_PLAN.md`.
+Open: start gate on credit balance and the selling price per million credits (owner decision); Jarvis session affinity for prompt caching;
+where a second agent worker runs (this VPS has ~45 % CPU steal).
+
 ## 2026-10-23 release: `0749077` on branch `timeline-editing` (editor.rafiei.co)
 
 Adds timeline caption editing, the Edit-tab timeline, resizable sidebar/preview panels and a preview fullscreen button on top of the already deployed `0952797`. **No database migration.** Owner: Reza. Rollback target: image `ai-render-runtime:foundation-0952797` plus the previous `index.html` saved as `/opt/rafieigroup/editor-storage/releases/timeline-0749077/index.previous.html`.

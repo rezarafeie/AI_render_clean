@@ -51,3 +51,65 @@ person's credit is spent. `tests/test_no_router_bypass.py` stays green: the only
 
 1. Where do agent containers run (section 3.2)?
 2. Default per-run budget (spec suggests $8) and who may use Pro at first (admin only?).
+
+---
+
+# Phases 1–5: status (2026-11-18)
+
+| phase | status | evidence |
+|---|---|---|
+| 0 — findings | done | sections 1–5 above |
+| 1 — core | done | proxy `/internal/anthropic/v1/messages` (run token, model allow-list, stream, usage → `_audit` → credits, 402 on budget); runner + daemon in `ai-render-agent-worker-1` (internal `pro_net`, no keys); first film delivered from chat |
+| 2 — tools | done | 25 tools: say, step, assets_list/fetch, show_stills, deliver, render_cloud/status, tts, music_generate/library, sfx, image_generate, stt, web_read, fonts, brand_profile, person_matte, qc_report, ask_user, request_approval; PreToolUse policy; stop (`interrupt`) and resume (same session per chat) |
+| 3 — skills | done | video-director, remotion-kit, talking-premium-edit, talking-reel-edit, ad-reel, motion-explainer, vox-documentary, intro-engines, whiteboard-explainer, film-styles (SKILL.md + reference + kit) |
+| 4 — UI | done | Lite / Medium / Pro switcher (composer + settings), live reply streaming, live thinking rows, one row per tool with request/response, image thumbnails (click to enlarge), Pro cost line, admin page `settings/pro-runs` with the CLI transcript |
+| 5 — measure | done (first pass) | table below; `tests/test_pro_agent.py` (token, folder, policy, image lift, follow-up) passes in the app and agent containers |
+
+## Measured runs (Opus 5.5 through Jarvis; 1M credits ≈ $4 provider cost)
+
+Credits are the studio's weighted tokens (1 = one fresh Opus input token, output ×5, cache read ×0.1), the same ledger as every other engine.
+
+| job | output | credits | ≈ $ | model calls | active time | notes |
+|---|---|---|---|---|---|---|
+| 10 s title film from a photo (phase 1) | 1080×1920, 10 s | 0.26 M | 1.0 | 23 | 13 min | |
+| talking reel from a discovered clip (39 s source) | 1080×1920, 36 s, −14.4 LUFS, cloud render | 1.36 M | 5.5 | 42 | 33 min | three runs: base edit; mix + render; mux + QC + deliver (one more run lost to the resume bug, now fixed) |
+| motion explainer «نخِ ناتمام» (Zeigarnik effect) | 1080×1920, 46 s, narration, music, sfx, generated images | 2.46 M | 9.9 | 31 | 78 min | the big run spent 2.0 M; provider errors forced two continues |
+| 4:5 talking post (25 s source) | TALK2_RESULT | | | | | |
+
+### Where the money goes
+
+- **Fresh input dominates.** In the explainer run 1.69 M of the 2.05 M credits were *uncached* input. Each call resends the whole conversation
+  (40–150 K tokens late in a run); only ~12 K (the system prompt and tools) was read from cache in most calls.
+- **Jarvis caching is erratic.** A direct test (same 35 K-token prefix sent three times with `cache_control`) read 0, then 4 K, then all 35 K from
+  cache: hits depend on which backend serves the call. With steady hits a run would cost roughly a third. **Ask Jarvis for session affinity /
+  sticky routing for one `x-session-id`** — the largest single saving available.
+- Output is small (2–60 K per run); images (contact sheets, stills) are the next driver, hence the one-contact-sheet rule in video-director.
+
+### Proposed credit rule
+
+- Pro is charged with the same weights as every engine (nothing extra to build). A job costs **0.3–3 M credits**; the per-run cap stays 3 M
+  (`PRO_BUDGET_CREDITS`), and a run stops cleanly with a Persian message at the cap.
+- **Start gate:** require a balance of at least 1.5 M credits to start a Pro run (the median job), so a run does not die half-way on 402.
+- **Selling price:** 1 M credits costs ≈ $4 at Jarvis prices; a package price of ≥ $8 per million keeps a 2× margin for retries and cloud render.
+  Show the person the typical range in the switcher hint («معمولاً ۰٫۵ تا ۳ میلیون اعتبار»).
+
+## Traps found while building (all handled in code)
+
+1. Jarvis drops images that sit inside a `tool_result` → the proxy lifts them after the result (`_lift_tool_images`). Without it the agent re-read one still 13 times.
+2. Jarvis sometimes answers an SSE `error` ("could not authenticate") before the first token → the proxy resends (4 tries); the runner continues
+   the same session after a mid-run provider error (3 times), and never posts the error as the agent's message.
+3. The agent may end its turn while a cloud render runs → the runner waits for the render and continues the session; the prompt forbids it too.
+4. A resumed session can first emit a 0-turn result for a leftover background-task notice → the runner reads on to its own turn's result; Bash
+   `run_in_background` is forbidden (background jobs die with the turn); Bash timeouts 10 / 30 min.
+5. Text without any Persian never reaches the chat (it becomes an internal note step in the timeline); the language rule is the prompt's first rule.
+6. The person's upload quota must not block agent outputs → agent files are attached without the quota; admins have unlimited storage.
+7. ElevenLabs Scribe JSON has `sentences`/`words`, no `text` → the stt tool returns timed sentences.
+
+## Operations
+
+- Agent code: `/opt/ai-render/deploy/pro-agent/code/pro` (bind mount). Swap the folder (strip macOS `._*` files); the daemon reloads runner and
+  prompt before every run, so **no restart** (a restart kills an active run). Proxy/tool code is in the app image (thin-layer deploy).
+- Secret: `PRO_WORKER_SECRET` only in `/opt/ai-render/deploy/pro-agent/pro.yml` (600). Logs: `docker logs ai-render-agent-worker-1`;
+  transcripts: `/runs/<chat>/.claude-config/projects/*/*.jsonl` (also on the admin page).
+- Runs one at a time (one daemon). On this VPS (4 vCPU, ~45 % steal) more than one parallel run is not advised; a second worker belongs on a
+  dedicated-CPU host or a RunPod CPU pod (open decision).
