@@ -1,8 +1,11 @@
 import React from "react";
 import { api, type StudioProject } from "../api";
 import { friendlyError } from "../ui";
+import { NativeExport } from "./NativeExport";
 import { NativeLayers } from "./NativeLayers";
 import type { CaptionFont, LayerChange, NativeTimeline as Timeline, Segment, SegmentChange } from "./types";
+
+const transitions: Record<string, string> = {hard_cut: "برش مستقیم", crossfade: "محو نرم", directional: "کشویی", zoom: "زوم"};
 
 const Typography = React.lazy(() => import("./Typography").then(m => ({default: m.Typography})));
 
@@ -93,7 +96,7 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
     Number(activeRange.start) >= 0 && Number(activeRange.end) > Number(activeRange.start);
 
   return <section className="mp-inspector">
-    <div className="mp-section-head"><h2>برش‌های تدوین</h2><span className="badge">{data.duration.toFixed(2)} ثانیه · {data.fps} fps</span>
+    <div className="mp-section-head"><h2>برش‌های تدوین</h2><span className="badge" dir="ltr">{data.duration.toFixed(2)} s · {data.width} × {data.height} · {data.fps} fps</span>
       <div className="mp-actions">
         <button className="btn btn-secondary btn-sm" disabled={blocked || !past.length} onClick={() => restoreHistory("undo")}>واگرد</button>
         <button className="btn btn-secondary btn-sm" disabled={blocked || !future.length} onClick={() => restoreHistory("redo")}>انجام دوباره</button>
@@ -125,9 +128,18 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
                          after: event.clientX > bounds.left + bounds.width / 2});
             setDragged(null);
           }}
-          title={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}>{i + 1}</button>)}
+          title={[`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`, segment.effect].filter(Boolean).join(" · ")}>
+          {i + 1}{segment.effect && <span className="mp-effect-label" aria-hidden="true"> · {segment.effect.replace(/_+/g, " ")}</span>}
+        </button>)}
         {seek && <span className="mp-playhead" aria-hidden="true" style={{left: `${Math.min(100, cursor / data.duration * 100)}%`}}/>}
       </div>
+      {data.segments.some(segment => segment.transition?.frames) && <div className="mp-transition-track" aria-label="ترنزیشن‌های تایم‌لاین">
+        {data.segments.map(segment => segment.transition && segment.transition.frames > 0 ? <span key={segment.id}
+          title={`${transitions[segment.transition.type]} · ${segment.transition.frames} فریم`}
+          style={{left: `${segment.start / data.duration * 100}%`,
+                  width: `${segment.transition.frames / data.fps / data.duration * 100}%`}}
+          dir="rtl">{transitions[segment.transition.type]}</span> : null)}
+      </div>}
     </NativeLayers>
     <div className="mp-actions">
       <button className="btn btn-secondary btn-sm" aria-pressed={mode === "trim"} onClick={() => setMode("trim")}>کوتاه‌کردن قطعه</button>
@@ -184,6 +196,11 @@ export function NativeTimeline({project, refresh, seek}: {project: StudioProject
       <option value="">نسخه را انتخاب کنید</option>
       {[...data.versions].reverse().map(item => <option value={item.version} key={item.version}>نسخهٔ {item.version}</option>)}
     </select></label>}
+    {project.state?.panel_native && <details>
+      <summary>اندازه و کیفیت خروجی</summary>
+      <NativeExport key={`${data.width}:${data.height}:${data.crf}`} data={data} disabled={blocked}
+        onSave={config => save(() => api.setPanelExport(project.id, {version: data.version, ...config}))}/>
+    </details>}
     <div className="mp-actions">
       {restore && <button className="btn btn-secondary" disabled={blocked || Number(restore) === data.version} onClick={() =>
         void submit({version: data.version, operation: "restore", restore_version: Number(restore)})}>بازگردانی به‌عنوان نسخهٔ جدید</button>}

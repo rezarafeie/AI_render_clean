@@ -11,8 +11,10 @@ export type PanelTranscript = {
   sentences: (SpeechWord & {id: number; dropped: boolean; words: SpeechWord[]})[];
 };
 
-export type Segment = {id: string; start: number; end: number; source_in: number; source_out: number; zoom: {from: number; to: number}; zoom_editable: boolean; splittable: boolean};
+export type Segment = {id: string; start: number; end: number; source_in: number; source_out: number; zoom: {from: number; to: number}; zoom_editable: boolean; splittable: boolean;
+  effect: string | null; transition: {type: string; frames: number} | null};
 export type NativeTimeline = {
+  width: number; height: number; crf: number;
   segments: Segment[]; job_id: string; version: number | null; fps: number; duration: number; busy: boolean; arrange: boolean;
   versions: {version: number; source: string}[];
   caption_font: string | null; caption_font_id: string | null;

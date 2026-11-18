@@ -177,6 +177,14 @@ try {
     plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
     assert.equal(plan.layers.find(layer => layer.label === "cutaway.mp4").source_in, .3);
     assert.ok(plan.layers.find(layer => layer.label === "chime.wav").attachment_id);
+    await page.locator('[aria-label="ترنزیشن‌های تایم‌لاین"]').getByText("محو نرم", {exact: true}).first().waitFor();
+    await page.locator("summary").getByText("اندازه و کیفیت خروجی", {exact: true}).click();
+    await page.getByRole("combobox", {name: "اندازهٔ خروجی", exact: true}).selectOption("480x480");
+    await page.getByRole("combobox", {name: "کیفیت فایل", exact: true}).selectOption("16");
+    await page.getByRole("button", {name: "ذخیرهٔ تنظیمات خروجی", exact: true}).click();
+    await page.getByText("4.10 s · 480 × 480 · 30 fps", {exact: true}).waitFor();
+    plan = await (await page.request.get(`${base}/api/panel/projects/${row.projects[0].id}/segments`)).json();
+    assert.deepEqual([plan.width, plan.height, plan.crf, plan.fps], [480, 480, 16, 30]);
     if (process.env.PANEL_TEST_RENDER === "1" && width === 1360) {
       const accepted = page.waitForResponse(response => response.request().method() === "POST" &&
         response.url().endsWith("/segments/render"));
@@ -196,6 +204,9 @@ try {
       const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1", rendered], {encoding: "utf8"}));
       assert.ok(Math.abs(duration - 4.1) < .09, JSON.stringify(duration));
+      const dimensions = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+        "-of", "csv=p=0", rendered], {encoding: "utf8"}).trim();
+      assert.equal(dimensions, "480,480");
       const pixels = execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-ss", "3.6", "-i", rendered, "-frames:v", "1",
         "-vf", "scale=8:8", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
       const middle = (8 * 4 + 4) * 3;

@@ -566,6 +566,10 @@ export const api = {
     return j(await authFetch(`${BASE}/panel/projects/${id}/segments/render`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version, preview }) }));
   },
+  async setPanelExport(id: string, change: {version: number | null; width: number; height: number; crf: number}): Promise<NativeTimeline> {
+    return j(await authFetch(`${BASE}/panel/projects/${id}/export`, {method: "PATCH",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(change)}));
+  },
   async panelCaptionFonts(persian: boolean, signal?: AbortSignal): Promise<CaptionFont[]> {
     return j(await authFetch(`${BASE}/panel/caption-fonts?persian=${persian}`, {signal}));
   },

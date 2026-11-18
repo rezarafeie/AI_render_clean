@@ -14,6 +14,7 @@ type Context = Awaited<ReturnType<typeof api.planCreativeResources>>;
 export function ResourceApply({job, projectId, item, onClose, onSaved}: {
   job: string; projectId: string; item: CreativeResource; onClose: () => void; onSaved: () => Promise<unknown>;
 }) {
+  const dialog = React.useRef<HTMLElement>(null);
   const [context, setContext] = React.useState<Context | null>(null);
   const [selected, setSelected] = React.useState<string[]>([]);
   const [settings, setSettings] = React.useState<Required<ResourceChange["settings"]>>({
@@ -33,6 +34,7 @@ export function ResourceApply({job, projectId, item, onClose, onSaved}: {
 
   React.useEffect(() => {
     const abort = new AbortController();
+    dialog.current?.focus();
     api.planCreativeResources(job, abort.signal).then(result => {
       if (!abort.signal.aborted) setContext(result);
     }).catch(e => {
@@ -56,7 +58,7 @@ export function ResourceApply({job, projectId, item, onClose, onSaved}: {
     await onSaved();
   }
 
-  return <section className="mp-resource-apply mp-inspector" aria-label="اعمال منبع">
+  return <section ref={dialog} tabIndex={-1} className="mp-resource-apply mp-inspector" aria-label="اعمال منبع">
     <div className="mp-section-head">
       <h2 dir="auto">{item.name}</h2>
       <button className="btn btn-secondary btn-sm" disabled={busy} onClick={onClose}>بستن</button>

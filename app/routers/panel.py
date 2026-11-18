@@ -393,13 +393,17 @@ async def native_segments(request: Request, project_id: str):
     job, plan = await _native_job(request, project_id)
     spans = segment_spans(plan)
     versions = await asyncio.to_thread(plan_versions.list_versions, job)
-    effects = {item["segment_id"] for item in plan.get("visual_effects") or []}
-    transitioned = {item[key] for item in plan.get("transitions") or [] for key in ("from_segment_id", "to_segment_id")}
+    effects = {item["segment_id"]: item["type"] for item in plan.get("visual_effects") or []}
+    incoming = {item["to_segment_id"]: item for item in plan.get("transitions") or []}
+    transitioned = set(incoming) | {item["from_segment_id"] for item in incoming.values()}
     def span_payload(span):
         row = plan["segments"][span.index]
         zoom = row.get("zoom") or {"from": 1.0, "to": 1.0}
         return {"id": span.id, "start": span.start, "end": span.end,
                 "source_in": span.source_in, "source_out": span.source_out, "zoom": zoom,
+                "effect": effects.get(span.id),
+                "transition": ({"type": incoming[span.id]["type"], "frames": incoming[span.id]["duration_frames"]}
+                               if span.id in incoming else None),
                 "zoom_editable": span.id not in effects,
                 "splittable": span.id not in effects and span.id not in transitioned and zoom["from"] == zoom["to"]}
     from pathlib import Path
@@ -421,6 +425,8 @@ async def native_segments(request: Request, project_id: str):
             "layers": layers,
             "caption_font": plan["canvas"].get("caption_font"),
             "caption_font_id": plan["canvas"].get("caption_font_id"),
+            "width": plan["canvas"].get("width"), "height": plan["canvas"].get("height"),
+            "crf": (plan.get("export") or {}).get("crf", 20),
             "arrange": _can_arrange(plan),
             "fps": plan["canvas"]["fps"], "job_id": job.id,
             "version": versions[-1]["version"] if versions else None,
@@ -590,6 +596,39 @@ async def apply_native_resource(request: Request, project_id: str, body: NativeR
             raise HTTPException(409, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+    return await native_segments(request, project_id)
+
+
+class NativeExportChange(BaseModel):
+    model_config = {"extra": "forbid"}
+    version: int | None = None
+    width: int = Field(ge=2, le=4096, multiple_of=2, strict=True)
+    height: int = Field(ge=2, le=4096, multiple_of=2, strict=True)
+    crf: int = Field(ge=0, le=51, strict=True)
+
+
+@router.patch("/projects/{project_id}/export")
+async def set_native_export(request: Request, project_id: str, body: NativeExportChange):
+    from app import jobs, plan_versions
+
+    user = studio._user(request)
+    await _native_job(request, project_id)
+    with _lock(user, project_id):
+        job, plan = await _native_job(request, project_id)
+        project = await repo.get_project(project_id, user)
+        if not project["state"].get("panel_native"):
+            raise HTTPException(409, "اندازهٔ خروجی برای این موتور در تنظیمات خودش تعیین می‌شود.")
+        latest = await asyncio.to_thread(plan_versions.latest_version, job)
+        if (latest["version"] if latest else None) != body.version or job.render.status in {"queued", "running"}:
+            raise HTTPException(409, "برنامه تغییر کرده یا در حال رندر است.")
+        candidate = {**plan,
+                     "canvas": {**plan["canvas"], "width": body.width, "height": body.height},
+                     "export": {**plan["export"], "crf": body.crf}}
+        if candidate != plan:
+            _, errors = await asyncio.to_thread(jobs.save_plan, job, candidate, source="user_ui",
+                                               operations=[{"op": "export_settings", **body.model_dump(exclude={"version"})}])
+            if errors:
+                raise HTTPException(422, "اندازه یا کیفیت خروجی با برنامهٔ رندر سازگار نیست.")
     return await native_segments(request, project_id)
 
 

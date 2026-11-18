@@ -121,3 +121,6 @@
 .mp-resource-targets {display: flex; flex-wrap: wrap; gap: 8px; max-height: 180px; overflow: auto}
 .mp-resource-targets label {border: 1px solid var(--mp-border); border-radius: 8px; padding: 6px 10px}
 .mp-font-sample {padding: 12px; min-height: 52px; font-size: clamp(1.25rem, 4vw, 2rem); border: 1px solid var(--mp-border); border-radius: 8px; overflow-wrap: anywhere}
+.mp-effect-label {font-size: .74rem}
+.mp-transition-track {position: relative; height: 24px}
+.mp-transition-track span {position: absolute; min-width: 42px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font-size: .72rem; padding: 2px; border: 1px solid var(--mp-border); border-radius: 5px}
