@@ -686,9 +686,12 @@ def _t_stt(claims: dict, args: dict) -> dict:
     out = pro.inside(claims["cid"], f"transcripts/{source.stem}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(transcript, ensure_ascii=False))
-    segments = transcript.get("segments") or []
-    return {"path": _rel(claims["cid"], out), "text": str(transcript.get("text") or " ".join(str(s.get("text", "")) for s in segments))[:6000],
-            "segments": len(segments), "note": "the JSON has every segment (and word) with start/end seconds"}
+    sentences = transcript.get("sentences") or transcript.get("segments") or []
+    words = transcript.get("words") or []
+    text = str(transcript.get("text") or " ".join(str(s.get("text", "")) for s in sentences) or " ".join(str(w.get("w") or w.get("word") or "") for w in words))
+    lines = [f"[{float(s.get('start', 0)):.2f}-{float(s.get('end', 0)):.2f}] {s.get('text', '')}" for s in sentences][:120]
+    return {"path": _rel(claims["cid"], out), "duration": transcript.get("duration"), "text": text[:6000], "sentences": "\n".join(lines)[:8000],
+            "words": len(words), "note": "the JSON has `sentences` [{text,start,end}] and `words` [{w,start,end,prob}] in seconds"}
 
 
 def _t_web_read(claims: dict, args: dict) -> dict:

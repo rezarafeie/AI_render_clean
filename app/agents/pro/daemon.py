@@ -5,15 +5,31 @@ processes may run side by side)."""
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import os
 
 import httpx
 
-from app.agents.pro.runner import APP, run
+from app.agents.pro import prompt as _prompt
+from app.agents.pro import runner as _runner
+from app.agents.pro.runner import APP
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("pro.daemon")
+logging.getLogger("httpx").setLevel(logging.WARNING)          # the claim poll every 3 s would bury the useful lines
+
+
+def _fresh_runner():
+    """The runner and prompt are re-read before every run: a code swap of the mounted folder applies to the next run without restarting this
+    container (a restart would kill a run in progress)."""
+    global _runner
+    try:
+        importlib.reload(_prompt)
+        _runner = importlib.reload(_runner)
+    except Exception:
+        log.exception("reloading the runner failed; the loaded version runs")
+    return _runner.run
 
 
 async def main() -> None:
@@ -29,7 +45,7 @@ async def main() -> None:
             if job.get("run"):
                 log.info("run %s (chat %s) started", job["run"], job["cid"])
                 try:
-                    await run(job)
+                    await _fresh_runner()(job)
                 except Exception:
                     log.exception("run %s crashed", job["run"])
                 log.info("run %s ended", job["run"])

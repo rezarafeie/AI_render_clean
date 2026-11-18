@@ -237,14 +237,25 @@ async def _forward(api: Api, message, live: dict) -> None:
     from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock, UserMessage
 
     async def close_text():
-        if live["id"] is not None and API_ERROR.search(live["text"] or ""):
-            await api.event(kind="text_done", response_id=live["id"], text="")        # a provider error is not the agent's message
+        text = live["text"] or ""
+        if text and API_ERROR.search(text):
+            if live["id"] is not None:
+                await api.event(kind="text_done", response_id=live["id"], text="")    # a provider error is not the agent's message
             live.update(text="", id=None)
             live["api_error"] = True
             return
         if live["id"] is not None:
-            await api.event(kind="text_done", response_id=live["id"], text=live["text"])
-            live.update(text="", id=None)
+            await api.event(kind="text_done", response_id=live["id"], text=text)
+        elif text.strip():                     # never shown: a text with no Persian at all is kept out of the chat (an internal note step instead)
+            nid = "note-" + uuid.uuid4().hex[:12]
+            await api.event(kind="tool_start", id=nid, tool="think", label="یادداشت داخلی ایجنت", detail=text.strip()[:1500])
+            await api.event(kind="tool_done", id=nid, tool="think", label="یادداشت داخلی ایجنت", detail=text.strip()[:1500])
+        live.update(text="", id=None)
+
+    async def show_if_persian():
+        if live["id"] is None and PERSIAN.search(live["text"]):
+            live["id"] = "pro-" + uuid.uuid4().hex[:16]
+            await api.event(kind="text_start", response_id=live["id"])
 
     root = live.get("root", "")
 
@@ -268,11 +279,9 @@ async def _forward(api: Api, message, live: dict) -> None:
                             detail=think["text"].strip()[:1500] or "(متن فکر نمایش داده نمی‌شود)")
             return
         if kind == "content_block_delta" and (event.get("delta") or {}).get("type") == "text_delta":
-            if live["id"] is None:
-                live["id"] = "pro-" + uuid.uuid4().hex[:16]
-                await api.event(kind="text_start", response_id=live["id"])
             live["text"] += event["delta"].get("text", "")
-            if time.monotonic() - live["sent"] > 0.4:
+            await show_if_persian()            # the text appears once it is Persian (an English line never flashes in the chat)
+            if live["id"] is not None and time.monotonic() - live["sent"] > 0.4:
                 live["sent"] = time.monotonic()
                 await api.event(kind="text_delta", response_id=live["id"], text=live["text"])
         return
@@ -282,10 +291,9 @@ async def _forward(api: Api, message, live: dict) -> None:
                 tid = "think-" + uuid.uuid4().hex[:12]           # the agent's reasoning, as one closed step the person can open (like Claude Code)
                 await api.event(kind="tool_start", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
                 await api.event(kind="tool_done", id=tid, tool="think", label="فکر کردن دربارهٔ قدم بعدی", detail=block.thinking[:1500])
-            if isinstance(block, TextBlock) and live["id"] is None and block.text.strip():
-                live["id"] = "pro-" + uuid.uuid4().hex[:16]                # no stream events arrived: the whole text at once
-                await api.event(kind="text_start", response_id=live["id"])
-                live["text"] = block.text
+            if isinstance(block, TextBlock) and not live["text"] and block.text.strip():
+                live["text"] = block.text                                   # no stream events arrived: the whole text at once
+                await show_if_persian()
             if isinstance(block, ToolUseBlock):
                 await close_text()
                 if block.name in {"mcp__editorgpt__say", "mcp__editorgpt__step"}:
