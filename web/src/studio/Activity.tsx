@@ -131,8 +131,8 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
  * Compact, secondary activity for one stretch of work. Finished history collapses
  * to a single summary line; the current step stays prominent while work is live.
  */
-export function ActivityBlock({ steps, live, retryHref, onOpenEditor }: { steps: ActivityStep[]; live: boolean; retryHref?: string; onOpenEditor?: () => void }) {
-  const [expanded, setExpanded] = React.useState(false);
+export function ActivityBlock({ steps, live, retryHref, onOpenEditor, initiallyExpanded = false }: { steps: ActivityStep[]; live: boolean; retryHref?: string; onOpenEditor?: () => void; initiallyExpanded?: boolean }) {
+  const [expanded, setExpanded] = React.useState(initiallyExpanded);
   const failed = steps.some(step => step.status === "failed");
   const current = steps.filter(step => step.status === "active" || step.status === "failed");
   const history = steps.filter(step => step.status === "done");

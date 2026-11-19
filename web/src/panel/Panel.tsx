@@ -4,6 +4,10 @@ import { api, type AgentMode, type MotionGraphic, type StudioConversation, type 
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon, type IconName } from "../components/Icon";
 import { friendlyError } from "../ui";
+import { ActivityBlock, ThinkingRow } from "../studio/Activity";
+import { type ActivityStep, buildTimeline, renderView, serverBusy, stageText } from "../studio/model";
+import { motionSteps } from "../studio/motionModel";
+import { mergeEvents } from "../studio/windowing";
 import { Setup } from "./Setup";
 import type { Capabilities, PanelPreferences, Setup as SetupData } from "./types";
 import "./panel.css";
@@ -83,6 +87,7 @@ function AuthorizedPanel({id}: {id: string}) {
   const [chat, setChat] = React.useState<StudioConversation | null>(null);
   const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
+  const [historyLoaded, setHistoryLoaded] = React.useState(false);
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
   const [view, setView] = React.useState<View>("preview");
   const [projectId, setProjectId] = React.useState<string | null>(null);
@@ -113,6 +118,24 @@ function AuthorizedPanel({id}: {id: string}) {
   const isDraft = Boolean(setup && !project && !motionId && !discoveryId);
   const action = chat?.actions?.find(row => row.project_id === project?.id && row.status === "pending");
   const renderActive = Boolean(currentMotion?.active || (project && ACTIVE.has(project.status)));
+  const awaitingReview = project?.status === "awaiting_confirmation";
+  const waitingForInput = Boolean(awaitingReview || project?.status === "awaiting_input" || currentMotion?.questions?.length && !currentMotion.active);
+  const working = renderActive || (!waitingForInput && serverBusy(events, Boolean(chat?.busy)) === true);
+  const renderPhase = renderView(project).phase;
+  const rendering = Boolean(project && renderActive && (renderPhase === "rendering" || renderPhase === "finalizing"));
+  const activity = React.useMemo<ActivityStep[]>(() => {
+    if (currentMotion) return motionSteps(currentMotion, Date.now());
+    const relevant = events.filter(event => !event.data.project_id || event.data.project_id === project?.id);
+    return buildTimeline({ messages: chat?.messages || [], events: relevant, projects: project ? [project] : [], processing: working })
+      .flatMap(item => item.kind === "activity" ? item.steps.map(step => ({...step, key: item.id + ":" + step.key})) : []);
+  }, [chat?.messages, currentMotion, events, project, working]);
+  const currentSteps = activity.filter(step => step.status !== "done");
+  const completedSteps = activity.filter(step => step.status === "done");
+  const awaitingUpdate = working && !rendering && !currentSteps.some(step => step.status === "active");
+  const stage = project?.state?.last_observed?.stage;
+  const statusLabel = waitingForInput ? "منتظر شما" : working ? "در حال انجام" :
+    project?.status === "error" || currentMotion?.status === "failed" ? "متوقف شده" :
+    project?.status === "done" || currentMotion?.status === "completed" ? "آماده" : "بدون پردازش فعال";
   const sourceAttachment = (project?.state?.attachment_ids?.[0] || setup?.attachment_ids?.[0]) as string | undefined;
   const src = project?.engine === "talking" && project.external_ref ? api.rawUrl(project.external_ref)
     : sourceAttachment ? api.studioAttachmentUrl(id, sourceAttachment) : "";
@@ -175,14 +198,24 @@ function AuthorizedPanel({id}: {id: string}) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sync = () => { if (!timer) timer = setTimeout(() => {timer = undefined; void refresh();}, 450); };
     const loop = async () => {
+      try {
+        let batch: StudioEvent[];
+        do {
+          batch = await api.studioEventHistory(id, cursor, controller.signal);
+          if (controller.signal.aborted || !batch.length) break;
+          cursor = Math.max(cursor, ...batch.map(event => event.seq));
+          setEvents(previous => mergeEvents(previous, batch.filter(event => event.type !== "assistant.response.delta")));
+        } while (batch.length === 500 && !controller.signal.aborted);
+      } catch { /* The event stream can replay any part of history that did not load. */ }
+      if (!controller.signal.aborted) setHistoryLoaded(true);
       while (!controller.signal.aborted) {
         try {
           await api.streamStudioEvents(id, cursor, event => {
-            if (event.seq > cursor) cursor = event.seq;
-            if (event.type !== "assistant.response.delta") {
-              setEvents(previous => [...previous.slice(-39), event]);
-              if (/^(plan|tool|motion|render|project|agent|work)\./.test(event.type)) sync();
-            }
+            if (event.seq <= cursor) return;
+            cursor = event.seq;
+            if (event.type === "assistant.response.delta") return;
+            setEvents(previous => [...previous, event]);
+            if (/^(plan|tool|motion|render|project|agent|work)\./.test(event.type)) sync();
           }, controller.signal);
         } catch { if (controller.signal.aborted) break; }
         await wait(2000);
@@ -241,13 +274,11 @@ function AuthorizedPanel({id}: {id: string}) {
     (item.id !== "assistant" || workflowMode !== "manual") && (item.id !== "audio" || project));
   const effective = available.some(item => item.id === view) ? view : "preview";
   const stills = currentMotion?.snapshots || [];
-  const latest = events[events.length - 1];
-  const latestDetails = typeof latest?.data?.message === "string" ? latest.data.message : "";
 
   return <>
     <header className="mp-bar">
       <Link to="/panel" className="mp-bar-back icon-btn" aria-label="پروژه‌ها"><Icon name="projects" size={20}/></Link>
-      <div className="mp-bar-title"><b dir="auto">{chat?.title || "ادیتور دستی"}</b><small>{busy || (renderActive ? "پردازش در جریان است" : isDraft ? "پیش‌نویس" : "پروژهٔ Studio")}</small></div>
+      <div className="mp-bar-title"><b dir="auto">{chat?.title || "ادیتور دستی"}</b><small>{busy || (isDraft ? "پیش‌نویس" : statusLabel)}</small></div>
       <div className="mp-bar-actions">
         <Link reloadDocument to={`/studio/${id}`} className="btn btn-secondary btn-sm"><Icon name="spark" size={16}/><span>چت</span></Link>
         {!isDraft && !discoveryId && <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(busy)} onClick={() => void download()}><Icon name="download" size={16}/>{currentOutput ? "خروجی" : "رندر"}</button>}
@@ -285,13 +316,35 @@ function AuthorizedPanel({id}: {id: string}) {
             {[...currentMotion.versions].reverse().map(item => <option key={item.n} value={item.n}>نسخهٔ {item.n}</option>)}
           </select></label>}
           {stills.length > 0 && <div className="mp-stills">{stills.map(shot => <AuthenticatedMedia key={shot.n} as="img" loading="lazy" alt={shot.headline} src={api.motionSnapshotUrl(motionId, shot.n)}/>)}</div>}
-          {renderActive && project && <React.Suspense fallback={<Loading/>}><RenderProgress project={project}/></React.Suspense>}
-          {currentMotion?.active && <div className="mp-progress"><progress max={100} value={currentMotion.progress}/><p>{currentMotion.message}</p></div>}
-          {renderActive && <button className="btn btn-secondary btn-sm" disabled={Boolean(busy)} onClick={() => void run("توقف", () =>
+          {effective !== "preview" && rendering && project && <React.Suspense fallback={<Loading/>}><RenderProgress project={project}/></React.Suspense>}
+          {effective !== "preview" && renderActive && <button className="btn btn-secondary btn-sm" disabled={Boolean(busy)} onClick={() => void run("توقف", () =>
             project ? api.cancelStudioProject(project.id) : api.motionStop(motionId))}><Icon name="stop" size={15}/>توقف</button>}
-          {!renderActive && currentMotion?.status === "failed" && <button className="btn btn-secondary" onClick={() => void run("ادامهٔ موشن", () => api.motionRetry(motionId))}>تلاش مجدد</button>}
+          {effective !== "preview" && !renderActive && currentMotion?.status === "failed" && <button className="btn btn-secondary" onClick={() => void run("ادامهٔ موشن", () => api.motionRetry(motionId))}>تلاش مجدد</button>}
         </section>
         <section className="mp-control" aria-label="کنترل‌های پروژه" data-preview={effective === "preview" || undefined}>
+          {effective === "preview" && <section className="mp-activity" aria-label="مراحل کار">
+            <div className="mp-activity-head">
+              <h2><Icon name="list" size={19}/>مراحل کار</h2>
+              <span className="mp-activity-status" data-state={waitingForInput ? "waiting" : working ? "active" : "idle"} role="status">
+                {working && <span className="act-dot" aria-hidden="true"/>}{statusLabel}
+              </span>
+            </div>
+            {rendering && project ? <React.Suspense fallback={<Loading/>}><RenderProgress project={project}/></React.Suspense> : null}
+            {currentSteps.length > 0 && <ActivityBlock steps={currentSteps} live={working}/>}
+            {awaitingUpdate && <ThinkingRow label={stageText(stage) || (historyLoaded ? "در انتظار گزارش موتور" : "در حال دریافت مراحل…")}/>}
+            {waitingForInput && <div className="mp-activity-next">
+              <span>{awaitingReview ? "برنامهٔ تدوین آمادهٔ بررسی است." : "برای ادامه، پاسخ شما لازم است."}</span>
+              {awaitingReview ? <button type="button" className="btn btn-primary btn-sm" onClick={() => setView("tools")}><Icon name="storyboard" size={16}/>بررسی برنامه</button> :
+                !currentMotion?.questions?.length && <Link reloadDocument className="btn btn-secondary btn-sm" to={`/studio/${id}`}>باز کردن چت</Link>}
+            </div>}
+            {completedSteps.length > 0 && <div className="mp-activity-history">
+              <ActivityBlock key={`${project?.id || motionId}:${working}`} steps={completedSteps} live={false} initiallyExpanded={!working}/>
+            </div>}
+            {!historyLoaded && !working && !activity.length && !waitingForInput && <p className="mp-muted" role="status">در حال دریافت مراحل…</p>}
+            {renderActive && <button className="btn btn-secondary btn-sm mp-activity-stop" disabled={Boolean(busy)} onClick={() => void run("توقف", () =>
+              project ? api.cancelStudioProject(project.id) : api.motionStop(motionId))}><Icon name="stop" size={15}/>توقف</button>}
+            {!renderActive && currentMotion?.status === "failed" && <button className="btn btn-secondary btn-sm mp-activity-stop" onClick={() => void run("ادامهٔ موشن", () => api.motionRetry(motionId))}>تلاش مجدد</button>}
+          </section>}
           <div className="mp-context">
             {projects.length > 1 && <label>پروژه<select className="input" value={project?.id || ""} onChange={e => {
               setProjectId(e.target.value); setOutput(""); setFileVersions([]); setSourceOnly(false); setPendingSeek(null);
@@ -304,7 +357,6 @@ function AuthorizedPanel({id}: {id: string}) {
             <span className="badge">{project?.state?.render_target === "browser" ? "رندر مرورگر" : "رندر سرور"}</span>
           </div>
           <React.Suspense fallback={<Loading/>}>
-            {effective === "preview" && <p className="mp-muted">{latestDetails || "ابزارهای متناسب با پروژه را از نوار پایین باز کنید."}</p>}
             {effective === "tools" && (project ? <>
               {action && <div className="mp-approval">
                 <span>ساخت خروجی بر اساس استوری‌بورد آمادهٔ تأیید است.</span>

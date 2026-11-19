@@ -124,3 +124,69 @@
 .mp-effect-label {font-size: .74rem}
 .mp-transition-track {position: relative; height: 24px}
 .mp-transition-track span {position: absolute; min-width: 42px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font-size: .72rem; padding: 2px; border: 1px solid var(--mp-border); border-radius: 5px}
+
+/* The preview keeps the current workflow beside the player on desktop and below it on phones. */
+.mp-workspace[data-view="preview"] > .mp-control {
+  padding: 0;
+  gap: 0;
+  background: var(--bg);
+}
+.mp-workspace[data-view="preview"] > .mp-control > .mp-context {
+  padding: 12px 16px;
+  border-top: 1px solid var(--mp-border);
+}
+.mp-activity {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+.mp-activity-head, .mp-activity-head h2, .mp-activity-status, .mp-activity-next {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mp-activity-head, .mp-activity-next {justify-content: space-between; flex-wrap: wrap}
+.mp-activity-head h2 > svg {color: var(--text-2)}
+.mp-activity-status {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--mp-surface);
+  color: var(--text-2);
+  font-size: .78rem;
+}
+.mp-activity-status[data-state="active"] {color: var(--text)}
+.mp-activity-status[data-state="waiting"] {
+  background: color-mix(in srgb, #cd8c25 15%, var(--bg));
+  color: var(--text);
+}
+.mp-activity-status .act-dot {width: 6px; height: 6px}
+.mp-activity > .act {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--mp-surface);
+}
+.mp-activity > .act .act-row, .mp-activity-history .act-row {min-height: 34px}
+.mp-activity-history {
+  max-height: min(46dvh, 27rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.mp-activity-history .act-list {margin-block: 4px 0}
+.mp-activity-history .act-step {padding-inline-start: 8px; border-inline-start: 1px solid var(--mp-border)}
+.mp-activity-history .act-summary {min-height: 34px}
+.mp-activity-next {
+  padding: 10px 12px;
+  border: 1px solid var(--mp-border);
+  border-radius: 10px;
+  font-size: .86rem;
+}
+.mp-activity-stop {justify-self: start}
+@media (max-width: 760px) {
+  .mp-workspace[data-view="preview"] .mp-monitor video {max-height: 38dvh}
+  .mp-activity {padding: 12px; gap: 8px}
+  .mp-activity-history {max-height: 50dvh}
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-activity .act-dot, .mp-activity .act-shimmer {animation: none}
+}
