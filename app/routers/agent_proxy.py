@@ -127,6 +127,20 @@ def _lift_tool_images(data: dict) -> bool:
     return changed
 
 
+def _dump(claims: dict, data: dict) -> None:
+    """Diagnostics, off unless the chat folder holds a `.dump-requests` file: every forwarded request body is saved (to compare consecutive
+    requests, e.g. what breaks the prompt-cache prefix). No secret is in the body; the provider key is a header added later."""
+    try:
+        folder = pro.RUNS / claims["cid"]
+        if not (folder / ".dump-requests").exists():
+            return
+        out = folder / ".requests"
+        out.mkdir(exist_ok=True)
+        (out / f"{time.time():.3f}.json").write_text(json.dumps(data, ensure_ascii=False))
+    except Exception:
+        log.exception("request dump failed")
+
+
 @router.post("/internal/anthropic/v1/messages")
 async def messages(request: Request):
     claims = _claims(request)
@@ -147,6 +161,7 @@ async def messages(request: Request):
         return _anthropic_error(400, "invalid_request_error", "invalid JSON")
     if _lift_tool_images(data):
         body = json.dumps(data, ensure_ascii=False).encode()
+    _dump(claims, data)
     model = str(data.get("model") or "")
     if not model.startswith(pro.ALLOWED_MODELS):
         return _anthropic_error(400, "invalid_request_error", f"model {model!r} is not allowed for EditorGPT Pro")
