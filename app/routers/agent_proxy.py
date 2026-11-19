@@ -585,23 +585,43 @@ async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
         current.update(values)
         state_file.write_text(json.dumps(current, ensure_ascii=False))
 
-    save(job_id=job, state="queued", progress=0, output=output)
+    save(job_id=job, state="queued", progress=0, output=output, style="render")
+    loop = asyncio.get_running_loop()
+    from app.agents.pro import engines
+    seen = {"at": 0.0}
+
+    def report(final: bool = False, video: Path | None = None) -> None:
+        """The render card in the chat (pro.job), like an engine job's: throttled while rendering, always at the end."""
+        if final or time.time() - seen["at"] > 3:
+            seen["at"] = time.time()
+            engines._card(loop, claims, state_file, video=video)
+
+    def cloud(**values) -> None:
+        current = json.loads(state_file.read_text()) if state_file.is_file() else {}
+        merged = {**(current.get("cloud") or {}), **{k: v for k, v in values.items() if v is not None}}
+        save(state="rendering", cloud=merged, **({"progress": int(values["progress"])} if values.get("progress") is not None else {}))
+        report()
 
     def work():
         from app.render_cloud import hooks
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             done = hooks.claude_motion(project, target, timeout=3600, user=str(user), project_id="pro" + claims["run"], owned_roots=(pro.workdir(cid),),
-                                       on_progress=lambda p: save(state="rendering", progress=int(p)),
-                                       on_stage=lambda stage: save(stage=str(stage)), on_detail=lambda text: save(detail=str(text)[:200]))
+                                       on_progress=lambda p: cloud(progress=int(p)),
+                                       on_stage=lambda stage: (save(stage=str(stage)), cloud(stage=str(stage)[:120])),
+                                       on_detail=lambda text: (save(detail=str(text)[:200]), cloud(detail=str(text)[:240])))
             if done and target.is_file() and target.stat().st_size > 1000:
                 save(state="done", progress=100, size_bytes=target.stat().st_size)
+                report(final=True, video=target)
             else:
                 save(state="failed", error="the render cloud did not take this project (no matching profile or the cloud is off); render it in the container")
+                report(final=True)
         except Exception as exc:
             log.warning("pro cloud render %s failed", job, exc_info=True)
             save(state="failed", error=f"{type(exc).__name__}: {str(exc)[:300]}")
+            report(final=True)
     threading.Thread(target=work, daemon=True, name=f"pro-render-{job}").start()
+    report(final=True)
     await repo.emit(cid, "tool.progress", {"tool": "pro_render", "stage": "pro", "message": "رندر روی سرور ابری شروع شد", "agent_mode": "pro", "run_id": claims["run"]})
     return {"job_id": job, "state": "queued", "note": "poll render_status every 20-30 s (sleep with Bash between polls)"}
 

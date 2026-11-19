@@ -4,7 +4,7 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { formatDuration } from "../format";
 
-const STYLE_NAME: Record<string, string> = { premium: "تدوین پریمیوم تمام‌قاب", split: "تاکینگ دوتکه" };
+const STYLE_NAME: Record<string, string> = { premium: "تدوین پریمیوم تمام‌قاب", split: "تاکینگ دوتکه", render: "رندر ابری پروژهٔ Pro" };
 const CLOUD_STAGE: Record<string, string> = {
   queued: "در صف سرور ابری", provisioning: "آماده‌سازی سرور ابری", preparing: "آماده‌سازی پروژه روی سرور ابری", uploading: "ارسال پروژه به سرور ابری",
   downloading: "دریافت ویدیو از سرور ابری", rendering: "رندر روی سرور ابری", done: "رندر ابری تمام شد", failed: "رندر ابری متوقف شد",
@@ -33,7 +33,7 @@ export function ProJobCard({ data, startedAt, conversationId }: { data: Record<s
   const cloud = (data.cloud || {}) as { progress?: number; stage?: string; detail?: string };
   const cloudActive = busy && state === "rendering" && (cloud.stage || typeof cloud.progress === "number");
   const percent = cloudActive && typeof cloud.progress === "number" ? cloud.progress : typeof data.progress === "number" ? data.progress : undefined;
-  const stage = cloudActive ? (CLOUD_STAGE[String(cloud.stage || "rendering")] || String(cloud.stage)) : String(data.stage || (state === "transcribing" ? "دارم متن صدا را درمی‌آورم" : "در صف موتور")).replace(/\s*\(.*\)\s*$/, "");
+  const stage = cloudActive ? (CLOUD_STAGE[String(cloud.stage || "rendering")] || String(cloud.stage)) : String(data.stage || (state === "transcribing" ? "دارم متن صدا را درمی‌آورم" : data.style === "render" ? "ارسال پروژه به سرور ابری" : "در صف موتور")).replace(/\s*\(.*\)\s*$/, "");
   const video = done && data.attachment_id && conversationId ? api.studioAttachmentUrl(conversationId, String(data.attachment_id)) : undefined;
   const title = done ? "ویدیو آماده است" : failed ? (data.error === "stopped" ? "ساخت متوقف شد" : "ساخت ویدیو کامل نشد") : cloudActive ? "در حال رندر ویدیو" : "در حال ساخت ویدیو";
   const phase = done ? "done" : failed ? "failed" : cloudActive ? "rendering" : "queued";

@@ -280,6 +280,24 @@ def test_prompt_keeps_samples_away_from_the_fixed_engine():
     assert "SAMPLE" in SYSTEM_PROMPT and "do NOT use the engine" in SYSTEM_PROMPT and "NEVER call talking_edit again" in SYSTEM_PROMPT
 
 
+def test_film_tools_are_offered_and_routed():
+    from app.agents.pro import runner
+    from app.agents.pro.prompt import SYSTEM_PROMPT
+    for name in ("film_make", "film_revise"):
+        assert name in runner.TOOL_NAMES and f"mcp__editorgpt__{name}" in runner.TOOL_FA
+    assert "film_make" in SYSTEM_PROMPT
+    try:
+        from app.agents.pro import engines
+    except Exception:
+        return
+    try:
+        asyncio.run(engines.film_start({"cid": "filmc", "user": "1", "run": "r"}, {"kind": "cartoon", "request": "x"}))
+    except ValueError as exc:
+        assert "kind must be" in str(exc)
+    else:
+        raise AssertionError("an unknown film kind was accepted")
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
