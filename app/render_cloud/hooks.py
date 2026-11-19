@@ -151,12 +151,16 @@ def ffmpeg_job(inputs, steps, output, *, width, height, max_duration, fps=30, au
     from .service import render_prepared
     with tempfile.TemporaryDirectory(prefix='editorgpt-ffmpeg-job-') as directory:
         staged = Path(directory) / 'job'
-        staged.mkdir()
+        (staged / 'in').mkdir(parents=True)
+        names = set()
         for source in inputs:
             source = Path(source)
             if not source.is_file():
                 raise ValueError(f'input not found: {source.name}')
-            shutil.copy2(source, staged / source.name)
+            # inside in/: the cloud snapshot leaves out .mp4 files at the project root (they are taken for earlier outputs)
+            shutil.copy2(source, staged / 'in' / source.name)
+            names.add(source.name)
+        steps = [[f'in/{a}' if a in names else a for a in args] for args in steps]
         (staged / 'job.json').write_text(json.dumps({'steps': steps}))
         return render_prepared(staged, Path(output), user=user, project_id=project_id, engine='ffmpeg_job', duration=float(max_duration), width=int(width),
                                height=int(height), fps=int(fps), timeout=timeout, on_progress=on_progress, should_cancel=should_cancel, owned_roots=owned_roots,
