@@ -531,7 +531,7 @@ async def _tool(claims: dict, name: str, args: dict):
         await store.update(rid, user, patch={"pro": state})
         return {"asked": True, "next": "Stop working now and end your turn: the person's answer arrives as their next message in this chat (the session resumes)."}
     if name == "render_cloud":
-        return await _render_cloud(claims, str(args.get("project_dir") or "project"), str(args.get("output") or "out/video.mp4"))
+        return await _render_cloud(claims, str(args.get("project_dir") or "project"), str(args.get("output") or "out/video.mp4"), str(args.get("audio") or ""))
     if name == "render_status":
         # Waits on the server until the render ends (up to 14 min): the agent polled it every 15 s, each poll resending the whole conversation
         # (25 polls in 7 minutes, 2026-11-19). One call per render now.
@@ -604,7 +604,7 @@ def _cloud_ready(project: Path) -> None:
             shutil.copy2(real, path)
 
 
-async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
+async def _render_cloud(claims: dict, project_dir: str, output: str, audio: str = "") -> dict:
     """A Remotion project of the chat's folder rendered on the render cloud (the same verified claude_motion worker the studio's films use: 1080x1920,
     1920x1080, 1080x1080 or 1080x1350 at 30 fps, muted video). Returns at once with a job id; render_status follows it. The project needs src/timing.json
     {"total": seconds, "width": 1080, "height": 1920, "fps": 30} and a composition with id Main."""
@@ -621,6 +621,9 @@ async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
         raise ValueError("the project needs src/timing.json with total, width, height and fps") from exc
     if size not in CLOUD_SIZES:
         raise ValueError(f"the render cloud takes {', '.join(f'{w}x{h}' for w, h, _ in CLOUD_SIZES)} at 30 fps; render other formats in the container")
+    sound = pro.inside(cid, audio) if audio else None
+    if sound is not None and not sound.is_file():
+        raise ValueError(f"the audio file {audio} is not in the working folder")
     _cloud_ready(project)
     job = uuid.uuid4().hex[:12]
     state_file = _render_file(cid, job)
@@ -656,6 +659,19 @@ async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
                                        on_stage=lambda stage: (save(stage=str(stage)), cloud(stage=str(stage)[:120])),
                                        on_detail=lambda text: (save(detail=str(text)[:200]), cloud(detail=str(text)[:240])))
             if done and target.is_file() and target.stat().st_size > 1000:
+                if sound is not None:
+                    # The finished mix goes onto the picture here, the moment it comes back: the card shows the final video with sound and the
+                    # agent needs no separate step (the cloud renders the picture only; a sound change re-mixes without a new render).
+                    save(stage="muxing", detail="گذاشتن صدا روی ویدیو…", cloud={"stage": "muxing", "progress": 100, "detail": "گذاشتن صدا روی ویدیو…"})
+                    report(final=True)
+                    joined = target.with_name(target.stem + ".with-audio.mp4")
+                    import subprocess
+                    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(target), "-i", str(sound), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                                    "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(joined)], check=True, timeout=900)
+                    silent = target.with_name(target.stem + ".silent.mp4")
+                    target.replace(silent)
+                    joined.replace(target)
+                    save(with_audio=True, silent=str(silent.relative_to(pro.workdir(cid))))
                 save(state="done", progress=100, size_bytes=target.stat().st_size)
                 report(final=True, video=target)
             else:
@@ -668,7 +684,8 @@ async def _render_cloud(claims: dict, project_dir: str, output: str) -> dict:
     threading.Thread(target=work, daemon=True, name=f"pro-render-{job}").start()
     report(final=True)
     await repo.emit(cid, "tool.progress", {"tool": "pro_render", "stage": "pro", "message": "رندر روی سرور ابری شروع شد", "agent_mode": "pro", "run_id": claims["run"]})
-    return {"job_id": job, "state": "queued", "note": "poll render_status every 20-30 s (sleep with Bash between polls)"}
+    return {"job_id": job, "state": "queued", "with_audio": sound is not None,
+            "note": "Call render_status once: it waits on the server until the render ends." + (" The audio is put on the video automatically: the output is final." if sound else "")}
 
 
 @router.post("/internal/pro/tool")

@@ -100,9 +100,12 @@ def _tools(api: Api):
     async def deliver(args):
         return result(await api.tool("deliver", args))
 
-    @tool("render_cloud", "Render a Remotion project of the working folder on the render cloud (vertical 1080x1920, 30 fps, muted video). The project "
-          "needs src/timing.json {total, width, height, fps} and a composition with id Main. Returns a job_id at once.",
-          {"type": "object", "properties": {"project_dir": {"type": "string"}, "output": {"type": "string"}}, "required": ["project_dir"]})
+    @tool("render_cloud", "Render a Remotion project of the working folder on the render cloud (1080x1920 / 1920x1080 / 1080x1080 / 1080x1350, 30 fps; the "
+          "cloud renders the picture only). Mix the final sound BEFORE (voice + music ducked + sfx, about -14 LUFS, as one audio file) and pass it as "
+          "`audio`: the server puts it on the video as soon as the picture comes back, so the output is the final video with sound and there is no "
+          "separate step. The project needs src/timing.json {total, width, height, fps} and a composition with id Main. Returns a job_id at once; "
+          "then call render_status once (it waits until the end).",
+          {"type": "object", "properties": {"project_dir": {"type": "string"}, "output": {"type": "string"}, "audio": {"type": "string"}}, "required": ["project_dir"]})
     async def render_cloud(args):
         return result(await api.tool("render_cloud", args))
 

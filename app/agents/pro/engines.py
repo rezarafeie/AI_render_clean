@@ -287,7 +287,7 @@ def _card(loop, claims: dict, path: Path, *, video: Path | None = None) -> None:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
         return
-    card = {k: data.get(k) for k in ("job_id", "style", "state", "progress", "stage", "error", "duration", "cloud")}
+    card = {k: data.get(k) for k in ("job_id", "style", "state", "progress", "stage", "error", "duration", "cloud", "with_audio")}
     card.update(agent_mode="pro", run_id=claims["run"])
 
     async def send():

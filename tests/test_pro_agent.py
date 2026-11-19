@@ -331,6 +331,21 @@ def test_a_message_sent_mid_run_reaches_the_agent_at_its_next_step():
     assert asyncio.run(hook({"tool_name": "Bash", "tool_input": {}}, "id", None)) == {}
 
 
+def test_cloud_render_takes_the_final_mix():
+    from app.agents.pro import runner
+    from app.agents.pro.prompt import SYSTEM_PROMPT
+    assert "pass it as `audio`" in SYSTEM_PROMPT
+    try:
+        from app.routers.agent_proxy import _cloud_ready
+    except ImportError:
+        return
+    project = pro.workdir("regroot") / "project"
+    (project / "src").mkdir(parents=True, exist_ok=True)
+    (project / "src" / "index.tsx").write_text("import {registerRoot} from 'remotion';\nregisterRoot(() => null);\n")
+    _cloud_ready(project)
+    assert "registerRoot" in (project / "src" / "index.ts").read_text()
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
