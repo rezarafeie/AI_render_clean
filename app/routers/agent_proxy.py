@@ -90,6 +90,30 @@ def _provider() -> tuple[str, dict[str, str]]:
     raise HTTPException(503, "the model provider is not configured")
 
 
+def _long_cache(data: dict) -> bool:
+    """Every cache breakpoint the CLI set gets Anthropic's 1-hour lifetime. The default 5 minutes runs out during one long step (a 6-minute ffmpeg cut, a
+    cloud render poll), and the next call then writes the whole conversation again at the write price: one such miss cost a third of a run. A 1-hour
+    write costs 2x input instead of 1.25x, but a run writes each token once. All breakpoints get the same lifetime, so the ordering rule holds."""
+    changed = False
+
+    def visit(node):
+        nonlocal changed
+        if isinstance(node, dict):
+            mark = node.get("cache_control")
+            if isinstance(mark, dict) and mark.get("type") == "ephemeral" and mark.get("ttl") != "1h":
+                mark["ttl"] = "1h"
+                changed = True
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+    for part in ("system", "tools", "messages"):
+        visit(data.get(part))
+    return changed
+
+
 def _audit(claims: dict, model: str, usage: dict, started: float, status: str = "success", error: str | None = None) -> int:
     """One audited, charged model call (the same record and credit path as every other call). Returns the credits taken."""
     from brain import lm_gateway as gw
@@ -198,6 +222,8 @@ async def messages(request: Request):
     if not model.startswith(pro.ALLOWED_MODELS):
         return _anthropic_error(400, "invalid_request_error", f"model {model!r} is not allowed for EditorGPT Pro")
     endpoint, provider_headers = await asyncio.to_thread(_provider)
+    if endpoint == ANTHROPIC_RELAY and _long_cache(data):
+        body = json.dumps(data, ensure_ascii=False).encode()
     headers = {**provider_headers, "anthropic-version": request.headers.get("anthropic-version", "2023-06-01"), "content-type": "application/json"}
     if request.headers.get("anthropic-beta"):
         headers["anthropic-beta"] = request.headers["anthropic-beta"]
@@ -575,10 +601,31 @@ async def tool(request: Request):
     if record["status"] != "running":
         raise HTTPException(409, "this run is not running")
     body = await request.json()
+    name = str(body.get("name") or "")
+    failures = _TOOL_FAILURES.setdefault(claims["run"], {})
+    if failures.get(name, 0) >= TOOL_FAILURE_LIMIT:
+        return {"ok": False, "error": f"`{name}` failed {failures[name]} times in this run and is switched off until the run ends. Do not call it again: "
+                                      "finish the work without it (or with ffmpeg/python in the container), and tell the person in Persian what you left out."}
     try:
-        return {"ok": True, "result": await _tool(claims, str(body.get("name") or ""), dict(body.get("args") or {}))}
+        return {"ok": True, "result": await _tool(claims, name, dict(body.get("args") or {}))}
     except (ValueError, KeyError) as exc:
         return {"ok": False, "error": str(exc)[:500]}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # A broken tool must come back to the agent as a plain failure it can act on, never as a 500 it keeps retrying.
+        log.warning("pro tool %s failed", name, exc_info=True)
+        failures[name] = failures.get(name, 0) + 1
+        if len(_TOOL_FAILURES) > 200:
+            _TOOL_FAILURES.pop(next(iter(_TOOL_FAILURES)))
+        left = TOOL_FAILURE_LIMIT - failures[name]
+        return {"ok": False, "error": f"`{name}` is not working on the server right now ({type(exc).__name__}: {str(exc)[-300:]}). "
+                                      + ("Do not retry it with other arguments: " if left <= 0 else "Retry at most once, only if you changed something that could matter; otherwise ")
+                                      + "do the work without it."}
+
+
+TOOL_FAILURE_LIMIT = 2
+_TOOL_FAILURES: dict[str, dict[str, int]] = {}      # run id -> tool name -> server-side failures in that run
 
 
 # ── what the agent is doing, live in the chat ────────────────────────────────
