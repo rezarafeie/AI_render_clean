@@ -80,14 +80,23 @@ function StepImage({ attachmentId }: { attachmentId: string }) {
     api.authenticatedObjectUrl(api.studioAttachmentUrl(conversationId, attachmentId)).then(value => { made = value; if (live) setUrl(value); else URL.revokeObjectURL(value); }).catch(() => {});
     return () => { live = false; if (made) URL.revokeObjectURL(made); };
   }, [conversationId, attachmentId]);
+  React.useEffect(() => {
+    if (!big) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setBig(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [big]);
   if (!url) return null;
+  // Only Pro steps carry a picture. The thumbnail keeps the picture's own proportions; full size opens like the render frames (centred, no card, dim scrim).
   return <>
-    <button type="button" className="act-thumb" onClick={event => { event.stopPropagation(); setBig(true); }} aria-label="نمایش تصویر">
-      <img src={url} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, display: "block" }}/>
+    <button type="button" className="act-thumb-fit" onClick={event => { event.stopPropagation(); setBig(true); }} aria-label="نمایش تصویر">
+      <img src={url} alt="" loading="lazy" draggable={false}/>
     </button>
-    {big ? <div role="dialog" aria-modal="true" onClick={() => setBig(false)}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out" }}>
-      <img src={url} alt="" style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 10 }}/>
+    {big ? <div className="overlay" role="dialog" aria-modal="true" aria-label="تصویر" onMouseDown={event => { if (event.target === event.currentTarget) setBig(false); }}>
+      <figure className="mg-lightbox">
+        <img src={url} alt=""/>
+        <button type="button" className="icon-btn mg-lightbox-close" onClick={() => setBig(false)} aria-label="بستن"><Icon name="close" size={18}/></button>
+      </figure>
     </div> : null}
   </>;
 }

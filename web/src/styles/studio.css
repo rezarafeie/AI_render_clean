@@ -854,6 +854,9 @@ a.pe-tool { text-decoration: none; }
 .act-asset figcaption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-thumb { position: relative; display: block; width: 76px; height: 108px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: #2a2a2e; cursor: pointer; }
 .act-thumb img, .act-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A picture a Pro step looked at: its own proportions (a wide contact sheet stays wide, a vertical frame stays tall), no dark box around it. */
+.act-thumb-fit { display: inline-block; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 8px; overflow: hidden; line-height: 0; }
+.act-thumb-fit img { display: block; width: auto; height: auto; max-width: min(240px, 60vw); max-height: 160px; border-radius: 8px; border: 1px solid var(--border); }
 .act-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.28); }
 .act-voice { display: grid; gap: 2px; }
 .act-voice audio { width: 100%; max-width: 280px; height: 30px; }
