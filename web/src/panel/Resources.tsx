@@ -75,7 +75,7 @@ export function Resources({onTools, job, projectId, onApplied}: {onTools?: () =>
   const matches = (text: string) => text.toLowerCase().includes(query.trim().toLowerCase());
   const items = category === "favorites" ? Object.values(favorites).filter(item => matches(item.name)) : rows;
   return <section className="mp-inspector" aria-label="کتابخانهٔ خلاقیت">
-    <div className="mp-section-head"><h2>کتابخانه</h2><Link className="btn btn-sm btn-secondary" to="/motion-library">گالری موشن</Link></div>
+    <div className="mp-section-head"><h2>کتابخانه</h2><Link reloadDocument className="btn btn-sm btn-secondary" to="/motion-library">گالری موشن</Link></div>
     <div className="mp-chips">{groups.map(([key, label]) => <button key={key} className="btn btn-sm btn-secondary" aria-pressed={category === key}
       onClick={() => {setCategory(key); setOffset(0); setCurrent(null); setApply(null); setError(""); setLoading(false);}}>{label}</button>)}</div>
     {category !== "fonts" && category !== "gallery" && <input className="input" type="search" aria-label="جستجو در منابع" placeholder="جستجو در منابع…" value={query}
@@ -117,21 +117,21 @@ export function Resources({onTools, job, projectId, onApplied}: {onTools?: () =>
           </article>;
         })}
       </div>
-      <Link className="btn btn-secondary btn-sm" to="/library">مدیریت همهٔ فایل‌های کتابخانه</Link>
+      <Link reloadDocument className="btn btn-secondary btn-sm" to="/library">مدیریت همهٔ فایل‌های کتابخانه</Link>
     </>}
     {category === "styles" && <div className="mp-gallery">
       {styles.filter(style => matches(style.name)).map(style => <article className="mp-asset" key={`${style.style_id}:${style.version}`}>
         <div><b>{style.name}</b><small>نسخهٔ {style.version}</small></div>
       </article>)}
-      <Link className="btn btn-secondary btn-sm" to="/style-library">پیش‌نمایش و مدیریت سبک‌ها</Link>
+      <Link reloadDocument className="btn btn-secondary btn-sm" to="/style-library">پیش‌نمایش و مدیریت سبک‌ها</Link>
     </div>}
     {category === "gallery" && <React.Suspense fallback={<p role="status">در حال بارگذاری گالری…</p>}><MotionLibrary/></React.Suspense>}
     {category === "fonts" && <React.Suspense fallback={<p role="status">در حال باز کردن نمونهٔ فونت‌ها…</p>}><Typography/>
-      <Link className="btn btn-secondary btn-sm" to="/style-library#fonts">مدیریت و ورود فونت</Link></React.Suspense>}
+      <Link reloadDocument className="btn btn-secondary btn-sm" to="/style-library#fonts">مدیریت و ورود فونت</Link></React.Suspense>}
     <div className="mp-actions">
       {onTools && <button className="btn btn-secondary" onClick={onTools}>اعمال منابع سازگار در ابزار پروژه</button>}
-      <Link className="btn btn-secondary btn-sm" to="/templates">تمپلیت‌ها</Link>
-      <Link className="btn btn-secondary btn-sm" to="/my-effects">افکت‌های من</Link>
+      <Link reloadDocument className="btn btn-secondary btn-sm" to="/templates">تمپلیت‌ها</Link>
+      <Link reloadDocument className="btn btn-secondary btn-sm" to="/my-effects">افکت‌های من</Link>
     </div>
   </section>;
 }

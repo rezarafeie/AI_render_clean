@@ -249,7 +249,7 @@ function AuthorizedPanel({id}: {id: string}) {
       <Link to="/panel" className="mp-bar-back icon-btn" aria-label="پروژه‌ها"><Icon name="projects" size={20}/></Link>
       <div className="mp-bar-title"><b dir="auto">{chat?.title || "ادیتور دستی"}</b><small>{busy || (renderActive ? "پردازش در جریان است" : isDraft ? "پیش‌نویس" : "پروژهٔ Studio")}</small></div>
       <div className="mp-bar-actions">
-        <Link to={`/studio/${id}`} className="btn btn-secondary btn-sm"><Icon name="spark" size={16}/><span>چت</span></Link>
+        <Link reloadDocument to={`/studio/${id}`} className="btn btn-secondary btn-sm"><Icon name="spark" size={16}/><span>چت</span></Link>
         {!isDraft && !discoveryId && <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(busy)} onClick={() => void download()}><Icon name="download" size={16}/>{currentOutput ? "خروجی" : "رندر"}</button>}
       </div>
     </header>
@@ -345,7 +345,7 @@ function AuthorizedPanel({id}: {id: string}) {
                 onClick={() => void run(label, () => api.sendStudioMessage(id, content, [], {agent_mode: agent, render_target: "server"}))}>{label}</button>)}</div>
               <AgentRunControls runs={chat.agent_runs || []} onChanged={() => void refresh()}/>
               {chat.messages?.[chat.messages.length - 1]?.role === "assistant" && <p className="mp-reply" dir="auto">{chat.messages[chat.messages.length - 1]?.content}</p>}
-              <Link className="btn btn-secondary" to={`/studio/${id}`}>باز کردن چت همین پروژه</Link>
+              <Link reloadDocument className="btn btn-secondary" to={`/studio/${id}`}>باز کردن چت همین پروژه</Link>
             </div>}
           </React.Suspense>
           {currentMotion?.status === "needs_input" && <form className="mp-motion-question" onSubmit={e => {
@@ -373,7 +373,7 @@ export default function Panel() {
       <header className="mp-bar">
         <span className="brand-mark"><Icon name="spark" size={18}/></span>
         <div className="mp-bar-title"><b>EditorGPT</b></div>
-        <Link className="btn btn-secondary btn-sm" to="/studio">استودیو چت</Link>
+        <Link reloadDocument className="btn btn-secondary btn-sm" to="/studio">استودیو چت</Link>
       </header>
       <PanelHome/>
     </>}
