@@ -123,11 +123,18 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         except (OSError, ValueError) as exc:
             raise ValueError(f"the plan file could not be read as JSON: {exc}") from exc
     else:
-        if (work / "checkpoint.json").is_file() and not args.get("fresh"):
-            raise ValueError("this video was already edited with this engine: for a correction edit its plan file and call talking_revise (talking_edit "
-                             "would plan, cut and grade everything again). Only if the person wants a completely new edit, call talking_edit with fresh=true.")
-        context = str(args.get("direction") or "").strip()[:2000]
-        context_file.write_text(context)
+        resume = bool(args.get("resume")) and (work / "checkpoint.json").is_file() and context_file.is_file()
+        if (work / "checkpoint.json").is_file() and not args.get("fresh") and not resume:
+            raise ValueError("this video was already edited with this engine: after a failed or stopped job call talking_edit with resume=true (it goes on "
+                             "from the engine's checkpoint: the plan, the written graphics, the cut, grade and cut-outs are reused, nothing is made again); "
+                             "for a correction edit its plan file and call talking_revise. Only if the person wants a completely new edit, fresh=true.")
+        if args.get("fresh") and not resume:
+            (work / "checkpoint.json").unlink(missing_ok=True)      # a completely new edit: the engine plans, cuts and designs again
+        if resume:
+            context = context_file.read_text()                       # the same direction: the checkpoint belongs to it
+        else:
+            context = str(args.get("direction") or "").strip()[:2000]
+            context_file.write_text(context)
         edited = None
     with _lock:
         busy = _running.get(cid)

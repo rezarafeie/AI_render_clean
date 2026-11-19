@@ -145,8 +145,10 @@ def _tools(api: Api):
                "two-tier motion captions, glass cards, text behind the speaker, graded look; split = the frame split in two (face + graphics). direction: "
                "what the person asked and what you decided (hook, key ideas, names, tone, what to avoid), in Persian or English. music: a path of an "
                "audio file in the folder, or none; empty = the engine's own bed. It transcribes, plans, cuts, grades, builds, self-reviews and renders on "
-               "the render cloud by itself (minutes) and returns a job id at once: wait with job_wait. Then the plan is in its `plan` file.",
-               obj({"path": s_, "style": s_, "direction": s_, "music": s_, "fresh": {"type": "boolean"}}, ["path"])),
+               "the render cloud by itself (minutes) and returns a job id at once: wait with job_wait. Then the plan is in its `plan` file. "
+               "resume=true after a job failed or was stopped (an error, a full disk, a crash): it goes on from the engine's checkpoint — what was made "
+               "(plan, written graphics, cut, grade, cut-outs) is reused, only what is missing is made. fresh=true only when the person wants a completely new edit.",
+               obj({"path": s_, "style": s_, "direction": s_, "music": s_, "fresh": {"type": "boolean"}, "resume": {"type": "boolean"}}, ["path"])),
         simple("talking_revise", "Render a premium talking edit again from its plan after you edited the plan JSON (moments, captions key words, props, "
                "zooms, look, sfx, drop = word indices to cut): only what changed is rebuilt. Same path and style as talking_edit; plan: the edited file "
                "(default: the engine's plan file). Returns a job id: wait with job_wait.", obj({"path": s_, "style": s_, "plan": s_}, ["path"])),

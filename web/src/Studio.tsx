@@ -87,6 +87,9 @@ export default function Studio() {
 
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState("");
+  // The app lost the server (network down, server restarting): a calm «retrying» line instead of a red error; it goes away by itself once a read works.
+  const [offline, setOffline] = React.useState(false);
+  const offlineError = (e: unknown) => !navigator.onLine || /network|failed to fetch|load failed|timeout|timed out|502|503|504|aborted/i.test(e instanceof Error ? e.message : String(e ?? ""));
   const [pending, setPending] = React.useState<PendingMessage | null>(null);
   const [localFiles, setLocalFiles] = React.useState<LocalFileInfo[]>([]);
   const [listening, setListening] = React.useState(false);
@@ -184,6 +187,7 @@ export default function Studio() {
     if (!id) return;
     try {
       const value = await api.getStudioConversation(id, { messages: MESSAGE_WINDOW });
+      setOffline(false);
       setConversation(value);
       setLoadedMessages(previous => mergeMessages(previous, value.messages || []));
       if (windowRef.current !== id) {                                 // the first answer for this chat decides where its history starts
@@ -194,6 +198,7 @@ export default function Studio() {
         setWindowFor(id);
       }
     } catch (e) {
+      if (offlineError(e)) { setOffline(true); return; }
       if (quiet) return;
       // an administrator who opened someone else's chat (a pasted link, a new tab) enters the admin view of its owner; one opening their own chat leaves it
       const owner = await adminChatOwner(id);
@@ -204,6 +209,11 @@ export default function Studio() {
     }
   }, [activeId]);
   React.useEffect(() => { void refreshList(); }, [refreshList]);
+  React.useEffect(() => {
+    if (!offline || !activeId) return;
+    const id = window.setInterval(() => void refresh(activeId, true), 4000);
+    return () => window.clearInterval(id);
+  }, [offline, activeId, refresh]);
   // Switching chats: a chat seen (or hovered) before appears at once from memory and is re-read quietly; one never seen shows the skeleton, never the
   // previous chat. The chat being left is stored on the way out.
   React.useEffect(() => {
@@ -253,6 +263,9 @@ export default function Studio() {
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("online", resume);
     window.addEventListener("pageshow", resume);
+    const lost = () => setOffline(true);
+    window.addEventListener("offline", lost);
+    controller.signal.addEventListener("abort", () => window.removeEventListener("offline", lost), { once: true });
     const connect = async () => {
       try {
         while (!stopped) {
@@ -270,6 +283,7 @@ export default function Studio() {
         try {
           connection = new AbortController();
           await api.streamStudioEvents(activeId, cursorRef.current, event => {
+            setOffline(false);
             if (event.type === "assistant.response.delta" && event.data.live) {      // running text: shown at once, nothing to save or re-read
               setLiveText(value => ({ ...value, [String(event.data.response_id)]: String(event.data.text || "") }));
               return;
@@ -287,7 +301,10 @@ export default function Studio() {
             }, 1200);
             if (event.type === "narration.ready" && voiceEnabledRef.current) void api.authenticatedObjectUrl(api.studioEventAudioUrl(activeId, event.data.event_seq)).then(url => { const audio = new Audio(url); void audio.play().finally(() => URL.revokeObjectURL(url)); });
           }, connection.signal);
-        } catch { if (!controller.signal.aborted) await new Promise(resolve => setTimeout(resolve, connection?.signal.aborted ? 150 : 1200)); }
+        } catch {
+          if (!controller.signal.aborted && !connection?.signal.aborted) void refresh(activeId, true);      // a read tells whether the server is really gone (the line shows) or back
+          if (!controller.signal.aborted) await new Promise(resolve => setTimeout(resolve, connection?.signal.aborted ? 150 : 1200));
+        }
       }
     };
     void connect();
@@ -655,7 +672,8 @@ export default function Studio() {
       setPending(null); setLocalFiles(list => { list.forEach(file => URL.revokeObjectURL(file.url)); return []; });
     } catch (e) {
       setPending(value => value ? { ...value, failed: true } : value);
-      setError(friendlyError(e, "send message"));
+      setError(offlineError(e) ? "پیام فرستاده نشد چون اتصال برقرار نیست؛ وقتی اتصال برگشت دوباره بفرستید." : friendlyError(e, "send message"));
+      if (offlineError(e)) setOffline(true);
     } finally { setSending(false); }
   }
   const retryMessage = () => { if (lastSendRef.current) void send(undefined, lastSendRef.current); };
@@ -699,7 +717,9 @@ export default function Studio() {
   const wsVisible = layout === "desktop" ? desktopOpen : layout === "tablet" ? overlayOpen : mobileView !== "chat";
   const mobileTab = layout === "mobile" ? (mobileView === "chat" ? "chat" : wsTab) : null;
 
-  const composer = (variant: "home" | "dock") => <><Composer variant={variant} text={text} setText={setText} files={files} onRemoveFile={removeFile} onFiles={addFiles}
+  const composer = (variant: "home" | "dock") => <>{offline && authenticated ? <div className="conn-banner" role="status" aria-live="polite" dir="rtl">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6" strokeLinecap="round"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/></svg>
+      <span>اتصال برقرار نیست. در حال تلاش دوباره…</span></div> : null}<Composer variant={variant} text={text} setText={setText} files={files} onRemoveFile={removeFile} onFiles={addFiles}
     agentMode={agentMode} onAgentModeChange={changeAgentMode}
     manual={manual} onManualChange={modeSaving ? undefined : () => void toggleManual()}
     processing={processing} onStop={canStop ? stop : undefined} onSend={() => void send()} error={error} onDismissError={() => setError("")}

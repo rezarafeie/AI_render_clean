@@ -924,3 +924,38 @@ a.pe-tool { text-decoration: none; }
 .act-io.act-out.is-error pre { border-inline-start-color: var(--error, #e5484d); color: #f1a7a9; }
 .act-io.act-in h5::before { content: "›"; margin-inline-end: 6px; color: #7aa2f7; font-weight: 700; }
 .act-io.act-out h5::before { content: "↳"; margin-inline-end: 6px; color: rgba(80,200,140,.85); }
+
+/* The app lost the server: a calm, rounded «retrying» line above the composer (not a red error); it leaves by itself once the server answers. */
+.conn-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 12px 16px; border: 1px solid var(--border, rgba(255,255,255,.14));
+  border-radius: 16px; background: var(--surface, rgba(255,255,255,.02)); color: var(--text, #e8e8e8); font-size: 14px; }
+.conn-banner svg { flex: none; opacity: .75; }
+
+/* Steps sit close to the messages around them (the thread's gap plus the message's hover bar made wide empty bands between a message and its
+   steps); the hover bar of an agent message takes less room; a running step keeps its chevron and time next to its title, not at the far edge. */
+.thread > .thread-aux:has(> .act) { margin-block: -8px; }
+.thread > .thread-aux:has(> .act) + .thread-aux:has(> .act) { margin-top: -14px; }
+.msg:not(.msg-user) .msg-meta { margin-top: 0; min-height: 18px; }
+.act-step[data-status="active"] .act-label { flex: 0 1 auto; }
+.act-summary { padding-block: 0; }
+
+/* Audio in the chat (narration takes, voices, music): one rounded card — round play button, name, time and seek bar, download. */
+.audio-card { display: flex; align-items: center; gap: 14px; width: min(100%, 440px); padding: 12px 14px; border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 20px; background: var(--elevated, #2a2a2a); color: var(--text); }
+.audio-play { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%; background: var(--active, rgba(255,255,255,.08));
+  color: var(--text); cursor: pointer; }
+.audio-play:hover:not(:disabled) { background: var(--border, rgba(255,255,255,.14)); }
+.audio-play:disabled { opacity: .5; cursor: default; }
+.audio-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.audio-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-line { display: flex; align-items: center; gap: 12px; }
+.audio-time { flex: none; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.audio-seek { flex: 1; min-width: 40px; height: 16px; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer; }
+.audio-seek::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--text-2, #bbb) var(--pct, 0%), var(--active, rgba(255,255,255,.12)) var(--pct, 0%)); }
+.audio-seek::-moz-range-track { height: 4px; border-radius: 4px; background: var(--active, rgba(255,255,255,.12)); }
+.audio-seek::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--text-2, #bbb); }
+.audio-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; }
+.audio-seek::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; }
+.audio-action { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--text-2); }
+.audio-action:hover { background: var(--active); color: var(--text); }
+.act-audio { margin: 6px 0 4px 24px; }
+.attach-preview .audio-card { width: min(100%, 360px); }

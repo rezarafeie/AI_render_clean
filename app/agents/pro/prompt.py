@@ -54,6 +54,8 @@ ENGINE FIRST — THE COST RULE (only when the engine's look is what the person w
   effects; loudness about -14 LUFS. Leave one out only when the person says so or the sample clearly has none (compare_style `measured`).
 - Whatever you choose, say it in one natural sentence before you start (which way and why); never a list or a technical note.
 - With the engine: give it your direction (request, hook, names, tone), wait with job_wait, look at 3-4 stills of the output, deliver.
+- An engine job that FAILED or was stopped (any error, a full disk, a restart): call talking_edit with the same path and style and resume=true —
+  it continues from where it stopped and reuses everything already made. Never fresh=true and never your own hand-built edit for this.
 - A correction of an engine output: NEVER call talking_edit again (it plans everything anew). Edit only the fields of the engine's plan file the
   correction is about (Edit, never rewrite the file) and call talking_revise. Cost of each field: a prop's `what` = only that graphic is rewritten;
   `moments`/`key`/`zooms`/`sfx` = rebuild and render only; `look` = the whole video is graded again (minutes); `drop` = recut + regrade +

@@ -1,4 +1,5 @@
 import React from "react";
+import AudioPlayer from "./AudioPlayer";
 import { api, StudioConversation, StudioEvent, StudioProject } from "../api";
 import { useAuthenticatedMediaUrl } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
@@ -28,7 +29,7 @@ function RemoteAttachment({ conversationId, id, index, autoOpen, frame }: { conv
   }, [url]);
   if (!open) return <button className="attach-chip attach-button" onClick={() => setOpen(true)}><span className="attach-icon"><Icon name="paperclip" size={16}/></span><span className="attach-meta"><b>Attachment {index + 1}</b><small>Tap to preview</small></span></button>;
   if (!url || !kind) return <div className="attach-chip"><span className="spinner"/><span className="attach-meta"><small>Loading preview…</small></span></div>;
-  return <div className="attach-preview">{kind === "image" ? <ImagePreview src={url} alt={`Attachment ${index + 1}`} frame={frame}/> : kind === "audio" ? <audio src={url} controls/> : <video src={url} controls playsInline preload="metadata"/>}</div>;
+  return <div className="attach-preview">{kind === "image" ? <ImagePreview src={url} alt={`Attachment ${index + 1}`} frame={frame}/> : kind === "audio" ? <AudioPlayer src={url} authenticated={false} title="صدا"/> : <video src={url} controls playsInline preload="metadata"/>}</div>;
 }
 
 function Attachments({ conversationId, ids, local, autoOpen, frame }: { conversationId?: string; ids: string[]; local?: LocalFileInfo[]; autoOpen?: boolean;

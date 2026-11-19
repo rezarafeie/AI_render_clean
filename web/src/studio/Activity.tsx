@@ -64,7 +64,6 @@ function WorkLog({ step, details }: { step: ActivityStep; details: NonNullable<R
         : waiting ? <p className="act-waiting"><span className="spinner"/> در حال کار…</p>
         : <p className="act-none">پاسخ متنی ثبت نشده است.</p>}
     </section>}
-    {step.audioSrc ? <section className="act-io"><h5>شنیدن نریشن</h5><React.Suspense fallback={null}><NarrationAudio src={step.audioSrc}/></React.Suspense></section> : null}
     <p className="act-facts" dir="auto">{facts.join(" · ")}</p>
   </div>;
 }
@@ -122,6 +121,7 @@ function StepRow({ step, retryHref, onOpenEditor }: { step: ActivityStep; retryH
       ? <button type="button" className="act-row" onClick={() => setOpen(value => !value)} aria-expanded={open}>{label}</button>
       : <div className="act-row">{label}</div>}
     {image ? <div className="act-thumb-row" style={{ marginInlineStart: 28, marginTop: 4 }}><StepImage attachmentId={image}/></div> : null}
+    {step.audioSrc ? <div className="act-audio"><React.Suspense fallback={null}><NarrationAudio src={step.audioSrc}/></React.Suspense></div> : null}
     {failed ? <div className="act-failure" role="alert"><p dir="auto" className="bidi wrap-safe">{friendlyFailure(step.notes[step.notes.length - 1])}</p></div> : null}
     {active && typeof step.progress === "number" ? <div className="meter act-meter" style={{ ["--value" as string]: `${step.progress}%` }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step.progress} aria-label={step.label}><span/></div> : null}
     {active ? <div className="act-timing">

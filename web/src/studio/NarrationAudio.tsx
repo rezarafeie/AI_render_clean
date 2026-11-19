@@ -1,7 +1,7 @@
 import React from "react";
-import { AuthenticatedMedia } from "../AuthenticatedMedia";
+import AudioPlayer from "./AudioPlayer";
 
-/** The narration take of a step, playable from its log (loaded only when a step has one). */
-export default function NarrationAudio({ src }: { src: string }) {
-  return <AuthenticatedMedia as="audio" controls preload="none" src={src}/>;
+/** The narration take of a step, playable right in its step (loaded only when a step has one). */
+export default function NarrationAudio({ src, title = "نریشن" }: { src: string; title?: string }) {
+  return <AudioPlayer src={src} title={title}/>;
 }
