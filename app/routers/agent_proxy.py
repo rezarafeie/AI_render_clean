@@ -146,6 +146,23 @@ def _audit(claims: dict, model: str, usage: dict, started: float, status: str = 
             var.reset(token)
 
 
+async def run_ledger(run_ids) -> dict:
+    """What each Pro run really used, from the credit ledger: the agent's own model calls AND the engines' calls it started (the motion
+    planner, the talking engines, images, QC...), which carry the run as their job. {run_id: {"credits", "agent", "input_tokens", "output_tokens"}}."""
+    ids = [str(i) for i in run_ids if i]
+    if not ids:
+        return {}
+    from sqlalchemy import select, func, case
+    from app.credits import _session, CreditLedger
+    async with _session() as db:
+        rows = (await db.execute(select(CreditLedger.job_id, func.sum(-CreditLedger.amount),
+                                        func.sum(case((CreditLedger.route == "pro_agent", -CreditLedger.amount), else_=0)),
+                                        func.sum(CreditLedger.input_tokens), func.sum(CreditLedger.output_tokens))
+                                 .where(CreditLedger.job_id.in_(ids), CreditLedger.kind == "usage").group_by(CreditLedger.job_id))).all()
+    return {job: {"credits": int(total or 0), "agent": int(agent or 0), "input_tokens": int(tin or 0), "output_tokens": int(tout or 0)}
+            for job, total, agent, tin, tout in rows}
+
+
 async def _add_spent(claims: dict, credits: int, usage: dict) -> None:
     if credits <= 0:
         return
@@ -157,7 +174,12 @@ async def _add_spent(claims: dict, credits: int, usage: dict) -> None:
     state["output_tokens"] = int(state.get("output_tokens") or 0) + int(usage.get("output_tokens") or 0)
     state["cache_read_tokens"] = int(state.get("cache_read_tokens") or 0) + int(usage.get("cache_read_input_tokens") or 0)
     await store.update(claims["run"], claims["user"], patch={"pro": state})
-    await repo.emit(claims["cid"], "pro.cost", {"run_id": claims["run"], "spent_credits": state["spent_credits"], "budget_credits": pro.BUDGET_CREDITS})
+    try:
+        state["total_credits"] = max(state["spent_credits"], (await run_ledger([claims["run"]])).get(claims["run"], {}).get("credits", 0))
+    except Exception:
+        log.debug("run ledger not read", exc_info=True)
+    await store.update(claims["run"], claims["user"], patch={"pro": state})
+    await repo.emit(claims["cid"], "pro.cost", {"run_id": claims["run"], "spent_credits": state.get("total_credits") or state["spent_credits"], "budget_credits": pro.BUDGET_CREDITS})
 
 
 def _lift_tool_images(data: dict) -> bool:
@@ -651,6 +673,8 @@ async def _render_cloud(claims: dict, project_dir: str, output: str, audio: str 
         current = json.loads(state_file.read_text()) if state_file.is_file() else {}
         merged = {**(current.get("cloud") or {}), **{k: v for k, v in values.items() if v is not None}}
         save(state="rendering", cloud=merged, **({"progress": int(values["progress"])} if values.get("progress") is not None else {}))
+        if time.time() - seen["at"] > 3:
+            engines.cloud_step(loop, claims, f"{job}-cloud", merged, seen)
         report()
 
     def work():
@@ -676,6 +700,8 @@ async def _render_cloud(claims: dict, project_dir: str, output: str, audio: str 
                     joined.replace(target)
                     save(with_audio=True, silent=str(silent.relative_to(pro.workdir(cid))))
                 save(state="done", progress=100, size_bytes=target.stat().st_size)
+                if seen.get("opened"):
+                    engines.cloud_step(loop, claims, f"{job}-cloud", {"stage": "done", "progress": 100}, seen, final=True)
                 report(final=True, video=target)
             else:
                 save(state="failed", error="the render cloud did not take this project (no matching profile or the cloud is off); render it in the container")
@@ -1006,9 +1032,14 @@ async def admin_runs(request: Request, limit: int = 100):
     async with AsyncSessionLocal() as db:
         rows = (await db.execute(select(StudioAgentRun).where(StudioAgentRun.agent_mode == "pro").order_by(StudioAgentRun.updated_at.desc()).limit(min(limit, 500)))).scalars().all()
     out = []
+    try:
+        ledger = await run_ledger([row.id for row in rows])
+    except Exception:
+        ledger = {}
     for row in rows:
         data = row.data or {}
-        state = data.get("pro") or {}
+        state = dict(data.get("pro") or {})
+        state["spent_credits"] = max(int(state.get("spent_credits") or 0), ledger.get(row.id, {}).get("credits", 0))
         out.append({"id": row.id, "user": row.user_key, "conversation_id": row.conversation_id, "status": row.status, "updated_at": row.updated_at.isoformat() if row.updated_at else None,
                     "request": str((data.get("request") or {}).get("text") or "")[:200], "spent_credits": state.get("spent_credits"), "usd": round((state.get("spent_credits") or 0) * 4 / 1_000_000, 3),
                     "calls": state.get("calls"), "turns": state.get("turns"), "outputs": len(state.get("outputs") or []), "error": data.get("error")})

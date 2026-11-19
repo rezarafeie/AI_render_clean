@@ -2816,6 +2816,10 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 from app import studio_assets
                 metrics = {'stage': stage, 'detail': studio_assets.render_detail(status['render'].get('message'))}
                 observed['render_metrics'] = metrics
+            try:
+                await _cloud_row(conversation_id, user_key, project, engine, raw_status, status)
+            except Exception:
+                log.debug('cloud render row could not be announced', exc_info=True)
             activity_changed = False
             if raw_status in {'running', 'analyzing', 'rendering', 'queued'}:
                 from app.studio_activity import phase_message
@@ -2920,3 +2924,51 @@ def dispatch_message(*args: Any) -> None:
     context = contextvars.copy_context()
     thread = threading.Thread(target=context.run, args=(process_message,*args), daemon=True, name="studio-message")
     thread.start()
+
+
+_CLOUD_STAGE_FA = {"queued": "در صف سرور ابری…", "provisioning": "روشن شدن سرور ابری…", "preparing": "آماده‌سازی محیط رندر ابری…",
+                   "downloading": "دریافت فایل‌ها برای رندر ابری…", "uploading": "دریافت ویدیوی آمادهٔ رندر ابری…",
+                   "delivering": "دریافت ویدیو از ابر و بررسی نهایی…", "rendering": "رندر ابری شروع شد…"}
+
+
+def _cloud_text(engine: str, status) -> str:
+    """The render cloud's own line for a Lite (talking) or Medium (motion) job, when the job is on the cloud: its stage, percent and time left."""
+    if not isinstance(status, dict):
+        return ""
+    if engine == "motion":
+        stage = text = str((status.get("render") or {}).get("message") or "")
+    else:
+        stage, text = str(status.get("stage") or ""), str(status.get("message") or "")
+    if "ابری" in text:
+        return text.strip()
+    for value in (text, stage):
+        if value.lower().startswith("cloud "):
+            return _CLOUD_STAGE_FA.get(value[6:].strip().lower(), "در حال انجام در رندر ابری…")
+    return ""
+
+
+async def _cloud_row(conversation_id, user_key, project, engine, raw_status, status) -> None:
+    """While a Lite or Medium render runs on RunPod, one live row of the chat's timeline shows the cloud's stage, percent and time left (like
+    the engine's other steps): it opens with the first cloud report, moves with each new line and closes when the cloud part ends."""
+    import re
+    row = project["state"].get("cloud_row") or {}
+    text = _cloud_text(engine, status) if raw_status in {"running", "rendering", "queued", "analyzing"} else ""
+    base = {"project_id": project["id"], "engine": engine, "tool": "cloud_render", "stage": "cloud render"}
+    if text:
+        activity = row.get("id") or f"cloud-{project['id']}-{int(time.time())}"
+        if not row.get("id"):
+            await repo.emit(conversation_id, "tool.started", {**base, "activity_id": activity, "status": "running",
+                                                              "message": "رندر روی سرور ابری (RunPod)", "response": text})
+        if text != row.get("text"):
+            percent = re.search(r"(\d+)٪", text)
+            await repo.emit(conversation_id, "tool.progress", {**base, "activity_id": activity, "status": "running", "message": text,
+                                                               "progress": int(percent.group(1)) if percent else None})
+            project["state"] = {**project["state"], "cloud_row": {"id": activity, "text": text}}
+            await repo.update_project(project["id"], user_key, state=project["state"])
+    elif row.get("id"):
+        failed = raw_status in {"error", "failed", "cancelled"}
+        await repo.emit(conversation_id, "tool.completed", {**base, "activity_id": row["id"], "status": "error" if failed else "done",
+                                                            "message": "رندر ابری متوقف شد" if failed else "رندر ابری تمام شد",
+                                                            **({} if failed else {"progress": 100})})
+        project["state"] = {k: v for k, v in project["state"].items() if k != "cloud_row"}
+        await repo.update_project(project["id"], user_key, state=project["state"])

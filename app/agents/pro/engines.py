@@ -206,6 +206,7 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         if time.time() - cloud_seen["at"] > 3 or values.get("progress") in (0, 100):
             cloud_seen["at"] = time.time()
             _card(loop, claims, path)
+            cloud_step(loop, claims, f"{job}-cloud", report, cloud_seen)
 
     def cloud(project: Path, target: Path) -> bool:
         from app.render_cloud import hooks
@@ -227,6 +228,8 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
                                      context=context)
             _keep_plan(work)
             _emit(loop, claims, "موتور تدوین · ویدیو آماده شد", step=f"{job}-progress", done=True, progress=100)
+            if cloud_seen.get("opened"):
+                cloud_step(loop, claims, f"{job}-cloud", {"stage": "done", "progress": 100}, cloud_seen, final=True)
             save(state="done", progress=100, duration=round(float(result.get("duration") or 0), 2),
                  plan=str(_plan_file(work).relative_to(pro.workdir(cid))) if _plan_file(work).is_file() else None,
                  size_bytes=out.stat().st_size if out.is_file() else 0)
@@ -691,6 +694,17 @@ def start_ffmpeg(claims: dict, args: dict, *, loop=None) -> dict:
         data.update(values)
         path.write_text(json.dumps(data, ensure_ascii=False))
 
+    seen: dict = {}
+
+    def report(**values):
+        current = json.loads(path.read_text())
+        merged = {**(current.get("cloud") or {}), **values}
+        save(cloud=merged)
+        if time.time() - seen.get("at", 0) > 3:
+            seen["at"] = time.time()
+            _card(loop, claims, path)
+            cloud_step(loop, claims, f"{job}-cloud", merged, seen)
+
     def work():
         from app.render_cloud import hooks
         from brain.lm_gateway import work_scope
@@ -701,8 +715,10 @@ def start_ffmpeg(claims: dict, args: dict, *, loop=None) -> dict:
                 where = hooks.run_ffmpeg_steps(inputs, steps, output, width=width, height=height, max_duration=max_duration, timeout=3600,
                                                user=user, project_id="pro" + rid, owned_roots=(pro.workdir(cid),),
                                                on_progress=lambda p: save(progress=int(p)),
-                                               on_stage=lambda st: save(cloud={"stage": str(st)[:120]}),
-                                               on_detail=lambda text: save(cloud={**(json.loads(path.read_text()).get("cloud") or {}), "detail": str(text)[:240]}))
+                                               on_stage=lambda st: report(stage=str(st)[:120]),
+                                               on_detail=lambda text: report(detail=str(text)[:240]))
+            if seen.get("opened"):
+                cloud_step(loop, claims, f"{job}-cloud", {"stage": "done", "progress": 100}, seen, final=True)
             save(state="done", progress=100, where=where, size_bytes=output.stat().st_size if output.is_file() else 0)
         except Exception as exc:
             log.warning("pro ffmpeg job %s failed", job, exc_info=True)
@@ -712,3 +728,24 @@ def start_ffmpeg(claims: dict, args: dict, *, loop=None) -> dict:
     threading.Thread(target=work, daemon=True, name=f"pro-ffmpeg-{job}").start()
     return {"job_id": job, "state": "queued", "output": str(output.relative_to(pro.workdir(cid))),
             "note": "Wait with job_wait (it waits on the server until the end). The work runs on the render cloud, or on the server if the cloud does not take it."}
+
+
+CLOUD_STAGE_FA = {"queued": "در صف سرور ابری", "provisioning": "روشن شدن سرور ابری", "preparing": "آماده‌سازی روی سرور ابری",
+                  "uploading": "دریافت خروجی از سرور ابری", "downloading": "ارسال فایل‌ها به سرور ابری", "rendering": "رندر روی سرور ابری",
+                  "muxing": "گذاشتن صدا روی ویدیو", "done": "رندر ابری تمام شد", "failed": "رندر ابری متوقف شد"}
+
+
+def cloud_step(loop, claims: dict, step: str, report: dict, seen: dict, *, final: bool = False) -> None:
+    """The render cloud's own report (stage, percent, time left) as one live row of the timeline, in the step where the render happens: it
+    opens on the first report, moves with the next ones and closes at the end."""
+    detail = str(report.get("detail") or "").strip()
+    stage = CLOUD_STAGE_FA.get(str(report.get("stage") or ""), "رندر روی سرور ابری")
+    percent = report.get("progress")
+    line = detail if detail.startswith("رندر ابری") else (f"{stage} · {int(percent)}٪" if isinstance(percent, (int, float)) else stage)
+    if not seen.get("opened"):
+        seen["opened"] = True
+        _emit(loop, claims, "رندر روی سرور ابری (RunPod)", step=step, detail=line)
+    if final:
+        _emit(loop, claims, line or "رندر ابری تمام شد", step=step, done=True, progress=100 if not report.get("failed") else None)
+    else:
+        _emit(loop, claims, line, step=step, progress=int(percent) if isinstance(percent, (int, float)) else None, quiet=True)

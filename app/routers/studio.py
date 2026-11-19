@@ -338,11 +338,27 @@ async def get_conversation(request: Request, conversation_id: str, messages: Opt
         from app.studio_orchestrator import conversation_busy
         payload = _public_conversation(conversation)
         from app.agents.store import runs
+        records = await runs(conversation_id, _user(request))
+        ledger = {}
+        try:
+            from app.routers.agent_proxy import run_ledger
+            ledger = await run_ledger([r["id"] for r in records if r["agent_mode"] == "pro"])
+        except Exception:
+            pass
+
+        def pro_usage(r):
+            # The whole run: the agent's own calls and the engines' calls it started (the ledger), not only the agent's messages.
+            state = {k: (r["data"].get("pro") or {}).get(k) for k in ("spent_credits", "budget_credits", "turns", "calls")}
+            used = ledger.get(r["id"]) or {}
+            if used.get("credits", 0) > int(state.get("spent_credits") or 0):
+                state["agent_credits"] = state.get("spent_credits")
+                state["spent_credits"] = used["credits"]
+                state["engine_credits"] = used["credits"] - used.get("agent", 0)
+            return state
         payload["agent_runs"] = [{"id": r["id"], "message_id": r["message_id"], "agent_mode": r["agent_mode"],
                                   "status": r["status"], "plan": r["data"].get("plan"), "error": r["data"].get("error"),
-                                  **({"pro": {k: (r["data"].get("pro") or {}).get(k) for k in ("spent_credits", "budget_credits", "turns", "calls")}}
-                                     if r["agent_mode"] == "pro" else {})}
-                                 for r in await runs(conversation_id, _user(request))]
+                                  **({"pro": pro_usage(r)} if r["agent_mode"] == "pro" else {})}
+                                 for r in records]
         payload["busy"] = await asyncio.to_thread(conversation_busy, conversation, _user(request))      # the server's own word, whichever process is working
         return payload
     except KeyError:
