@@ -210,6 +210,8 @@ app.include_router(fonts.router)
 app.include_router(fonts.legacy_router)
 app.include_router(localize.router)
 app.include_router(studio.router)
+from .routers import panel
+app.include_router(panel.router)
 from app.routers.rafieipay_webhook import router as rafieipay_webhook_router
 app.include_router(rafieipay_webhook_router)
 from app import dns_cache as _dns_cache

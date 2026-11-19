@@ -91,12 +91,15 @@ function LegacyJobRedirect() {
   return <Navigate to={`/studio?legacy=motion:${encodeURIComponent(id)}`} replace/>;
 }
 
+const ManualPanel = React.lazy(() => import("./panel/Panel"));
+
 function App() {
   return <BrowserRouter><AppFeatures/><AppErrorBoundary><SessionBootstrap><AuthProvider><JobCacheProvider><React.Suspense fallback={<LoadingSpinner/>}><Routes>
     <Route path="/telegram/link" element={<RequireAuth><TelegramLink/></RequireAuth>}/>
     <Route path="/login" element={<GuestRoute><Login/></GuestRoute>}/>
     <Route path="/signup" element={<GuestRoute><Signup/></GuestRoute>}/>
     <Route path="/forgot-password" element={<ForgotPassword/>}/><Route path="/reset-password" element={<ResetPassword/>}/>
+    <Route path="/panel/:conversationId?" element={<RequireAuth><ManualPanel/></RequireAuth>}/>
     <Route path="/welcome" element={<Landing/>}/>
     <Route element={<EditorShell/>}>
       <Route index element={<Navigate to="/studio" replace/>}/><Route path="studio/:conversationId?" element={<Studio/>}/>
