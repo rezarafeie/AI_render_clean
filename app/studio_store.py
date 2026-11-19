@@ -586,6 +586,7 @@ class Repository:
                 row = StudioEvent(conversation_id=conversation_id, seq=seq, event_type=event_type,
                                   data=data_value, created_at=created)
                 db.add(row); await db.commit(); await db.refresh(row)
+                _after_emit(conversation_id, event_type, data_value)
                 return {"id": row.id, "seq": seq, "type": event_type, "data": data_value, "created_at": iso(created)}
         with _lock:
             store = _read(); events = store["events"].setdefault(conversation_id, [])
@@ -622,6 +623,15 @@ class Repository:
                          "data": row.data or {}, "created_at": iso(row.created_at)} for row in rows]
         with _lock:
             return copy.deepcopy([item for item in _read()["events"].get(conversation_id, []) if item["seq"] > after and (before is None or item["seq"] <= before)][:limit])
+
+
+def _after_emit(conversation_id: str, event_type: str, data: dict) -> None:
+    """A finished output also goes to the person's linked Telegram (app.telegram_outputs); it never raises and never blocks the event."""
+    try:
+        from app import telegram_outputs
+        telegram_outputs.on_event(conversation_id, event_type, data)
+    except Exception:
+        pass
 
 
 repo = Repository()
