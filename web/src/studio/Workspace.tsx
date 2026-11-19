@@ -45,6 +45,18 @@ export function projectOutputUrl(project?: StudioProject) {
   return output && project ? `${api.studioOutputUrl(project.id)}?candidate=${Boolean(candidate)}&version=${encodeURIComponent(output)}` : undefined;
 }
 
+/** The newest video a Pro agent delivered in this chat, played in the Preview tab (with download). */
+function ProOutputPane({ conversationId, attachmentId, title }: { conversationId: string; attachmentId: string; title: string }) {
+  const url = api.studioAttachmentUrl(conversationId, attachmentId);
+  return <div className="ws-preview" dir="rtl">
+    <div className="ws-player"><AuthenticatedMedia as="video" controls playsInline preload="metadata" src={url} style={{ width: "100%", maxHeight: "70vh", background: "#000", borderRadius: 12 }}/></div>
+    <div className="rc-actions" style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+      <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(url, `${title || "editorgpt-pro"}.mp4`)}><Icon name="download" size={15}/>دانلود</button>
+      {title ? <span className="bidi" dir="auto" style={{ color: "var(--text-2)", fontSize: 13 }}>{title}</span> : null}
+    </div>
+  </div>;
+}
+
 function Empty({ icon, title, text }: { icon: "spark" | "advanced"; title: string; text: string }) {
   return <div className="ws-empty"><span className="empty-icon"><Icon name={icon} size={24}/></span><h2>{title}</h2><p>{text}</p></div>;
 }
@@ -322,6 +334,11 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
   motionId?: string; events?: StudioEvent[];
 }) {
   const meta = statusMeta(project);
+  // A Pro chat has no project: its newest delivered video (pro.output) is what Preview shows.
+  const proOutput = React.useMemo(() => {
+    const last = [...events].reverse().find(event => event.type === "pro.output" && event.data?.attachment_id);
+    return last ? { id: String(last.data.attachment_id), title: String(last.data.title || "") } : undefined;
+  }, [events]);
   const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
   const [rowSlot, setRowSlot] = React.useState<HTMLElement | null>(null);
   const panel = usePanelFullscreen();
@@ -364,8 +381,8 @@ export function Workspace({ conversation, project, projects, onSelectProject, ta
     {rendering ? <div className="ws-edit-progress"><RenderProgress project={project!}/></div> : null}
     {working && !rendering && tab === "edit" ? <div className="ws-edit-progress" role="status" dir="rtl"><ThinkingRow label={working}/></div> : null}
     <div className="ws-body">
-      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPreviewPane motionId={motionId} events={events} onCancel={onCancel}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
-      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionEditPane motionId={motionId} events={events}/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)} rowSlot={tab === "edit" && topbarControls ? rowSlot : null}/>}</div>
+      <div role="tabpanel" id="ws-panel-preview" aria-labelledby="ws-tab-preview" hidden={tab !== "preview"}>{!project && motionId ? <MotionPreviewPane motionId={motionId} events={events} onCancel={onCancel}/> : !project && proOutput && conversation ? <ProOutputPane conversationId={conversation.id} attachmentId={proOutput.id} title={proOutput.title}/> : <PreviewPane project={project} conversation={conversation} sourceAttachment={sourceAttachment} onCancel={onCancel}/>}</div>
+      <div role="tabpanel" id="ws-panel-edit" aria-labelledby="ws-tab-edit" hidden={tab !== "edit"}>{!project && motionId ? <MotionEditPane motionId={motionId} events={events}/> : !project && proOutput ? <Empty icon="advanced" title="این ویدیو را Pro ساخته است" text="ویدیوهایی که Pro با کد خودش می‌سازد پروژهٔ قابل ویرایش در این تب ندارند. هر تغییری می‌خواهید (برش، رنگ، زیرنویس، موسیقی) در چت بنویسید تا Pro روی همان کار اعمال کند."/> : <EditPane project={project} onSaved={onSaved} superseding={Boolean(working)} rowSlot={tab === "edit" && topbarControls ? rowSlot : null}/>}</div>
     </div>
   </section>;
 }

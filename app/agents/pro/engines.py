@@ -563,8 +563,45 @@ match: a number 0-100, how close that engine's OWN look is to the sample
 same: a list of short strings, what the engine already does like the sample
 missing: a list of short strings, what the sample has and the engine does not
 decision: one of "engine" (match 70 or more), "engine_with_style" (only for a film engine that gets there with a written style), "build" (no engine makes this look)
-style_brief: 3-5 concrete English lines describing the SAMPLE only: framing and layout changes, backgrounds, type, colour, graphics, transitions, rhythm
+style_brief: 4-7 concrete English lines describing the SAMPLE only: framing and layout changes, camera moves (punch-ins, zooms, shakes), cut
+rhythm (seconds between cuts, jump cuts on pauses), backgrounds, type, colour, graphics, transitions, and SOUND (music bed and its mood/tempo,
+sound effects, how the voice sits in the mix) — the sound and the rhythm are often most of a sample's appeal; use the MEASURED facts
 say: one short natural Persian sentence for the person saying what will be done and why"""
+
+
+def _measure(video: Path) -> dict:
+    """What frames cannot show: the sample's cut rhythm and its sound. Cuts from ffmpeg's scene score; a music bed = speech with (almost) no silent
+    gaps under it (a voice alone falls silent between phrases); loudness of the quietest moments."""
+    import re
+    import subprocess
+    if video.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+        return {}
+    out: dict = {}
+    try:
+        duration = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
+                                        capture_output=True, text=True, timeout=60).stdout.strip() or 0)
+        out["duration_s"] = round(duration, 1)
+        scenes = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(video), "-vf", "select='gt(scene,0.32)',showinfo", "-an", "-f", "null", "-"],
+                                capture_output=True, text=True, timeout=300).stderr
+        cuts = len(re.findall(r"pts_time:", scenes))
+        out["cuts"] = cuts
+        out["average_shot_s"] = round(duration / (cuts + 1), 2) if duration else None
+        has_audio = "Audio:" in subprocess.run(["ffprobe", "-hide_banner", str(video)], capture_output=True, text=True, timeout=60).stderr
+        if has_audio:
+            silent = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(video), "-af", "silencedetect=n=-42dB:d=0.25", "-f", "null", "-"],
+                                    capture_output=True, text=True, timeout=300).stderr
+            gaps = len(re.findall(r"silence_start", silent))
+            out["silent_gaps"] = gaps
+            out["music_bed_likely"] = bool(duration) and gaps <= max(1, int(duration / 20))
+            stats = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(video), "-af", "ebur128", "-f", "null", "-"],
+                                   capture_output=True, text=True, timeout=300).stderr
+            lufs = re.findall(r"I:\s+(-?[\d.]+) LUFS", stats)
+            out["loudness_lufs"] = float(lufs[-1]) if lufs else None
+        else:
+            out["has_audio"] = False
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return out
 
 
 def compare_style(claims: dict, args: dict) -> dict:
@@ -576,6 +613,7 @@ def compare_style(claims: dict, args: dict) -> dict:
     kinds = [k for k in LOOKS if family == "any" or (family == "talking" and k in ("premium", "split")) or (family == "film" and k not in ("premium", "split"))]
     description = str(args.get("description") or "").strip()[:1500]
     sample = str(args.get("sample") or "").strip()
+    measured: dict = {}
     images: list[str] = []
     if sample:
         source = pro.inside(cid, sample)
@@ -585,6 +623,7 @@ def compare_style(claims: dict, args: dict) -> dict:
         if not sheet:
             raise ValueError("no frames could be read from the sample")
         images.append(str(_label(sheet, "SAMPLE")))
+        measured = _measure(source)
     elif not description:
         raise ValueError("give a sample file or a description of the look")
     listed = []
@@ -597,10 +636,14 @@ def compare_style(claims: dict, args: dict) -> dict:
         return {"closest": "none", "decision": "build", "note": "no engine outputs on this server to compare with"}
     user = (("" if sample else "There is no SAMPLE image; the wanted look, in the person's words: " + description + "\n")
             + (f"The person's words: {description}\n" if sample and description else "")
+            + (f"MEASURED on the sample (frames cannot show these): {json.dumps(measured)}. music_bed_likely = music plays under the speech the whole "
+               "time; average_shot_s = seconds between cuts.\n" if measured else "")
             + "The engines: " + "; ".join(f"{k} = {LOOKS[k]}" for k in listed) + ".\nAnswer with the JSON object only.")
     raw, _usage = chat_vision(COMPARE, user, images=images, route="visual_qc", return_json=True, max_tokens=1200, timeout_seconds=180)
     if not isinstance(raw, dict):
         raise ValueError("the comparison gave no answer")
     keep = {k: raw.get(k) for k in ("closest", "match", "same", "missing", "decision", "style_brief", "say")}
     keep["engines_compared"] = listed
+    if measured:
+        keep["measured"] = measured
     return keep
