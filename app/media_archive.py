@@ -69,9 +69,12 @@ def _range(header: str, size: int) -> tuple[int, int] | None:
 
 
 def serve(request: Request, path: Path, owner: str, *, filename: str | None = None, media_type: str | None = None):
-    if path.is_file():
-        return FileResponse(path, filename=filename, media_type=media_type)
+    local = path.is_file()
     record = receipt(path, owner)
+    if local:
+        stat = path.stat()
+        if record is None or (record["size"], record["mtime_ns"]) != (stat.st_size, stat.st_mtime_ns):
+            return FileResponse(path, filename=filename, media_type=media_type)
     if record is None:
         raise HTTPException(404, "Media not found")
     size = record["size"]
@@ -98,10 +101,14 @@ def serve(request: Request, path: Path, owner: str, *, filename: str | None = No
     try:
         result = _store().client.get_object(**params)
     except (BotoCoreError, ClientError) as error:
+        if local:
+            return FileResponse(path, filename=filename, media_type=media_type)
         raise HTTPException(503, "Archived media is temporarily unavailable") from error
     body = result["Body"]
     if result["ContentLength"] != size or (requested and result.get("ContentRange") != headers["Content-Range"]):
         body.close()
+        if local:
+            return FileResponse(path, filename=filename, media_type=media_type)
         raise HTTPException(503, "Unexpected archived media response")
 
     def chunks():
