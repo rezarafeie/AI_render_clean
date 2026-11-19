@@ -89,7 +89,7 @@ export function Thread({ items, conversation, projects, localFiles, thinking, co
         const project = projects.find(p => p.id === item.projectId);
         return project ? <li key={item.id} className="thread-aux"><RenderCard project={project} sourceUrl={sourceUrl} startedAt={item.startedAt} compact={compactRender} onOpenPreview={() => onOpenPreview(project.id)} onEditAgain={() => onEditAgain(project.id)} retryHref={retryHref} onOpenEditor={onOpenEditor ? () => onOpenEditor(project.id) : undefined}/></li> : null;
       }
-      if (item.kind === "pro_job") return <li key={item.id} className="thread-aux"><ProJobCard data={item.data} startedAt={item.startedAt} conversationId={conversation?.id}/></li>;
+      if (item.kind === "pro_job") return <li key={item.id} className="thread-aux"><ProJobCard data={item.data} startedAt={item.startedAt} conversationId={conversation?.id} sourceUrl={sourceUrl}/></li>;
       if (item.kind === "question") return item.choices.length && !item.style ? <li key={item.id} className="thread-aux"><div className="choices" role="group" aria-label={item.question || "Quick replies"}>{item.choices.map(choice => <button key={choice.value} className="chip" onClick={() => onChoice(choice.value)}>{choice.label}</button>)}</div></li> : null;
       return null;
     })}

@@ -50,6 +50,11 @@ async def dispatch(run_id, user, *, lite_dispatch=None):
         # the agent worker container takes queued Pro runs itself (/internal/pro/claim); nothing runs in this process
         from app.studio_store import repo
         await repo.emit(record["conversation_id"], "work.state", {"busy": True, "agent_mode": "pro", "run_id": run_id})
+        try:                                                # a Pro chat gets a made title like Lite's and Medium's (only its first message)
+            from app.studio_title import title_in_background
+            title_in_background(record["conversation_id"], user, (record["data"].get("request") or {}).get("text", ""))
+        except Exception:
+            pass
         return
     if record["agent_mode"] == "lite" and not record["data"].get("agent"):
         # Preserve Lite's existing Celery task / threading path, not only its prompts.

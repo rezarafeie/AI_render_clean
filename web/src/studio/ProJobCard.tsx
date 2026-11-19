@@ -24,7 +24,8 @@ function useElapsed(startedAt: number, running: boolean) {
  * The render card of a studio engine job the Pro agent started (`pro.job` events): the same card as Lite's render (the same classes), with the
  * engine's stage and percent, the render cloud's own report while it renders, and the finished video with a download button.
  */
-export function ProJobCard({ data, startedAt, conversationId }: { data: Record<string, any>; startedAt: number; conversationId?: string }) {
+export function ProJobCard({ data, startedAt, conversationId, sourceUrl }: { data: Record<string, any>; startedAt: number; conversationId?: string;
+  /** The chat's own video, dimmed behind the progress like Lite's render card. */ sourceUrl?: string }) {
   const state = String(data.state || "queued");
   const busy = ["queued", "transcribing", "running", "rendering"].includes(state);
   const done = state === "done";
@@ -47,7 +48,8 @@ export function ProJobCard({ data, startedAt, conversationId }: { data: Record<s
 
     <div className="rc-frame">
       {video ? <AuthenticatedMedia as="video" controls playsInline preload="metadata" src={video} className="rc-video"/> : <>
-        <div className="rc-backdrop skeleton" aria-hidden="true"/>
+        {sourceUrl ? <AuthenticatedMedia as="video" muted playsInline preload="metadata" src={sourceUrl} className="rc-backdrop" aria-hidden="true" tabIndex={-1}/>
+          : <div className="rc-backdrop" aria-hidden="true" style={{ background: "#141416" }}/>}
         <div className="rc-overlay">
           {failed ? <Icon name="alert" size={28}/> : <span className="spinner rc-spinner" aria-hidden="true"/>}
           <strong>{failed ? (data.error === "stopped" ? "متوقف شد" : "خطا") : stage}</strong>
@@ -62,7 +64,7 @@ export function ProJobCard({ data, startedAt, conversationId }: { data: Record<s
         role="progressbar" aria-label="پیشرفت ساخت" aria-valuemin={0} aria-valuemax={100} aria-valuenow={typeof percent === "number" ? percent : undefined}/>
       <div className="rc-meta"><span>{stage}</span>{typeof percent === "number" ? <span dir="auto">{cloudActive ? "رندر ابری: " : "کل کار: "}<bdi dir="ltr">{percent}%</bdi></span> : null}</div>
       {cloudActive && cloud.detail ? <p className="rc-detail" dir="auto">{cloud.detail}</p> : null}
-      {cloudActive && typeof data.progress === "number" ? <p className="ws-hint" dir="rtl">کل کار موتور: {data.progress}٪</p> : null}
+      {cloudActive && data.style !== "render" && typeof data.progress === "number" ? <p className="ws-hint" dir="rtl">کل کار موتور: {data.progress}٪</p> : null}
     </div> : null}
 
     {video ? <div className="rc-actions">
