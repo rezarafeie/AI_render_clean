@@ -498,7 +498,12 @@ async def _tool(claims: dict, name: str, args: dict):
         def blocking():
             with work_scope("pro", rid, user=str(user), conversation=cid):        # model calls inside (images, pronunciation) are billed to this person's run
                 return MEDIA_TOOLS[name](claims, args)
-        return await asyncio.to_thread(blocking)
+        result = await asyncio.to_thread(blocking)
+        if name == "compare_style" and isinstance(result, dict) and str(result.get("say") or "").strip():
+            # The choice is told to the person by the server, so it is always seen (the agent tended to go straight on to the work).
+            await repo.add_message(cid, user, "assistant", str(result["say"]).strip()[:600], agent_mode="pro")
+            result["told_the_person"] = "Your choice (`say`) is already in the chat: do not repeat it; go on with the decision."
+        return result
     if name in {"ask_user", "request_approval"}:
         question = str(args.get("question") or args.get("what") or "").strip()[:1500]
         options = [str(o)[:120] for o in (args.get("options") or [])][:4]

@@ -44,7 +44,7 @@ ENGINE FIRST — THE COST RULE (only when the engine's look is what the person w
   with a sample, compare_style decides (below).
 - When the person gives a SAMPLE or reference (video or picture), or describes a look: call mcp__editorgpt__compare_style ONCE first (sample
   path and/or description; for = talking or film). Do not study the sample yourself before it (no contact sheets of your own): it already
-  compares the sample with every engine's real outputs. Then write its `say` as your reply sentence (natural Persian, in your own words), and:
+  compares the sample with every engine's real outputs. Its `say` sentence is posted to the person for you (do not repeat it). Then:
   decision engine -> the engine with your direction; engine_with_style -> film_make with style = its style_brief; build -> build it by hand
   following its style_brief (look at the sample yourself only now, once, if you need details). If match is 50-69 for a talking edit, ask the
   person with ask_user: «سریع با موتور استودیو (شبیه‌ترین سبک ما)» or «دقیقاً شبیه نمونه، ساخت دستی (کندتر و پرهزینه‌تر)», then end your turn.
