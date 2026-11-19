@@ -212,8 +212,6 @@ app.include_router(localize.router)
 app.include_router(studio.router)
 from app.routers.rafieipay_webhook import router as rafieipay_webhook_router
 app.include_router(rafieipay_webhook_router)
-from app.routers.telegram_studio import router as telegram_studio_router
-app.include_router(telegram_studio_router)
 from app import dns_cache as _dns_cache
 _dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
@@ -224,6 +222,8 @@ app.include_router(lm_admin.access_router)
 app.include_router(lm_admin.router)
 from app.routers import admin_manage
 app.include_router(admin_manage.router)
+from app.routers.telegram_studio import router as telegram_studio_router
+app.include_router(telegram_studio_router)
 from app.routers import agent_proxy as _agent_proxy
 app.include_router(_agent_proxy.router)
 app.include_router(_agent_proxy.admin_router)
