@@ -311,9 +311,9 @@ def _send(loop, make) -> None:
 
 
 async def wait(cid: str, job: str, seconds: float, user: str = "") -> dict:
-    """Wait on the server for an engine job, a film or a cloud render to end (up to 240 s), so the agent does not spend a model call per poll."""
+    """Wait on the server for an engine job, a film or a cloud render to end (up to 14 min), so the agent does not spend a model call per poll."""
     import asyncio
-    deadline = time.monotonic() + max(5.0, min(float(seconds or 240), 240.0))
+    deadline = time.monotonic() + max(5.0, min(float(seconds or 840), 840.0))          # under the agent's 15-minute tool timeout
     film = not _state_file(cid, job).is_file() and bool(user)
     while True:
         data = await asyncio.to_thread(film_state, cid, user, job) if film else state(cid, job)

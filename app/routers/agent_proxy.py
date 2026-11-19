@@ -533,13 +533,16 @@ async def _tool(claims: dict, name: str, args: dict):
     if name == "render_cloud":
         return await _render_cloud(claims, str(args.get("project_dir") or "project"), str(args.get("output") or "out/video.mp4"))
     if name == "render_status":
-        return _render_state(cid, str(args.get("job_id") or ""))
+        # Waits on the server until the render ends (up to 14 min): the agent polled it every 15 s, each poll resending the whole conversation
+        # (25 polls in 7 minutes, 2026-11-19). One call per render now.
+        from app.agents.pro import engines
+        return await engines.wait(cid, str(args.get("job_id") or ""), 840)
     if name in {"talking_edit", "talking_revise"}:
         from app.agents.pro import engines
         return await asyncio.to_thread(engines.start, claims, args, revise=name == "talking_revise", loop=asyncio.get_running_loop())
     if name == "job_wait":
         from app.agents.pro import engines
-        return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 240), user=str(user))
+        return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 840), user=str(user))
     if name == "film_make":
         from app.agents.pro import engines
         return await engines.film_start(claims, args)

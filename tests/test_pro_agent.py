@@ -252,6 +252,8 @@ def test_job_wait_returns_when_a_job_ends():
     started = time.time()
     out = asyncio.run(engines.wait("waitchat", "job1", 1))
     assert out["waited_until_end"] is False and time.time() - started < 10
+    from app.agents.pro.prompt import SYSTEM_PROMPT
+    assert "sleep 25" not in SYSTEM_PROMPT and "call render_status ONCE" in SYSTEM_PROMPT
 
 
 def test_a_second_talking_edit_of_the_same_video_is_sent_to_revise():

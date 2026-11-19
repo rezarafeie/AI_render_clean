@@ -106,7 +106,7 @@ def _tools(api: Api):
     async def render_cloud(args):
         return result(await api.tool("render_cloud", args))
 
-    @tool("render_status", "The state of a cloud render: queued | rendering (progress %) | done | failed.", {"job_id": str})
+    @tool("render_status", "WAITS on the server until a cloud render ends (up to 14 minutes) and returns its state: done | failed (or still rendering after 14 min: call it once more). Never poll it in a loop or sleep between calls.", {"job_id": str})
     async def render_status(args):
         return result(await api.tool("render_status", args))
 
@@ -162,8 +162,9 @@ def _tools(api: Api):
         simple("film_revise", "A change to a film made with film_make (a new version of the same film; what did not change is kept), or the answer to "
                "a question the film engine asked: film_id + change, or film_id + answer. Then job_wait(job_id=film_id).",
                obj({"film_id": s_, "change": s_, "answer": s_}, ["film_id"])),
-        simple("job_wait", "Wait on the server until an engine job (talking_edit / talking_revise) or a cloud render ends, up to `seconds` (max 240) per "
-               "call; returns its state (done / failed / still running, progress, the engine's notes, output path). Call it again while it is running.",
+        simple("job_wait", "Wait on the server until an engine job (talking_edit / talking_revise / film_make) or a cloud render ends, up to `seconds` (max 840) per "
+               "call; returns its state (done / failed / still running, progress, the engine's notes, output path). One call usually covers the whole job; "
+               "call again only if it is still running. Never sleep or poll in between.",
                obj({"job_id": s_, "seconds": {"type": "number"}}, ["job_id"])),
         simple("ask_user", "Ask the person ONE question (2-4 short options) when the work cannot go on without the answer; then end your turn.",
                obj({"question": s_, "options": {"type": "array", "items": s_}}, ["question"])),
@@ -472,7 +473,7 @@ async def run(job: dict) -> None:
                             await api.event(kind="tool_done", id="wait-render", tool="render_status", label="منتظر تمام شدن رندر ابری", detail="رندر تمام شد")
                             if not stopped:
                                 await client.query("The cloud render you were waiting for has ended: check it with render_status and continue the work to the end "
-                                                   "(sound, checks, deliver). Do not end your turn while a render is still running; poll render_status instead.")
+                                                   "(sound, checks, deliver). Do not end your turn while a render is still running; call render_status once (it waits until the end).")
                                 continue
                     if live.get("no_allocation"):          # the model service has no tokens left: retrying only fails again
                         status, error = "failed", "اعتبار سرویس مدل هوش مصنوعی فعلاً تمام شده است؛ بعد از شارژ، با پیام «ادامه بده» از همین‌جا ادامه می‌دهد."
