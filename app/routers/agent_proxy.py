@@ -17,8 +17,10 @@ import hmac
 import json
 import logging
 import os
+import re
 import shutil
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -127,6 +129,20 @@ def _lift_tool_images(data: dict) -> bool:
     return changed
 
 
+MAX_OUTPUT = int(os.environ.get("PRO_MAX_OUTPUT_TOKENS", "32000"))
+_START_ID = re.compile(rb'("type"\s*:\s*"message_start".{0,200}?"id"\s*:\s*")([^"]*)(")', re.S)
+_TOP_ID = re.compile(rb'^(\s*\{\s*"id"\s*:\s*")([^"]*)(")')
+
+
+def _unique_message_id(raw: bytes, stream: bool = True) -> bytes:
+    """Jarvis gives every response the same message id ("msg_1tk"). Claude Code merges assistant entries that share an id (streaming splits one
+    message into several), so every turn was folded into one assistant message and the history was reordered on each call: the prompt-cache
+    prefix broke after the system prompt (only ~11 K of 40–150 K cached, 2026-11-19). Each response gets its own id."""
+    fresh = ("msg_" + uuid.uuid4().hex).encode()
+    pattern = _START_ID if stream else _TOP_ID
+    return pattern.sub(lambda m: m.group(1) + fresh + m.group(3), raw, count=1)
+
+
 def _dump(claims: dict, data: dict) -> None:
     """Diagnostics, off unless the chat folder holds a `.dump-requests` file: every forwarded request body is saved (to compare consecutive
     requests, e.g. what breaks the prompt-cache prefix). No secret is in the body; the provider key is a header added later."""
@@ -160,6 +176,9 @@ async def messages(request: Request):
     except ValueError:
         return _anthropic_error(400, "invalid_request_error", "invalid JSON")
     if _lift_tool_images(data):
+        body = json.dumps(data, ensure_ascii=False).encode()
+    if int(data.get("max_tokens") or 0) > MAX_OUTPUT:      # the CLI asks 128 K; Jarvis checks the balance against it before running (402 while ample)
+        data["max_tokens"] = MAX_OUTPUT
         body = json.dumps(data, ensure_ascii=False).encode()
     _dump(claims, data)
     model = str(data.get("model") or "")
@@ -198,6 +217,7 @@ async def messages(request: Request):
             await upstream.aclose()
             if attempt < 3:
                 await asyncio.sleep(2 + attempt * 3); continue
+        head = _unique_message_id(head)
         upstream._pro_iter = stream_iter
         break
     if upstream.status_code != 200 or not data.get("stream"):
@@ -212,6 +232,8 @@ async def messages(request: Request):
             await _add_spent(claims, credits_taken, usage)
         else:
             log.warning("pro proxy: upstream %s for run %s", upstream.status_code, claims["run"])
+        if upstream.status_code == 200:
+            raw = _unique_message_id(raw, stream=False)
         return Response(raw.replace(key.encode(), b"[REDACTED]"), status_code=upstream.status_code,
                         media_type=upstream.headers.get("content-type", "application/json"))
 

@@ -125,6 +125,19 @@ def test_runner_knows_when_the_model_service_is_out_of_tokens():
     assert not NO_ALLOCATION.search("API Error: 500 Internal server error")
 
 
+def test_proxy_gives_every_response_its_own_message_id():
+    try:
+        from app.routers.agent_proxy import _unique_message_id
+    except ImportError:
+        return
+    head = b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1tk","type":"message","role":"assistant"}}\n\n'
+    a, b = _unique_message_id(head), _unique_message_id(head)
+    assert b"msg_1tk" not in a and a != b and a.startswith(b"event: message_start")
+    body = b'{"id":"msg_1tk","type":"message","content":[]}'
+    out = _unique_message_id(body, stream=False)
+    assert b"msg_1tk" not in out and out.endswith(b'"type":"message","content":[]}')
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
