@@ -198,6 +198,18 @@ def test_admin_test_uses_the_same_anthropic_messages_relay():
     assert payload["max_tokens"] == 16 and payload["messages"][0]["role"] == "user"
 
 
+def test_proxy_gives_every_cache_breakpoint_one_hour():
+    try:
+        from app.routers.agent_proxy import _long_cache
+    except ImportError:
+        return
+    data = {"system": [{"type": "text", "text": "a", "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "b", "cache_control": {"type": "ephemeral"}}]}]}
+    assert _long_cache(data) is True
+    assert data["system"][0]["cache_control"]["ttl"] == "1h" and data["messages"][0]["content"][0]["cache_control"]["ttl"] == "1h"
+    assert _long_cache(data) is False
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
