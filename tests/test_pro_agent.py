@@ -277,7 +277,9 @@ def test_a_second_talking_edit_of_the_same_video_is_sent_to_revise():
 
 def test_prompt_keeps_samples_away_from_the_fixed_engine():
     from app.agents.pro.prompt import SYSTEM_PROMPT
-    assert "SAMPLE" in SYSTEM_PROMPT and "do NOT use the engine" in SYSTEM_PROMPT and "NEVER call talking_edit again" in SYSTEM_PROMPT
+    assert "SAMPLE" in SYSTEM_PROMPT and "compare_style ONCE first" in SYSTEM_PROMPT and "NEVER call talking_edit again" in SYSTEM_PROMPT
+    from app.agents.pro import runner
+    assert "compare_style" in runner.TOOL_NAMES
 
 
 def test_film_tools_are_offered_and_routed():

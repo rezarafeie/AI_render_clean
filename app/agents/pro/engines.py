@@ -433,3 +433,174 @@ def film_state(cid: str, user: str, film: str) -> dict:
         except (KeyError, OSError):
             pass
     return out
+
+
+# ── which engine can make the look the person wants: one vision call outside the agent's conversation ─────────────────────────────────────────
+
+LOOKS = {"premium": "talking engine, premium full frame", "split": "talking engine, split in two", "motion": "film engine, motion graphics",
+         "vox": "film engine, Vox-style documentary", "intro-story": "film engine, brand intro (story)", "intro-reel": "film engine, brand intro (reel)"}
+JOB_DATA = Path("/app/job_data")
+
+
+def _look_videos(kind: str, limit: int = 2) -> list[Path]:
+    """Real outputs this server's engines made (the newest first): what each engine's look really is."""
+    import glob
+    import os
+    found: list[Path] = []
+    if kind in ("premium", "split"):
+        want = "claude_premium" if kind == "premium" else "claude_talking"
+        for f in sorted(glob.glob(str(JOB_DATA / "*" / "talking_reel.json")), key=os.path.getmtime, reverse=True):
+            try:
+                d = json.loads(Path(f).read_text())
+            except (OSError, ValueError):
+                continue
+            if d.get("engine") == want and d.get("status") == "done" and d.get("output") and (Path(f).parent / d["output"]).is_file():
+                found.append(Path(f).parent / d["output"])
+            if len(found) >= limit:
+                break
+        return found
+    from app import motion_graphic as mg
+    for f in sorted(glob.glob(str(JOB_DATA / "studio" / "*" / "*" / "motion" / "*" / "motion.json")), key=os.path.getmtime, reverse=True):
+        try:
+            d = json.loads(Path(f).read_text())
+        except (OSError, ValueError):
+            continue
+        k = ("intro-" + d["intro"]) if d.get("intro") else "vox" if d.get("vox") else "motion" if d.get("engine") == "claude" else None
+        if k != kind or d.get("status") != "completed" or not d.get("current"):
+            continue
+        try:
+            found.append(mg.media_path(Path(f).parent, "video", int(d["current"])))
+        except (KeyError, OSError, ValueError):
+            continue
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _label(path: Path, text: str) -> Path:
+    """The sheet's label written on it (SAMPLE / ENGINE: key), so a vision model never mixes the images up."""
+    from PIL import Image, ImageDraw, ImageFont
+    image = Image.open(path).convert("RGB")
+    band = 54
+    out = Image.new("RGB", (image.width, image.height + band), (255, 255, 255))
+    out.paste(image, (0, band))
+    draw = ImageDraw.Draw(out)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
+    except OSError:
+        font = ImageFont.load_default()
+    draw.text((14, 9), text, fill=(0, 0, 0), font=font)
+    target = path.with_name(path.stem + "-labelled.jpg")
+    out.save(target, quality=82)
+    return target
+
+
+def _frames_sheet(sources: list[Path], target: Path, per_video: int = 4, height: int = 360, offsets: tuple = ()) -> Path | None:
+    """A contact sheet: `per_video` frames spread over each source (a picture counts as one frame), one row per source. `offsets` (0-1, one per
+    row) shift where a row's frames are taken, so one video can fill two rows with different moments."""
+    import subprocess
+    import tempfile
+    from PIL import Image
+    rows = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for n, source in enumerate(sources):
+            frames = []
+            if source.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                frames = [Image.open(source).convert("RGB")]
+            else:
+                try:
+                    duration = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(source)],
+                                                    capture_output=True, text=True, timeout=60).stdout.strip() or 0)
+                except (ValueError, subprocess.SubprocessError):
+                    duration = 0
+                shift = offsets[n] if n < len(offsets) else 0.0
+                for i in range(per_video):
+                    at = duration * ((i + 0.25 + shift * 0.5) / per_video) if duration else i
+                    out = Path(tmp) / f"{n}_{i}.jpg"
+                    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{at:.2f}", "-i", str(source), "-frames:v", "1", "-vf", f"scale=-2:{height}", str(out)],
+                                   capture_output=True, timeout=120)
+                    if out.is_file():
+                        frames.append(Image.open(out).convert("RGB"))
+            if frames:
+                frames = [f.resize((max(1, int(f.width * height / f.height)), height)) for f in frames]
+                row = Image.new("RGB", (sum(f.width for f in frames) + 8 * (len(frames) - 1), height), (20, 20, 20))
+                x = 0
+                for f in frames:
+                    row.paste(f, (x, 0))
+                    x += f.width + 8
+                rows.append(row)
+    if not rows:
+        return None
+    sheet = Image.new("RGB", (max(r.width for r in rows), sum(r.height for r in rows) + 8 * (len(rows) - 1)), (20, 20, 20))
+    y = 0
+    for r in rows:
+        sheet.paste(r, (0, y))
+        y += r.height + 8
+    target.parent.mkdir(parents=True, exist_ok=True)
+    sheet.thumbnail((1600, 1600))
+    sheet.save(target, quality=82)
+    return target
+
+
+def look_sheet(kind: str) -> Path | None:
+    """The look sheet of one engine, made once from its real outputs and kept (rebuilt after a week)."""
+    target = pro.RUNS / ".looks" / f"{kind}.jpg"
+    if target.is_file() and time.time() - target.stat().st_mtime < 7 * 86400:
+        return target
+    videos = _look_videos(kind)
+    return _frames_sheet(videos, target) if videos else None
+
+
+COMPARE = """You decide which video engine of a studio can make the look a person wants, by LOOKING at the images. Every image has its label
+written on it: the image labelled SAMPLE is the person's reference (frames of a video or their picture); each image labelled ENGINE: <key> shows
+real outputs of that studio engine. An engine has ONE fixed visual language (layout, framing, captions, graphics, colour, motion); a film engine
+also accepts a written style direction (colours, type, mood) but not a different layout system or editing grammar. Never describe an engine's
+pictures as the sample's. Compare: framing/layout and how it changes between shots, background, typography, colour treatment, graphics, rhythm.
+
+Answer with ONE JSON object and nothing else, with exactly these keys:
+closest: the key of the closest engine, or "none"
+match: a number 0-100, how close that engine's OWN look is to the sample
+same: a list of short strings, what the engine already does like the sample
+missing: a list of short strings, what the sample has and the engine does not
+decision: one of "engine" (match 70 or more), "engine_with_style" (only for a film engine that gets there with a written style), "build" (no engine makes this look)
+style_brief: 3-5 concrete English lines describing the SAMPLE only: framing and layout changes, backgrounds, type, colour, graphics, transitions, rhythm
+say: one short natural Persian sentence for the person saying what will be done and why"""
+
+
+def compare_style(claims: dict, args: dict) -> dict:
+    """Which engine (if any) makes the look the person wants: their sample next to each engine's real outputs, judged by a vision model in ONE call
+    outside the agent's conversation (only this short answer enters it)."""
+    from brain.llm import chat_vision
+    cid = claims["cid"]
+    family = str(args.get("for") or "any").strip().lower()
+    kinds = [k for k in LOOKS if family == "any" or (family == "talking" and k in ("premium", "split")) or (family == "film" and k not in ("premium", "split"))]
+    description = str(args.get("description") or "").strip()[:1500]
+    sample = str(args.get("sample") or "").strip()
+    images: list[str] = []
+    if sample:
+        source = pro.inside(cid, sample)
+        if not source.is_file():
+            raise ValueError("sample file not found in the working folder")
+        sheet = _frames_sheet([source, source], pro.inside(cid, f".looks/sample-{source.stem}.jpg"), per_video=4, height=360, offsets=(0.0, 0.5))
+        if not sheet:
+            raise ValueError("no frames could be read from the sample")
+        images.append(str(_label(sheet, "SAMPLE")))
+    elif not description:
+        raise ValueError("give a sample file or a description of the look")
+    listed = []
+    for kind in kinds:
+        sheet = look_sheet(kind)
+        if sheet:
+            images.append(str(_label(sheet, f"ENGINE: {kind}")))
+            listed.append(kind)
+    if not listed:
+        return {"closest": "none", "decision": "build", "note": "no engine outputs on this server to compare with"}
+    user = (("" if sample else "There is no SAMPLE image; the wanted look, in the person's words: " + description + "\n")
+            + (f"The person's words: {description}\n" if sample and description else "")
+            + "The engines: " + "; ".join(f"{k} = {LOOKS[k]}" for k in listed) + ".\nAnswer with the JSON object only.")
+    raw, _usage = chat_vision(COMPARE, user, images=images, route="visual_qc", return_json=True, max_tokens=1200, timeout_seconds=180)
+    if not isinstance(raw, dict):
+        raise ValueError("the comparison gave no answer")
+    keep = {k: raw.get(k) for k in ("closest", "match", "same", "missing", "decision", "style_brief", "say")}
+    keep["engines_compared"] = listed
+    return keep

@@ -925,7 +925,12 @@ def _t_qc(claims: dict, args: dict) -> dict:
     return report
 
 
-MEDIA_TOOLS = {"tts": _t_tts, "music_generate": _t_music_generate, "music_library": _t_music_library, "sfx": _t_sfx, "image_generate": _t_image_generate,
+def _t_compare_style(claims: dict, args: dict) -> dict:
+    from app.agents.pro import engines
+    return engines.compare_style(claims, args)
+
+
+MEDIA_TOOLS = {"compare_style": _t_compare_style, "tts": _t_tts, "music_generate": _t_music_generate, "music_library": _t_music_library, "sfx": _t_sfx, "image_generate": _t_image_generate,
                "stt": _t_stt, "web_read": _t_web_read, "fonts": _t_fonts, "brand_profile": _t_brand, "person_matte": _t_person_matte, "qc_report": _t_qc}
 
 
