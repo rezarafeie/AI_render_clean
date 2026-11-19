@@ -40,6 +40,10 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "arvan": {"title": "ArvanCloud", "base_url": "https://aiapi.rafiei.co/v1", "model": "GPT-5.6-Sol", "format": "openai", "group": "arvancloud-all-models", "auth": "apikey"},
     "openai": {"title": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4.1-mini", "format": "openai", "group": "openai-all-models"},
     "gemini": {"title": "Gemini (via Vercel proxy)", "base_url": "https://ai-gateway.vercel.sh/v1", "model": "gemini-3.5-flash", "format": "openai", "group": None},
+    # Anthropic's own API, used only by the EditorGPT Pro agent (app/routers/agent_proxy.py): it bills prompt-cache reads at a tenth, which an
+    # agent that resends its whole conversation every step depends on (Jarvis does not price cache, 2026-11-19). Never a chat fallback.
+    "anthropic": {"title": "Anthropic (EditorGPT Pro agent only)", "base_url": "https://api.anthropic.com/v1", "model": "claude-opus-5-5", "format": "openai",
+                  "group": None, "agent_only": True},
     # The account's own ElevenLabs voices (My Voices), through the studio's Vercel relay (ELEVENLABS_PROXY_URL). Speech only: a route lists its models as `elevenlabs:<model>`.
     "elevenlabs": {"title": "ElevenLabs (via Vercel relay)", "base_url": "https://api.elevenlabs.io", "model": "eleven_v3", "format": "elevenlabs", "group": None, "speech_only": True},
 }
@@ -417,7 +421,8 @@ def usable(providers: list[dict] | None = None, *, google_first: bool = False, k
         return []
     now = time.monotonic()
     found = [p for p in (providers or cfg["providers"]) if p["enabled"] and key_for(p["id"]) and _REJECTED.get(p["id"], 0) <= now
-             and (kind == "speech" or not PROVIDERS[p["id"]].get("speech_only"))]
+             and (kind == "speech" or not PROVIDERS[p["id"]].get("speech_only"))
+             and (kind == "agent" or not PROVIDERS[p["id"]].get("agent_only"))]
     if google_first:
         # Gemini/Google models are asked of Google itself before any reseller.
         found.sort(key=lambda p: 0 if p["id"] == "gemini" else 1)

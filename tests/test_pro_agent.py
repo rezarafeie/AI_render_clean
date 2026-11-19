@@ -138,6 +138,22 @@ def test_proxy_gives_every_response_its_own_message_id():
     assert b"msg_1tk" not in out and out.endswith(b'"type":"message","content":[]}')
 
 
+def test_anthropic_provider_serves_only_the_pro_agent():
+    try:
+        from brain import lm_direct
+    except Exception:                         # the agent container has no gateway code
+        return
+    assert lm_direct.PROVIDERS["anthropic"].get("agent_only")
+    original = lm_direct.key_for
+    lm_direct.key_for = lambda pid: "test-key"
+    try:
+        assert "anthropic" not in [p["id"] for p in lm_direct.usable()]
+        assert "anthropic" not in [p["id"] for p in lm_direct.usable(kind="speech")]
+        assert "anthropic" in [p["id"] for p in lm_direct.usable(kind="agent")] or not lm_direct.config()["enabled"]
+    finally:
+        lm_direct.key_for = original
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

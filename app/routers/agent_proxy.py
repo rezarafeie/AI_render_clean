@@ -68,13 +68,18 @@ def _spent(record: dict) -> int:
 
 # ── the model proxy ─────────────────────────────────────────────────────────
 
+PROVIDER_ORDER = ("anthropic", "jarvis")       # Anthropic first (prompt cache billed at a tenth); Jarvis only while no Anthropic key is saved
+
+
 def _provider() -> tuple[str, str]:
+    """The model provider for Pro: Anthropic's API when its key is saved (AI models → direct providers), else Jarvis."""
     from brain import lm_direct
-    provider = next((p for p in lm_direct.usable() if p["id"] == "jarvis"), None)
-    key = lm_direct.key_for("jarvis") if provider else ""
-    if not provider or not key:
-        raise HTTPException(503, "the model provider is not configured")
-    return provider["base_url"].rstrip("/"), key
+    ready = {p["id"]: p for p in lm_direct.usable(kind="agent")}
+    for pid in PROVIDER_ORDER:
+        key = lm_direct.key_for(pid) if pid in ready else ""
+        if key:
+            return ready[pid]["base_url"].rstrip("/"), key
+    raise HTTPException(503, "the model provider is not configured")
 
 
 def _audit(claims: dict, model: str, usage: dict, started: float, status: str = "success", error: str | None = None) -> int:
