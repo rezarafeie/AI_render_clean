@@ -345,6 +345,13 @@ def conversation_busy(conversation: dict, user_key: str) -> bool:
     cid = conversation["id"]
     if studio_flags.busy(user_key, cid):
         return True
+    try:
+        # A Pro run can work for many minutes without a single event (a long ffmpeg pass): the chat must still show it as working, with the stop button.
+        from app.agents import store as agent_store
+        if any(r["status"] in ("queued", "running") for r in run(agent_store.runs(cid, user_key))):
+            return True
+    except Exception:
+        log.warning("busy: the agent runs could not be read", exc_info=True)
     pointer = (conversation.get("state") or {}).get("motion")
     if pointer:
         from app import motion_graphic
