@@ -501,7 +501,7 @@ async def _tool(claims: dict, name: str, args: dict):
         return _render_state(cid, str(args.get("job_id") or ""))
     if name in {"talking_edit", "talking_revise"}:
         from app.agents.pro import engines
-        return await asyncio.to_thread(engines.start, claims, args, revise=name == "talking_revise")
+        return await asyncio.to_thread(engines.start, claims, args, revise=name == "talking_revise", loop=asyncio.get_running_loop())
     if name == "job_wait":
         from app.agents.pro import engines
         return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 240))

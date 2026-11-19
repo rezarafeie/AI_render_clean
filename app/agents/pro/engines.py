@@ -100,7 +100,8 @@ def _apply_plan(engine, work: Path, video: Path, words: list[dict], context: str
     engine._save_checkpoint(work, fp, ck, plan=plan.model_dump(), code=code, rendered=False)
 
 
-def start(claims: dict, args: dict, *, revise: bool = False) -> dict:
+def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
+    """`loop`: the app's event loop; progress lines go to the chat through it (an asyncio.run in this thread would deadlock on the shared database pool)."""
     cid, user, rid = claims["cid"], str(claims["user"]), claims["run"]
     style = str(args.get("style") or "premium").strip().lower()
     engine = _engine(style)
@@ -149,19 +150,22 @@ def start(claims: dict, args: dict, *, revise: bool = False) -> dict:
         data = json.loads(path.read_text())
         data["notes"] = (data.get("notes") or [])[-11:] + [f"{step}: {text}"[:300]]
         path.write_text(json.dumps(data, ensure_ascii=False))
-        _emit(cid, rid, text)
+        _emit(loop, cid, rid, text)
 
     checked = {"at": 0.0, "stop": False}
 
     def cancelled() -> bool:
-        if time.time() - checked["at"] > 5:
-            checked["at"] = time.time()
-            try:
-                from app.agents import store
-                from app.studio_store import run
-                checked["stop"] = run(store.get_run(rid, user)).get("status") != "running"     # the person stopped the run, or it ended
-            except Exception:
-                checked["stop"] = False
+        """The person stopped the run, or it ended: asked on the app's loop every few seconds (never asyncio.run in this thread)."""
+        if loop is None or loop.is_closed() or time.time() - checked["at"] < 5:
+            return checked["stop"]
+        checked["at"] = time.time()
+        try:
+            import asyncio
+            from app.agents import store
+            record = asyncio.run_coroutine_threadsafe(store.get_run(rid, user), loop).result(timeout=15)
+            checked["stop"] = record.get("status") != "running"
+        except Exception:
+            pass                                   # unknown: keep working
         return checked["stop"]
 
     def progress(percent: int, message: str) -> None:
@@ -209,16 +213,21 @@ def start(claims: dict, args: dict, *, revise: bool = False) -> dict:
                     _running.pop(cid, None)
 
     threading.Thread(target=work_thread, daemon=True, name=f"pro-engine-{job}").start()
-    _emit(cid, rid, "موتور تدوین استودیو شروع به کار کرد")
+    _emit(loop, cid, rid, "موتور تدوین استودیو شروع به کار کرد")
     return {"job_id": job, "state": "queued", "output": current["output"],
             "note": "Wait with job_wait (it waits on the server up to 240 s per call). When done, look at a few stills of the output, then deliver, or "
                     "read the plan file, edit it and call talking_revise."}
 
 
-def _emit(cid: str, rid: str, text: str) -> None:
+def _emit(loop, cid: str, rid: str, text: str) -> None:
+    """A progress line in the chat's activity, sent on the app's loop and not waited for (never blocks the engine)."""
+    if loop is None or loop.is_closed():
+        return
     try:
-        from app.studio_store import repo, run
-        run(repo.emit(cid, "tool.progress", {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200], "agent_mode": "pro", "run_id": rid}))
+        import asyncio
+        from app.studio_store import repo
+        asyncio.run_coroutine_threadsafe(repo.emit(cid, "tool.progress", {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200],
+                                                                          "agent_mode": "pro", "run_id": rid}), loop)
     except Exception:
         log.debug("pro engine progress event not sent", exc_info=True)
 
