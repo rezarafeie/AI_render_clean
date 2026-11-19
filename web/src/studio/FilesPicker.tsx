@@ -5,8 +5,7 @@ import { Icon } from "../components/Icon";
 import { formatBytes, parseTime } from "../format";
 import { friendlyError } from "../ui";
 
-const KINDS = [["", "All"], ["video", "Video"], ["audio", "Audio"], ["image", "Images"], ["output", "Made here"]] as const;
-const SOURCE: Record<StudioFile["source"], string> = { upload: "Uploaded", cloud: "Google Drive", output: "Made here", discovery: "کشف کلیپ" };
+const KINDS = [["", "همه"], ["video", "ویدیو"], ["audio", "صدا"], ["image", "تصویر"], ["output", "ساخته‌شده"]] as const;
 
 // The library, kept for the session: it opens at once with what was loaded before (prefetched when the studio opens) and refreshes behind it.
 let cached: StudioFiles | null = null;
@@ -55,45 +54,70 @@ export function FilesPicker({ onClose, onAttach, embedded }: { onClose: () => vo
   const used = data?.usage ?? 0, quota = data?.quota ?? 0;
   const percent = quota ? Math.min(100, (used / quota) * 100) : 0;
 
+  const KIND_FA: Record<string, string> = { video: "ویدیو", audio: "صدا", image: "تصویر" };
+  const SOURCE_FA: Record<StudioFile["source"], string> = { upload: "آپلود", cloud: "گوگل درایو", output: "ساخته‌شده", discovery: "کلیپ کشف‌شده" };
+  const FILTERS = [["", "همه"], ["video", "ویدیو"], ["audio", "صدا"], ["image", "تصویر"], ["output", "ساخته‌شده"]] as const;
+  const chosen = [...picked.values()];
+  const chosenBytes = chosen.reduce((sum, file) => sum + (file.size || 0), 0);
+  const allPicked = shown.length > 0 && shown.every(file => picked.has(file.id));
+  const togglePage = () => setPicked(current => {
+    const next = new Map(current);
+    if (allPicked) shown.forEach(file => next.delete(file.id)); else shown.forEach(file => next.set(file.id, file));
+    return next;
+  });
+  // The same layout as the Google Drive tab (cloud-* classes): search, a segmented filter, a folder row, rows with chips, a footer.
   const body = <>
-      {embedded ? null : <div style={{ display: "flex", alignItems: "center", gap: 8 }}><h3 style={{ margin: 0, flex: 1 }}>Your files</h3>
-        <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18}/></button></div>}
-      {data ? <div className="files-usage" role="group" aria-label="Storage used">
-        <div className="files-usage-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}><span style={{ width: `${percent}%` }} data-high={percent > 90 || undefined}/></div>
-        <small>{quota ? `${formatBytes(used)} of ${formatBytes(quota)} used by uploads` : `${formatBytes(used)} used by uploads · no limit`}</small>
-      </div> : <span/>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input className="input" style={{ flex: "1 1 200px" }} type="search" placeholder="Search your files" aria-label="Search your files" value={query} onChange={event => setQuery(event.target.value)}/>
-        {!showClips && <select className="input" aria-label="File type" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>}
+      {embedded ? null : <header className="cloud-head"><h3>فایل‌های شما</h3>
+        <button className="icon-btn" onClick={onClose} aria-label="بستن"><Icon name="close" size={18}/></button></header>}
+      <div className="cloud-tools">
+        <input className="input cloud-search" type="search" placeholder="جست‌وجو در فایل‌های شما" aria-label="جست‌وجو در فایل‌های شما" value={query} onChange={event => setQuery(event.target.value)}/>
       </div>
-      <div style={{ overflow: "auto", minHeight: 160, border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
-        {data && <button type="button" className="btn btn-secondary" style={{ width: "100%", justifyContent: "flex-start", gap: 10 }}
-          onClick={() => { setShowClips(value => !value); setQuery(""); }}>
-          <Icon name={showClips ? "chevronLeft" : "projects"} size={18}/>
-          <span dir="auto">{showClips ? "همهٔ فایل‌ها" : `کلیپ‌های کشف‌شده (${clipCount.toLocaleString("fa")})`}</span>
-        </button>}
-        {error ? <p role="alert" style={{ padding: 12 }}>{error} <button className="btn btn-sm btn-secondary" onClick={() => void load()}>Try again</button></p> : null}
-        {!data && !error ? <p role="status" style={{ padding: 12 }}><span className="spinner"/> Loading your files…</p> : null}
-        {data && !shown.length && !error ? <p style={{ padding: 12 }}>{showClips ? (query ? "کلیپی پیدا نشد." : "هنوز کلیپی از ویدیوهای بلند کشف نشده.") : data.files.length ? "No file matches." : "Files you upload or make will be kept here, and you can use them again in any chat."}</p> : null}
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {shown.map(file => <li key={file.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)" }}>
-            <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`Select ${file.name}`}/>
-            <Icon name={file.kind === "video" ? "video" : file.kind === "audio" ? "music" : "image"} size={18}/>
-            <label style={{ flex: 1, minWidth: 0 }}><span className="wrap-safe" dir="auto">{file.name}</span>
-              <small style={{ display: "block" }} dir="auto">{[SOURCE[file.source], file.size ? formatBytes(file.size) : "", file.conversation_title, new Date(parseTime(file.created_at)).toLocaleDateString()].filter(Boolean).join(" · ")}</small></label>
-            {file.source !== "discovery" && <button type="button" className="icon-btn trash-btn" aria-label={`Delete ${file.name}`} data-tip="Delete" onClick={() => ask(file)}><Icon name="trash" size={16}/></button>}
-          </li>)}
-        </ul>
+      <div className="cloud-filters">
+        {showClips ? <span/> : <div className="cloud-seg" role="group" aria-label="نوع فایل">
+          {FILTERS.map(([value, label]) => <button key={value || "all"} type="button" className="cloud-seg-btn" aria-pressed={kind === value} onClick={() => setKind(value)}>{label}</button>)}
+        </div>}
+        {data ? <small className="cloud-date" title="فضای استفاده‌شده">{quota ? `${formatBytes(used)} از ${formatBytes(quota)}` : `${formatBytes(used)} · بدون محدودیت`}</small> : null}
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-        <small style={{ marginInlineEnd: "auto" }} role="status">{preparingClips ? "برش با وضوح منبع آماده و خودکار پیوست می‌شود." : picked.size ? `${picked.size} selected` : "Select files to use in this chat"}</small>
-        <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? (preparingClips ? <><span className="spinner"/> آماده‌سازی کلیپ…</> : "Adding…") : `Use ${picked.size || ""}`.trim()}</button>
+      <div className="cloud-list" aria-busy={!data}>
+        <nav className="cloud-crumbs" aria-label="مسیر">
+          {showClips ? <><button className="btn btn-sm btn-ghost" onClick={() => { setShowClips(false); setQuery(""); }}>فایل‌های شما</button><span className="cloud-sep" aria-hidden="true">‹</span><button className="btn btn-sm btn-ghost" disabled>کلیپ‌های کشف‌شده</button></>
+            : <button className="btn btn-sm btn-ghost" disabled>فایل‌های شما</button>}
+          {!data && !error ? <span className="cloud-loading" role="status"><span className="spinner"/> در حال بارگذاری…</span> : null}
+        </nav>
+        {error ? <p role="alert" className="cloud-pad">{error} <button className="btn btn-sm btn-secondary" onClick={() => void load()}>دوباره امتحان کنید</button></p> : null}
+        {!data && !error ? <ul className="cloud-rows" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <li key={i} className="cloud-row cloud-skel"><span className="cloud-thumb"/><span className="cloud-skel-lines"><i/><i/></span></li>)}</ul> : null}
+        {data && !showClips && clipCount ? <ul className="cloud-rows"><li>
+          <button type="button" className="cloud-row cloud-folder" onClick={() => { setShowClips(true); setQuery(""); }}>
+            <span className="cloud-thumb" data-kind="folder"><Icon name="projects" size={20}/></span>
+            <span className="cloud-name wrap-safe">کلیپ‌های کشف‌شده ({clipCount.toLocaleString("fa-IR")})</span><span className="cloud-sep" aria-hidden="true">›</span>
+          </button></li></ul> : null}
+        {data && !shown.length && !error ? <p className="cloud-pad cloud-empty">{showClips ? (query ? "کلیپی پیدا نشد." : "هنوز کلیپی از ویدیوهای بلند کشف نشده.") : data.files.length ? "فایلی با این جست‌وجو پیدا نشد." : "فایل‌هایی که آپلود می‌کنید یا می‌سازید اینجا می‌مانند و در هر چتی دوباره قابل استفاده‌اند."}</p> : null}
+        {shown.length ? <>
+          <div className="cloud-selectbar"><label><input type="checkbox" checked={allPicked} onChange={togglePage}/> انتخاب همه‌ی این فهرست ({shown.length.toLocaleString("fa-IR")})</label></div>
+          <ul className="cloud-rows">{shown.map(file => <li key={file.id} className="cloud-row" data-picked={picked.has(file.id)}>
+            <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`انتخاب ${file.name}`}/>
+            <span className="cloud-thumb" style={{ width: 78, height: 56 }} data-kind={file.kind}><Icon name={file.kind === "video" ? "video" : file.kind === "audio" ? "music" : "image"} size={20}/></span>
+            <label className="cloud-info" onClick={() => toggle(file)}><span className="cloud-name wrap-safe" dir="auto">{file.name}</span>
+              <span className="cloud-meta">
+                <span className="cloud-chip" data-kind={file.kind}>{KIND_FA[file.kind] || file.kind}</span>
+                {file.size ? <span className="cloud-chip"><bdi dir="ltr">{formatBytes(file.size)}</bdi></span> : null}
+                <span className="cloud-chip">{SOURCE_FA[file.source] || file.source}</span>
+                {file.conversation_title ? <span className="cloud-date wrap-safe" dir="auto">{file.conversation_title}</span> : null}
+                <span className="cloud-date">{new Date(parseTime(file.created_at)).toLocaleDateString("fa-IR")}</span>
+              </span></label>
+            {file.source !== "discovery" && <button type="button" className="icon-btn trash-btn" aria-label={`حذف ${file.name}`} data-tip="حذف" onClick={() => ask(file)}><Icon name="trash" size={16}/></button>}
+          </li>)}</ul></> : null}
       </div>
+      <footer className="cloud-foot">
+        <small className="cloud-summary" role="status">{preparingClips ? "برش با وضوح منبع آماده و خودکار پیوست می‌شود."
+          : chosen.length ? <>{chosen.length.toLocaleString("fa-IR")} فایل انتخاب شد{chosenBytes ? <> · <bdi dir="ltr">{formatBytes(chosenBytes)}</bdi></> : null}</> : "ویدیو، صدا یا تصویر انتخاب کنید"}</small>
+        <button className="btn btn-sm btn-secondary" onClick={onClose}>انصراف</button>
+        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? (preparingClips ? <><span className="spinner"/> آماده‌سازی کلیپ…</> : "در حال افزودن…") : picked.size ? `افزودن ${picked.size.toLocaleString("fa-IR")} فایل` : "افزودن"}</button>
+      </footer>
       <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
   </>;
-  if (embedded) return <div className="addmedia-pane" style={{ display: "grid", gap: 12, gridTemplateRows: "auto auto 1fr auto", minHeight: 0 }}>{body}</div>;
-  return <div className="overlay" role="dialog" aria-modal="true" aria-label="Your files" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="dialog" style={{ width: "min(720px, 100%)", display: "grid", gap: 12, gridTemplateRows: "auto auto auto 1fr auto", maxHeight: "calc(100dvh - 32px)" }}>{body}</div>
+  if (embedded) return <div className="addmedia-pane cloud-embedded">{body}</div>;
+  return <div className="overlay" role="dialog" aria-modal="true" aria-label="فایل‌های شما" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog cloud-dialog">{body}</div>
   </div>;
 }

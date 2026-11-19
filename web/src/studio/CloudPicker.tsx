@@ -52,8 +52,20 @@ function Meta({ file }: { file: CloudFile }) {
 // Whether Drive is connected, kept for the session (the first check can take a while): prefetched when the studio opens.
 let providerCache: CloudProvider | null | undefined;
 let providerInflight: Promise<CloudProvider | null> | null = null;
+// Every Drive listing seen this session (folder + search + filter + sort): shown at once next time, then refreshed behind it.
+const listings = new Map<string, { files: CloudFile[]; next: string | null }>();
+const listingKey = (folder: string, q: string, media: string, sort: string) => `${folder}|${q}|${media}|${sort}`;
+
 export function prefetchDrive(): Promise<CloudProvider | null> {
   if (!providerInflight) providerInflight = api.cloudProviders().then(result => (providerCache = result.providers.find(item => item.id === PROVIDER) || null))
+    .then(found => {
+      const key = listingKey("root", "", "", "name");
+      if (found?.connected && !listings.has(key)) {         // the root folder, ready before the person opens the tab
+        void api.cloudFiles(PROVIDER, { folder: "root", q: "", media: "", sort: "name", page_token: null })
+          .then(result => { listings.set(key, { files: result.files, next: result.next_page_token }); }).catch(() => {});
+      }
+      return found;
+    })
     .finally(() => { providerInflight = null; });
   return providerInflight;
 }
@@ -92,21 +104,34 @@ export function CloudPicker({ onClose, onImport, embedded }: { onClose: () => vo
     return () => { live = false; };
   }, []);
 
-  const load = React.useCallback(async (more: string | null) => {
+  const key = listingKey(folder, applied, media, sort);
+  const load = React.useCallback(async (more: string | null, quiet = false) => {
     const id = ++request.current;
-    setLoading(true); setError("");
+    if (!quiet) setLoading(true);
+    setError("");
     try {
       const result = await api.cloudFiles(PROVIDER, { folder, q: applied, media, sort, page_token: more });
       if (id !== request.current) return;
-      setFiles(current => more ? [...current, ...result.files] : result.files);
+      setFiles(current => {
+        const value = more ? [...current, ...result.files] : result.files;
+        if (!more) listings.set(key, { files: value, next: result.next_page_token });
+        return value;
+      });
       setNext(result.next_page_token);
     } catch (e) {
-      if (id === request.current) setError(friendlyError(e, "load Google Drive") + (reconnectNeeded(String(e)) ? " اتصال گوگل درایو را در تنظیمات دوباره برقرار کنید." : ""));
+      if (id === request.current && !quiet) setError(friendlyError(e, "load Google Drive") + (reconnectNeeded(String(e)) ? " اتصال گوگل درایو را در تنظیمات دوباره برقرار کنید." : ""));
     } finally { if (id === request.current) setLoading(false); }
-  }, [folder, applied, media, sort]);
+  }, [folder, applied, media, sort, key]);
 
-  // A new folder, search, filter or sort starts from an empty list with a visible loading state, so the old folder's files never sit there looking like the new one's.
-  React.useEffect(() => { if (provider?.connected) { setFiles([]); setNext(null); setShowOther(false); void load(null); } }, [provider, load]);
+  // A listing seen before is shown at once and refreshed quietly behind it; a new one starts empty with a visible loading state, so another
+  // folder's files never sit there looking like this one's.
+  React.useEffect(() => {
+    if (!provider?.connected) return;
+    setShowOther(false);
+    const seen = listings.get(key);
+    if (seen) { setFiles(seen.files); setNext(seen.next); void load(null, true); }
+    else { setFiles([]); setNext(null); void load(null); }
+  }, [provider, load, key]);
 
   const toggle = (file: CloudFile) => setPicked(current => {
     const copy = new Map(current);
