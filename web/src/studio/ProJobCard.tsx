@@ -36,7 +36,9 @@ export function ProJobCard({ data, startedAt, conversationId, sourceUrl }: { dat
   const percent = cloudActive && typeof cloud.progress === "number" ? cloud.progress : typeof data.progress === "number" ? data.progress : undefined;
   const stage = cloudActive ? (CLOUD_STAGE[String(cloud.stage || "rendering")] || String(cloud.stage)) : String(data.stage || (state === "transcribing" ? "دارم متن صدا را درمی‌آورم" : data.style === "render" ? "ارسال پروژه به سرور ابری" : "در صف موتور")).replace(/\s*\(.*\)\s*$/, "");
   const video = done && data.attachment_id && conversationId ? api.studioAttachmentUrl(conversationId, String(data.attachment_id)) : undefined;
-  const title = done ? "ویدیو آماده است" : failed ? (data.error === "stopped" ? "ساخت متوقف شد" : "ساخت ویدیو کامل نشد") : cloudActive ? "در حال رندر ویدیو" : "در حال ساخت ویدیو";
+  // The agent's own cloud render is the picture only (muted): its sound is mixed afterwards and the agent delivers the final file. It is not "ready".
+  const silent = data.style === "render";
+  const title = done ? (silent ? "تصویر رندر شد · صدا در مرحلهٔ بعد اضافه می‌شود" : "ویدیو آماده است") : failed ? (data.error === "stopped" ? "ساخت متوقف شد" : "ساخت ویدیو کامل نشد") : cloudActive ? "در حال رندر ویدیو" : "در حال ساخت ویدیو";
   const phase = done ? "done" : failed ? "failed" : cloudActive ? "rendering" : "queued";
 
   return <article className="render-card" data-phase={phase} aria-label={title} dir="rtl">
@@ -47,7 +49,7 @@ export function ProJobCard({ data, startedAt, conversationId, sourceUrl }: { dat
     </header>
 
     <div className="rc-frame">
-      {video ? <AuthenticatedMedia as="video" controls playsInline preload="metadata" src={video} className="rc-video"/> : <>
+      {video ? <AuthenticatedMedia as="video" controls playsInline preload="metadata" src={video} className="rc-video" muted={silent || undefined}/> : <>
         {sourceUrl ? <AuthenticatedMedia as="video" muted playsInline preload="metadata" src={sourceUrl} className="rc-backdrop" aria-hidden="true" tabIndex={-1}/>
           : <div className="rc-backdrop" aria-hidden="true" style={{ background: "#141416" }}/>}
         <div className="rc-overlay">
@@ -67,7 +69,7 @@ export function ProJobCard({ data, startedAt, conversationId, sourceUrl }: { dat
       {cloudActive && data.style !== "render" && typeof data.progress === "number" ? <p className="ws-hint" dir="rtl">کل کار موتور: {data.progress}٪</p> : null}
     </div> : null}
 
-    {video ? <div className="rc-actions">
+    {video && !silent ? <div className="rc-actions">
       <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(video, `editorgpt-pro-${data.job_id || "video"}.mp4`)}><Icon name="download" size={15}/>دانلود</button>
     </div> : null}
   </article>;
