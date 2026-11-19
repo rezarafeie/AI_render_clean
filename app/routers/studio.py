@@ -411,19 +411,42 @@ async def upload_attachment(request: Request, conversation_id: str, file: Upload
 class LibraryAttach(BaseModel):
     file_id: str = Field(min_length=3, max_length=200)
     defer: bool = False
+    name: str = Field(default="", max_length=300)            # shown in the composer while a discovery clip is being cut
 
 
 @router.post("/conversations/{conversation_id}/attachments/library", status_code=201)
 async def attach_from_library(request: Request, conversation_id: str, body: LibraryAttach):
     """Use a file the person already has (an earlier upload, a Drive import or a render) in this chat, without uploading it again."""
     from app import studio_files
+    user_key = _user(request)
+    if body.file_id.startswith("clip:"):
+        # Already finished and attached by the server while the page was away: the same attachment, not a second copy.
+        try: done = studio_files.ready_clip(await repo.get_conversation(conversation_id, user_key, message_limit=1), body.file_id)
+        except KeyError: raise HTTPException(404, "conversation not found")
+        if done:
+            await asyncio.to_thread(studio_files.settle_clip, user_key, conversation_id, body.file_id)
+            return {key: done[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
     try:
-        attachment = await studio_files.attach(_user(request), conversation_id, body.file_id, defer=body.defer)
+        attachment = await studio_files.attach(user_key, conversation_id, body.file_id, defer=body.defer)
     except KeyError: raise HTTPException(404, "file not found")
     except IngestError as exc: raise HTTPException(413 if exc.__class__.__name__ == "QuotaExceeded" else 422, str(exc))
     if attachment is None:
+        # Cut on the server and attached by it when ready, even if the page closes; the chat remembers the waiting clip.
+        await asyncio.to_thread(studio_files.pending_clip, user_key, conversation_id, body.file_id, body.name or "کلیپ کشف‌شده")
         return JSONResponse({"status": "preparing"}, status_code=202, headers={"Retry-After": "3"})
+    if body.file_id.startswith("clip:"):
+        await asyncio.to_thread(studio_files.settle_clip, user_key, conversation_id, body.file_id)
     return {key: attachment[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
+
+
+@router.post("/conversations/{conversation_id}/attachments/library/settle")
+async def settle_library_clip(request: Request, conversation_id: str, body: LibraryAttach):
+    """The composer has the clip (or the person removed it): the chat no longer waits for it."""
+    from app import studio_files
+    try: await repo.get_conversation(conversation_id, _user(request), message_limit=1)
+    except KeyError: raise HTTPException(404, "conversation not found")
+    await asyncio.to_thread(studio_files.settle_clip, _user(request), conversation_id, body.file_id)
+    return {"ok": True}
 
 
 @router.get("/files")

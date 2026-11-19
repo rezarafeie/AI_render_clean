@@ -319,6 +319,82 @@ async def attach(user: str, conversation_id: str, file_id: str, *, defer: bool =
         raise
 
 
+# ── a discovery clip still being cut: finished and attached by the server, whether the page stays open or not ─────────────────────────
+
+_WATCHING: set[tuple[str, str, str]] = set()
+_STATE_LOCK = threading.Lock()
+
+
+def _edit_state(user: str, conversation_id: str, change) -> dict:
+    """Read-change-write of the chat's state for the waiting clips (one writer at a time in this process)."""
+    from app.studio_store import run
+    with _STATE_LOCK:
+        conversation = run(repo.get_conversation(conversation_id, user, message_limit=1))
+        state = dict(conversation.get("state") or {})
+        change(state)
+        run(repo.set_conversation(conversation_id, user, state=state))
+        return state
+
+
+def pending_clip(user: str, conversation_id: str, file_id: str, name: str) -> None:
+    """The clip is being cut: the chat remembers it (the composer shows it after a reload) and a server thread attaches it when it is ready."""
+    def add(state: dict) -> None:
+        waiting = [x for x in (state.get("pending_library") or []) if x.get("file_id") != file_id]
+        state["pending_library"] = waiting + [{"file_id": file_id, "name": name, "since": time.time()}]
+    _edit_state(user, conversation_id, add)
+    key = (user, conversation_id, file_id)
+    with _STATE_LOCK:
+        if key in _WATCHING:
+            return
+        _WATCHING.add(key)
+    threading.Thread(target=_finish_clip, args=(user, conversation_id, file_id, name), daemon=True, name="library-clip-attach").start()
+
+
+def settle_clip(user: str, conversation_id: str, file_id: str) -> None:
+    """The page has the clip now (or the person removed it): nothing waits for it any more."""
+    def drop(state: dict) -> None:
+        state["pending_library"] = [x for x in (state.get("pending_library") or []) if x.get("file_id") != file_id]
+        state["ready_library"] = [x for x in (state.get("ready_library") or []) if x.get("file_id") != file_id]
+    _edit_state(user, conversation_id, drop)
+
+
+def ready_clip(conversation: dict, file_id: str) -> dict | None:
+    return next((x for x in ((conversation.get("state") or {}).get("ready_library") or []) if x.get("file_id") == file_id), None)
+
+
+def _finish_clip(user: str, conversation_id: str, file_id: str, name: str) -> None:
+    from app.studio_store import run
+    from app.studio_orchestrator import _emit
+    try:
+        deadline = time.time() + 30 * 60
+        while time.time() < deadline:
+            conversation = run(repo.get_conversation(conversation_id, user, message_limit=1))
+            state = conversation.get("state") or {}
+            if not any(x.get("file_id") == file_id for x in state.get("pending_library") or []):
+                return                                              # the page took it, or the person removed it
+            try:
+                attached = run(attach(user, conversation_id, file_id, defer=True))
+            except IngestError as exc:
+                settle_clip(user, conversation_id, file_id)
+                _emit(conversation_id, "library.failed", file_id=file_id, name=name, message=str(exc)[:300])
+                return
+            if attached:
+                row = {k: attached[k] for k in ("id", "kind", "filename", "mime_type", "size_bytes")}
+
+                def done(state: dict) -> None:
+                    state["pending_library"] = [x for x in (state.get("pending_library") or []) if x.get("file_id") != file_id]
+                    state["ready_library"] = [x for x in (state.get("ready_library") or []) if x.get("file_id") != file_id] + [{"file_id": file_id, **row}]
+                _edit_state(user, conversation_id, done)
+                _emit(conversation_id, "library.ready", file_id=file_id, **row)
+                return
+            time.sleep(4)
+    except Exception:
+        log.warning("library clip %s could not be attached in the background", file_id, exc_info=True)
+    finally:
+        with _STATE_LOCK:
+            _WATCHING.discard((user, conversation_id, file_id))
+
+
 # ── deleting ───────────────────────────────────────────────────────────────────────────────────────────
 
 def _project_running(project: dict) -> bool:

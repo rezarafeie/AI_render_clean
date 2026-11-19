@@ -388,3 +388,34 @@ button.cloud-row:disabled { opacity: .6; cursor: progress; }
 .cloud-embedded { display: flex; flex-direction: column; gap: 12px; }
 .cloud-embedded .cloud-list { flex: 1; min-height: 0; overflow: auto; }
 .menu-item .menu-hint { margin-inline-start: auto; color: var(--text-3); font-size: 11px; }
+
+/* add files: polish — a sheet from the bottom on phones, steady footer, finger-sized rows, quiet motion */
+.addmedia { animation: addmedia-in .18s cubic-bezier(.2,.8,.2,1); }
+@keyframes addmedia-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
+.addmedia .cloud-foot { padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.addmedia .cloud-row { transition: background .12s; }
+.addmedia .cloud-row input[type="checkbox"] { width: 18px; height: 18px; flex: none; accent-color: var(--text); }
+.addmedia .cloud-name { font-weight: 500; }
+.addmedia-tab:focus-visible, .addmedia-drop:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+.addmedia-grip { display: none; }
+@media (max-width: 640px) {
+  .overlay:has(> .addmedia) { place-items: end stretch; padding: 0; }
+  .addmedia { width: 100%; max-width: none; min-height: 0; height: 94dvh; max-height: 94dvh; border-radius: 22px 22px 0 0; padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
+    animation: addmedia-sheet .26s cubic-bezier(.2,.8,.2,1); }
+  @keyframes addmedia-sheet { from { transform: translateY(100%); } to { transform: none; } }
+  .addmedia-grip { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 2px auto 6px; flex: none; }
+  .addmedia-head h3 { font-size: 17px; }
+  .addmedia-tab { padding: 11px 6px; font-size: 13px; }
+  .addmedia .cloud-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .addmedia .cloud-filters::-webkit-scrollbar { display: none; }
+  .addmedia .cloud-seg { flex: none; }
+  .addmedia .cloud-seg-btn { padding: 7px 14px; }
+  .addmedia .cloud-row { min-height: 58px; padding: 8px 10px; gap: 10px; }
+  .addmedia .cloud-row input[type="checkbox"] { width: 22px; height: 22px; }
+  .addmedia .cloud-thumb { width: 60px !important; height: 44px !important; }
+  .addmedia .cloud-foot { flex-wrap: wrap; }
+  .addmedia .cloud-foot .cloud-summary { flex: 1 0 100%; }
+  .addmedia .cloud-foot .btn { flex: 1; min-height: 44px; }
+  .addmedia-drop { min-height: 200px; }
+  .addmedia-shortcuts .btn { flex: 1; min-height: 44px; }
+}

@@ -40,6 +40,7 @@ export function AddMedia({ onClose, onFiles, onAttach, onImport, initial = "devi
 
   return <div className="overlay" role="dialog" aria-modal="true" aria-label="افزودن فایل" dir="rtl" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="dialog addmedia">
+      <span className="addmedia-grip" aria-hidden="true"/>
       <header className="addmedia-head">
         <h3>افزودن فایل</h3>
         <button className="icon-btn" onClick={onClose} aria-label="بستن"><Icon name="close" size={18}/></button>

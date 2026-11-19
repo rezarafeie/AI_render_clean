@@ -1345,10 +1345,14 @@ export const api = {
   async deleteStudioFile(id: string): Promise<void> {
     await j(await authFetch(`${BASE}/studio/files/${encodeURIComponent(id)}`, { method: "DELETE" }));
   },
-  async attachStudioFile(conversationId: string, fileId: string): Promise<StudioAttachment> {
+  /** The composer has the clip, or the person removed it: the chat stops waiting for it. */
+  async settleStudioFile(conversationId: string, fileId: string): Promise<void> {
+    await authFetch(`${BASE}/studio/conversations/${conversationId}/attachments/library/settle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file_id: fileId }) });
+  },
+  async attachStudioFile(conversationId: string, fileId: string, name = ""): Promise<StudioAttachment> {
     const url = `${BASE}/studio/conversations/${conversationId}/attachments/library`;
     const isClip = fileId.startsWith("clip:");
-    const body = JSON.stringify({ file_id: fileId, defer: isClip });
+    const body = JSON.stringify({ file_id: fileId, defer: isClip, name: name.slice(0, 300) });
     const deadline = Date.now() + 10 * 60 * 1000;
     do {
       const response = await authFetch(url, {

@@ -542,13 +542,44 @@ export default function Studio() {
   async function attachFromLibrary(picked: StudioFile[]) {
     if (!authenticated) { requireLogin(); return; }
     const id = await ensureConversation("New media edit", false);
-    const entries: PendingFile[] = [];
-    for (const item of picked) {
-      const attached = await api.attachStudioFile(id, item.id);
-      entries.push({ key: `library-${attached.id}`, file: new File([], attached.filename, { type: attached.mime_type }), url: "", progress: 100, attachmentId: attached.id, localNote: "From your files" });
-    }
-    setFiles(value => [...value, ...entries]);
+    // Every chosen file sits in the composer at once, like an upload: a discovery clip that is still being cut shows its progress there and
+    // becomes ready by itself (the dialog does not wait). The server keeps cutting and attaches it even if this page closes.
+    picked.forEach(item => waitForLibraryFile(id, item.id, item.name, item.kind));
   }
+  const libraryMime = (kind: string) => kind === "video" ? "video/mp4" : kind === "audio" ? "audio/mpeg" : "image/jpeg";
+  function waitForLibraryFile(conversationId: string, fileId: string, name: string, kind: string) {
+    const key = `library-${fileId}`;
+    if (filesRef.current.some(entry => entry.key === key)) return;
+    removedFilesRef.current.delete(key);
+    const clip = fileId.startsWith("clip:");
+    setFiles(value => [...value, { key, file: new File([], name, { type: libraryMime(kind) }), url: "", progress: 2, libraryId: fileId,
+      localNote: clip ? "در حال آماده‌سازی کلیپ با وضوح منبع… (اگر صفحه را ببندید هم ادامه دارد)" : "از فایل‌های شما" }]);
+    const creep = window.setInterval(() => setFiles(value => value.map(entry => entry.key === key && !entry.attachmentId ? { ...entry, progress: Math.min(92, entry.progress + (clip ? 1.2 : 12)) } : entry)), 1000);
+    void api.attachStudioFile(conversationId, fileId, name).then(attached => {
+      if (removedFilesRef.current.has(key)) return;
+      setFiles(value => value.map(entry => entry.key === key ? { ...entry, file: new File([], attached.filename, { type: attached.mime_type }), progress: 100, attachmentId: attached.id, localNote: "از فایل‌های شما" } : entry));
+    }).catch(e => {
+      setFiles(value => value.filter(entry => entry.key !== key));
+      if (!removedFilesRef.current.has(key)) setError(`${name}: ${friendlyError(e, "add this file")}`);
+    }).finally(() => window.clearInterval(creep));
+  }
+  // Reopening a chat: discovery clips that were still being cut come back to the composer (and keep waiting), clips the server finished and
+  // attached while the page was away come back ready.
+  const libraryState = JSON.stringify([conversation?.id, conversation?.state?.pending_library || [], conversation?.state?.ready_library || []]);
+  React.useEffect(() => {
+    const cid = conversation?.id;
+    if (!cid) return;
+    for (const item of (conversation?.state?.ready_library || []) as any[]) {
+      const key = `library-${item.file_id}`;
+      if (filesRef.current.some(entry => entry.key === key && entry.attachmentId) || removedFilesRef.current.has(key)) continue;
+      setFiles(value => [...value.filter(entry => entry.key !== key), { key, file: new File([], item.filename, { type: item.mime_type }), url: "", progress: 100, attachmentId: item.id, libraryId: item.file_id, localNote: "کلیپ آماده شد" }]);
+      void api.settleStudioFile(cid, item.file_id).catch(() => {});
+    }
+    for (const item of (conversation?.state?.pending_library || []) as any[]) {
+      if (!removedFilesRef.current.has(`library-${item.file_id}`)) waitForLibraryFile(cid, item.file_id, item.name || "کلیپ کشف‌شده", "video");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libraryState]);
   const cloudWaiting = files.filter(item => item.cloud && !item.attachmentId).map(item => item.key).join(",");
   React.useEffect(() => {
     if (!cloudWaiting) return;
@@ -567,7 +598,8 @@ export default function Studio() {
     }, 2000);
     return () => window.clearInterval(timer);
   }, [cloudWaiting]);
-  function removeFile(file: PendingFile) { if (file.cloud && !file.attachmentId) void api.cloudCancel(file.cloud.conversationId, file.cloud.transferId).catch(() => {}); removedFilesRef.current.add(file.key); setFiles(value => value.filter(item => item.key !== file.key)); URL.revokeObjectURL(file.url); if (file.localId) void removeAsset(file.localId, localOwner).catch(() => {}); }
+  function removeFile(file: PendingFile) { if (file.cloud && !file.attachmentId) void api.cloudCancel(file.cloud.conversationId, file.cloud.transferId).catch(() => {});
+    if (file.libraryId && !file.attachmentId && conversation?.id) void api.settleStudioFile(conversation.id, file.libraryId).catch(() => {}); removedFilesRef.current.add(file.key); setFiles(value => value.filter(item => item.key !== file.key)); URL.revokeObjectURL(file.url); if (file.localId) void removeAsset(file.localId, localOwner).catch(() => {}); }
 
   async function send(override?: string, resend?: { text: string; ids: string[] }) {
     const submittedAgentMode = agentMode; // snapshot before uploads/navigation or an active-job mode switch
