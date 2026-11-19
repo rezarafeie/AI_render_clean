@@ -6,7 +6,7 @@ import { formatBytes, parseTime } from "../format";
 import { friendlyError } from "../ui";
 
 const KINDS = [["", "All"], ["video", "Video"], ["audio", "Audio"], ["image", "Images"], ["output", "Made here"]] as const;
-const SOURCE: Record<StudioFile["source"], string> = { upload: "Uploaded", cloud: "Google Drive", output: "Made here" };
+const SOURCE: Record<StudioFile["source"], string> = { upload: "Uploaded", cloud: "Google Drive", output: "Made here", discovery: "کشف کلیپ" };
 
 /** Everything the person has stored, from any chat: choose files to use again without uploading them, or delete the ones they no longer need. */
 export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAttach: (files: StudioFile[]) => Promise<void> | void }) {
@@ -14,6 +14,7 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
   const [error, setError] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<(typeof KINDS)[number][0]>("");
+  const [showClips, setShowClips] = React.useState(false);
   const [picked, setPicked] = React.useState<Map<string, StudioFile>>(new Map());
   const [busy, setBusy] = React.useState(false);
   const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
@@ -26,10 +27,11 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, deleting]);
 
+  const clipCount = data?.files.filter(file => file.folder === "discovery").length ?? 0;
   const shown = React.useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return (data?.files || []).filter(file => (!kind || (kind === "output" ? file.source === "output" : file.kind === kind)) && (!needle || `${file.name} ${file.conversation_title}`.toLocaleLowerCase().includes(needle)));
-  }, [data, query, kind]);
+    return (data?.files || []).filter(file => (showClips === (file.folder === "discovery")) && (showClips || !kind || (kind === "output" ? file.source === "output" : file.kind === kind)) && (!needle || `${file.name} ${file.conversation_title}`.toLocaleLowerCase().includes(needle)));
+  }, [data, query, kind, showClips]);
   const toggle = (file: StudioFile) => setPicked(current => { const next = new Map(current); if (next.has(file.id)) next.delete(file.id); else next.set(file.id, file); return next; });
   async function use() {
     setBusy(true); setError("");
@@ -53,26 +55,31 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
       </div> : <span/>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="input" style={{ flex: "1 1 200px" }} type="search" placeholder="Search your files" aria-label="Search your files" value={query} onChange={event => setQuery(event.target.value)}/>
-        <select className="input" aria-label="File type" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        {!showClips && <select className="input" aria-label="File type" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>}
       </div>
       <div style={{ overflow: "auto", minHeight: 160, border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+        {data && <button type="button" className="btn btn-secondary" style={{ width: "100%", justifyContent: "flex-start", gap: 10 }}
+          onClick={() => { setShowClips(value => !value); setQuery(""); }}>
+          <Icon name={showClips ? "chevronLeft" : "projects"} size={18}/>
+          <span dir="auto">{showClips ? "همهٔ فایل‌ها" : `کلیپ‌های کشف‌شده (${clipCount.toLocaleString("fa")})`}</span>
+        </button>}
         {error ? <p role="alert" style={{ padding: 12 }}>{error} <button className="btn btn-sm btn-secondary" onClick={() => void load()}>Try again</button></p> : null}
         {!data && !error ? <p role="status" style={{ padding: 12 }}><span className="spinner"/> Loading your files…</p> : null}
-        {data && !shown.length && !error ? <p style={{ padding: 12 }}>{data.files.length ? "No file matches." : "Files you upload or make will be kept here, and you can use them again in any chat."}</p> : null}
+        {data && !shown.length && !error ? <p style={{ padding: 12 }}>{showClips ? (query ? "کلیپی پیدا نشد." : "هنوز کلیپی از ویدیوهای بلند کشف نشده.") : data.files.length ? "No file matches." : "Files you upload or make will be kept here, and you can use them again in any chat."}</p> : null}
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {shown.map(file => <li key={file.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)" }}>
             <input type="checkbox" checked={picked.has(file.id)} onChange={() => toggle(file)} aria-label={`Select ${file.name}`}/>
             <Icon name={file.kind === "video" ? "video" : file.kind === "audio" ? "music" : "image"} size={18}/>
             <label style={{ flex: 1, minWidth: 0 }}><span className="wrap-safe" dir="auto">{file.name}</span>
-              <small style={{ display: "block" }} dir="auto">{[SOURCE[file.source], formatBytes(file.size), file.conversation_title, new Date(parseTime(file.created_at)).toLocaleDateString()].filter(Boolean).join(" · ")}</small></label>
-            <button type="button" className="icon-btn trash-btn" aria-label={`Delete ${file.name}`} data-tip="Delete" onClick={() => ask(file)}><Icon name="trash" size={16}/></button>
+              <small style={{ display: "block" }} dir="auto">{[SOURCE[file.source], file.size ? formatBytes(file.size) : "", file.conversation_title, new Date(parseTime(file.created_at)).toLocaleDateString()].filter(Boolean).join(" · ")}</small></label>
+            {file.source !== "discovery" && <button type="button" className="icon-btn trash-btn" aria-label={`Delete ${file.name}`} data-tip="Delete" onClick={() => ask(file)}><Icon name="trash" size={16}/></button>}
           </li>)}
         </ul>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
         <small style={{ marginInlineEnd: "auto" }}>{picked.size ? `${picked.size} selected` : "Select files to use in this chat"}</small>
         <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? "Adding…" : `Use ${picked.size || ""}`.trim()}</button>
+        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? ([...picked.values()].some(file => file.source === "discovery") ? "آماده‌سازی کلیپ…" : "Adding…") : `Use ${picked.size || ""}`.trim()}</button>
       </div>
     </div>
     <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>

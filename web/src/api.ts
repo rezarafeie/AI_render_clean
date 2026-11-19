@@ -183,7 +183,7 @@ export interface CloudProvider { id: string; name: string; enabled: boolean; con
 export interface CloudFile { id: string; name: string; mime_type: string; size: number | null; is_folder: boolean; native: boolean; kind: "video" | "image" | "audio" | null; modified: string | null; thumbnail: string | null; duration: number | null; width: number | null; height: number | null }
 export interface CloudTransfer { id: string; state: "queued" | "connecting" | "fetching_metadata" | "downloading" | "validating" | "completed" | "failed" | "cancelled"; provider: string; file_id: string; filename: string; kind: string; size: number | null; bytes: number | null; error: string | null; error_code: string | null; attachment_id: string | null; reused: boolean | null; retryable: boolean | null; speed: number | null }
 export interface TranscriptionPrefs { engine: "auto" | "elevenlabs" | "whisper"; whisper_model: string; elevenlabs_usd_per_hour: number; long_video_minutes: number; models: string[] }
-export interface StudioFile { id: string; name: string; kind: "video" | "audio" | "image"; size: number; created_at: string; source: "upload" | "cloud" | "output"; conversation_id: string; conversation_title: string }
+export interface StudioFile { id: string; name: string; kind: "video" | "audio" | "image"; size: number; created_at: string; source: "upload" | "cloud" | "output" | "discovery"; folder?: "discovery"; conversation_id: string; conversation_title: string }
 export interface StudioFiles { files: StudioFile[]; usage: number; quota: number | null }
 export interface StudioAttachment { id: string; kind: "video" | "image" | "audio"; filename: string; mime_type: string; size_bytes: number }
 export type AgentMode = "lite" | "medium" | "pro";

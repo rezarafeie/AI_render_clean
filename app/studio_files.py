@@ -1,18 +1,20 @@
 """A person's files across every chat, and the deletion of files, projects and chats.
 
 Uploads (from the device or imported from Google Drive) are kept on the server for good: nothing removes them by itself. This module makes them reachable
-from any chat: it lists them together with the rendered videos, attaches one to the current chat again without uploading (a hard link, so no second copy
+from any chat: it lists them together with the rendered videos and discovered clips, attaches one to the current chat again without uploading (a hard link, so no second copy
 is made and deleting the older chat cannot break it), enforces a per-person space limit on uploads, and deletes on request.
 
 File ids are plain strings: ``att:<attachment id>`` (an upload or a Drive import), ``out:<project id>:<file name>`` (a render in a project's exports) and
-``mot:<motion id>:<version>`` (a motion graphic's video).
+``mot:<motion id>:<version>`` (a motion graphic's video), and clip IDs for cuts from long videos.
 """
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import os
 import re
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -87,6 +89,63 @@ def _motion_videos(conversation: dict, user: str) -> list[dict]:
     return rows
 
 
+def _discovery_clips(conversation: dict, user: str):
+    """Read every analysis in an owned chat, including ones superseded by a later upload."""
+    from app import long_video
+
+    root = long_video.folder(user, conversation["id"], "")
+    for directory in root.iterdir() if root.is_dir() else ():
+        if not re.fullmatch(r"[a-f0-9]{12}", directory.name):
+            continue
+        try:
+            analysis = long_video.load(directory)
+        except (ValueError, OSError):
+            continue
+        if (analysis.get("user_key"), analysis.get("conversation_id"), analysis.get("id")) != (user, conversation["id"], directory.name):
+            continue
+        source = Path(analysis.get("source_path") or "")
+        source_exists = source.is_file()
+        for candidate in analysis.get("candidates", []):
+            if candidate.get("hidden") or not re.fullmatch(r"c[a-f0-9]{9}", candidate.get("id", "")) or not candidate.get("ranges"):
+                continue
+            revision = long_video._preview_target(directory, candidate).stem
+            target = directory / "clips" / f"library-{revision}.mp4"
+            child = candidate.get("child_conversation_id") or ""
+            prepared = long_video.ROOT / long_video._safe(user) / child / "attachments" / (candidate["id"] + ".mp4")
+            path = target if target.is_file() else None
+            if path is None and not candidate.get("child_stale") and re.fullmatch(r"[a-f0-9]{32}", child) and prepared.is_file():
+                path = prepared
+            if path is None and not source_exists:
+                continue
+            title = str(candidate.get("title") or "Discovery clip")
+            yield {
+                "id": f"clip:{conversation['id']}:{directory.name}:{revision}",
+                "name": f"{title[:150]}.mp4",
+                "kind": "video",
+                "size": path.stat().st_size if path else 0,
+                "created_at": _iso(candidate.get("created_at") or analysis.get("created_at") or 0),
+                "source": "discovery",
+                "folder": "discovery",
+                "conversation_id": conversation["id"],
+                "conversation_title": conversation.get("title", ""),
+            }, path, target, source, candidate["ranges"]
+
+
+def _prepare_discovery_clip(target: Path, source: Path, ranges: list) -> Path:
+    from app import long_video
+
+    target.parent.mkdir(exist_ok=True)
+    with target.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not target.is_file():
+            try:
+                long_video.render_clip(source, ranges, target, small=False)
+            except (OSError, subprocess.SubprocessError) as exc:
+                target.with_suffix(".part.mp4").unlink(missing_ok=True)
+                raise IngestError("آماده‌سازی کلیپ انجام نشد. دوباره تلاش کنید.") from exc
+    return target
+
+
 async def library(user: str) -> dict:
     conversations = {c["id"]: c for c in await repo.list_conversations(user)}
     projects = await repo.projects_for(list(conversations))
@@ -103,10 +162,14 @@ async def library(user: str) -> dict:
     def outputs() -> list[dict]:
         found = []
         for cid, conversation in conversations.items():
+            found.extend(row for row, *_ in _discovery_clips(conversation, user))
+            parent = (conversation.get("state") or {}).get("parent") or {}
+            from_discovery = bool(parent.get("analysis_id") and parent.get("candidate_id"))
             for output in [*_motion_videos(conversation, user), *[o for p in projects.get(cid, []) for o in _outputs(p)]]:
                 stat = output["path"].stat()
                 found.append({"id": output["id"], "name": output["name"], "kind": "video", "size": stat.st_size, "created_at": _iso(stat.st_mtime), "source": "output",
-                              "conversation_id": cid, "conversation_title": conversation.get("title", "")})
+                              "conversation_id": cid, "conversation_title": conversation.get("title", ""),
+                              **({"folder": "discovery"} if from_discovery else {})})
         return found
     items.extend(await asyncio.to_thread(outputs))
     items.sort(key=lambda item: item["created_at"], reverse=True)
@@ -154,7 +217,20 @@ async def attach(user: str, conversation_id: str, file_id: str) -> dict:
     """Put a file the person already has into this chat as an attachment. The bytes are not copied: the new name is a hard link (a copy only when the disk
     does not allow one)."""
     await repo.get_conversation(conversation_id, user)
-    source, info = await _resolve(user, file_id)
+    if file_id.startswith("clip:"):
+        source_conversation_id = file_id.split(":", 2)[1]
+        conversation = await repo.get_conversation(source_conversation_id, user, message_limit=1)
+        clip = await asyncio.to_thread(lambda: next(
+            (entry for entry in _discovery_clips(conversation, user) if entry[0]["id"] == file_id), None
+        ))
+        if clip is None:
+            raise KeyError(file_id)
+        row, source, target, original, ranges = clip
+        if source is None:
+            source = await asyncio.to_thread(_prepare_discovery_clip, target, original, ranges)
+        info = {"kind": "clip", "name": row["name"]}
+    else:
+        source, info = await _resolve(user, file_id)
     if info["kind"] == "att":
         existing = info["row"]
         if existing["conversation_id"] == conversation_id:
@@ -162,7 +238,7 @@ async def attach(user: str, conversation_id: str, file_id: str) -> dict:
         name, mime = existing["filename"], existing["mime_type"]
         meta = existing.get("metadata") or {}
     else:
-        name, mime, meta = source.name, "video/mp4", {}
+        name, mime, meta = info.get("name", source.name), "video/mp4", {}
     size = source.stat().st_size
     kind = kind_of(name) or "video"
     folder = attachment_folder(user, conversation_id)
