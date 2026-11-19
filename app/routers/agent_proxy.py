@@ -583,7 +583,14 @@ def _cloud_ready(project: Path) -> None:
         if not entry.is_file():
             raise ValueError("the project needs src/index.ts (or src/index.tsx) registering the composition Main")
         entry.rename(src / "entry.tsx")
-        (src / "index.ts").write_text("import './entry';\n")
+        (src / "index.ts").write_text("import './entry';\n// registerRoot is called in ./entry\n")
+    index = src / "index.ts"
+    if "registerRoot" not in index.read_text(errors="ignore"):
+        # Remotion's bundler refuses an entry file whose text never names registerRoot (two cloud renders failed on it, 2026-11-19), even when
+        # the file it imports calls it. A comment satisfies the check; a missing registerRoot is still the agent's to fix.
+        if not any("registerRoot" in p.read_text(errors="ignore") for p in src.glob("*.ts*")):
+            raise ValueError("no file in src/ calls registerRoot(): src/index.ts must register the composition Main with registerRoot")
+        index.write_text(index.read_text(errors="ignore").rstrip() + "\n// registerRoot is called in an imported file\n")
     if not (src / "Scenes.tsx").is_file():
         (src / "Scenes.tsx").write_text("// required by the cloud renderer\nexport const SCENES: never[] = [];\n")
     for path in list(project.rglob("*")):
