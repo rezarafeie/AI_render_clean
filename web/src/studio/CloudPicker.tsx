@@ -49,8 +49,18 @@ function Meta({ file }: { file: CloudFile }) {
 }
 
 /** Browse Google Drive and choose files to import. Importing itself is started by the caller, which also tracks progress. */
-export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImport: (files: CloudFile[]) => Promise<void> | void }) {
-  const [provider, setProvider] = React.useState<CloudProvider | null | undefined>(undefined);
+// Whether Drive is connected, kept for the session (the first check can take a while): prefetched when the studio opens.
+let providerCache: CloudProvider | null | undefined;
+let providerInflight: Promise<CloudProvider | null> | null = null;
+export function prefetchDrive(): Promise<CloudProvider | null> {
+  if (!providerInflight) providerInflight = api.cloudProviders().then(result => (providerCache = result.providers.find(item => item.id === PROVIDER) || null))
+    .finally(() => { providerInflight = null; });
+  return providerInflight;
+}
+
+export function CloudPicker({ onClose, onImport, embedded }: { onClose: () => void; onImport: (files: CloudFile[]) => Promise<void> | void;
+  /** Inside the "add files" dialog: no frame of its own. */ embedded?: boolean }) {
+  const [provider, setProvider] = React.useState<CloudProvider | null | undefined>(providerCache);
   const [path, setPath] = React.useState<Crumb[]>([{ id: "root", name: "درایو من" }]);
   const [query, setQuery] = React.useState("");
   const [applied, setApplied] = React.useState("");
@@ -69,14 +79,15 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
   const folder = path[path.length - 1].id;
 
   React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { if (preview) { setPreview(null); setPlaying(false); } else onClose(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { if (preview) { setPreview(null); setPlaying(false); } else if (!embedded) onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, preview]);
+  }, [onClose, preview, embedded]);
 
   React.useEffect(() => {
     let live = true;
-    api.cloudProviders().then(result => { if (live) setProvider(result.providers.find(item => item.id === PROVIDER) || null); })
+    if (providerCache?.connected) return () => { live = false; };            // known connected: no wait (a lost connection shows when the list loads)
+    prefetchDrive().then(found => { if (live) setProvider(found); })
       .catch(e => { if (live) { setProvider(null); setError(friendlyError(e, "check Google Drive")); } });
     return () => { live = false; };
   }, []);
@@ -123,10 +134,9 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
     try { await onImport(chosen); onClose(); } catch (e) { setError(friendlyError(e, "start the import")); setBusy(false); }
   }
 
-  return <div className="overlay" role="dialog" aria-modal="true" aria-label="وارد کردن از گوگل درایو" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="dialog cloud-dialog">
-      <header className="cloud-head"><h3>وارد کردن از گوگل درایو</h3>
-        <button className="icon-btn" onClick={onClose} aria-label="بستن"><Icon name="close" size={18}/></button></header>
+  const body = <>
+      {embedded ? null : <header className="cloud-head"><h3>وارد کردن از گوگل درایو</h3>
+        <button className="icon-btn" onClick={onClose} aria-label="بستن"><Icon name="close" size={18}/></button></header>}
 
       {provider === undefined ? <p role="status"><span className="spinner"/> در حال بررسی گوگل درایو… بررسی اول ممکن است تا یک دقیقه طول بکشد.</p>
         : !provider?.connected ? <div className="notice" role="status" style={{ display: "grid", gap: 8 }}>
@@ -210,5 +220,8 @@ export function CloudPicker({ onClose, onImport }: { onClose: () => void; onImpo
         <button className="btn btn-sm btn-secondary" onClick={onClose}>انصراف</button>
         <button className="btn btn-sm btn-primary" disabled={!chosen.length || busy} onClick={() => void start()}>{busy ? "در حال شروع…" : chosen.length ? `وارد کردن ${chosen.length.toLocaleString("fa-IR")} فایل` : "وارد کردن"}</button>
       </footer>
-    </div></div>;
+  </>;
+  if (embedded) return <div className="addmedia-pane cloud-embedded">{body}</div>;
+  return <div className="overlay" role="dialog" aria-modal="true" aria-label="وارد کردن از گوگل درایو" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog cloud-dialog">{body}</div></div>;
 }

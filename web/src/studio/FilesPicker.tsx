@@ -8,9 +8,18 @@ import { friendlyError } from "../ui";
 const KINDS = [["", "All"], ["video", "Video"], ["audio", "Audio"], ["image", "Images"], ["output", "Made here"]] as const;
 const SOURCE: Record<StudioFile["source"], string> = { upload: "Uploaded", cloud: "Google Drive", output: "Made here", discovery: "کشف کلیپ" };
 
+// The library, kept for the session: it opens at once with what was loaded before (prefetched when the studio opens) and refreshes behind it.
+let cached: StudioFiles | null = null;
+let inflight: Promise<StudioFiles> | null = null;
+export function prefetchLibrary(): Promise<StudioFiles> {
+  if (!inflight) inflight = api.studioFiles().then(value => { cached = value; return value; }).finally(() => { inflight = null; });
+  return inflight;
+}
+
 /** Everything the person has stored, from any chat: choose files to use again without uploading them, or delete the ones they no longer need. */
-export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAttach: (files: StudioFile[]) => Promise<void> | void }) {
-  const [data, setData] = React.useState<StudioFiles | null>(null);
+export function FilesPicker({ onClose, onAttach, embedded }: { onClose: () => void; onAttach: (files: StudioFile[]) => Promise<void> | void;
+  /** Inside the "add files" dialog: no frame of its own. */ embedded?: boolean }) {
+  const [data, setData] = React.useState<StudioFiles | null>(cached);
   const [error, setError] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<(typeof KINDS)[number][0]>("");
@@ -19,13 +28,13 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
   const [busy, setBusy] = React.useState(false);
   const [deleting, setDeleting] = React.useState<DeleteTarget | null>(null);
 
-  const load = React.useCallback(() => api.studioFiles().then(value => { setData(value); setError(""); }).catch(e => setError(friendlyError(e, "load your files"))), []);
+  const load = React.useCallback(() => prefetchLibrary().then(value => { setData(value); setError(""); }).catch(e => { if (!cached) setError(friendlyError(e, "load your files")); }), []);
   React.useEffect(() => { void load(); }, [load]);
   React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !deleting) onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !deleting && !embedded) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, deleting]);
+  }, [onClose, deleting, embedded]);
 
   const clipCount = data?.files.filter(file => file.folder === "discovery").length ?? 0;
   const shown = React.useMemo(() => {
@@ -46,10 +55,9 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
   const used = data?.usage ?? 0, quota = data?.quota ?? 0;
   const percent = quota ? Math.min(100, (used / quota) * 100) : 0;
 
-  return <div className="overlay" role="dialog" aria-modal="true" aria-label="Your files" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="dialog" style={{ width: "min(720px, 100%)", display: "grid", gap: 12, gridTemplateRows: "auto auto auto 1fr auto", maxHeight: "calc(100dvh - 32px)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><h3 style={{ margin: 0, flex: 1 }}>Your files</h3>
-        <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18}/></button></div>
+  const body = <>
+      {embedded ? null : <div style={{ display: "flex", alignItems: "center", gap: 8 }}><h3 style={{ margin: 0, flex: 1 }}>Your files</h3>
+        <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18}/></button></div>}
       {data ? <div className="files-usage" role="group" aria-label="Storage used">
         <div className="files-usage-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}><span style={{ width: `${percent}%` }} data-high={percent > 90 || undefined}/></div>
         <small>{quota ? `${formatBytes(used)} of ${formatBytes(quota)} used by uploads` : `${formatBytes(used)} used by uploads · no limit`}</small>
@@ -82,7 +90,10 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
         <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? (preparingClips ? <><span className="spinner"/> آماده‌سازی کلیپ…</> : "Adding…") : `Use ${picked.size || ""}`.trim()}</button>
       </div>
-    </div>
-    <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
+      <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>
+  </>;
+  if (embedded) return <div className="addmedia-pane" style={{ display: "grid", gap: 12, gridTemplateRows: "auto auto 1fr auto", minHeight: 0 }}>{body}</div>;
+  return <div className="overlay" role="dialog" aria-modal="true" aria-label="Your files" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog" style={{ width: "min(720px, 100%)", display: "grid", gap: 12, gridTemplateRows: "auto auto auto 1fr auto", maxHeight: "calc(100dvh - 32px)" }}>{body}</div>
   </div>;
 }

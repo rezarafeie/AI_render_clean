@@ -65,12 +65,13 @@ async def ensure_room(user: str, size: int) -> None:
 
 def _outputs(project: dict) -> list[dict]:
     from app import jobs
-    ref = project.get("external_ref")
-    if not ref or project.get("engine") == "localize":
+    ref = str(project.get("external_ref") or "")
+    if not ref or project.get("engine") == "localize" or Path(ref).name != ref:
         return []
-    job = jobs.get(ref)
-    folder = (job.dir / "exports") if job else None
-    if folder is None or not folder.is_dir():
+    # A job's folder is always JOBS_ROOT/<id> (app.jobs). jobs.get() opened a database session and loaded the whole plan for every project:
+    # ~0.3 s each, 9 s for one person's library (36 s under load). The project already belongs to this person's chat, so the folder is enough.
+    folder = jobs.JOBS_ROOT / ref / "exports"
+    if not folder.is_dir():
         return []
     rows = []
     for path in sorted(folder.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:6]:

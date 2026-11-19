@@ -370,3 +370,21 @@ button.cloud-row:disabled { opacity: .6; cursor: progress; }
 .adm-chat-link:hover { text-decoration: underline; }
 .adm-more-btn { margin: 14px auto 0; display: block; }
 @media (max-width: 720px) { .adm-chat-head { display: none; } .adm-chat-row { grid-template-columns: 1fr auto; } .adm-chat-row > :nth-child(2), .adm-chat-row > :nth-child(3) { grid-column: 1 / -1; } }
+
+/* ── one "add files" dialog: this device, your files, Google Drive ─────────────────────────────────────────────────── */
+.addmedia { width: min(760px, 100%); display: flex; flex-direction: column; gap: 12px; max-height: calc(100dvh - 32px); min-height: min(560px, calc(100dvh - 32px)); }
+.addmedia-head { display: flex; align-items: center; gap: 8px; }
+.addmedia-head h3 { margin: 0; flex: 1; }
+.addmedia-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2, rgba(127,127,127,.12)); }
+.addmedia-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); font: inherit; font-size: 14px; cursor: pointer; }
+.addmedia-tab[aria-selected="true"] { background: var(--elevated, #fff); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.18); font-weight: 600; }
+.addmedia-pane { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow: hidden; }
+.addmedia-pane > :last-child { min-height: 0; }
+.addmedia-drop { flex: 1; min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; border: 2px dashed var(--border); border-radius: 16px; background: transparent; color: var(--text); font: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
+.addmedia-drop:hover, .addmedia-drop[data-dragging] { border-color: var(--accent, #3b82f6); background: rgba(59,130,246,.07); }
+.addmedia-drop b { font-size: 17px; }
+.addmedia-drop small { color: var(--text-2); }
+.addmedia-shortcuts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cloud-embedded { display: flex; flex-direction: column; gap: 12px; }
+.cloud-embedded .cloud-list { flex: 1; min-height: 0; overflow: auto; }
+.menu-item .menu-hint { margin-inline-start: auto; color: var(--text-3); font-size: 11px; }

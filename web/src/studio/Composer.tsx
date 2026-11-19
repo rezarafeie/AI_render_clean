@@ -31,6 +31,8 @@ interface ComposerProps {
   onCloud?: () => void;
   /** Opens "Your files": earlier uploads, Drive imports and renders from any chat. */
   onLibrary?: () => void;
+  /** Opens the one "add files" dialog (this device, your files, Google Drive). Replaces the three separate menu items. */
+  onAddMedia?: () => void;
 }
 
 // iOS Files greys out whatever its cloud providers do not type as video/audio/image (Drive reports .mov that way), so no filter there.
@@ -88,9 +90,10 @@ export function Composer(props: ComposerProps) {
               <div className="menu-label">Templates</div>
               {templates.map(item => <button type="button" key={item.id} role="menuitem" className="menu-item" onClick={() => { setText(item.prompt); close(); ref.current?.focus(); }}><Icon name={item.icon} size={18}/><span>{item.title}</span></button>)}
             </> : <>
+              {props.onAddMedia ? <button ref={menuFirst} type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onAddMedia?.(); }}><Icon name="paperclip" size={18}/><span>افزودن فایل</span><small className="menu-hint">دستگاه · فایل‌های شما · گوگل درایو</small></button> : <>
               <button ref={menuFirst} type="button" role="menuitem" className="menu-item" onClick={() => { close(); fileInput.current?.click(); }}><Icon name="paperclip" size={18}/><span>Attach media</span></button>
               {props.onLibrary ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onLibrary?.(); }}><Icon name="library" size={18}/><span>Your files</span></button> : null}
-              {props.onCloud ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onCloud?.(); }}><Icon name="link" size={18}/><span>Import from Google Drive</span></button> : null}
+              {props.onCloud ? <button type="button" role="menuitem" className="menu-item" onClick={() => { close(); props.onCloud?.(); }}><Icon name="link" size={18}/><span>Import from Google Drive</span></button> : null}</>}
               <button type="button" role="menuitem" className="menu-item" onClick={() => setTemplateMenu(true)}><Icon name="grid" size={18}/><span>Templates</span><Icon name="chevron" size={14}/></button>
             </>}
           </>}

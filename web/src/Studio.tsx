@@ -16,8 +16,9 @@ import { Resizer, usePanelWidth } from "./components/Resizer";
 import { useMotionActive } from "./studio/MotionGraphic";
 import { useDiscoveryActive } from "./studio/Discovery";
 import { Composer, PendingFile } from "./studio/Composer";
-import { CloudPicker } from "./studio/CloudPicker";
-import { FilesPicker } from "./studio/FilesPicker";
+import { CloudPicker, prefetchDrive } from "./studio/CloudPicker";
+import { FilesPicker, prefetchLibrary } from "./studio/FilesPicker";
+import { AddMedia } from "./studio/AddMedia";
 import { ManualQuestion } from "./studio/ManualQuestion";
 import { DesignChoice } from "./studio/DesignChoice";
 import { Thread, LocalFileInfo } from "./studio/Thread";
@@ -76,6 +77,13 @@ export default function Studio() {
   const [files, setFiles] = React.useState<PendingFile[]>([]);
   const [libraryOpen, setLibraryOpen] = React.useState(false);
   const [cloudOpen, setCloudOpen] = React.useState(false);
+  const [addOpen, setAddOpen] = React.useState(false);
+  // The library and the Drive connection are fetched once when the studio opens, so "add files" shows them at once.
+  React.useEffect(() => {
+    if (!authenticated || processingPreferences().mode !== "online") return;
+    const timer = window.setTimeout(() => { void prefetchLibrary().catch(() => {}); void prefetchDrive().catch(() => {}); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [authenticated]);
 
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -664,8 +672,10 @@ export default function Studio() {
     manual={manual} onManualChange={modeSaving ? undefined : () => void toggleManual()}
     processing={processing} onStop={canStop ? stop : undefined} onSend={() => void send()} error={error} onDismissError={() => setError("")}
     hasSpeech={hasSpeech} listening={listening} onListen={startVoiceInput} textareaRef={textareaRef} autoFocus={variant === "home" && layout !== "mobile"}
-    onCloud={authenticated && processingPreferences().mode === "online" ? () => setCloudOpen(true) : undefined}
-    onLibrary={authenticated && processingPreferences().mode === "online" ? () => setLibraryOpen(true) : undefined}/>
+    onAddMedia={() => setAddOpen(true)}/>
+    {addOpen ? <AddMedia onClose={() => setAddOpen(false)} onFiles={files => void addFiles(files)}
+      onAttach={authenticated && processingPreferences().mode === "online" ? attachFromLibrary : undefined}
+      onImport={authenticated && processingPreferences().mode === "online" ? importCloud : undefined}/> : null}
     {cloudOpen ? <CloudPicker onClose={() => setCloudOpen(false)} onImport={importCloud}/> : null}
     {libraryOpen ? <FilesPicker onClose={() => setLibraryOpen(false)} onAttach={attachFromLibrary}/> : null}</>;
 
