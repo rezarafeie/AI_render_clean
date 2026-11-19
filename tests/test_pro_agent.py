@@ -182,6 +182,22 @@ def test_pro_anthropic_uses_relay_and_jarvis_remains_direct():
         assert agent_proxy._provider() == ("https://jarvis.example/v1/messages", {"x-api-key": "test-jarvis"})
 
 
+def test_admin_test_uses_the_same_anthropic_messages_relay():
+    from unittest.mock import patch
+
+    import httpx
+    from app.config import settings
+    from brain import lm_direct
+
+    with patch.object(settings, "GEMINI_RELAY_SECRET", "x" * 32), patch.object(lm_direct, "key_for", return_value="test-key"):
+        with patch.object(lm_direct, "_post", return_value=httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})) as sent:
+            assert lm_direct.probe("anthropic")["reply"] == "ok"
+    endpoint, headers, payload, _ = sent.call_args.args
+    assert endpoint == lm_direct.ANTHROPIC_RELAY
+    assert headers["x-relay-secret"] == "x" * 32 and headers["x-api-key"] == "test-key"
+    assert payload["max_tokens"] == 16 and payload["messages"][0]["role"] == "user"
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

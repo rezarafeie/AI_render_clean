@@ -34,6 +34,8 @@ log = logging.getLogger(__name__)
 _lock = threading.Lock()
 
 # Priority order is the order of this list: Jarvis, Sarovi, Arvan, OpenAI, Gemini (Gemini is moved first for Google/Gemini models, see `usable`). Models are defaults; routes naming a model of the same provider win.
+ANTHROPIC_RELAY = "https://rafiei-telegram-api-relay.vercel.app/api/anthropic"
+
 PROVIDERS: dict[str, dict[str, Any]] = {
     "jarvis": {"title": "Jarvis", "base_url": "https://api.jarvis.you/v1", "model": "CLAUDE_SONNET_5_5", "format": "openai", "group": "jarvis-all-models"},
     "sarovi": {"title": "Sarovi", "base_url": "https://api.sarovi.ir/v1", "model": "gpt-4.1-mini", "format": "openai", "group": "sarovi-all-models"},
@@ -42,7 +44,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "gemini": {"title": "Gemini (via Vercel proxy)", "base_url": "https://ai-gateway.vercel.sh/v1", "model": "gemini-3.5-flash", "format": "openai", "group": None},
     # Anthropic's own API, used only by the EditorGPT Pro agent (app/routers/agent_proxy.py): it bills prompt-cache reads at a tenth, which an
     # agent that resends its whole conversation every step depends on (Jarvis does not price cache, 2026-11-19). Never a chat fallback.
-    "anthropic": {"title": "Anthropic (EditorGPT Pro agent only)", "base_url": "https://api.anthropic.com/v1", "model": "claude-opus-5-5", "format": "openai",
+    "anthropic": {"title": "Anthropic (EditorGPT Pro agent only)", "base_url": ANTHROPIC_RELAY, "model": "claude-opus-5-5", "format": "openai",
                   "group": None, "agent_only": True},
     # The account's own ElevenLabs voices (My Voices), through the studio's Vercel relay (ELEVENLABS_PROXY_URL). Speech only: a route lists its models as `elevenlabs:<model>`.
     "elevenlabs": {"title": "ElevenLabs (via Vercel relay)", "base_url": "https://api.elevenlabs.io", "model": "eleven_v3", "format": "elevenlabs", "group": None, "speech_only": True},
@@ -636,6 +638,34 @@ def stream_fallback(messages: list[dict], *, candidates: list[str], tokens: int,
                 raise value                                           # failed after it started speaking: the answer cannot be completed elsewhere
 
 
+def anthropic_relay_headers(key: str) -> dict[str, str]:
+    if not key:
+        raise DirectError("Anthropic API key is not configured", 503)
+    # The shared Vercel project already has this relay credential for Gemini.
+    if len(settings.GEMINI_RELAY_SECRET) < 32:
+        raise DirectError("Anthropic relay secret is not configured", 503)
+    return {"x-api-key": key, "x-relay-secret": settings.GEMINI_RELAY_SECRET}
+
+
+def _probe_anthropic(model: str) -> str:
+    headers = {**anthropic_relay_headers(key_for("anthropic")), "anthropic-version": "2023-06-01"}
+    payload = {"model": model, "max_tokens": 16, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]}
+    try:
+        response = _post(ANTHROPIC_RELAY, headers, payload, 40)
+    except httpx.HTTPError as exc:
+        raise DirectError(type(exc).__name__, 502) from exc
+    if not response.is_success:
+        # A provider error can include request data. Prefer a status-only result.
+        raise DirectError(f"Anthropic relay returned HTTP {response.status_code}", response.status_code)
+    try:
+        reply = "".join(block.get("text", "") for block in response.json()["content"] if block.get("type") == "text")
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise DirectError("Anthropic returned an invalid Messages response", 502) from exc
+    if not reply.strip():
+        raise DirectError("Anthropic returned no text", 502)
+    return reply
+
+
 def probe(provider_id: str) -> dict:
     """Admin 'Test' button: one tiny request to one provider, regardless of the master switch."""
     item = next((p for p in config()["providers"] if p["id"] == provider_id), None)
@@ -644,8 +674,11 @@ def probe(provider_id: str) -> dict:
     model = model_for(item, [])
     started = time.monotonic()
     try:
-        data = call(item, [{"role": "user", "content": "Reply with the single word: ok"}], model=model, tokens=16, timeout=40)
-        reply = adapters.text("chat", data)
+        if provider_id == "anthropic":
+            reply = _probe_anthropic(model)
+        else:
+            data = call(item, [{"role": "user", "content": "Reply with the single word: ok"}], model=model, tokens=16, timeout=40)
+            reply = adapters.text("chat", data)
         return {"ok": True, "model": model, "latency_ms": round((time.monotonic() - started) * 1000), "reply": reply[:40]}
     except DirectError as exc:
         return {"ok": False, "model": model, "latency_ms": round((time.monotonic() - started) * 1000), "error": str(exc)[:240]}

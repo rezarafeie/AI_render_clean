@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.agents import pro, store
 from app.studio_store import repo
+from brain.lm_direct import ANTHROPIC_RELAY
 
 log = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
@@ -69,12 +70,10 @@ def _spent(record: dict) -> int:
 # ── the model proxy ─────────────────────────────────────────────────────────
 
 PROVIDER_ORDER = ("anthropic", "jarvis")
-ANTHROPIC_RELAY = "https://rafiei-telegram-api-relay.vercel.app/api/anthropic"
 
 
 def _provider() -> tuple[str, dict[str, str]]:
     """The model provider for Pro: Anthropic's API when its key is saved (AI models → direct providers), else Jarvis."""
-    from app.config import settings
     from brain import lm_direct
     ready = {p["id"]: p for p in lm_direct.usable(kind="agent")}
     for pid in PROVIDER_ORDER:
@@ -83,10 +82,10 @@ def _provider() -> tuple[str, dict[str, str]]:
             continue
         headers = {"x-api-key": key}
         if pid == "anthropic":
-            # The shared API relay already uses this credential for Gemini.
-            if len(settings.GEMINI_RELAY_SECRET) < 32:
-                raise HTTPException(503, "the Anthropic relay is not configured")
-            return ANTHROPIC_RELAY, {**headers, "x-relay-secret": settings.GEMINI_RELAY_SECRET}
+            try:
+                return ANTHROPIC_RELAY, lm_direct.anthropic_relay_headers(key)
+            except lm_direct.DirectError as exc:
+                raise HTTPException(503, str(exc)) from exc
         return ready[pid]["base_url"].rstrip("/") + "/messages", headers
     raise HTTPException(503, "the model provider is not configured")
 
