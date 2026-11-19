@@ -24,6 +24,7 @@ import "./styles/legacy.css";
 const Studio = React.lazy(loaders.studio);
 const Projects = React.lazy(loaders.projects);
 const Templates = React.lazy(loaders.templates);
+const TelegramLink = React.lazy(() => import("./TelegramLink"));
 const Settings = React.lazy(() => import("./Settings"));
 const AIModels = React.lazy(() => import("./AIModels"));
 const CreditsPage = React.lazy(() => import("./CreditsPage"));
@@ -92,6 +93,7 @@ function LegacyJobRedirect() {
 
 function App() {
   return <BrowserRouter><AppFeatures/><AppErrorBoundary><SessionBootstrap><AuthProvider><JobCacheProvider><React.Suspense fallback={<LoadingSpinner/>}><Routes>
+    <Route path="/telegram/link" element={<RequireAuth><TelegramLink/></RequireAuth>}/>
     <Route path="/login" element={<GuestRoute><Login/></GuestRoute>}/>
     <Route path="/signup" element={<GuestRoute><Signup/></GuestRoute>}/>
     <Route path="/forgot-password" element={<ForgotPassword/>}/><Route path="/reset-password" element={<ResetPassword/>}/>
