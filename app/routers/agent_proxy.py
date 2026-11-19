@@ -1,7 +1,7 @@
 """EditorGPT Pro on the app side (docs/PRO_AGENT_PLAN.md).
 
     POST /internal/anthropic/v1/messages    the Anthropic Messages API for the Claude Code CLI inside the agent container: run token → model allow-list →
-                                             the jarvis provider's own /messages (the key is added here) → streamed back unbuffered → usage audited and
+                                             the configured provider's /messages (the key is added here) → streamed back unbuffered → usage audited and
                                              charged like every model call (brain.lm_gateway._audit) → 402 when the run budget or the person's credit is spent
     POST /internal/pro/claim                 the agent worker takes the next queued Pro run (worker secret)
     GET  /internal/pro/status                stop requested? (run token)
@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.agents import pro, store
 from app.studio_store import repo
+from brain.lm_direct import ANTHROPIC_RELAY
 
 log = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
@@ -68,17 +69,24 @@ def _spent(record: dict) -> int:
 
 # ── the model proxy ─────────────────────────────────────────────────────────
 
-PROVIDER_ORDER = ("anthropic", "jarvis")       # Anthropic first (prompt cache billed at a tenth); Jarvis only while no Anthropic key is saved
+PROVIDER_ORDER = ("anthropic", "jarvis")
 
 
-def _provider() -> tuple[str, str]:
+def _provider() -> tuple[str, dict[str, str]]:
     """The model provider for Pro: Anthropic's API when its key is saved (AI models → direct providers), else Jarvis."""
     from brain import lm_direct
     ready = {p["id"]: p for p in lm_direct.usable(kind="agent")}
     for pid in PROVIDER_ORDER:
         key = lm_direct.key_for(pid) if pid in ready else ""
-        if key:
-            return ready[pid]["base_url"].rstrip("/"), key
+        if not key:
+            continue
+        headers = {"x-api-key": key}
+        if pid == "anthropic":
+            try:
+                return ANTHROPIC_RELAY, lm_direct.anthropic_relay_headers(key)
+            except lm_direct.DirectError as exc:
+                raise HTTPException(503, str(exc)) from exc
+        return ready[pid]["base_url"].rstrip("/") + "/messages", headers
     raise HTTPException(503, "the model provider is not configured")
 
 
@@ -189,11 +197,11 @@ async def messages(request: Request):
     model = str(data.get("model") or "")
     if not model.startswith(pro.ALLOWED_MODELS):
         return _anthropic_error(400, "invalid_request_error", f"model {model!r} is not allowed for EditorGPT Pro")
-    base, key = await asyncio.to_thread(_provider)          # lm_direct reads its settings with asyncio.run: never on the event loop
-    headers = {"x-api-key": key, "anthropic-version": request.headers.get("anthropic-version", "2023-06-01"), "content-type": "application/json"}
+    endpoint, provider_headers = await asyncio.to_thread(_provider)
+    headers = {**provider_headers, "anthropic-version": request.headers.get("anthropic-version", "2023-06-01"), "content-type": "application/json"}
     if request.headers.get("anthropic-beta"):
         headers["anthropic-beta"] = request.headers["anthropic-beta"]
-    url = base + "/messages" + (("?" + request.url.query) if request.url.query else "")
+    url = endpoint + (("?" + request.url.query) if request.url.query else "")
     started = time.monotonic()
     from brain.http_ssl import ssl_context
     client = httpx.AsyncClient(timeout=httpx.Timeout(900, connect=20), verify=ssl_context())
@@ -239,7 +247,9 @@ async def messages(request: Request):
             log.warning("pro proxy: upstream %s for run %s", upstream.status_code, claims["run"])
         if upstream.status_code == 200:
             raw = _unique_message_id(raw, stream=False)
-        return Response(raw.replace(key.encode(), b"[REDACTED]"), status_code=upstream.status_code,
+        for value in provider_headers.values():
+            raw = raw.replace(value.encode(), b"[REDACTED]")
+        return Response(raw, status_code=upstream.status_code,
                         media_type=upstream.headers.get("content-type", "application/json"))
 
     usage: dict = {}

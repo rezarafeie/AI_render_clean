@@ -58,7 +58,7 @@ def test_legacy_env_keys_are_reused_so_nothing_is_entered_twice(monkeypatch):
 
 def test_config_defaults_order_and_validation():
     cfg = direct.config()
-    assert cfg["enabled"] is True and [p["id"] for p in cfg["providers"]] == ["jarvis", "sarovi", "arvan", "openai", "gemini", "elevenlabs"]
+    assert cfg["enabled"] is True and [p["id"] for p in cfg["providers"]] == ["jarvis", "sarovi", "arvan", "openai", "gemini", "anthropic", "elevenlabs"]
     saved = direct.save_config(False, [{"id": "gemini", "enabled": True, "base_url": "https://relay.example.vercel.app/v1beta", "model": "gemini-3.5-flash", "format": "gemini"},
                                        {"id": "jarvis", "enabled": False, "base_url": "https://api.jarvis.you/v1", "model": "X"}])
     assert saved["enabled"] is False and [p["id"] for p in saved["providers"]][:2] == ["gemini", "jarvis"]   # order kept, rest appended
