@@ -141,6 +141,16 @@ def _tools(api: Api):
         simple("talking_revise", "Render a premium talking edit again from its plan after you edited the plan JSON (moments, captions key words, props, "
                "zooms, look, sfx, drop = word indices to cut): only what changed is rebuilt. Same path and style as talking_edit; plan: the edited file "
                "(default: the engine's plan file). Returns a job id: wait with job_wait.", obj({"path": s_, "style": s_, "plan": s_}, ["path"])),
+        simple("film_make", "THE STUDIO'S FILM ENGINES (the same as Lite's; the film card in the chat shows frames, log and the video). kind: motion = a "
+               "motion-graphics film from text (narration, designed scenes, music); vox = a Vox-style explainer documentary; intro-story / intro-reel / "
+               "intro-film3d = a brand intro; intro-presenter = an intro around the presenter's video (asset_ids must include it). request: what the "
+               "film is about and must say, in the person's words (Persian). context: facts, page text, script the person gave. style: the visual "
+               "language you want (from a sample: colours, type, layout, motion). asset_ids: the person's pictures/videos/audio to use. Returns film_id: "
+               "wait with job_wait(job_id=film_id).",
+               obj({"kind": s_, "request": s_, "context": s_, "style": s_, "asset_ids": {"type": "array", "items": s_}}, ["kind", "request"])),
+        simple("film_revise", "A change to a film made with film_make (a new version of the same film; what did not change is kept), or the answer to "
+               "a question the film engine asked: film_id + change, or film_id + answer. Then job_wait(job_id=film_id).",
+               obj({"film_id": s_, "change": s_, "answer": s_}, ["film_id"])),
         simple("job_wait", "Wait on the server until an engine job (talking_edit / talking_revise) or a cloud render ends, up to `seconds` (max 240) per "
                "call; returns its state (done / failed / still running, progress, the engine's notes, output path). Call it again while it is running.",
                obj({"job_id": s_, "seconds": {"type": "number"}}, ["job_id"])),
@@ -153,7 +163,7 @@ def _tools(api: Api):
 
 
 TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deliver", "render_cloud", "render_status", "tts", "music_generate",
-              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "talking_edit", "talking_revise", "job_wait", "ask_user", "request_approval"]
+              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "talking_edit", "talking_revise", "film_make", "film_revise", "job_wait", "ask_user", "request_approval"]
 
 
 def _policy(work: Path):
@@ -206,6 +216,7 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__person_matte": "جدا کردن سوژه از پس‌زمینه", "mcp__editorgpt__qc_report": "بررسی فنی خروجی",
            "mcp__editorgpt__talking_edit": "تدوین با موتور استودیو", "mcp__editorgpt__talking_revise": "اصلاح تدوین با موتور استودیو",
            "mcp__editorgpt__job_wait": "منتظر تمام شدن کار موتور",
+           "mcp__editorgpt__film_make": "ساخت فیلم با موتور استودیو", "mcp__editorgpt__film_revise": "اصلاح فیلم با موتور استودیو",
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
 NO_ALLOCATION = re.compile(r"(\b402\b|token allocation|billing_error|insufficient (credit|balance))", re.I)

@@ -310,13 +310,126 @@ def _send(loop, make) -> None:
         log.debug("pro engine event not sent", exc_info=True)
 
 
-async def wait(cid: str, job: str, seconds: float) -> dict:
-    """Wait on the server for an engine job or a cloud render to end (up to 240 s), so the agent does not spend a model call per poll."""
+async def wait(cid: str, job: str, seconds: float, user: str = "") -> dict:
+    """Wait on the server for an engine job, a film or a cloud render to end (up to 240 s), so the agent does not spend a model call per poll."""
     import asyncio
     deadline = time.monotonic() + max(5.0, min(float(seconds or 240), 240.0))
+    film = not _state_file(cid, job).is_file() and bool(user)
     while True:
-        data = state(cid, job)
-        if data.get("state") not in ACTIVE or time.monotonic() >= deadline:
-            data["waited_until_end"] = data.get("state") not in ACTIVE
+        data = await asyncio.to_thread(film_state, cid, user, job) if film else state(cid, job)
+        running = data.get("state") in ACTIVE or (film and data.get("state") in ("writing", "checking"))
+        if not running or time.monotonic() >= deadline:
+            data["waited_until_end"] = not running
             return data
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
+
+
+# ── films: the studio's motion, Vox and intro engines (app.motion_graphic), Pro-only entry points ───────────────────────────────────────────────
+
+FILM_KINDS = {"motion", "vox", "intro-story", "intro-reel", "intro-presenter", "intro-film3d"}
+
+
+async def film_start(claims: dict, args: dict) -> dict:
+    """A film made by the studio's own film engines, exactly as Lite makes it (the same record, the same motion card in the chat with its frames,
+    log and video), only started by the Pro agent: motion = the Claude motion film from text; vox = the Vox-style documentary; intro-* = the intro
+    engines (story / reel / presenter needs the presenter's video / film3d). Nothing in app.motion_graphic is changed: create(), then the engine
+    choice the agent made is written into the record, then start()."""
+    import asyncio
+    from app import motion_graphic as mg
+    from app.studio_store import repo
+    cid, user = claims["cid"], str(claims["user"])
+    kind = str(args.get("kind") or "motion").strip().lower()
+    if kind not in FILM_KINDS:
+        raise ValueError(f"kind must be one of {', '.join(sorted(FILM_KINDS))}")
+    request = str(args.get("request") or "").strip()
+    if len(request) < 4:
+        raise ValueError("request is empty: say what the film is about and what it must say")
+    conversation = await repo.get_conversation(cid, user)
+    state_ = conversation.get("state") or {}
+    pointer = state_.get("motion")
+    if pointer:
+        try:
+            if mg.load(mg.locate(pointer["motion_id"], user))["status"] in mg.ACTIVE:
+                raise ValueError(f"film {pointer['motion_id']} is still being made in this chat: wait for it with job_wait")
+        except (KeyError, OSError):
+            pass
+    ids = [str(i) for i in (args.get("asset_ids") or [])][:8]
+    rows = await repo.get_attachments(ids, cid, user) if ids else []
+    if kind == "intro-presenter" and not any(r["kind"] == "video" for r in rows):
+        raise ValueError("the presenter intro needs the presenter's video: pass its asset id in asset_ids")
+    attachments = [{"kind": r["kind"], "path": r["path"], "filename": r["filename"], "id": r["id"]} for r in rows] or None
+    context = str(args.get("context") or "")[:9000]
+    style = str(args.get("style") or "")[:2000]
+    record = await asyncio.to_thread(mg.create, cid, user, request, context, style, state_.get("voice_id", ""), state_.get("voice_style", ""),
+                                     attachments=attachments)
+    if record.get("engine") != "claude":
+        raise ValueError("the studio's film engines are switched off on this server; build the film by hand")
+    directory = mg.folder(user, cid, record["id"])
+    record.pop("vox", None)
+    record.pop("intro", None)
+    if kind == "vox":
+        record["vox"] = True
+    elif kind.startswith("intro-"):
+        record["intro"] = kind.split("-", 1)[1]
+        footage = next((r for r in rows if r["kind"] == "video"), None)
+        if footage:
+            record["intro_footage"] = str(footage["path"])
+    mg.save(directory, record)
+    await repo.set_conversation(cid, user, state={**state_, "motion": {"motion_id": record["id"]}})
+    await repo.emit(cid, "motion.created", {"motion_id": record["id"]})
+    await asyncio.to_thread(mg.start, directory)
+    return {"film_id": record["id"], "kind": kind, "state": "queued",
+            "note": "The film card in the chat shows its frames and log. Wait with job_wait(job_id=film_id). If it asks questions, ask the person and "
+                    "pass the answer with film_revise(answer=...). When it is done the video is copied into out/."}
+
+
+async def film_revise(claims: dict, args: dict) -> dict:
+    """A change to the chat's film (a new version of the SAME film, the engine keeps what did not change), or the answer to a question it asked:
+    Lite's own follow-up path (narrator and music words, pronunciation fixes, answers)."""
+    import asyncio
+    from app import motion_graphic as mg
+    from app import studio_orchestrator as so
+    from app.studio_store import repo
+    cid, user = claims["cid"], str(claims["user"])
+    film = str(args.get("film_id") or "")
+    text = str(args.get("change") or args.get("answer") or "").strip()
+    if not text:
+        raise ValueError("say the change (change) or the answer (answer)")
+    directory = mg.locate(film, user)
+    record = mg.load(directory)
+    if record["status"] in mg.ACTIVE and not args.get("answer"):
+        raise ValueError("the film is still being made: wait for it with job_wait, then ask for the change")
+    conversation = await repo.get_conversation(cid, user)
+    state_ = conversation.get("state") or {}
+    if (state_.get("motion") or {}).get("motion_id") != film:
+        await repo.set_conversation(cid, user, state={**state_, "motion": {"motion_id": film}})
+        conversation = await repo.get_conversation(cid, user)
+    await repo.emit(cid, "motion.created", {"motion_id": film})
+    handled = await asyncio.to_thread(so._continue_motion_graphic, cid, user, conversation, text, answering=bool(args.get("answer")))
+    if not handled:
+        raise ValueError("the film could not be continued")
+    return {"film_id": film, "state": "queued", "note": "A new version is being made on the same film: wait with job_wait(job_id=film_id)."}
+
+
+def film_state(cid: str, user: str, film: str) -> dict:
+    """The film's state for the agent: done / failed / asking / still running, its progress and last log lines; a finished version is copied into
+    out/ so the agent can look at it."""
+    from app import motion_graphic as mg
+    directory = mg.locate(film, user)
+    view = mg.view(directory)
+    out = {"film_id": film, "state": {"completed": "done", "needs_input": "asking"}.get(view["status"], view["status"]),
+           "progress": view["progress"], "message": view["message"], "error": view["error"], "questions": view["questions"],
+           "log": [f"{e.get('key', '')}: {e.get('text', '')}"[:200] for e in (view.get("log") or [])[-8:] if isinstance(e, dict)]}
+    if view["status"] == "completed" and view.get("current"):
+        try:
+            source = mg.media_path(directory, "video", int(view["current"]))
+            target = pro.inside(cid, f"out/film-{film}-v{view['current']}.mp4")
+            if not target.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(source, target)
+            out["output"] = str(target.relative_to(pro.workdir(cid)))
+            out["version"] = view["current"]
+        except (KeyError, OSError):
+            pass
+    return out

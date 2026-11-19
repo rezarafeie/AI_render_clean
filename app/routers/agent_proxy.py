@@ -504,7 +504,13 @@ async def _tool(claims: dict, name: str, args: dict):
         return await asyncio.to_thread(engines.start, claims, args, revise=name == "talking_revise", loop=asyncio.get_running_loop())
     if name == "job_wait":
         from app.agents.pro import engines
-        return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 240))
+        return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 240), user=str(user))
+    if name == "film_make":
+        from app.agents.pro import engines
+        return await engines.film_start(claims, args)
+    if name == "film_revise":
+        from app.agents.pro import engines
+        return await engines.film_revise(claims, args)
     raise ValueError(f"unknown tool {name}")
 
 
