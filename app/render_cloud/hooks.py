@@ -130,6 +130,33 @@ def claude_motion(project, output, *, timeout=5400, on_progress=None, should_can
                                entrypoint='src/index.ts', features=['claude-motion', 'muted'], audio_required=False, lock_root=project)
 
 
+def ffmpeg_job(inputs, steps, output, *, width, height, max_duration, fps=30, audio=False, timeout=3600, on_progress=None, should_cancel=None,
+               user=None, project_id=None, owned_roots=(), on_stage=None, on_detail=None):
+    """Heavy ffmpeg passes of any engine on a worker (engine ffmpeg_job): `inputs` (paths) are staged by name, `steps` are ffmpeg argument lists
+    run in order in the worker's folder, the last writes result.mp4. False when the cloud does not take it: the caller runs the same steps on the
+    server (see run_ffmpeg_steps), so nothing depends on the cloud being up."""
+    if not enabled() or not user:
+        return False
+    from .settings import CloudSettings
+    if not CloudSettings().effective().admin(user):
+        return False
+    import shutil
+    from .service import render_prepared
+    with tempfile.TemporaryDirectory(prefix='editorgpt-ffmpeg-job-') as directory:
+        staged = Path(directory) / 'job'
+        staged.mkdir()
+        for source in inputs:
+            source = Path(source)
+            if not source.is_file():
+                raise ValueError(f'input not found: {source.name}')
+            shutil.copy2(source, staged / source.name)
+        (staged / 'job.json').write_text(json.dumps({'steps': steps}))
+        return render_prepared(staged, Path(output), user=user, project_id=project_id, engine='ffmpeg_job', duration=float(max_duration), width=int(width),
+                               height=int(height), fps=int(fps), timeout=timeout, on_progress=on_progress, should_cancel=should_cancel, owned_roots=owned_roots,
+                               on_stage=on_stage, on_detail=on_detail, entrypoint='job.json', features=['ffmpeg-job'], audio_required=bool(audio),
+                               lock_root=Path(output).parent)
+
+
 def remotion(config, output, *, job_dir, on_progress=None, timeout=5400):
     if not eligible():
         return False
@@ -438,3 +465,39 @@ def talking5(video, plan, output, *, work_dir, music, pack, fx, hook, on_progres
                                features=features,
                                should_cancel=who[3] if len(who) > 3 else None, on_stage=who[4] if len(who) > 4 else None,
                                on_detail=who[5] if len(who) > 5 else None, lock_root=Path(who[2][0]), audio_required=True)
+
+
+def run_ffmpeg_steps(inputs, steps, output, *, width, height, max_duration, fps=30, audio=False, timeout=3600, user=None, project_id=None,
+                     owned_roots=(), on_progress=None, should_cancel=None, on_stage=None, on_detail=None) -> str:
+    """The one entry point for heavy ffmpeg work: on the render cloud when it takes the job (admin rollout, a verified ffmpeg_job profile), else
+    the same steps on this server in a scratch folder. Returns "cloud" or "local". Steps use input file NAMES and write result.mp4."""
+    import shutil
+    import subprocess
+    output = Path(output)
+    try:
+        if ffmpeg_job(inputs, steps, output, width=width, height=height, max_duration=max_duration, fps=fps, audio=audio, timeout=timeout,
+                      on_progress=on_progress, should_cancel=should_cancel, user=user, project_id=project_id, owned_roots=owned_roots,
+                      on_stage=on_stage, on_detail=on_detail):
+            return "cloud"
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("ffmpeg job on the render cloud failed; running it on the server", exc_info=True)
+    with tempfile.TemporaryDirectory(prefix='editorgpt-ffmpeg-local-', dir=str(output.parent)) as directory:
+        work = Path(directory)
+        for source in inputs:
+            source = Path(source)
+            try:
+                os.link(source, work / source.name)
+            except OSError:
+                shutil.copy2(source, work / source.name)
+        for index, args in enumerate(steps):
+            if should_cancel and should_cancel():
+                raise InterruptedError('cancelled')
+            subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-y', *args], cwd=work, check=True, capture_output=True, timeout=timeout)
+            if on_progress:
+                on_progress(int(100 * (index + 1) / len(steps)))
+        result = next((p for p in work.glob('result.*') if p.is_file()), None)
+        if result is None:
+            raise RuntimeError('the last ffmpeg step must write result.<ext>')
+        shutil.move(str(result), str(output))
+    return "local"

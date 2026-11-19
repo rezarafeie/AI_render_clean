@@ -9,7 +9,7 @@ import sys
 
 # Talking styles may launch the Tscaps Chromium overlay, even though their
 # final encode is FFmpeg. Preserve that behavior on the namespace path.
-ENGINES = frozenset({'mlt'})
+ENGINES = frozenset({'mlt', 'ffmpeg_job'})         # ffmpeg_job: only ffmpeg runs, on the job's own files, with no sockets
 
 
 class Comparison(C.Structure):

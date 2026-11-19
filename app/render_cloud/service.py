@@ -63,6 +63,15 @@ class WorkerRejected(CloudRenderError):
 
 def validate_output(spec, path):
     measured = probe(path)
+    if spec.engine == 'ffmpeg_job':
+        # An agent's cut has a length known only after it runs: the frame and size are checked, the duration only against the declared maximum.
+        if (measured['width'], measured['height']) != (spec.width, spec.height):
+            raise ValueError('Cloud output dimensions differ')
+        if not 0 < measured['duration'] <= spec.duration_seconds + 1:
+            raise ValueError('Cloud output duration out of range')
+        if spec.audio_required and measured['audio_duration'] is None:
+            raise ValueError('Cloud output audio missing')
+        return measured
     # ffprobe reports the average rate as a ratio of frames to duration (1640000000/54666333 for a clean 30 fps clip): compare with a tolerance far
     # smaller than any real rate difference (29.97 vs 30 is 0.03).
     if ((measured['width'], measured['height']) != (spec.width, spec.height)

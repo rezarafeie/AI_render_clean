@@ -153,6 +153,8 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
     elif spec.engine == 'claude_motion':
         from engine.claude_motion_renderer import render
         render(workspace, output, timeout=spec.timeout_seconds, on_progress=on_progress)
+    elif spec.engine == 'ffmpeg_job':
+        _ffmpeg_job(prepared_json(entry), workspace, output, spec.timeout_seconds, on_progress, should_cancel)
     else:
         from engine.remotion_renderer import render
         # Remotion has a hard subprocess deadline; supervisor handles cancellation
@@ -164,3 +166,39 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
     if not output.is_file() or not output.stat().st_size:
         raise RuntimeError('Renderer produced no output')
     return output
+
+
+def _ffmpeg_job(job, workspace: Path, output: Path, timeout, on_progress=None, should_cancel=None):
+    """Heavy ffmpeg passes of any engine (cuts, grades, long encodes; Lite, Medium and the Pro agent) on a worker. Only the ffmpeg binary runs, step after step, in the
+    workspace; every argument that names a file must stay inside it (no absolute paths, no ..), no protocol other than plain files, and the last
+    step writes `result.<ext>`, which becomes the output."""
+    import re
+    import shutil
+    import subprocess
+    import time
+    steps = job.get('steps') if isinstance(job, dict) else None
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 12:
+        raise ValueError('ffmpeg_job needs 1-12 steps')
+    root = workspace.resolve()
+    bad = re.compile(r'^(?:/|~)|(?:^|/)\.\.(?:/|$)|^[a-z][a-z0-9+.-]*:(?!\d)', re.I)
+    started, budget = time.monotonic(), max(60, int(timeout))
+    for index, args in enumerate(steps):
+        if not isinstance(args, list) or not args or not all(isinstance(a, str) for a in args):
+            raise ValueError('every ffmpeg_job step is a list of strings')
+        for arg in args:
+            if bad.search(arg) and not re.fullmatch(r'[0-9:.\-]+', arg):
+                raise ValueError(f'ffmpeg_job argument not allowed: {arg[:80]}')
+        if should_cancel and should_cancel():
+            raise InterruptedError('Render cancelled')
+        left = budget - (time.monotonic() - started)
+        if left <= 5:
+            raise TimeoutError('ffmpeg_job time is over')
+        done = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-y', *args], cwd=root, capture_output=True, text=True, timeout=left)
+        if done.returncode != 0:
+            raise RuntimeError(f'ffmpeg step {index + 1} failed: ' + (done.stderr or '')[-600:])
+        if on_progress:
+            on_progress(int(100 * (index + 1) / len(steps)))
+    result = next((p for p in root.glob('result.*') if p.is_file()), None)
+    if result is None:
+        raise RuntimeError('the last ffmpeg_job step must write result.<ext>')
+    shutil.move(str(result), str(output))
