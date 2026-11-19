@@ -142,6 +142,10 @@ def cut_video(video: Path, segs: list[list[float]], work: Path) -> tuple[Path, P
     fc.append(f"[ac]apad=pad_dur={TAIL}[a]")
     (work / "public").mkdir(parents=True, exist_ok=True)
     cut, voice = work / "public" / "cut.mp4", work / "voice.wav"
+    from app.render_cloud.hooks import jump_cut_on_cloud
+    if jump_cut_on_cloud(video, segs, [f"fps={FPS}", f"tpad=stop_mode=clone:stop_duration={TAIL}"], cut, voice, tail=TAIL,
+                         total=sum(e - s for s, e, _ in segs) + TAIL, crf=18):
+        return cut, voice                  # the encode ran on the render cloud
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-filter_complex", ";".join(fc), "-map", "[v]", "-an", "-c:v", "libx264",
                     "-crf", "18", "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(cut),
                     "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], check=True, timeout=3600)

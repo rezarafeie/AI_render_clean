@@ -155,6 +155,14 @@ def _tools(api: Api):
                "talking | film | any. Returns closest engine, match %, what is the same/missing, decision (engine | engine_with_style | build), "
                "style_brief (the sample's visual language) and `say` (one Persian sentence for the person).",
                obj({"sample": s_, "description": s_, "for": s_})),
+        simple("ffmpeg_cloud", "Run HEAVY ffmpeg work off the server (a jump cut of the whole recording, a colour grade, any encode longer than ~20 s): "
+               "inputs = files of the folder; steps = ffmpeg argument lists WITHOUT the word ffmpeg, run in order in a scratch folder, naming the inputs "
+               "by file name only (no paths), the last step writing result.mp4; output = where it lands; width/height/max_duration of the result. "
+               "Runs on the render cloud (or the server if the cloud does not take it). Returns a job id: job_wait. Keep quick things (ffprobe, one "
+               "frame, a contact sheet, an audio mix) as normal Bash.",
+               obj({"inputs": {"type": "array", "items": s_}, "steps": {"type": "array", "items": {"type": "array", "items": s_}}, "output": s_,
+                    "width": {"type": "number"}, "height": {"type": "number"}, "max_duration": {"type": "number"}},
+                   ["inputs", "steps", "output", "width", "height", "max_duration"])),
         simple("film_make", "THE STUDIO'S FILM ENGINES (the same as Lite's; the film card in the chat shows frames, log and the video). kind: motion = a "
                "motion-graphics film from text (narration, designed scenes, music); vox = a Vox-style explainer documentary; intro-story / intro-reel / "
                "intro-film3d = a brand intro; intro-presenter = an intro around the presenter's video (asset_ids must include it). request: what the "
@@ -178,7 +186,7 @@ def _tools(api: Api):
 
 
 TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deliver", "render_cloud", "render_status", "tts", "music_generate",
-              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "compare_style", "talking_edit", "talking_revise", "film_make", "film_revise", "job_wait", "ask_user", "request_approval"]
+              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "compare_style", "ffmpeg_cloud", "talking_edit", "talking_revise", "film_make", "film_revise", "job_wait", "ask_user", "request_approval"]
 
 
 def _policy(work: Path):
@@ -250,7 +258,7 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__person_matte": "جدا کردن سوژه از پس‌زمینه", "mcp__editorgpt__qc_report": "بررسی فنی خروجی",
            "mcp__editorgpt__talking_edit": "تدوین با موتور استودیو", "mcp__editorgpt__talking_revise": "اصلاح تدوین با موتور استودیو",
            "mcp__editorgpt__job_wait": "منتظر تمام شدن کار موتور",
-           "mcp__editorgpt__compare_style": "مقایسهٔ سبک نمونه با موتورها", "mcp__editorgpt__film_make": "ساخت فیلم با موتور استودیو", "mcp__editorgpt__film_revise": "اصلاح فیلم با موتور استودیو",
+           "mcp__editorgpt__compare_style": "مقایسهٔ سبک نمونه با موتورها", "mcp__editorgpt__ffmpeg_cloud": "پردازش سنگین روی سرور ابری", "mcp__editorgpt__film_make": "ساخت فیلم با موتور استودیو", "mcp__editorgpt__film_revise": "اصلاح فیلم با موتور استودیو",
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
 NO_ALLOCATION = re.compile(r"(\b402\b|token allocation|billing_error|insufficient (credit|balance))", re.I)

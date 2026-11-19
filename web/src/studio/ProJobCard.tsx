@@ -4,7 +4,7 @@ import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { formatDuration } from "../format";
 
-const STYLE_NAME: Record<string, string> = { premium: "تدوین پریمیوم تمام‌قاب", split: "تاکینگ دوتکه", render: "رندر ابری پروژهٔ Pro" };
+const STYLE_NAME: Record<string, string> = { premium: "تدوین پریمیوم تمام‌قاب", split: "تاکینگ دوتکه", render: "رندر ابری پروژهٔ Pro", ffmpeg: "پردازش سنگین روی سرور ابری" };
 const CLOUD_STAGE: Record<string, string> = {
   muxing: "گذاشتن صدا روی ویدیو",
   queued: "در صف سرور ابری", provisioning: "آماده‌سازی سرور ابری", preparing: "آماده‌سازی پروژه روی سرور ابری", uploading: "ارسال پروژه به سرور ابری",

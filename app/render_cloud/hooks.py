@@ -522,3 +522,46 @@ def video_size(path) -> tuple[int, int]:
     w, h = int(data.get('width') or 0), int(data.get('height') or 0)
     rotation = abs(int(float((data.get('tags') or {}).get('rotate') or next((d.get('rotation') for d in data.get('side_data_list') or [] if 'rotation' in d), 0) or 0)))
     return (h, w) if rotation in (90, 270) else (w, h)
+
+
+def jump_cut_on_cloud(video, segs, picture_chain, out, voice, *, tail, total, crf=16, on_progress=None) -> bool:
+    """A talking engine's jump-cut encode on the render cloud: the picture (cut + `picture_chain` filters, e.g. grade, scale, fps, held tail) is
+    encoded on a worker, the voice track (cut with 12-15 ms fades, padded by `tail`) here in seconds. False = the caller encodes on the server as
+    before (no cloud size, cloud off, or a failure)."""
+    import logging
+    import shutil
+    import subprocess
+    video, out, voice = Path(video), Path(out), Path(voice)
+    try:
+        w, h = video_size(video)
+        scaled = any(f.startswith('scale=') for f in picture_chain)
+        out_w = (min(w, 1920) if w > h else min(w, 1080)) if scaled else w
+        out_h = int(round(h * out_w / w / 2) * 2) if w else 0
+        if (out_w, out_h) not in CLOUD_SIZES:
+            return False
+        picture = [f'[0:v]trim={s:.3f}:{e:.3f},setpts=PTS-STARTPTS[v{k}]' for k, (s, e, *_rest) in enumerate(segs)]
+        picture.append(''.join(f'[v{k}]' for k in range(len(segs))) + f'concat=n={len(segs)}:v=1:a=0[vc]')
+        picture.append('[vc]' + ','.join(picture_chain) + '[v]')
+        sound = [f'[0:a]atrim={s:.3f}:{e:.3f},asetpts=PTS-STARTPTS,afade=t=in:d=0.012,afade=t=out:st={max(0.0, e - s - 0.015):.3f}:d=0.015[a{k}]'
+                 for k, (s, e, *_rest) in enumerate(segs)]
+        sound.append(''.join(f'[a{k}]' for k in range(len(segs))) + f'concat=n={len(segs)}:v=0:a=1[ac]')
+        sound.append(f'[ac]apad=pad_dur={tail}[a]')
+        name = 'source' + video.suffix.lower()
+        steps = [['-v', 'error', '-i', name, '-filter_complex', ';'.join(picture), '-map', '[v]', '-an', '-c:v', 'libx264', '-crf', str(crf), '-preset', 'fast',
+                  '-g', '10', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'result.mp4']]
+        with tempfile.TemporaryDirectory(dir=str(out.parent)) as tmp:
+            staged = Path(tmp) / name
+            try:
+                os.link(video, staged)
+            except OSError:
+                shutil.copy2(video, staged)
+            done = ffmpeg_job([staged], steps, out, width=out_w, height=out_h, max_duration=total + 1, on_progress=on_progress)
+        if not done or not out.is_file():
+            return False
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(video), '-filter_complex', ';'.join(sound), '-map', '[a]', '-ar', '48000', '-ac', '1', str(voice)],
+                       check=True, capture_output=True, timeout=1800)
+        return True
+    except Exception:
+        logging.getLogger(__name__).warning('jump cut on the render cloud failed; encoding on the server', exc_info=True)
+        out.unlink(missing_ok=True)
+        return False

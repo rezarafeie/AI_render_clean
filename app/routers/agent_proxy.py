@@ -543,6 +543,9 @@ async def _tool(claims: dict, name: str, args: dict):
     if name == "job_wait":
         from app.agents.pro import engines
         return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 840), user=str(user))
+    if name == "ffmpeg_cloud":
+        from app.agents.pro import engines
+        return await asyncio.to_thread(engines.start_ffmpeg, claims, args, loop=asyncio.get_running_loop())
     if name == "film_make":
         from app.agents.pro import engines
         return await engines.film_start(claims, args)

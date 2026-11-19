@@ -647,3 +647,61 @@ def compare_style(claims: dict, args: dict) -> dict:
     if measured:
         keep["measured"] = measured
     return keep
+
+
+# ── the agent's heavy ffmpeg passes on the render cloud (ffmpeg_job), the server as fallback ─────────────────────────────────────────────────
+
+def start_ffmpeg(claims: dict, args: dict, *, loop=None) -> dict:
+    """Heavy ffmpeg work (a jump cut, a grade, a long encode) off this server: `inputs` are files of the folder (their NAMES are used in the
+    steps), `steps` are ffmpeg argument lists run in order, the last writes result.mp4, which becomes `output`. Returns a job id at once; the
+    render card shows it; wait with job_wait."""
+    cid, user, rid = claims["cid"], str(claims["user"]), claims["run"]
+    inputs = [pro.inside(cid, str(p)) for p in (args.get("inputs") or [])][:8]
+    for path in inputs:
+        if not path.is_file():
+            raise ValueError(f"input not found: {path.name}")
+    names = [p.name for p in inputs]
+    if len(set(names)) != len(names):
+        raise ValueError("inputs must have different file names")
+    steps = args.get("steps") or []
+    if not isinstance(steps, list) or not steps or not all(isinstance(s, list) and all(isinstance(a, str) for a in s) for s in steps):
+        raise ValueError("steps is a list of ffmpeg argument lists (without the word ffmpeg); the last writes result.mp4")
+    if not any("result." in a for a in steps[-1]):
+        raise ValueError("the last step must write result.mp4")
+    output = pro.inside(cid, str(args.get("output") or "out/heavy.mp4"))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    width, height = int(args.get("width") or 0), int(args.get("height") or 0)
+    max_duration = float(args.get("max_duration") or 0)
+    if not width or not height or max_duration <= 0:
+        raise ValueError("give the output's width, height and max_duration (seconds)")
+    job = uuid.uuid4().hex[:12]
+    path = _state_file(cid, job)
+    path.write_text(json.dumps({"job_id": job, "kind": "ffmpeg", "style": "ffmpeg", "state": "queued", "progress": 0,
+                                "output": str(output.relative_to(pro.workdir(cid))), "with_audio": True}, ensure_ascii=False))
+
+    def save(**values):
+        data = json.loads(path.read_text())
+        data.update(values)
+        path.write_text(json.dumps(data, ensure_ascii=False))
+
+    def work():
+        from app.render_cloud import hooks
+        from brain.lm_gateway import work_scope
+        try:
+            save(state="running", stage="ارسال به سرور ابری")
+            _card(loop, claims, path)
+            with work_scope("pro", rid, user=user, conversation=cid):
+                where = hooks.run_ffmpeg_steps(inputs, steps, output, width=width, height=height, max_duration=max_duration, timeout=3600,
+                                               user=user, project_id="pro" + rid, owned_roots=(pro.workdir(cid),),
+                                               on_progress=lambda p: save(progress=int(p)),
+                                               on_stage=lambda st: save(cloud={"stage": str(st)[:120]}),
+                                               on_detail=lambda text: save(cloud={**(json.loads(path.read_text()).get("cloud") or {}), "detail": str(text)[:240]}))
+            save(state="done", progress=100, where=where, size_bytes=output.stat().st_size if output.is_file() else 0)
+        except Exception as exc:
+            log.warning("pro ffmpeg job %s failed", job, exc_info=True)
+            save(state="failed", error=f"{type(exc).__name__}: {str(exc)[-400:]}")
+        _card(loop, claims, path)
+
+    threading.Thread(target=work, daemon=True, name=f"pro-ffmpeg-{job}").start()
+    return {"job_id": job, "state": "queued", "output": str(output.relative_to(pro.workdir(cid))),
+            "note": "Wait with job_wait (it waits on the server until the end). The work runs on the render cloud, or on the server if the cloud does not take it."}

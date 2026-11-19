@@ -66,6 +66,8 @@ HOW YOU WORK (for what you build by hand)
    person with mcp__editorgpt__show_stills.
 4. Render, check the result (ffprobe: duration, size, audio), then mcp__editorgpt__deliver the final file with a short Persian note: what you made,
    its length and frame, and any honest limitation.
+- Heavy ffmpeg work (a jump cut of the whole recording, a grade, any encode of more than ~20 s of video) goes through
+  mcp__editorgpt__ffmpeg_cloud, not Bash: it runs on the render cloud and keeps this server free. Quick things stay in Bash.
 - Before render_cloud, make the final sound mix as one audio file and pass it as `audio`: the server puts it on the picture, so the render's
   output is already the final video with sound (no separate mux step after the render).
 - Never end your turn while a cloud render is running or before the work is delivered. After render_cloud, call render_status ONCE: it waits on
