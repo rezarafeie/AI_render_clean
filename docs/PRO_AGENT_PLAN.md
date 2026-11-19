@@ -85,6 +85,14 @@ Credits are the studio's weighted tokens (1 = one fresh Opus input token, output
   sticky routing for one `x-session-id`** — the largest single saving available.
 - Output is small (2–60 K per run); images (contact sheets, stills) are the next driver, hence the one-contact-sheet rule in video-director.
 
+### Cache fix (2026-11-19)
+
+Jarvis repeats one response id (`msg_1tk`); Claude Code merged every turn into one assistant message, which reordered the history on each
+call, so only the system prompt (~11 K) was ever cached. The proxy now gives each response its own id. Measured on the same 8 s task:
+the request prefix is intact on 25 of 26 consecutive calls and hits read the whole history (fresh input per hit 0.3–1.7 K). What is left
+is Jarvis-side: about 1 call in 3 still gets no cache at all (8 of 27), and those misses are ~80 % of the run's credits — worth raising
+with Jarvis support. `max_tokens` is capped at 32 K in the proxy (Jarvis checks the balance against it in advance).
+
 ### Proposed credit rule
 
 - Pro is charged with the same weights as every engine (nothing extra to build). A job costs **0.3–3 M credits**; the per-run cap stays 3 M
