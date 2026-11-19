@@ -114,6 +114,23 @@ def _long_cache(data: dict) -> bool:
     return changed
 
 
+def _billed_usage(usage: dict, endpoint: str) -> dict:
+    """The usage the person is charged for. Anthropic bills a cache read at a tenth and a cache write at 1.25x, which the credit weights already
+    model; Jarvis reports the same cache fields but bills every input token in full (confirmed by Jarvis, 2026-11-19: ~920K tokens on its side for a
+    run our ledger charged as 341K credits). Through Jarvis the cached tokens are therefore charged as plain input. The logged usage keeps the raw
+    numbers (cache fields included) inside the audit record's response."""
+    if endpoint == ANTHROPIC_RELAY or not isinstance(usage, dict):
+        return usage
+    cached = int(usage.get("cache_read_input_tokens") or 0) + int(usage.get("cache_creation_input_tokens") or 0)
+    if not cached:
+        return usage
+    billed = {**usage, "input_tokens": int(usage.get("input_tokens") or 0) + cached, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+    billed.pop("cache_creation", None)
+    billed["provider_cache_read_input_tokens"] = int(usage.get("cache_read_input_tokens") or 0)       # what the provider reported, kept for the log
+    billed["provider_cache_creation_input_tokens"] = int(usage.get("cache_creation_input_tokens") or 0)
+    return billed
+
+
 def _audit(claims: dict, model: str, usage: dict, started: float, status: str = "success", error: str | None = None) -> int:
     """One audited, charged model call (the same record and credit path as every other call). Returns the credits taken."""
     from brain import lm_gateway as gw
@@ -267,7 +284,7 @@ async def messages(request: Request):
                 usage = json.loads(raw).get("usage") or {}
             except ValueError:
                 usage = {}
-            credits_taken = await asyncio.to_thread(_audit, claims, model, usage, started)
+            credits_taken = await asyncio.to_thread(_audit, claims, model, _billed_usage(usage, endpoint), started)
             await _add_spent(claims, credits_taken, usage)
         else:
             log.warning("pro proxy: upstream %s for run %s", upstream.status_code, claims["run"])
@@ -307,7 +324,7 @@ async def messages(request: Request):
         finally:
             await upstream.aclose(); await client.aclose()
             try:
-                credits_taken = await asyncio.to_thread(_audit, claims, model, usage, started)
+                credits_taken = await asyncio.to_thread(_audit, claims, model, _billed_usage(usage, endpoint), started)
                 await _add_spent(claims, credits_taken, usage)
             except Exception:
                 log.exception("pro proxy: usage could not be recorded for run %s", claims["run"])

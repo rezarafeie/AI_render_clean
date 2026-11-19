@@ -298,6 +298,17 @@ def test_film_tools_are_offered_and_routed():
         raise AssertionError("an unknown film kind was accepted")
 
 
+def test_jarvis_cache_is_charged_as_plain_input():
+    try:
+        from app.routers.agent_proxy import _billed_usage, ANTHROPIC_RELAY
+    except ImportError:
+        return
+    usage = {"input_tokens": 4, "cache_read_input_tokens": 70000, "cache_creation_input_tokens": 1000, "output_tokens": 300}
+    billed = _billed_usage(usage, "https://api.jarvis.you/v1/messages")
+    assert billed["input_tokens"] == 71004 and billed["cache_read_input_tokens"] == 0 and billed["output_tokens"] == 300
+    assert _billed_usage(usage, ANTHROPIC_RELAY) is usage
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
