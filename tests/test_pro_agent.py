@@ -77,6 +77,7 @@ def test_policy_blocks_network_system_and_outside_paths():
     for name, args in denied:
         assert _decide(hook, name, args) == "deny", (name, args)
     allowed = [("Bash", {"command": f"ffmpeg -i {work}/in/a.mp4 -c copy {work}/out/b.mp4"}), ("Bash", {"command": "ffprobe out/b.mp4"}),
+               ("Bash", {"command": "python3 -c 'print(10/2)' && sed -i 's/old/new/g' src/a.tsx && echo $((w/2))"}),
                ("Read", {"file_path": "/app/remotion/package.json"}), ("Read", {"file_path": "/app/vendor/motion-skills/README.md"}),
                ("Write", {"file_path": str(work / "src" / "Scenes.tsx")}), ("Write", {"file_path": "timing.json"}),
                ("mcp__editorgpt__deliver", {"path": "out/b.mp4"})]

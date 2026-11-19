@@ -193,7 +193,9 @@ def _policy(work: Path):
             command = str(args.get("command") or "")
             if BLOCKED.search(command):
                 return deny("This command is not allowed here (no network, packages or system access). Use the editorgpt tools.")
-            for path in re.findall(r"(?<![\w.])(/[\w./-]+)", command):
+            # Only real absolute paths: a system top-level folder after a space, quote, = or (. Code like `x/2` or `sed s/a/b/g` contains
+            # "/2" and "/g", which were refused as paths outside the folder (2026-11-19): the agent rewrote its command again and again.
+            for path in re.findall(r"(?:^|(?<=[\s\"'=(:<>]))(/(?:etc|root|home|var|opt|srv|proc|sys|boot|mnt|media|dev|runs|run|app|tmp|usr|bin|sbin|lib64|lib|snap)(?=/|$|[\s\"';|&)<>])(?:/[^\s\"';|&)<>]*)?)", command):
                 if not (path.startswith(root) or path.startswith(READ_ROOTS) or path.startswith(("/tmp", "/dev/null", "/usr/", "/bin/", "/opt/venv"))):
                     return deny(f"The path {path} is outside the working folder.")
         if name in {"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep"}:
@@ -314,14 +316,19 @@ async def _forward(api: Api, message, live: dict) -> None:
             return
         if live["id"] is not None:
             await api.event(kind="text_done", response_id=live["id"], text=text)
-        elif text.strip():                     # never shown: a text with no Persian at all is kept out of the chat (an internal note step instead)
+        elif PERSIAN.search(text) and len(text.strip()) >= 4:          # a short Persian reply that never streamed (no deltas): still the agent's message
+            rid = "pro-" + uuid.uuid4().hex[:16]
+            await api.event(kind="text_start", response_id=rid)
+            await api.event(kind="text_done", response_id=rid, text=text)
+        elif text.strip() and not PERSIAN.search(text):                     # never shown: a text with no Persian at all is kept out of the chat (an internal note step instead)
             nid = "note-" + uuid.uuid4().hex[:12]
             await api.event(kind="tool_start", id=nid, tool="think", label="یادداشت داخلی ایجنت", detail=text.strip()[:1500])
             await api.event(kind="tool_done", id=nid, tool="think", label="یادداشت داخلی ایجنت", detail=text.strip()[:1500])
         live.update(text="", id=None)
 
     async def show_if_persian():
-        if live["id"] is None and PERSIAN.search(live["text"]):
+        # Shown once a few Persian words have arrived: a lone letter of a reply that then breaks off never becomes a message («ص», 2026-11-19).
+        if live["id"] is None and PERSIAN.search(live["text"]) and len(live["text"].strip()) >= 8:
             live["id"] = "pro-" + uuid.uuid4().hex[:16]
             await api.event(kind="text_start", response_id=live["id"])
 
