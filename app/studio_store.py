@@ -322,7 +322,7 @@ class Repository:
                 data = _read(); data["attachments"][aid] = value; _write(data)
         return value
 
-    async def get_attachments(self, ids: list[str], conversation_id: str, user_key: str) -> list[dict]:
+    async def get_attachments(self, ids: list[str], conversation_id: str, user_key: str, *, restore_media: bool = True) -> list[dict]:
         if not ids: return []
         if DB_AVAILABLE:
             assert AsyncSessionLocal is not None
@@ -339,6 +339,11 @@ class Repository:
                     if key in data["attachments"] and data["attachments"][key]["conversation_id"] == conversation_id
                     and data["attachments"][key]["user_key"] == user_key]
         if len(values) != len(set(ids)): raise KeyError("attachment")
+        if restore_media:
+            from app.media_archive import materialize
+            for item in values:
+                if item["kind"] == "video":
+                    await asyncio.to_thread(materialize, Path(item["path"]), user_key)
         order = {value: index for index, value in enumerate(ids)}
         return sorted(values, key=lambda item: order[item["id"]])
 

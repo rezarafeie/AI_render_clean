@@ -587,7 +587,8 @@ def load_plan(job: Job) -> dict:
 def source_media_path(job: Job) -> Path | None:
     """Resolve the original source media path recorded for this job."""
     if job.raw_name:
-        return job.dir / "raw" / Path(job.raw_name).name
+        from app.media_archive import materialize
+        return materialize(job.dir / "raw" / Path(job.raw_name).name, str(job.user_id or ""))
     plan = job.plan_data
     if plan and plan.get("source"):
         source = Path(plan["source"])
@@ -909,8 +910,8 @@ def _run_generate(
     from brain.ai_provider import LocalFallbackProvider, get_provider
 
     try:
-        raw_path = job.dir / "raw" / job.raw_name
-        if not raw_path.exists():
+        raw_path = source_media_path(job)
+        if raw_path is None or not raw_path.is_file():
             raise FileNotFoundError(f"raw video not found: {raw_path}")
 
         # 1. Transcribe
@@ -1202,6 +1203,11 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
         job.render.status = "running"
         job.render.message = "building MLT"
         _write_status(job)
+
+        if job.raw_name and not (job.dir / "raw" / Path(job.raw_name).name).is_file():
+            job.render.message = "restoring source media"
+            _write_status(job)
+            source_media_path(job)
 
         data = load_plan(job)
         # Saved jobs can predate the current hook-first poster rating. Refresh

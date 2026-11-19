@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
 from engine.kdenlive import open_in_kdenlive
 from app import jobs as jobstore
 from app.job_access import get_job_for_request
@@ -42,9 +41,10 @@ def render_status(job_id: str, request: Request, db: AsyncSession = Depends(get_
 def get_export(job_id: str, fname: str, request: Request):
     job = get_job_for_request(request, job_id)
     p = job.dir / "exports" / fname
-    if not p.exists():
+    if p.parent != job.dir / "exports":
         raise HTTPException(404, "export not found")
-    return FileResponse(p, filename=fname)
+    from app.media_archive import serve
+    return serve(request, p, str(job.user_id or ""), filename=fname)
 
 
 @router.post("/{job_id}/open-kdenlive")

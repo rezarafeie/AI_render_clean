@@ -21,6 +21,7 @@ import time
 import uuid
 from pathlib import Path
 
+from app import media_archive
 from app.studio_ingest import IngestError, attachment_folder, finalize, kind_of
 from app.studio_store import repo
 
@@ -63,7 +64,7 @@ async def ensure_room(user: str, size: int) -> None:
 
 # ── listing ────────────────────────────────────────────────────────────────────────────────────────────
 
-def _outputs(project: dict) -> list[dict]:
+def _outputs(project: dict, user: str) -> list[dict]:
     from app import jobs
     ref = str(project.get("external_ref") or "")
     if not ref or project.get("engine") == "localize" or Path(ref).name != ref:
@@ -74,7 +75,7 @@ def _outputs(project: dict) -> list[dict]:
     if not folder.is_dir():
         return []
     rows = []
-    for path in sorted(folder.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:6]:
+    for path in sorted(media_archive.media_paths(folder, "*.mp4", user), key=lambda p: media_archive.media_size_time(p, user)[1], reverse=True)[:6]:
         rows.append({"path": path, "id": f"out:{project['id']}:{path.name}", "name": f"{project.get('title') or 'video'} — {path.name}"})
     return rows
 
@@ -112,7 +113,7 @@ def _discovery_clips(conversation: dict, user: str):
         if (analysis.get("user_key"), analysis.get("conversation_id"), analysis.get("id")) != (user, conversation["id"], directory.name):
             continue
         source = Path(analysis.get("source_path") or "")
-        source_exists = source.is_file()
+        source_exists = media_archive.available(source, user)
         for candidate in analysis.get("candidates", []):
             if candidate.get("hidden") or not re.fullmatch(r"c[a-f0-9]{9}", candidate.get("id", "")) or not candidate.get("ranges"):
                 continue
@@ -139,26 +140,27 @@ def _discovery_clips(conversation: dict, user: str):
             }, path, target, source, candidate["ranges"]
 
 
-def _render_discovery_clip(target: Path, source: Path, ranges: list) -> None:
+def _render_discovery_clip(target: Path, source: Path, ranges: list, owner: str) -> None:
     from app import long_video
 
     try:
+        source = media_archive.materialize(source, owner)
         long_video.render_clip(source, ranges, target, small=False)
     except (OSError, subprocess.SubprocessError) as exc:
         target.with_suffix(".part.mp4").unlink(missing_ok=True)
         raise IngestError(_CLIP_ERROR) from exc
 
 
-def _prepare_discovery_clip(target: Path, source: Path, ranges: list) -> Path:
+def _prepare_discovery_clip(target: Path, source: Path, ranges: list, owner: str) -> Path:
     target.parent.mkdir(exist_ok=True)
     with target.with_suffix(".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not target.is_file():
-            _render_discovery_clip(target, source, ranges)
+            _render_discovery_clip(target, source, ranges, owner)
     return target
 
 
-def _queue_discovery_clip(target: Path, source: Path, ranges: list) -> bool:
+def _queue_discovery_clip(target: Path, source: Path, ranges: list, owner: str) -> bool:
     """A short poll either finds the file or starts one encode across API processes."""
     if target.is_file():
         return True
@@ -185,7 +187,7 @@ def _queue_discovery_clip(target: Path, source: Path, ranges: list) -> bool:
 
         def work() -> None:
             try:
-                _render_discovery_clip(target, source, ranges)
+                _render_discovery_clip(target, source, ranges, owner)
                 failed.unlink(missing_ok=True)
             except Exception:
                 log.warning("Library cut failed for %s", target.stem, exc_info=True)
@@ -213,7 +215,7 @@ async def library(user: str) -> dict:
     used = 0
     for a in await repo.list_user_attachments(user):
         used += int(a.get("size_bytes") or 0)
-        if not Path(a["path"]).is_file():
+        if not media_archive.available(Path(a["path"]), user):
             continue
         c = conversations.get(a["conversation_id"], {})
         items.append({"id": "att:" + a["id"], "name": a["filename"], "kind": a["kind"], "size": a["size_bytes"], "created_at": a["created_at"],
@@ -225,9 +227,9 @@ async def library(user: str) -> dict:
             found.extend(row for row, *_ in _discovery_clips(conversation, user))
             parent = (conversation.get("state") or {}).get("parent") or {}
             from_discovery = bool(parent.get("analysis_id") and parent.get("candidate_id"))
-            for output in [*_motion_videos(conversation, user), *[o for p in projects.get(cid, []) for o in _outputs(p)]]:
-                stat = output["path"].stat()
-                found.append({"id": output["id"], "name": output["name"], "kind": "video", "size": stat.st_size, "created_at": _iso(stat.st_mtime), "source": "output",
+            for output in [*_motion_videos(conversation, user), *[o for p in projects.get(cid, []) for o in _outputs(p, user)]]:
+                size, modified = media_archive.media_size_time(output["path"], user)
+                found.append({"id": output["id"], "name": output["name"], "kind": "video", "size": size, "created_at": _iso(modified), "source": "output",
                               "conversation_id": cid, "conversation_title": conversation.get("title", ""),
                               **({"folder": "discovery"} if from_discovery else {})})
         return found
@@ -246,7 +248,7 @@ async def _resolve(user: str, file_id: str) -> tuple[Path, dict]:
     kind, _, rest = file_id.partition(":")
     if kind == "att":
         row = next((a for a in await repo.list_user_attachments(user) if a["id"] == rest), None)
-        if row is None or not Path(row["path"]).is_file():
+        if row is None or not media_archive.available(Path(row["path"]), user):
             raise KeyError(file_id)
         return Path(row["path"]), {"kind": "att", "row": row}
     if kind == "out":
@@ -255,7 +257,7 @@ async def _resolve(user: str, file_id: str) -> tuple[Path, dict]:
         from app import jobs
         job = jobs.get(project.get("external_ref") or "")
         path = (job.dir / "exports" / Path(name).name) if job else None
-        if path is None or path.suffix != ".mp4" or not path.is_file():
+        if path is None or path.suffix != ".mp4" or not media_archive.available(path, user):
             raise KeyError(file_id)
         return path, {"kind": "out", "project": project}
     if kind == "mot":
@@ -288,11 +290,11 @@ async def attach(user: str, conversation_id: str, file_id: str, *, defer: bool =
         row, source, target, original, ranges = clip
         if source is None:
             if defer:
-                if not await asyncio.to_thread(_queue_discovery_clip, target, original, ranges):
+                if not await asyncio.to_thread(_queue_discovery_clip, target, original, ranges, user):
                     return None
                 source = target
             else:
-                source = await asyncio.to_thread(_prepare_discovery_clip, target, original, ranges)
+                source = await asyncio.to_thread(_prepare_discovery_clip, target, original, ranges, user)
         info = {"kind": "clip", "name": row["name"]}
     else:
         source, info = await _resolve(user, file_id)
@@ -304,6 +306,7 @@ async def attach(user: str, conversation_id: str, file_id: str, *, defer: bool =
         meta = existing.get("metadata") or {}
     else:
         name, mime, meta = info.get("name", source.name), "video/mp4", {}
+    source = await asyncio.to_thread(media_archive.materialize, source, user)
     size = source.stat().st_size
     kind = kind_of(name) or "video"
     folder = attachment_folder(user, conversation_id)
@@ -431,15 +434,18 @@ def _drop_project_files(project: dict) -> None:
 
 async def delete_file(user: str, file_id: str) -> dict:
     path, info = await _resolve(user, file_id)
-    size = path.stat().st_size
+    size, _ = media_archive.media_size_time(path, user)
+    sidecar = path.with_name(path.name + ".r2.json")
     if info["kind"] == "att":
         row = await repo.delete_attachment_row(info["row"]["id"], user)
         await asyncio.to_thread(path.unlink, missing_ok=True)
+        await asyncio.to_thread(sidecar.unlink, missing_ok=True)
         return {"id": file_id, "freed": row["size_bytes"] if row else size}
     if info["kind"] == "out":
         if _project_running(info["project"]):
             raise Busy("این پروژه هنوز در حال کار است؛ ابتدا آن را متوقف کنید.")
     await asyncio.to_thread(path.unlink, missing_ok=True)
+    await asyncio.to_thread(sidecar.unlink, missing_ok=True)
     return {"id": file_id, "freed": size}
 
 

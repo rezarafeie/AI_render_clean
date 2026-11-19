@@ -19,7 +19,7 @@ def test_old_and_new_discovery_clips_are_available_to_the_owner_and_attach_at_fu
     monkeypatch.setattr(studio_store, "ROOT", tmp_path)
     monkeypatch.setattr(studio_store, "FALLBACK", tmp_path / "studio.json")
     monkeypatch.setattr(long_video, "ROOT", tmp_path)
-    monkeypatch.setattr(studio_files, "_outputs", lambda project: [{"path": source, "id": "output-test", "name": project["title"]}])
+    monkeypatch.setattr(studio_files, "_outputs", lambda project, user: [{"path": source, "id": "output-test", "name": project["title"]}])
     source = tmp_path / "long.mp4"
     subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=blue:s=640x480:d=4",
                     "-c:v", "libx264", str(source)], check=True)

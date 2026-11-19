@@ -71,7 +71,8 @@ def effects_preview(request: Request, job_id: str, body: EffectPreview):
 
 def _job(request: Request, job_id: str):
     job = get_job_for_request(request, job_id)
-    if not job.raw_name or not (job.dir / "raw" / job.raw_name).is_file():
+    from app.media_archive import available
+    if not job.raw_name or not available(job.dir / "raw" / Path(job.raw_name).name, str(job.user_id or "")):
         raise HTTPException(409, "this job has no source video")
     return job
 

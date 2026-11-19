@@ -138,6 +138,5 @@ def get_raw(job_id: str, request: Request, db: AsyncSession = Depends(get_db)):
                     return FileResponse(source)
         raise HTTPException(404, "Source media missing")
     source = job.dir / "raw" / Path(job.raw_name).name
-    if not source.is_file():
-        raise HTTPException(404, "Source media missing")
-    return FileResponse(source)
+    from app.media_archive import serve
+    return serve(request, source, str(job.user_id or ""))

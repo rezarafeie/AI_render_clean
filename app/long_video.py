@@ -22,7 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from app import lowpriority
+from app import lowpriority, media_archive
 from app.studio_store import ROOT
 
 log = logging.getLogger(__name__)
@@ -408,7 +408,7 @@ def _run(directory: Path) -> None:
     from engine import long_transcribe as lt
     analysis = load(directory)
     conversation_id, key = analysis["conversation_id"], analysis["id"]
-    source = Path(analysis["source_path"])
+    source = media_archive.materialize(Path(analysis["source_path"]), analysis["user_key"])
     stopper = lambda: _stopped(key, directory)
     media = analysis["media"]
 
@@ -792,6 +792,8 @@ def thumbnail(directory: Path, cand: dict, source: Path) -> Path:
     if not target.is_file():
         target.parent.mkdir(exist_ok=True)
         at = cand["ranges"][0][0] + min(1.5, (cand["ranges"][0][1] - cand["ranges"][0][0]) / 3)
+        if not source.is_file():
+            source = media_archive.materialize(source, load(directory)["user_key"])
         _ffmpeg(["-ss", f"{at:.2f}", "-i", str(source), "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "4", str(target)], 120)
     return target
 
@@ -840,6 +842,8 @@ def preview(directory: Path, cand: dict, source: Path) -> Path:
         if not target.is_file():
             for old in (directory / "previews").glob(f"{cand['id']}-*.mp4") if (directory / "previews").is_dir() else []:
                 old.unlink(missing_ok=True)
+            if not source.is_file():
+                source = media_archive.materialize(source, load(directory)["user_key"])
             render_clip(source, cand["ranges"], target, small=True)
     return target
 
@@ -1074,7 +1078,8 @@ def _prepare_child(directory: Path, candidate_id: str, child_id: str, like_candi
             _emit(child_id, "tool.progress", tool="clip_cut", stage="cutting", progress=percent,
                   message=f"در حال جدا کردن بخش ({_clock(span)}) از ویدیوی بلند: {percent}٪" + (f" · حدود {_clock(left)} باقی مانده" if left is not None else ""))
 
-        clip = render_clip(Path(analysis["source_path"]), cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False,
+        source = media_archive.materialize(Path(analysis["source_path"]), user_key)
+        clip = render_clip(source, cand["ranges"], directory / "clips" / f"{cand['id']}-{int(time.time())}.mp4", small=False,
                            on_progress=progress, should_stop=stopped.is_set)
         _emit(child_id, "tool.completed", tool="clip_cut", stage="cutting", progress=100, message="بخش جدا شد؛ تدوین شروع می‌شود.")
         attachment_path = ROOT / _safe(user_key) / child_id / "attachments"
@@ -1205,7 +1210,7 @@ _QUEUED: set[str] = set()
 def ensure_media(directory: Path, analysis: dict) -> None:
     """Cards found before previews were prepared in the background (or whose range was edited) get theirs made now, once, one at a time."""
     source = Path(analysis.get("source_path", ""))
-    if not source.is_file():
+    if not media_archive.available(source, analysis["user_key"]):
         return
     for cand in analysis.get("candidates", []):
         target = _preview_target(directory, cand)

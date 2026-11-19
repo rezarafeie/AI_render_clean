@@ -499,12 +499,13 @@ async def delete_conversation(request: Request, conversation_id: str):
 @router.get("/conversations/{conversation_id}/attachments/{attachment_id}")
 async def get_attachment(request: Request, conversation_id: str, attachment_id: str):
     try:
-        item = (await repo.get_attachments([attachment_id], conversation_id, _user(request)))[0]
+        user = _user(request)
+        item = (await repo.get_attachments([attachment_id], conversation_id, user, restore_media=False))[0]
     except (KeyError, IndexError):
         raise HTTPException(404, "attachment not found")
-    path = Path(item["path"])
-    if not path.is_file(): raise HTTPException(404, "attachment file is missing")
-    return FileResponse(path, media_type=item.get("mime_type"), filename=item["filename"])
+    from app.media_archive import serve
+    return await asyncio.to_thread(serve, request, Path(item["path"]), user,
+                                   media_type=item.get("mime_type"), filename=item["filename"])
 
 
 @router.post("/conversations/{conversation_id}/messages", status_code=202)
@@ -525,7 +526,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
             running = next((r for r in active if r["agent_mode"] == "pro" and r["status"] in {"queued", "running"}), None)
             if running:
                 # A message while Pro works is not refused: it joins the running session (the agent reads it at its next step).
-                await repo.get_attachments(body.attachment_ids, conversation_id, user_key)
+                await repo.get_attachments(body.attachment_ids, conversation_id, user_key, restore_media=False)
                 message = await repo.add_message(conversation_id, user_key, "user", body.content.strip(), body.attachment_ids, agent_mode="pro")
                 pro_state = dict(running["data"].get("pro") or {})
                 pro_state["inbox"] = list(pro_state.get("inbox") or []) + [{"text": body.content.strip()[:4000], "attachment_ids": list(body.attachment_ids or [])}]
@@ -551,7 +552,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
         if body.render_target: preferences["render_target"] = body.render_target
         if preferences:
             await repo.set_conversation(conversation_id, user_key, state={**conversation.get("state", {}), **preferences})
-        await repo.get_attachments(body.attachment_ids, conversation_id, user_key)
+        await repo.get_attachments(body.attachment_ids, conversation_id, user_key, restore_media=False)
         display = body.content.strip()
         session = conversation.get('state', {}).get('manual_session')
         if session and session.get('question_id') and session['question_id'] == body.manual_question_id:
@@ -917,7 +918,8 @@ async def accept_output(request: Request, project_id: str, body: AcceptOutputReq
 
 @router.get("/projects/{project_id}/output")
 async def project_output(request: Request, project_id: str, candidate: bool = False, file: str | None = None):
-    try: project = await repo.get_project(project_id, _user(request))
+    user = _user(request)
+    try: project = await repo.get_project(project_id, user)
     except KeyError: raise HTTPException(404, "project not found")
     ref = project.get("external_ref")
     path = None
@@ -939,8 +941,9 @@ async def project_output(request: Request, project_id: str, candidate: bool = Fa
     elif project["engine"] == "motion" and ref:
         job = jobstore.get(ref)
         path = job.dir / "exports" / job.render.output if job and job.render.output else None
-    if not path or not path.is_file(): raise HTTPException(404, "output is not ready")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+    if path is None: raise HTTPException(404, "output is not ready")
+    from app.media_archive import serve
+    return await asyncio.to_thread(serve, request, path, user, media_type="video/mp4", filename=path.name)
 
 
 @router.get('/projects/{project_id}/outputs')
@@ -949,8 +952,9 @@ async def project_outputs(request: Request, project_id: str):
     except KeyError: raise HTTPException(404, 'project not found')
     job = jobstore.get(project.get('external_ref')) if project['engine'] == 'talking' else None
     if not job: return []
-    files = [p for p in (job.dir/'exports').glob('talking_reel_v*.mp4')
-             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
+    from app.media_archive import media_paths
+    files = [p for p in media_paths(job.dir / 'exports', 'talking_reel_v*.mp4', _user(request))
+             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name)
              and p.resolve().is_relative_to((job.dir/'exports').resolve())]
     return [{'file': p.name, 'version': int(re.search(r'_v([0-9]+)', p.name)[1])}
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]
@@ -1038,8 +1042,9 @@ async def project_outputs(request: Request, project_id: str):
     except KeyError: raise HTTPException(404, 'project not found')
     job = jobstore.get(project.get('external_ref')) if project['engine'] == 'talking' else None
     if not job: return []
-    files = [p for p in (job.dir/'exports').glob('talking_reel_v*.mp4')
-             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name) and p.is_file()
+    from app.media_archive import media_paths
+    files = [p for p in media_paths(job.dir / 'exports', 'talking_reel_v*.mp4', _user(request))
+             if re.fullmatch(r'talking_reel_v[0-9]+\.mp4', p.name)
              and p.resolve().is_relative_to((job.dir/'exports').resolve())]
     return [{'file': p.name, 'version': int(re.search(r'_v([0-9]+)', p.name)[1])}
             for p in sorted(files, key=lambda p: int(re.search(r'_v([0-9]+)', p.name)[1]))]

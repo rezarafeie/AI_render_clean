@@ -429,7 +429,7 @@ def analyze(job_dir: Path, raw_video: Path, *, style: Optional[str] = None, requ
 
     def run() -> None:
         try:
-            _analyze(job_dir, raw_video, style=style, request=request, concept=concept, captions_only=captions_only)
+            _analyze(job_dir, _restore_video(job_dir, raw_video), style=style, request=request, concept=concept, captions_only=captions_only)
         except TaskCanceled:
             current = load(job_dir); current.update(status="canceled", stage="", message="Canceled by user"); save(job_dir, current)
         except QualityReviewRequired as exc:
@@ -717,6 +717,14 @@ def cancel(job_dir: Path) -> dict:
     state = load(job_dir); state.update(status="canceled", message="Canceling…"); return save(job_dir, state)
 
 
+def _restore_video(job_dir: Path, video: Path) -> Path:
+    if video.is_file():
+        return video
+    from app import jobs, media_archive
+    job = jobs.get(job_dir.name)
+    return media_archive.materialize(video, str(job.user_id or "")) if job else video
+
+
 def transcript_for(job_dir: Path, video: Path) -> dict:
     """ElevenLabs Scribe transcript with real word timings (cached per file).
 
@@ -724,6 +732,7 @@ def transcript_for(job_dir: Path, video: Path) -> dict:
     wrong captions, so a failure stops here with a clear message.
     """
     from brain.transcribe import transcribe
+    video = _restore_video(job_dir, video)
     if load(job_dir).get('cached_render_only'):
         transcript = json.loads((job_dir / 'transcript.json').read_text())
         if not transcript.get('words'): raise ValueError('متن ذخیره‌شده معتبر نیست.')
@@ -749,6 +758,7 @@ def _run(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     from dotenv import load_dotenv
 
     load_dotenv(PROJECT_ROOT / ".env")
+    video = _restore_video(job_dir, video)
     state = load(job_dir)
     style = state.get("style") or "talking_1"
     if state.get("variant") == PREMIUM:
@@ -1012,8 +1022,12 @@ def _run_premium(job_dir: Path, video: Path) -> None:
 def _next_output(job_dir: Path) -> Path:
     exports = job_dir / "exports"
     exports.mkdir(exist_ok=True)
-    version = len(list(exports.glob("talking_reel_v*.mp4"))) + 1
-    return exports / f"talking_reel_v{version}.mp4"
+    from app import jobs, media_archive
+    job = jobs.get(job_dir.name)
+    owner = str(job.user_id or "") if job else ""
+    versions = [int(match[1]) for path in media_archive.media_paths(exports, "talking_reel_v*.mp4", owner)
+                if (match := re.fullmatch(r"talking_reel_v(\d+)\.mp4", path.name))]
+    return exports / f"talking_reel_v{max(versions, default=0) + 1}.mp4"
 
 
 def _run_talking_1(job_dir: Path, video: Path, *, regenerate: bool) -> None:
@@ -1039,10 +1053,7 @@ def _run_talking_1(job_dir: Path, video: Path, *, regenerate: bool) -> None:
     planned = plan_render(job_dir, video)
     settings, plan = planned.settings, planned.plan
     _stage(job_dir, "rendering", progress=45)
-    exports = job_dir / "exports"
-    exports.mkdir(exist_ok=True)
-    version = len(list(exports.glob("talking_reel_v*.mp4"))) + 1
-    out = exports / f"talking_reel_v{version}.mp4"
+    out = _next_output(job_dir)
     state = load(job_dir)
 
     progress, render_stage = _render_reporter(job_dir)
@@ -1331,6 +1342,7 @@ def plan_render(job_dir: Path, video: Path, *, prepare_media: bool = True, apply
     transcription is requested; AI pictures that do not exist yet appear as "ai_planned" slots.
     ``apply_edits`` False returns the plan as the AI made it, without the user's timeline edits."""
     state = load(job_dir)
+    video = _restore_video(job_dir, video)
     style = str(state.get("style") or "talking_1")
     planned = (_plan_split(job_dir, video, style, prepare_media=prepare_media,
                            broll_edits=state.get("broll_edits") if apply_edits else None) if style in SPLIT_STYLES
