@@ -150,8 +150,13 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         data = json.loads(path.read_text())
         data["notes"] = (data.get("notes") or [])[-11:] + [f"{step}: {text}"[:300]]
         path.write_text(json.dumps(data, ensure_ascii=False))
-        _emit(loop, cid, rid, text, step=f"{job}-{step}", done=state_ == "done", detail=detail or "")
+        picture = None
+        if step == "review" and not shown.get("review") and (work / "qa" / "sheet.jpg").is_file():     # the stills the engine checks, on its row
+            shown["review"] = True
+            picture = work / "qa" / "sheet.jpg"
+        _emit(loop, claims, text, step=f"{job}-{step}", done=state_ == "done", detail=detail or "", image=picture)
 
+    shown: dict = {}
     checked = {"at": 0.0, "stop": False}
 
     def cancelled() -> bool:
@@ -175,7 +180,8 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         label = str(message).split("(")[0].split("…")[0].strip()[:70]
         if label != last["label"] or int(percent) - last["percent"] >= 5:        # the engine's overall progress: one row that moves, not an event a second
             last.update(label=label, percent=int(percent))
-            _emit(loop, cid, rid, f"موتور تدوین · {int(percent)}٪ · {label}", step=f"{job}-progress", progress=int(percent), quiet=True)
+            _emit(loop, claims, f"موتور تدوین · {int(percent)}٪ · {label}", step=f"{job}-progress", progress=int(percent), quiet=True)
+            _card(loop, claims, path)
 
     def music(_feel: str, _total: float):
         pick = str(args.get("music") or "").strip()
@@ -187,9 +193,22 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
                 return chosen
         return engine.KIT / "music.mp3"
 
+    cloud_seen = {"at": 0.0}
+
+    def cloud_report(**values) -> None:
+        """What the render cloud says (worker stage, its own percent, its detail line), on the render card like Lite's."""
+        data = json.loads(path.read_text())
+        report = {**(data.get("cloud") or {}), **{k: v for k, v in values.items() if v is not None}}
+        save(cloud=report, state="rendering")
+        if time.time() - cloud_seen["at"] > 3 or values.get("progress") in (0, 100):
+            cloud_seen["at"] = time.time()
+            _card(loop, claims, path)
+
     def cloud(project: Path, target: Path) -> bool:
         from app.render_cloud import hooks
-        return bool(hooks.claude_motion(project, target, timeout=5400, user=user, project_id="pro" + rid, owned_roots=(pro.workdir(cid),)))
+        return bool(hooks.claude_motion(project, target, timeout=5400, user=user, project_id="pro" + rid, owned_roots=(pro.workdir(cid),),
+                                        on_progress=lambda p: cloud_report(progress=int(p)), on_stage=lambda st: cloud_report(stage=str(st)[:120]),
+                                        on_detail=lambda text: cloud_report(detail=str(text)[:240])))
 
     def work_thread():
         from brain.lm_gateway import work_scope
@@ -204,49 +223,88 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
                 result = engine.make(video, transcript, work, out, note=note, progress=progress, cancelled=cancelled, render_cloud=cloud, music=music,
                                      context=context)
             _keep_plan(work)
-            _emit(loop, cid, rid, "موتور تدوین · ویدیو آماده شد", step=f"{job}-progress", done=True, progress=100)
+            _emit(loop, claims, "موتور تدوین · ویدیو آماده شد", step=f"{job}-progress", done=True, progress=100)
             save(state="done", progress=100, duration=round(float(result.get("duration") or 0), 2),
                  plan=str(_plan_file(work).relative_to(pro.workdir(cid))) if _plan_file(work).is_file() else None,
                  size_bytes=out.stat().st_size if out.is_file() else 0)
+            _card(loop, claims, path, video=out if out.is_file() else None)
         except Exception as exc:
             _keep_plan(work)
             stopped = type(exc).__name__ == "Cancelled"
             if not stopped:
                 log.warning("pro engine job %s failed", job, exc_info=True)
-            _emit(loop, cid, rid, "موتور تدوین متوقف شد" if stopped else "موتور تدوین به خطا خورد", step=f"{job}-progress", done=True)
+            _emit(loop, claims, "موتور تدوین متوقف شد" if stopped else "موتور تدوین به خطا خورد", step=f"{job}-progress", done=True)
             save(state="failed", error="stopped" if stopped else f"{type(exc).__name__}: {str(exc)[:400]}")
+            _card(loop, claims, path)
         finally:
             with _lock:
                 if _running.get(cid) == job:
                     _running.pop(cid, None)
 
     threading.Thread(target=work_thread, daemon=True, name=f"pro-engine-{job}").start()
-    _emit(loop, cid, rid, "موتور تدوین استودیو شروع به کار کرد", step=f"{job}-start", done=True)
+    _emit(loop, claims, "موتور تدوین استودیو شروع به کار کرد", step=f"{job}-start", done=True)
+    _card(loop, claims, path)
     return {"job_id": job, "state": "queued", "output": current["output"],
             "note": "Wait with job_wait (it waits on the server up to 240 s per call). When done, look at a few stills of the output, then deliver, or "
                     "read the plan file, edit it and call talking_revise."}
 
 
-def _emit(loop, cid: str, rid: str, text: str, *, step: str = "", done: bool = False, detail: str = "", progress: int | None = None,
-          quiet: bool = False) -> None:
+def _emit(loop, claims: dict, text: str, *, step: str = "", done: bool = False, detail: str = "", progress: int | None = None,
+          quiet: bool = False, image: Path | None = None) -> None:
     """One row of the chat's timeline per engine step (the plan, each graphic, the cut and grade, the face, the cut-outs, review, render, mix):
-    tool.started while it runs, tool.completed when the engine says it is done; `quiet` rows only move (tool.progress). Sent on the app's loop
-    and not waited for, so it never blocks the engine."""
+    tool.started while it runs, tool.completed when the engine says it is done; `quiet` rows only move (tool.progress); `image` (the engine's
+    stills) is shown on the row. Sent on the app's loop and not waited for, so it never blocks the engine."""
+    if loop is None or loop.is_closed():
+        return
+    kind = "tool.progress" if quiet else ("tool.completed" if done else "tool.started")
+    data = {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200], "agent_mode": "pro", "run_id": claims["run"],
+            "activity_id": "engine-" + (step or "work")[:80]}
+    if detail:
+        data["response"] = str(detail)[:3000]
+    if progress is not None:
+        data["progress"] = int(progress)
+
+    async def send():
+        from app.studio_store import repo
+        if image is not None and image.is_file():
+            try:
+                from app.routers.agent_proxy import _attach
+                data["image"] = (await _attach(claims, image))["id"]
+            except Exception:
+                log.debug("engine still not attached", exc_info=True)
+        await repo.emit(claims["cid"], kind, data)
+    _send(loop, send)
+
+
+def _card(loop, claims: dict, path: Path, *, video: Path | None = None) -> None:
+    """The render card of an engine job (`pro.job`): stage, percent, the render cloud's own report, and the finished video, like Lite's card."""
     if loop is None or loop.is_closed():
         return
     try:
-        import asyncio
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return
+    card = {k: data.get(k) for k in ("job_id", "style", "state", "progress", "stage", "error", "duration", "cloud")}
+    card.update(agent_mode="pro", run_id=claims["run"])
+
+    async def send():
         from app.studio_store import repo
-        kind = "tool.progress" if quiet else ("tool.completed" if done else "tool.started")
-        data = {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200], "agent_mode": "pro", "run_id": rid,
-                "activity_id": "engine-" + (step or "work")[:80]}
-        if detail:
-            data["response"] = str(detail)[:3000]
-        if progress is not None:
-            data["progress"] = int(progress)
-        asyncio.run_coroutine_threadsafe(repo.emit(cid, kind, data), loop)
+        if video is not None:
+            try:
+                from app.routers.agent_proxy import _attach
+                card["attachment_id"] = (await _attach(claims, video))["id"]
+            except Exception:
+                log.warning("engine video not attached to its card", exc_info=True)
+        await repo.emit(claims["cid"], "pro.job", card)
+    _send(loop, send)
+
+
+def _send(loop, make) -> None:
+    try:
+        import asyncio
+        asyncio.run_coroutine_threadsafe(make(), loop)
     except Exception:
-        log.debug("pro engine progress event not sent", exc_info=True)
+        log.debug("pro engine event not sent", exc_info=True)
 
 
 async def wait(cid: str, job: str, seconds: float) -> dict:

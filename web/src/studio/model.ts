@@ -39,7 +39,9 @@ export type TimelineItem =
   | { kind: "render"; id: string; projectId: string; startedAt: number }
   | { kind: "question"; id: string; question: string; choices: QuestionChoice[]; seq: number; style: boolean }
   | { kind: "discovery"; id: string; analysisId: string }
-  | { kind: "motion"; id: string; motionId: string; run?: number; version?: number; startedAt?: number; summaries?: { plan?: string; ready?: string } };
+  | { kind: "motion"; id: string; motionId: string; run?: number; version?: number; startedAt?: number; summaries?: { plan?: string; ready?: string } }
+  /** A Pro engine job (`pro.job` events): the render card of the studio engine the Pro agent started. Only Pro chats have these. */
+  | { kind: "pro_job"; id: string; jobId: string; startedAt: number; data: Record<string, any> };
 
 export interface QuestionChoice { label: string; /** What to send as the user's answer. */ value: string }
 /** Backend choices are either plain strings or { id, label } objects (talking styles). */
@@ -314,6 +316,14 @@ export function buildTimeline({ messages, events, projects, pending, processing,
         const at = items.indexOf(run);                                   // it finished now: it sits below what was said while it ran
         if (at >= 0) { items.splice(at, 1); items.push(run); }
       }
+      continue;
+    }
+    if (event.type === "pro.job") {
+      const jobId = String(event.data.job_id || "");
+      if (!jobId) continue;
+      const card = items.find(item => item.kind === "pro_job" && item.jobId === jobId);
+      if (card && card.kind === "pro_job") card.data = { ...card.data, ...event.data, attachment_id: event.data.attachment_id || card.data.attachment_id };
+      else { flush(); items.push({ kind: "pro_job", id: `pj-${jobId}`, jobId, startedAt: entry.t, data: { ...event.data } }); }
       continue;
     }
     if (event.type === "discovery.created") {
