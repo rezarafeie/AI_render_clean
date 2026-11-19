@@ -1,11 +1,14 @@
 import asyncio
 import shutil
 import subprocess
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app import long_video, studio_files, studio_store
+from app.routers.studio import LibraryAttach, attach_from_library
 from engine.probe import probe
 
 
@@ -64,6 +67,33 @@ def test_old_and_new_discovery_clips_are_available_to_the_owner_and_attach_at_fu
         cache, = (old / "clips").glob("*.mp4")
         assert cache.samefile(attached)
         assert item["filename"] == "Old clip.mp4"
+
+        render = long_video.render_clip
+        started, release = threading.Event(), threading.Event()
+        renders = []
+
+        def slow_render(*args, **kwargs):
+            renders.append(1)
+            started.set()
+            assert release.wait(8)
+            return render(*args, **kwargs)
+
+        monkeypatch.setattr(long_video, "render_clip", slow_render)
+        request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id="owner")), headers={}, cookies={})
+        body = LibraryAttach(file_id=cuts[0]["id"], defer=True)
+        pending = await asyncio.wait_for(attach_from_library(request, target, body), timeout=2)
+        assert pending.status_code == 202
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            assert (await attach_from_library(request, target, body)).status_code == 202
+            assert renders == [1]
+        finally:
+            release.set()
+        async with asyncio.timeout(8):
+            while not isinstance(ready := await attach_from_library(request, target, body), dict):
+                await asyncio.sleep(0.03)
+        assert ready["filename"] == "New clip.mp4"
+        assert renders == [1]
 
         analysis = long_video.load(old)
         analysis["candidates"][0]["ranges"] = [[1, 3]]

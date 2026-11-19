@@ -42,6 +42,7 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
     detail: `${formatBytes(file.size)} will be freed. Chats and projects that already used it keep working, and nothing else is deleted.`,
     run: async () => { await api.deleteStudioFile(file.id); setPicked(current => { const next = new Map(current); next.delete(file.id); return next; }); await load(); },
   });
+  const preparingClips = busy && Array.from(picked.keys()).some(id => id.startsWith("clip:"));
   const used = data?.usage ?? 0, quota = data?.quota ?? 0;
   const percent = quota ? Math.min(100, (used / quota) * 100) : 0;
 
@@ -77,9 +78,9 @@ export function FilesPicker({ onClose, onAttach }: { onClose: () => void; onAtta
         </ul>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-        <small style={{ marginInlineEnd: "auto" }}>{picked.size ? `${picked.size} selected` : "Select files to use in this chat"}</small>
+        <small style={{ marginInlineEnd: "auto" }} role="status">{preparingClips ? "برش با وضوح منبع آماده و خودکار پیوست می‌شود." : picked.size ? `${picked.size} selected` : "Select files to use in this chat"}</small>
         <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? ([...picked.values()].some(file => file.source === "discovery") ? "آماده‌سازی کلیپ…" : "Adding…") : `Use ${picked.size || ""}`.trim()}</button>
+        <button className="btn btn-sm btn-primary" disabled={!picked.size || busy} onClick={() => void use()}>{busy ? (preparingClips ? <><span className="spinner"/> آماده‌سازی کلیپ…</> : "Adding…") : `Use ${picked.size || ""}`.trim()}</button>
       </div>
     </div>
     <ConfirmDelete target={deleting} onClose={() => setDeleting(null)}/>

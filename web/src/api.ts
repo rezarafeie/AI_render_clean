@@ -1346,7 +1346,20 @@ export const api = {
     await j(await authFetch(`${BASE}/studio/files/${encodeURIComponent(id)}`, { method: "DELETE" }));
   },
   async attachStudioFile(conversationId: string, fileId: string): Promise<StudioAttachment> {
-    return j(await authFetch(`${BASE}/studio/conversations/${conversationId}/attachments/library`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file_id: fileId }) }));
+    const url = `${BASE}/studio/conversations/${conversationId}/attachments/library`;
+    const isClip = fileId.startsWith("clip:");
+    const body = JSON.stringify({ file_id: fileId, defer: isClip });
+    const deadline = Date.now() + 10 * 60 * 1000;
+    do {
+      const response = await authFetch(url, {
+        method: "POST", headers: { "content-type": "application/json" }, body,
+        ...(isClip && { signal: AbortSignal.timeout(18_000) }),
+      });
+      if (response.status !== 202) return j(response);
+      await response.body?.cancel();
+      await new Promise(resolve => window.setTimeout(resolve, 3000));
+    } while (Date.now() < deadline);
+    throw new Error("آماده‌سازی کلیپ هنوز تمام نشده است. کمی بعد دوباره انتخابش کنید.");
   },
   async listStudioConversations(): Promise<StudioConversation[]> {
     return j(await authFetch(`${BASE}/studio/conversations`));

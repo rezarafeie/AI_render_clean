@@ -11,15 +11,22 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import logging
 import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 import uuid
 from pathlib import Path
 
 from app.studio_ingest import IngestError, attachment_folder, finalize, kind_of
 from app.studio_store import repo
+
+log = logging.getLogger(__name__)
+_CLIP_SLOTS = threading.BoundedSemaphore(2)
+_CLIP_ERROR = "آماده‌سازی کلیپ انجام نشد. دوباره تلاش کنید."
 
 QUOTA_BYTES = int(os.environ.get("STUDIO_USER_QUOTA_BYTES", str(5 * 1024**3)))
 
@@ -131,19 +138,71 @@ def _discovery_clips(conversation: dict, user: str):
             }, path, target, source, candidate["ranges"]
 
 
-def _prepare_discovery_clip(target: Path, source: Path, ranges: list) -> Path:
+def _render_discovery_clip(target: Path, source: Path, ranges: list) -> None:
     from app import long_video
 
+    try:
+        long_video.render_clip(source, ranges, target, small=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        target.with_suffix(".part.mp4").unlink(missing_ok=True)
+        raise IngestError(_CLIP_ERROR) from exc
+
+
+def _prepare_discovery_clip(target: Path, source: Path, ranges: list) -> Path:
     target.parent.mkdir(exist_ok=True)
     with target.with_suffix(".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not target.is_file():
-            try:
-                long_video.render_clip(source, ranges, target, small=False)
-            except (OSError, subprocess.SubprocessError) as exc:
-                target.with_suffix(".part.mp4").unlink(missing_ok=True)
-                raise IngestError("آماده‌سازی کلیپ انجام نشد. دوباره تلاش کنید.") from exc
+            _render_discovery_clip(target, source, ranges)
     return target
+
+
+def _queue_discovery_clip(target: Path, source: Path, ranges: list) -> bool:
+    """A short poll either finds the file or starts one encode across API processes."""
+    if target.is_file():
+        return True
+    target.parent.mkdir(exist_ok=True)
+    lock = target.with_suffix(".lock").open("a")
+    handed_off = False
+    try:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        if target.is_file():
+            return True
+
+        failed = target.with_suffix(".failed")
+        try:
+            recently_failed = time.time() - failed.stat().st_mtime < 30
+        except FileNotFoundError:
+            recently_failed = False
+        if recently_failed:
+            raise IngestError(_CLIP_ERROR)
+        if not _CLIP_SLOTS.acquire(blocking=False):
+            return False
+
+        def work() -> None:
+            try:
+                _render_discovery_clip(target, source, ranges)
+                failed.unlink(missing_ok=True)
+            except Exception:
+                log.warning("Library cut failed for %s", target.stem, exc_info=True)
+                failed.touch()
+            finally:
+                lock.close()
+                _CLIP_SLOTS.release()
+
+        try:
+            threading.Thread(target=work, daemon=True, name="library-clip").start()
+        except RuntimeError:
+            _CLIP_SLOTS.release()
+            raise
+        handed_off = True
+        return False
+    finally:
+        if not handed_off:
+            lock.close()
 
 
 async def library(user: str) -> dict:
@@ -213,10 +272,10 @@ async def _resolve(user: str, file_id: str) -> tuple[Path, dict]:
 
 # ── attach again ───────────────────────────────────────────────────────────────────────────────────────
 
-async def attach(user: str, conversation_id: str, file_id: str) -> dict:
+async def attach(user: str, conversation_id: str, file_id: str, *, defer: bool = False) -> dict | None:
     """Put a file the person already has into this chat as an attachment. The bytes are not copied: the new name is a hard link (a copy only when the disk
     does not allow one)."""
-    await repo.get_conversation(conversation_id, user)
+    await repo.get_conversation(conversation_id, user, message_limit=1)
     if file_id.startswith("clip:"):
         source_conversation_id = file_id.split(":", 2)[1]
         conversation = await repo.get_conversation(source_conversation_id, user, message_limit=1)
@@ -227,7 +286,12 @@ async def attach(user: str, conversation_id: str, file_id: str) -> dict:
             raise KeyError(file_id)
         row, source, target, original, ranges = clip
         if source is None:
-            source = await asyncio.to_thread(_prepare_discovery_clip, target, original, ranges)
+            if defer:
+                if not await asyncio.to_thread(_queue_discovery_clip, target, original, ranges):
+                    return None
+                source = target
+            else:
+                source = await asyncio.to_thread(_prepare_discovery_clip, target, original, ranges)
         info = {"kind": "clip", "name": row["name"]}
     else:
         source, info = await _resolve(user, file_id)

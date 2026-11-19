@@ -410,6 +410,7 @@ async def upload_attachment(request: Request, conversation_id: str, file: Upload
 
 class LibraryAttach(BaseModel):
     file_id: str = Field(min_length=3, max_length=200)
+    defer: bool = False
 
 
 @router.post("/conversations/{conversation_id}/attachments/library", status_code=201)
@@ -417,9 +418,11 @@ async def attach_from_library(request: Request, conversation_id: str, body: Libr
     """Use a file the person already has (an earlier upload, a Drive import or a render) in this chat, without uploading it again."""
     from app import studio_files
     try:
-        attachment = await studio_files.attach(_user(request), conversation_id, body.file_id)
+        attachment = await studio_files.attach(_user(request), conversation_id, body.file_id, defer=body.defer)
     except KeyError: raise HTTPException(404, "file not found")
     except IngestError as exc: raise HTTPException(413 if exc.__class__.__name__ == "QuotaExceeded" else 422, str(exc))
+    if attachment is None:
+        return JSONResponse({"status": "preparing"}, status_code=202, headers={"Retry-After": "3"})
     return {key: attachment[key] for key in ("id", "kind", "filename", "mime_type", "size_bytes")}
 
 
