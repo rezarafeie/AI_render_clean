@@ -374,6 +374,19 @@ async def status(request: Request):
     return {"stop": stopped, "spent_credits": _spent(record), "budget_credits": pro.BUDGET_CREDITS}
 
 
+@router.post("/internal/pro/inbox")
+async def inbox(request: Request):
+    """Messages the person sent while this run works, handed over once (the runner gives them to the agent at its next step)."""
+    claims = _claims(request)
+    record = await _run_of(claims)
+    state = dict(record["data"].get("pro") or {})
+    waiting = list(state.get("inbox") or [])
+    if waiting:
+        state["inbox"] = []
+        await store.update(claims["run"], claims["user"], patch={"pro": state})
+    return {"messages": waiting}
+
+
 @router.get("/internal/pro/renders")
 async def renders(request: Request):
     """The chat's cloud renders that have not ended yet (the runner keeps the session alive and continues it when they end)."""

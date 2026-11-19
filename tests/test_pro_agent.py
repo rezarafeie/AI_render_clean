@@ -311,6 +311,23 @@ def test_jarvis_cache_is_charged_as_plain_input():
     assert _billed_usage(usage, ANTHROPIC_RELAY) is usage
 
 
+def test_a_message_sent_mid_run_reaches_the_agent_at_its_next_step():
+    from app.agents.pro import runner
+
+    class FakeApi:
+        def __init__(self, messages):
+            self.messages = messages
+
+        async def inbox(self):
+            out, self.messages = self.messages, []
+            return out
+    hook = runner._inbox(FakeApi([{"text": "فونت را دوران کن", "attachment_ids": []}]))
+    out = asyncio.run(hook({"tool_name": "Bash", "tool_input": {}}, "id", None))
+    context = out["hookSpecificOutput"]["additionalContext"]
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse" and "فونت را دوران کن" in context
+    assert asyncio.run(hook({"tool_name": "Bash", "tool_input": {}}, "id", None)) == {}
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

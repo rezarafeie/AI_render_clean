@@ -483,8 +483,18 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
         except ValueError as exc: raise HTTPException(503, str(exc))
         if agent_mode == "pro":
             active = await agent_store.runs(conversation_id, user_key)
-            if any(r["agent_mode"] == "pro" and r["status"] in {"queued", "running"} for r in active):
-                raise HTTPException(409, "EditorGPT Pro در همین گفتگو هنوز در حال کار است؛ صبر کنید یا متوقفش کنید.")
+            running = next((r for r in active if r["agent_mode"] == "pro" and r["status"] in {"queued", "running"}), None)
+            if running:
+                # A message while Pro works is not refused: it joins the running session (the agent reads it at its next step).
+                await repo.get_attachments(body.attachment_ids, conversation_id, user_key)
+                message = await repo.add_message(conversation_id, user_key, "user", body.content.strip(), body.attachment_ids, agent_mode="pro")
+                pro_state = dict(running["data"].get("pro") or {})
+                pro_state["inbox"] = list(pro_state.get("inbox") or []) + [{"text": body.content.strip()[:4000], "attachment_ids": list(body.attachment_ids or [])}]
+                await agent_store.update(running["id"], user_key, patch={"pro": pro_state})
+                await repo.emit(conversation_id, "tool.progress", {"tool": "pro_inbox", "stage": "pro", "message": "پیام شما به Pro رسید؛ بعد از قدم فعلی اعمالش می‌کند.",
+                                                                "agent_mode": "pro", "run_id": running["id"]})
+                message["agent_run_id"] = running["id"]
+                return message
         if agent_mode == "medium":
             active = await agent_store.runs(conversation_id, user_key)
             if any(r["agent_mode"] == "medium" and r["status"] in {"queued", "running", "waiting_approval", "waiting_job"} for r in active):

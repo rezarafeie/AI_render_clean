@@ -43,6 +43,12 @@ class Api:
         except Exception:
             return []
 
+    async def inbox(self) -> list[dict]:
+        try:
+            return (await self.client.post("/internal/pro/inbox")).json().get("messages") or []
+        except Exception:
+            return []
+
     async def stop_requested(self) -> bool:
         try:
             r = await self.client.get("/internal/pro/status")
@@ -206,6 +212,23 @@ def _policy(work: Path):
             if (name in {"Write", "Edit", "MultiEdit", "NotebookEdit"} and not writable) or not readable:
                 return deny("Files outside the working folder cannot be used.")
         return {}
+    return hook
+
+
+def _said(messages: list[dict]) -> str:
+    lines = "\n".join(f"«{m.get('text', '')}»" + (f" (attached: {', '.join(m.get('attachment_ids') or [])}; fetch with assets_fetch)" if m.get("attachment_ids") else "")
+                      for m in messages)
+    return ("THE PERSON JUST WROTE, WHILE YOU WORK:\n" + lines + "\nAnswer them now in one short Persian sentence (your reply text), then apply it to the "
+            "work from here on (change the plan, redo only what it touches). It overrides earlier instructions where they conflict.")
+
+
+def _inbox(api):
+    """PostToolUse: a message the person sent mid-run reaches the agent right after its current step, inside the same turn."""
+    async def hook(data, tool_use_id, context):
+        waiting = await api.inbox()
+        if not waiting:
+            return {}
+        return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": _said(waiting)}}
     return hook
 
 
@@ -382,7 +405,7 @@ async def run(job: dict) -> None:
         disallowed_tools=["WebFetch", "WebSearch", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger", "TaskStop"],
         mcp_servers={"editorgpt": _tools(api)},
         permission_mode="dontAsk",
-        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])]},
+        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])], "PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
         max_turns=int(os.environ.get("PRO_MAX_TURNS", "250")),
         env={"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
              "CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_TELEMETRY": "1",
@@ -432,6 +455,11 @@ async def run(job: dict) -> None:
                             break
                         strays += 1
                         log.info("pro run %s: stray result without a model turn, reading on", job["run"])
+                    if not stopped and not live.get("api_error"):
+                        late = await api.inbox()            # written after the agent's last step: it answers them before the run ends
+                        if late:
+                            await client.query(_said(late))
+                            continue
                     if not stopped and not live.get("api_error"):
                         # the agent ended its turn while a cloud render still runs ("I'll wait for it"): the runner waits and continues the same session
                         waiting = await api.active_renders()
