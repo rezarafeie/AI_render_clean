@@ -135,7 +135,14 @@ def ffmpeg_job(inputs, steps, output, *, width, height, max_duration, fps=30, au
     """Heavy ffmpeg passes of any engine on a worker (engine ffmpeg_job): `inputs` (paths) are staged by name, `steps` are ffmpeg argument lists
     run in order in the worker's folder, the last writes result.mp4. False when the cloud does not take it: the caller runs the same steps on the
     server (see run_ffmpeg_steps), so nothing depends on the cloud being up."""
-    if not enabled() or not user:
+    if not enabled():
+        return False
+    who = identity.get()
+    if user is None and who:                                 # the engine's own job (talking reel, studio project) set who renders
+        user, project_id, owned_roots = who[:3]
+        if len(who) > 3 and should_cancel is None:
+            should_cancel = who[3]
+    if not user:
         return False
     from .settings import CloudSettings
     if not CloudSettings().effective().admin(user):
@@ -501,3 +508,17 @@ def run_ffmpeg_steps(inputs, steps, output, *, width, height, max_duration, fps=
             raise RuntimeError('the last ffmpeg step must write result.<ext>')
         shutil.move(str(result), str(output))
     return "local"
+
+
+CLOUD_SIZES = {(1080, 1920), (1920, 1080), (1080, 1080), (1080, 1350)}
+
+
+def video_size(path) -> tuple[int, int]:
+    """Display width and height of a video (rotation applied)."""
+    import subprocess
+    out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:stream_side_data=rotation:stream_tags=rotate',
+                          '-of', 'json', str(path)], capture_output=True, text=True, timeout=60).stdout
+    data = json.loads(out or '{}').get('streams', [{}])[0]
+    w, h = int(data.get('width') or 0), int(data.get('height') or 0)
+    rotation = abs(int(float((data.get('tags') or {}).get('rotate') or next((d.get('rotation') for d in data.get('side_data_list') or [] if 'rotation' in d), 0) or 0)))
+    return (h, w) if rotation in (90, 270) else (w, h)

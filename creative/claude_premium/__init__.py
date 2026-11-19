@@ -294,6 +294,8 @@ def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr
     (work / "public").mkdir(parents=True, exist_ok=True)
     graded, voice = work / "public" / "graded.mp4", work / "voice.wav"
     total = sum(e - s for s, e, _ in segs) + TAIL
+    if _cut_graded_on_cloud(video, segs, chain, graded, voice, total, on_progress):
+        return graded, voice
     process = subprocess.Popen(["nice", "-n", "10", "ffmpeg", "-v", "error", "-nostats", "-progress", "pipe:1", "-threads", "2", "-y", "-i", str(video), "-filter_complex", ";".join(fc),
                                 "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16", "-preset", "fast", "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(graded),
                                 "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -311,6 +313,49 @@ def cut_graded(video: Path, segs: list[list[float]], work: Path, grade: str, hdr
     if process.returncode != 0:
         raise subprocess.CalledProcessError(process.returncode, "ffmpeg", stderr=(process.stderr.read() if process.stderr else "")[-400:])
     return graded, voice
+
+
+def _cut_graded_on_cloud(video: Path, segs: list, chain: list[str], graded: Path, voice: Path, total: float, on_progress) -> bool:
+    """The picture pass (the long encode) on the render cloud when it takes it (a cloud frame size, the ffmpeg_job profile); the voice track is
+    cut here (seconds, sound only). False = the caller encodes on this server exactly as before."""
+    try:
+        from app.render_cloud import hooks
+        w, h = hooks.video_size(video)
+        out_w = min(w, 1920) if w > h else min(w, 1080)
+        out_h = int(round(h * out_w / w / 2) * 2) if w else 0
+        if (out_w, out_h) not in hooks.CLOUD_SIZES:
+            return False
+        picture = [f"[0:v]trim={s_:.3f}:{e_:.3f},setpts=PTS-STARTPTS[v{k}]" for k, (s_, e_, _) in enumerate(segs)]
+        picture.append("".join(f"[v{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[vc]")
+        picture.append("[vc]" + ",".join(chain) + "[v]")
+        sound = []
+        for k, (s_, e_, _) in enumerate(segs):
+            dur = e_ - s_
+            sound.append(f"[0:a]atrim={s_:.3f}:{e_:.3f},asetpts=PTS-STARTPTS,afade=t=in:d=0.012,afade=t=out:st={max(0.0, dur - 0.015):.3f}:d=0.015[a{k}]")
+        sound.append("".join(f"[a{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1[ac]")
+        sound.append(f"[ac]apad=pad_dur={TAIL}[a]")
+        name = "source" + video.suffix.lower()
+        steps = [["-v", "error", "-i", name, "-filter_complex", ";".join(picture), "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                  "-g", "10", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "result.mp4"]]
+        import shutil
+        import tempfile
+        with tempfile.TemporaryDirectory(dir=str(graded.parent)) as tmp:
+            staged = Path(tmp) / name
+            try:
+                os.link(video, staged)
+            except OSError:
+                shutil.copy2(video, staged)
+            done = hooks.ffmpeg_job([staged], steps, graded, width=out_w, height=out_h, max_duration=total + 1,
+                                    on_progress=(lambda p: on_progress(min(0.95, p / 100))) if on_progress else None)
+        if not done or not graded.is_file():
+            return False
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-filter_complex", ";".join(sound), "-map", "[a]", "-ar", "48000", "-ac", "1", str(voice)],
+                       check=True, capture_output=True, timeout=1800)
+        return True
+    except Exception:
+        log.warning("premium cut on the render cloud failed; encoding on the server", exc_info=True)
+        graded.unlink(missing_ok=True)
+        return False
 
 
 def wall_is_light(graded: Path, total: float) -> bool:
