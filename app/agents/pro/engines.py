@@ -260,10 +260,17 @@ def _emit(loop, claims: dict, text: str, *, step: str = "", done: bool = False, 
     if loop is None or loop.is_closed():
         return
     kind = "tool.progress" if quiet else ("tool.completed" if done else "tool.started")
-    data = {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200], "agent_mode": "pro", "run_id": claims["run"],
+    import re
+    full = str(text).strip()
+    # The row's title must be short (the timeline shows a generic word for a long one): the engine's first clause; the whole line and the
+    # engine's material stay in the row's detail, like Lite's own steps.
+    title = re.split(r"[:؛،.]\s", full, maxsplit=1)[0].strip()
+    if len(title) > 64:
+        title = title[:62].rsplit(" ", 1)[0] + "…"
+    data = {"tool": "pro_engine", "stage": "pro", "message": title or full[:64], "agent_mode": "pro", "run_id": claims["run"],
             "activity_id": "engine-" + (step or "work")[:80]}
-    if detail:
-        data["response"] = str(detail)[:3000]
+    if full != title or detail:
+        data["response"] = (full + ("\n\n" + str(detail) if detail else ""))[:3000]
     if progress is not None:
         data["progress"] = int(progress)
 

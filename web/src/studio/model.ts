@@ -321,12 +321,19 @@ export function buildTimeline({ messages, events, projects, pending, processing,
     if (event.type === "pro.job") {
       const jobId = String(event.data.job_id || "");
       if (!jobId) continue;
-      // The card sits where the job is now: every report moves it below what was said and done meanwhile (the render step, not before it).
-      const at = items.findIndex(item => item.kind === "pro_job" && item.jobId === jobId);
-      const card = at >= 0 ? items.splice(at, 1)[0] : undefined;
+      const card = items.find(item => item.kind === "pro_job" && item.jobId === jobId);
+      if (card && card.kind === "pro_job") {
+        // Updated in place: moving it would split the engine's steps around it into collapsed groups.
+        card.data = { ...card.data, ...event.data, attachment_id: event.data.attachment_id || card.data.attachment_id };
+        continue;
+      }
+      // An engine job (talking edit) shows its steps in the timeline like Lite's own chat; its card appears where the render starts. A cloud
+      // render or a heavy ffmpeg job is the render itself: its card appears at once.
+      const state = String(event.data.state || "");
+      const engineJob = !["render", "ffmpeg"].includes(String(event.data.style || ""));
+      if (engineJob && !["rendering", "done", "failed"].includes(state)) continue;
       flush();
-      if (card && card.kind === "pro_job") { card.data = { ...card.data, ...event.data, attachment_id: event.data.attachment_id || card.data.attachment_id }; items.push(card); }
-      else items.push({ kind: "pro_job", id: `pj-${jobId}`, jobId, startedAt: entry.t, data: { ...event.data } });
+      items.push({ kind: "pro_job", id: `pj-${jobId}`, jobId, startedAt: entry.t, data: { ...event.data } });
       continue;
     }
     if (event.type === "discovery.created") {
