@@ -131,13 +131,13 @@ def _tools(api: Api):
         simple("person_matte", "Cut the person out of a video (gray matte video, white = person) between start and end seconds, to put text or graphics behind them.",
                obj({"path": s_, "start": {"type": "number"}, "end": {"type": "number"}}, ["path"])),
         simple("qc_report", "Technical check of a finished file: duration, size, fps, loudness (LUFS, true peak), black segments, ok.", obj({"path": s_}, ["path"])),
-        simple("talking_edit", "THE STUDIO'S TALKING-HEAD ENGINE — use it first for any edit of a person talking to camera (reel, premium edit, captions, "
+        simple("talking_edit", "THE STUDIO'S TALKING-HEAD ENGINE (its own fixed look; not for copying a sample's style) — for an edit of a person talking to camera (reel, premium edit, captions, "
                "cut of pauses and stumbles, graded look, motion graphics beside the speaker). style: premium = one full 1080x1920 frame, virtual camera, "
                "two-tier motion captions, glass cards, text behind the speaker, graded look; split = the frame split in two (face + graphics). direction: "
                "what the person asked and what you decided (hook, key ideas, names, tone, what to avoid), in Persian or English. music: a path of an "
                "audio file in the folder, or none; empty = the engine's own bed. It transcribes, plans, cuts, grades, builds, self-reviews and renders on "
                "the render cloud by itself (minutes) and returns a job id at once: wait with job_wait. Then the plan is in its `plan` file.",
-               obj({"path": s_, "style": s_, "direction": s_, "music": s_}, ["path"])),
+               obj({"path": s_, "style": s_, "direction": s_, "music": s_, "fresh": {"type": "boolean"}}, ["path"])),
         simple("talking_revise", "Render a premium talking edit again from its plan after you edited the plan JSON (moments, captions key words, props, "
                "zooms, look, sfx, drop = word indices to cut): only what changed is rebuilt. Same path and style as talking_edit; plan: the edited file "
                "(default: the engine's plan file). Returns a job id: wait with job_wait.", obj({"path": s_, "style": s_, "plan": s_}, ["path"])),

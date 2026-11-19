@@ -254,6 +254,32 @@ def test_job_wait_returns_when_a_job_ends():
     assert out["waited_until_end"] is False and time.time() - started < 10
 
 
+def test_a_second_talking_edit_of_the_same_video_is_sent_to_revise():
+    try:
+        from app.agents.pro import engines
+        import creative.claude_premium  # noqa: F401
+    except Exception:
+        return
+    cid = "engguard"
+    video = pro.inside(cid, "in/v.mp4")
+    video.parent.mkdir(parents=True, exist_ok=True)
+    video.write_bytes(b"x" * 100)
+    work = engines._work(cid, "premium", video)
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "checkpoint.json").write_text("{}")
+    try:
+        engines.start({"cid": cid, "user": "1", "run": "r1"}, {"path": "in/v.mp4", "style": "premium"})
+    except ValueError as exc:
+        assert "talking_revise" in str(exc)
+    else:
+        raise AssertionError("a second talking_edit started the engine again")
+
+
+def test_prompt_keeps_samples_away_from_the_fixed_engine():
+    from app.agents.pro.prompt import SYSTEM_PROMPT
+    assert "SAMPLE" in SYSTEM_PROMPT and "do NOT use the engine" in SYSTEM_PROMPT and "NEVER call talking_edit again" in SYSTEM_PROMPT
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

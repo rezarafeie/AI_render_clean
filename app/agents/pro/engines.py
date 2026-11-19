@@ -123,6 +123,9 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         except (OSError, ValueError) as exc:
             raise ValueError(f"the plan file could not be read as JSON: {exc}") from exc
     else:
+        if (work / "checkpoint.json").is_file() and not args.get("fresh"):
+            raise ValueError("this video was already edited with this engine: for a correction edit its plan file and call talking_revise (talking_edit "
+                             "would plan, cut and grade everything again). Only if the person wants a completely new edit, call talking_edit with fresh=true.")
         context = str(args.get("direction") or "").strip()[:2000]
         context_file.write_text(context)
         edited = None
