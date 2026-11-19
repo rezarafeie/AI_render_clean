@@ -154,6 +154,34 @@ def test_anthropic_provider_serves_only_the_pro_agent():
         lm_direct.key_for = original
 
 
+def test_pro_anthropic_uses_relay_and_jarvis_remains_direct():
+    from unittest.mock import patch
+
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.routers import agent_proxy
+    from brain import lm_direct
+
+    providers = [
+        {"id": "jarvis", "base_url": "https://jarvis.example/v1/"},
+        {"id": "anthropic", "base_url": "https://api.anthropic.com/v1"},
+    ]
+    with patch.object(lm_direct, "usable", return_value=providers), patch.object(lm_direct, "key_for", side_effect=lambda pid: f"test-{pid}"):
+        with patch.object(settings, "GEMINI_RELAY_SECRET", "x" * 32):
+            assert agent_proxy._provider() == (agent_proxy.ANTHROPIC_RELAY, {
+                "x-api-key": "test-anthropic", "x-relay-secret": "x" * 32,
+            })
+        with patch.object(settings, "GEMINI_RELAY_SECRET", ""):
+            try:
+                agent_proxy._provider()
+            except HTTPException as exc:
+                assert exc.status_code == 503
+            else:
+                raise AssertionError("Configured Anthropic must never bypass the relay")
+    with patch.object(lm_direct, "usable", return_value=providers[:1]), patch.object(lm_direct, "key_for", return_value="test-jarvis"):
+        assert agent_proxy._provider() == ("https://jarvis.example/v1/messages", {"x-api-key": "test-jarvis"})
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

@@ -6,6 +6,7 @@
   "functions": {
     "api/proxy.js": { "maxDuration": 60 },
     "api/gemini.js": { "maxDuration": 60 },
+    "api/anthropic.js": { "maxDuration": 300 },
     "api/elevenlabs.js": { "maxDuration": 300 },
     "api/analyze-video.js": { "maxDuration": 300 },
     "api/novinhub-upload.js": { "maxDuration": 300 }

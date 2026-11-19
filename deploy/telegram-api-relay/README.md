@@ -38,3 +38,16 @@ by its content hash and adds only the new function plus one `functions` entry in
 - Deployment: `dpl_B6BefEpCbpLtspM73e8Ku4JyDsLR` (production). Rollback target: `dpl_5Tt2e7uMQ2Lqh7hWZRmnSFgPBqMX` (the production deployment before it).
 - Verified on the public domain: every route returns 401 without the key; the authenticated speech/voice route still returns 200.
 - Offline tests: `node --test elevenlabs.test.mjs elevenlabs-clone.test.mjs`.
+
+## EditorGPT Pro Anthropic Messages
+
+`POST /api/anthropic` forwards the original Messages body to the fixed
+Anthropic Messages endpoint and streams the status and body back. EditorGPT
+keeps the Anthropic key in Direct Providers and sends it in the server
+request. Access to the relay uses its existing `RELAY_SECRET`, which matches
+`GEMINI_RELAY_SECRET` on EditorGPT. Anthropic routing is limited to Pro.
+The shared relay accepts request bodies up to 4 MiB.
+
+Stage the route using the full source of the current production deployment.
+Preserve existing functions and settings. Run `node --test anthropic.test.mjs`
+to verify authorization, streaming, and upstream errors with a mock provider.
