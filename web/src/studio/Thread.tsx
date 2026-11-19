@@ -16,7 +16,7 @@ import { messageClock } from "../format";
 export interface LocalFileInfo { name: string; type: string; url: string }
 
 /** Lazy preview for an attachment we only know by id: nothing downloads until asked. */
-function RemoteAttachment({ conversationId, id, index, autoOpen }: { conversationId: string; id: string; index: number; autoOpen?: boolean }) {
+function RemoteAttachment({ conversationId, id, index, autoOpen, frame }: { conversationId: string; id: string; index: number; autoOpen?: boolean; frame?: boolean }) {
   const [open, setOpen] = React.useState(Boolean(autoOpen));
   const url = useAuthenticatedMediaUrl(open ? api.studioAttachmentUrl(conversationId, id) : undefined);
   const [kind, setKind] = React.useState<"image" | "video" | "audio" | "">("");
@@ -28,15 +28,16 @@ function RemoteAttachment({ conversationId, id, index, autoOpen }: { conversatio
   }, [url]);
   if (!open) return <button className="attach-chip attach-button" onClick={() => setOpen(true)}><span className="attach-icon"><Icon name="paperclip" size={16}/></span><span className="attach-meta"><b>Attachment {index + 1}</b><small>Tap to preview</small></span></button>;
   if (!url || !kind) return <div className="attach-chip"><span className="spinner"/><span className="attach-meta"><small>Loading preview…</small></span></div>;
-  return <div className="attach-preview">{kind === "image" ? <ImagePreview src={url} alt={`Attachment ${index + 1}`}/> : kind === "audio" ? <audio src={url} controls/> : <video src={url} controls playsInline preload="metadata"/>}</div>;
+  return <div className="attach-preview">{kind === "image" ? <ImagePreview src={url} alt={`Attachment ${index + 1}`} frame={frame}/> : kind === "audio" ? <audio src={url} controls/> : <video src={url} controls playsInline preload="metadata"/>}</div>;
 }
 
-function Attachments({ conversationId, ids, local, autoOpen }: { conversationId?: string; ids: string[]; local?: LocalFileInfo[]; autoOpen?: boolean }) {
+function Attachments({ conversationId, ids, local, autoOpen, frame }: { conversationId?: string; ids: string[]; local?: LocalFileInfo[]; autoOpen?: boolean;
+  /** Pictures a Pro agent showed: their own proportions, opened like the render frames. */ frame?: boolean }) {
   if (local?.length) return <div className="msg-files">{local.map((file, index) => file.type.startsWith("image/")
     ? <div className="attach-preview" key={index}><ImagePreview src={file.url} alt={file.name}/></div>
     : <div className="attach-chip" key={index}><span className="attach-icon"><Icon name={file.type.startsWith("video/") ? "video" : "music"} size={16}/></span><span className="attach-meta"><b className="wrap-safe">{file.name}</b></span></div>)}</div>;
   if (!ids.length || !conversationId) return null;
-  return <div className={`msg-files${ids.length > 2 ? " msg-gallery" : ""}`}>{ids.map((id, index) => <RemoteAttachment key={id} conversationId={conversationId} id={id} index={index} autoOpen={autoOpen}/>)}</div>;
+  return <div className={`msg-files${frame ? " msg-gallery-fit" : ids.length > 2 ? " msg-gallery" : ""}`}>{ids.map((id, index) => <RemoteAttachment key={id} conversationId={conversationId} id={id} index={index} autoOpen={autoOpen} frame={frame}/>)}</div>;
 }
 
 /** Time and a copy button under a message: shown on hover (mouse) or when the message is tapped (touch). */
@@ -68,7 +69,7 @@ function MessageRow({ item, conversationId, localFiles, linkTitles, onRetryMessa
           </div>
           {!item.pending && !item.failed ? <MessageMeta text={item.content} at={item.createdAt}/> : null}
         </>
-      : <div className="assistant"><span className="assistant-mark" aria-hidden="true"><Icon name="spark" size={13}/></span><div className="assistant-body"><RichText text={item.content} linkTitles={linkTitles}/><Attachments conversationId={conversationId} ids={item.attachments} autoOpen/><MessageMeta text={item.content} at={item.createdAt}/></div></div>}
+      : <div className="assistant"><span className="assistant-mark" aria-hidden="true"><Icon name="spark" size={13}/></span><div className="assistant-body"><RichText text={item.content} linkTitles={linkTitles}/><Attachments conversationId={conversationId} ids={item.attachments} autoOpen frame={item.pro}/><MessageMeta text={item.content} at={item.createdAt}/></div></div>}
   </li>;
 }
 

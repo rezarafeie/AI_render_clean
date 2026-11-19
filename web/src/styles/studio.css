@@ -868,6 +868,10 @@ a.pe-tool { text-decoration: none; }
 .msg-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 96px)); gap: 6px; }
 .msg-gallery .attach-preview { border-radius: 10px; }
 .msg-gallery .attach-preview img { width: 96px; height: 96px; max-height: none; object-fit: cover; display: block; }
+/* Pictures a Pro agent showed (stills, frames, sheets): each in its own proportions, side by side, no black box and no crop. */
+.msg-gallery-fit { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.msg-gallery-fit .attach-preview { background: none; border-radius: 10px; overflow: hidden; line-height: 0; }
+.msg-gallery-fit .attach-preview img { display: block; width: auto; height: auto; max-width: min(260px, 70vw); max-height: 200px; object-fit: contain; border-radius: 10px; border: 1px solid var(--border); }
 
 .design-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
 .design-option { display: grid; gap: 4px; padding: 8px; text-align: start; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: inherit; cursor: pointer; }

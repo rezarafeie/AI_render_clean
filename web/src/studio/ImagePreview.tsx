@@ -3,12 +3,19 @@ import { createPortal } from "react-dom";
 import { Icon } from "../components/Icon";
 
 /** Keep authenticated blob URLs local; opening an image never needs another API call. */
-export function ImagePreview({ src, alt }: { src: string; alt: string }) {
+export function ImagePreview({ src, alt, frame }: { src: string; alt: string;
+  /** Opened like the render frames (centred, no card, dim scrim) instead of the zoom viewer: pictures a Pro agent showed. */ frame?: boolean }) {
   const dialog = React.useRef<HTMLDialogElement>(null);
   const [open, setOpen] = React.useState(false);
   const [zoom, setZoom] = React.useState(100);
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || !frame) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, frame]);
+  React.useEffect(() => {
+    if (!open || frame) return;
     const element = dialog.current;
     element?.showModal();
     const previous = document.body.style.overflow;
@@ -17,7 +24,16 @@ export function ImagePreview({ src, alt }: { src: string; alt: string }) {
       element?.close();
       document.body.style.overflow = previous;
     };
-  }, [open]);
+  }, [open, frame]);
+  if (frame) return <>
+    <button type="button" className="attach-image-open" aria-label={`Open image: ${alt}`} onClick={() => setOpen(true)}><img src={src} alt={alt}/></button>
+    {open ? createPortal(<div className="overlay" role="dialog" aria-modal="true" aria-label={alt} onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <figure className="mg-lightbox">
+        <img src={src} alt={alt}/>
+        <button type="button" className="icon-btn mg-lightbox-close" onClick={() => setOpen(false)} aria-label="بستن"><Icon name="close" size={18}/></button>
+      </figure>
+    </div>, document.body) : null}
+  </>;
   return <>
     <button type="button" className="attach-image-open" aria-label={`Open image: ${alt}`} onClick={() => { setZoom(100); setOpen(true); }}>
       <img src={src} alt={alt}/>

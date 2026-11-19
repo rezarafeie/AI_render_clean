@@ -34,7 +34,7 @@ export interface ActivityStep {
   run?: { model?: string; inputTokens?: number; outputTokens?: number; latencyMs?: number; elapsedSeconds?: number; error?: string };
 }
 export type TimelineItem =
-  | { kind: "message"; id: string; role: "user" | "assistant"; content: string; attachments: string[]; createdAt: number; pending?: boolean; failed?: boolean; narration?: boolean }
+  | { kind: "message"; id: string; role: "user" | "assistant"; content: string; attachments: string[]; createdAt: number; pending?: boolean; failed?: boolean; narration?: boolean; pro?: boolean }
   | { kind: "activity"; id: string; steps: ActivityStep[]; live: boolean }
   | { kind: "render"; id: string; projectId: string; startedAt: number }
   | { kind: "question"; id: string; question: string; choices: QuestionChoice[]; seq: number; style: boolean }
@@ -265,7 +265,7 @@ export function buildTimeline({ messages, events, projects, pending, processing,
       flush();
       const message = entry.message;
       if (message.role === "user") lastUserIndex = items.length;
-      items.push({ kind: "message", id: `m-${message.role}-${message.id}`, role: message.role, content: message.role === "assistant" ? publicAssistantText(message.content) : message.content, attachments: message.attachments || [], createdAt: entry.t });
+      items.push({ kind: "message", id: `m-${message.role}-${message.id}`, role: message.role, content: message.role === "assistant" ? publicAssistantText(message.content) : message.content, attachments: message.attachments || [], createdAt: entry.t, pro: message.role === "assistant" && message.agent_mode === "pro" || undefined });
       continue;
     }
     const event = entry.event!;
