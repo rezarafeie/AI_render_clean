@@ -8,6 +8,10 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends util-linux libseccomp2 \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /work /home/render && chown -R 10001:10001 /work /home/render
+# The face-effects and person-matte engines (face_effects, person_matte) need MediaPipe, which the server installs outside requirements.lock:
+# the same versions, without its desktop extras (matplotlib/sounddevice are stubbed by the engine, OpenCV comes from the runtime).
+RUN /opt/venv/bin/pip install --no-cache-dir --no-deps mediapipe==1.1.1 absl-py==2.5.1 flatbuffers==25.12.19 \
+    && /opt/venv/bin/python -c "import importlib.util as u; assert u.find_spec('mediapipe')"
 COPY app/render_cloud /app/app/render_cloud
 COPY assets /app/assets
 COPY vendor /app/vendor
