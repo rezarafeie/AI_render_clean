@@ -366,6 +366,10 @@ export default function Studio() {
     const at = messages.lastIndexOf(lastUserMessage as any);
     return messages.slice(at + 1).some(message => message.role !== 'user' && /^(عملیات متوقف شد:|شما این کار را متوقف کردید)/.test(message.content || ''));
   }, [messages, lastUserMessage]);
+  const lastRunIsPro = React.useMemo(() => {
+    const runs = conversation?.agent_runs || [];
+    return runs.length > 0 && runs[runs.length - 1].agent_mode === "pro";
+  }, [conversation?.agent_runs]);
   const motionActive = useMotionActive(conversation?.state?.motion?.motion_id, events);
   const discoveryActive = useDiscoveryActive(conversation?.state?.discovery?.analysis_id, events);
   const projectRunning = projects.some(project => project.status === "running");
@@ -697,7 +701,10 @@ export default function Studio() {
                 <button className="btn btn-secondary" onClick={() => setAskResume(false)}>انصراف</button>
               </div>
             : <button className="btn btn-secondary" disabled={resuming} onClick={() => setAskResume(true)}><Icon name="play" size={14}/>{resuming ? "در حال ادامه…" : "ادامه از مرحلهٔ متوقف‌شده"}</button>) : null}
-          {!current && !processing && !pending && lastUserMessage && stoppedWithoutProject ? (askRetry
+          {!current && !processing && !pending && lastUserMessage && stoppedWithoutProject && lastRunIsPro ? (
+            // A stopped Pro run keeps its session: «ادامه بده» picks it up from the last step; resending the first request would start over.
+            <button className="btn btn-secondary" disabled={sending} onClick={() => void send("ادامه بده")}><Icon name="play" size={14}/>ادامه از آخرین مرحله</button>
+          ) : !current && !processing && !pending && lastUserMessage && stoppedWithoutProject ? (askRetry
             ? <div className="resume-confirm" role="alertdialog">
                 <p>هنوز پروژه‌ای ساخته نشده است. درخواست اصلی با همان فایل‌ها دوباره بررسی شود؟ این کار ممکن است هزینهٔ API داشته باشد؛ تولید نهایی همچنان نیازمند تأیید برنامه است.</p>
                 <button className="btn" disabled={sending} onClick={() => { setAskRetry(false); void send(undefined, { text: lastUserMessage.content, ids: lastUserMessage.attachments || [] }); }}>بله، دوباره تلاش کن</button>{" "}
