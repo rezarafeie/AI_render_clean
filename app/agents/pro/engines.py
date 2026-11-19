@@ -150,7 +150,7 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
         data = json.loads(path.read_text())
         data["notes"] = (data.get("notes") or [])[-11:] + [f"{step}: {text}"[:300]]
         path.write_text(json.dumps(data, ensure_ascii=False))
-        _emit(loop, cid, rid, text)
+        _emit(loop, cid, rid, text, step=f"{job}-{step}", done=state_ == "done", detail=detail or "")
 
     checked = {"at": 0.0, "stop": False}
 
@@ -168,8 +168,14 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
             pass                                   # unknown: keep working
         return checked["stop"]
 
+    last = {"label": "", "percent": -10}
+
     def progress(percent: int, message: str) -> None:
         save(state="rendering" if "رندر" in message else "running", progress=int(percent), stage=str(message)[:200])
+        label = str(message).split("(")[0].split("…")[0].strip()[:70]
+        if label != last["label"] or int(percent) - last["percent"] >= 5:        # the engine's overall progress: one row that moves, not an event a second
+            last.update(label=label, percent=int(percent))
+            _emit(loop, cid, rid, f"موتور تدوین · {int(percent)}٪ · {label}", step=f"{job}-progress", progress=int(percent), quiet=True)
 
     def music(_feel: str, _total: float):
         pick = str(args.get("music") or "").strip()
@@ -198,6 +204,7 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
                 result = engine.make(video, transcript, work, out, note=note, progress=progress, cancelled=cancelled, render_cloud=cloud, music=music,
                                      context=context)
             _keep_plan(work)
+            _emit(loop, cid, rid, "موتور تدوین · ویدیو آماده شد", step=f"{job}-progress", done=True, progress=100)
             save(state="done", progress=100, duration=round(float(result.get("duration") or 0), 2),
                  plan=str(_plan_file(work).relative_to(pro.workdir(cid))) if _plan_file(work).is_file() else None,
                  size_bytes=out.stat().st_size if out.is_file() else 0)
@@ -206,6 +213,7 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
             stopped = type(exc).__name__ == "Cancelled"
             if not stopped:
                 log.warning("pro engine job %s failed", job, exc_info=True)
+            _emit(loop, cid, rid, "موتور تدوین متوقف شد" if stopped else "موتور تدوین به خطا خورد", step=f"{job}-progress", done=True)
             save(state="failed", error="stopped" if stopped else f"{type(exc).__name__}: {str(exc)[:400]}")
         finally:
             with _lock:
@@ -213,21 +221,30 @@ def start(claims: dict, args: dict, *, revise: bool = False, loop=None) -> dict:
                     _running.pop(cid, None)
 
     threading.Thread(target=work_thread, daemon=True, name=f"pro-engine-{job}").start()
-    _emit(loop, cid, rid, "موتور تدوین استودیو شروع به کار کرد")
+    _emit(loop, cid, rid, "موتور تدوین استودیو شروع به کار کرد", step=f"{job}-start", done=True)
     return {"job_id": job, "state": "queued", "output": current["output"],
             "note": "Wait with job_wait (it waits on the server up to 240 s per call). When done, look at a few stills of the output, then deliver, or "
                     "read the plan file, edit it and call talking_revise."}
 
 
-def _emit(loop, cid: str, rid: str, text: str) -> None:
-    """A progress line in the chat's activity, sent on the app's loop and not waited for (never blocks the engine)."""
+def _emit(loop, cid: str, rid: str, text: str, *, step: str = "", done: bool = False, detail: str = "", progress: int | None = None,
+          quiet: bool = False) -> None:
+    """One row of the chat's timeline per engine step (the plan, each graphic, the cut and grade, the face, the cut-outs, review, render, mix):
+    tool.started while it runs, tool.completed when the engine says it is done; `quiet` rows only move (tool.progress). Sent on the app's loop
+    and not waited for, so it never blocks the engine."""
     if loop is None or loop.is_closed():
         return
     try:
         import asyncio
         from app.studio_store import repo
-        asyncio.run_coroutine_threadsafe(repo.emit(cid, "tool.progress", {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200],
-                                                                          "agent_mode": "pro", "run_id": rid}), loop)
+        kind = "tool.progress" if quiet else ("tool.completed" if done else "tool.started")
+        data = {"tool": "pro_engine", "stage": "pro", "message": str(text)[:200], "agent_mode": "pro", "run_id": rid,
+                "activity_id": "engine-" + (step or "work")[:80]}
+        if detail:
+            data["response"] = str(detail)[:3000]
+        if progress is not None:
+            data["progress"] = int(progress)
+        asyncio.run_coroutine_threadsafe(repo.emit(cid, kind, data), loop)
     except Exception:
         log.debug("pro engine progress event not sent", exc_info=True)
 
