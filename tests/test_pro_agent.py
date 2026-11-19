@@ -3,6 +3,7 @@ handling of a resumed session. Runs under pytest, or directly (`python tests/tes
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -149,7 +150,8 @@ def test_anthropic_provider_serves_only_the_pro_agent():
     try:
         assert "anthropic" not in [p["id"] for p in lm_direct.usable()]
         assert "anthropic" not in [p["id"] for p in lm_direct.usable(kind="speech")]
-        assert "anthropic" in [p["id"] for p in lm_direct.usable(kind="agent")] or not lm_direct.config()["enabled"]
+        switched_on = lm_direct.config()["enabled"] and next(p for p in lm_direct.config()["providers"] if p["id"] == "anthropic")["enabled"]
+        assert "anthropic" in [p["id"] for p in lm_direct.usable(kind="agent")] or not switched_on
     finally:
         lm_direct.key_for = original
 
@@ -208,6 +210,48 @@ def test_proxy_gives_every_cache_breakpoint_one_hour():
     assert _long_cache(data) is True
     assert data["system"][0]["cache_control"]["ttl"] == "1h" and data["messages"][0]["content"][0]["cache_control"]["ttl"] == "1h"
     assert _long_cache(data) is False
+
+
+def test_engine_tools_are_offered_to_the_agent():
+    from app.agents.pro import runner
+    from app.agents.pro.prompt import SYSTEM_PROMPT
+    for name in ("talking_edit", "talking_revise", "job_wait"):
+        assert name in runner.TOOL_NAMES and f"mcp__editorgpt__{name}" in runner.TOOL_FA
+    assert "ENGINE FIRST" in SYSTEM_PROMPT and "talking_edit" in SYSTEM_PROMPT
+
+
+def test_engine_revision_keeps_only_unchanged_graphics_and_marks_the_render_undone():
+    try:
+        from app.agents.pro import engines
+        from creative import claude_premium as engine
+    except Exception:                         # the agent container has no engines
+        return
+    work = Path(tempfile.mkdtemp(prefix="pro-engine-"))
+    video = work / "v.mp4"
+    video.write_bytes(b"x" * 100)
+    words = [{"i": i, "t": f"w{i}", "start": i * 0.5, "end": i * 0.5 + 0.4} for i in range(40)]
+    plan = {"props": [{"name": "a", "what": "a phone", "at": 3}, {"name": "b", "what": "a book", "at": 20}], "moments": [], "key": [2]}
+    fp = engine._fingerprint(video, words, "ctx")
+    engine._save_checkpoint(work, fp, {}, plan=engine.sanitize(engine.Plan.model_validate(plan), words).model_dump(), code={"a": "a()", "b": "b()"},
+                            rendered=True, graded=12.0)
+    plan["props"][1]["what"] = "a red book"
+    engines._apply_plan(engine, work, video, words, "ctx", plan)
+    ck = engine._load_checkpoint(work, fp)
+    assert ck["rendered"] is False and ck["graded"] == 12.0
+    assert set(ck["code"]) == {"a"}, ck["code"]
+    assert [p["what"] for p in ck["plan"]["props"]] == ["a phone", "a red book"]
+
+
+def test_job_wait_returns_when_a_job_ends():
+    from app.agents.pro import engines
+    path = engines._state_file("waitchat", "job1")
+    path.write_text(json.dumps({"job_id": "job1", "state": "done", "progress": 100}))
+    out = asyncio.run(engines.wait("waitchat", "job1", 30))
+    assert out["state"] == "done" and out["waited_until_end"] is True
+    path.write_text(json.dumps({"job_id": "job1", "state": "running", "progress": 40}))
+    started = time.time()
+    out = asyncio.run(engines.wait("waitchat", "job1", 1))
+    assert out["waited_until_end"] is False and time.time() - started < 10
 
 
 if __name__ == "__main__":

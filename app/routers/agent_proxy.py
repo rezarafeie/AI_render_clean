@@ -499,6 +499,12 @@ async def _tool(claims: dict, name: str, args: dict):
         return await _render_cloud(claims, str(args.get("project_dir") or "project"), str(args.get("output") or "out/video.mp4"))
     if name == "render_status":
         return _render_state(cid, str(args.get("job_id") or ""))
+    if name in {"talking_edit", "talking_revise"}:
+        from app.agents.pro import engines
+        return await asyncio.to_thread(engines.start, claims, args, revise=name == "talking_revise")
+    if name == "job_wait":
+        from app.agents.pro import engines
+        return await engines.wait(cid, str(args.get("job_id") or ""), float(args.get("seconds") or 240))
     raise ValueError(f"unknown tool {name}")
 
 

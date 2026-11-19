@@ -131,6 +131,19 @@ def _tools(api: Api):
         simple("person_matte", "Cut the person out of a video (gray matte video, white = person) between start and end seconds, to put text or graphics behind them.",
                obj({"path": s_, "start": {"type": "number"}, "end": {"type": "number"}}, ["path"])),
         simple("qc_report", "Technical check of a finished file: duration, size, fps, loudness (LUFS, true peak), black segments, ok.", obj({"path": s_}, ["path"])),
+        simple("talking_edit", "THE STUDIO'S TALKING-HEAD ENGINE — use it first for any edit of a person talking to camera (reel, premium edit, captions, "
+               "cut of pauses and stumbles, graded look, motion graphics beside the speaker). style: premium = one full 1080x1920 frame, virtual camera, "
+               "two-tier motion captions, glass cards, text behind the speaker, graded look; split = the frame split in two (face + graphics). direction: "
+               "what the person asked and what you decided (hook, key ideas, names, tone, what to avoid), in Persian or English. music: a path of an "
+               "audio file in the folder, or none; empty = the engine's own bed. It transcribes, plans, cuts, grades, builds, self-reviews and renders on "
+               "the render cloud by itself (minutes) and returns a job id at once: wait with job_wait. Then the plan is in its `plan` file.",
+               obj({"path": s_, "style": s_, "direction": s_, "music": s_}, ["path"])),
+        simple("talking_revise", "Render a premium talking edit again from its plan after you edited the plan JSON (moments, captions key words, props, "
+               "zooms, look, sfx, drop = word indices to cut): only what changed is rebuilt. Same path and style as talking_edit; plan: the edited file "
+               "(default: the engine's plan file). Returns a job id: wait with job_wait.", obj({"path": s_, "style": s_, "plan": s_}, ["path"])),
+        simple("job_wait", "Wait on the server until an engine job (talking_edit / talking_revise) or a cloud render ends, up to `seconds` (max 240) per "
+               "call; returns its state (done / failed / still running, progress, the engine's notes, output path). Call it again while it is running.",
+               obj({"job_id": s_, "seconds": {"type": "number"}}, ["job_id"])),
         simple("ask_user", "Ask the person ONE question (2-4 short options) when the work cannot go on without the answer; then end your turn.",
                obj({"question": s_, "options": {"type": "array", "items": s_}}, ["question"])),
         simple("request_approval", "Ask the person to approve something costly or irreversible before doing it; then end your turn.",
@@ -140,7 +153,7 @@ def _tools(api: Api):
 
 
 TOOL_NAMES = ["say", "step", "assets_list", "assets_fetch", "show_stills", "deliver", "render_cloud", "render_status", "tts", "music_generate",
-              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "ask_user", "request_approval"]
+              "music_library", "sfx", "image_generate", "stt", "web_read", "fonts", "brand_profile", "person_matte", "qc_report", "talking_edit", "talking_revise", "job_wait", "ask_user", "request_approval"]
 
 
 def _policy(work: Path):
@@ -191,6 +204,8 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__sfx": "ساخت افکت صوتی", "mcp__editorgpt__image_generate": "ساخت تصویر", "mcp__editorgpt__stt": "پیاده‌کردن متن صدا",
            "mcp__editorgpt__web_read": "خواندن صفحهٔ وب", "mcp__editorgpt__fonts": "انتخاب فونت", "mcp__editorgpt__brand_profile": "خواندن مشخصات برند",
            "mcp__editorgpt__person_matte": "جدا کردن سوژه از پس‌زمینه", "mcp__editorgpt__qc_report": "بررسی فنی خروجی",
+           "mcp__editorgpt__talking_edit": "تدوین با موتور استودیو", "mcp__editorgpt__talking_revise": "اصلاح تدوین با موتور استودیو",
+           "mcp__editorgpt__job_wait": "منتظر تمام شدن کار موتور",
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
 NO_ALLOCATION = re.compile(r"(\b402\b|token allocation|billing_error|insufficient (credit|balance))", re.I)
