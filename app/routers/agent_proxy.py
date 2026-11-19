@@ -944,6 +944,10 @@ def _t_person_matte(claims: dict, args: dict) -> dict:
     end = float(args.get("end") or float(info.get("format", {}).get("duration") or 0))
     out = pro.inside(claims["cid"], f"matte/{source.stem}-{int(start * 10)}-{int(end * 10)}.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
+    from app.render_cloud.hooks import person_matte_on_cloud
+    if person_matte_on_cloud(source, start, end, [0, 0, w, h], [w - w % 2, h - h % 2], out, user=str(claims["user"]), project_id="pro" + claims["run"],
+                             owned_roots=(pro.workdir(claims["cid"]),)):
+        return {"matte": _rel(claims["cid"], out), "note": "made on the render cloud; use it as alpha with ffmpeg alphamerge (or as a mask in Remotion)"}
     person_matte.matte([{"src": str(source), "start": start, "end": end, "crop": [0, 0, w, h], "size": [w - w % 2, h - h % 2], "fps": 30, "out": str(out)}])
     return {"matte": _rel(claims["cid"], out), "note": "use it as alpha with ffmpeg alphamerge (or as a mask in Remotion) to put things behind the person"}
 

@@ -1091,7 +1091,10 @@ def _apply_effects(job_dir: Path, output: Path, settings: dict) -> None:
         except TaskCanceled: raise
         except Exception: pass
     try:
-        effects.apply(output, temporary, plan, work=job_dir / "talking_reel_work" / "effects", on_progress=progress, should_cancel=cancelled)
+        from app.render_cloud.hooks import face_effects_on_cloud
+        # the per-frame model pass on the render cloud when it takes it; the server runs the same effects otherwise
+        if not face_effects_on_cloud(output, temporary, plan, on_progress=lambda p: progress(p / 100, "cloud"), should_cancel=cancelled):
+            effects.apply(output, temporary, plan, work=job_dir / "talking_reel_work" / "effects", on_progress=progress, should_cancel=cancelled)
         os.replace(temporary, output)
         state = load(job_dir); state.pop("effects_error", None); save(job_dir, state)
     except effects.EffectsError as exc:

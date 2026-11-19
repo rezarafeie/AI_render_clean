@@ -63,7 +63,7 @@ class WorkerRejected(CloudRenderError):
 
 def validate_output(spec, path):
     measured = probe(path)
-    if spec.engine == 'ffmpeg_job':
+    if spec.engine in ('ffmpeg_job', 'face_effects', 'person_matte'):
         # An agent's cut has a length known only after it runs: the frame and size are checked, the duration only against the declared maximum.
         if (measured['width'], measured['height']) != (spec.width, spec.height):
             raise ValueError('Cloud output dimensions differ')

@@ -569,3 +569,68 @@ def jump_cut_on_cloud(video, segs, picture_chain, out, voice, *, tail, total, cr
         logging.getLogger(__name__).warning('jump cut on the render cloud failed; encoding on the server', exc_info=True)
         out.unlink(missing_ok=True)
         return False
+
+
+def _model_job(engine, files, manifest, output, *, width, height, max_duration, audio=False, timeout=3600, on_progress=None, should_cancel=None,
+               user=None, project_id=None, owned_roots=()):
+    """One model-backed step (engine face_effects or person_matte) on a worker of the full image: `files` are staged under in/, `manifest` names
+    them as in/<name>. False when the cloud does not take it (no user/identity, cloud off, no matching profile)."""
+    if not enabled():
+        return False
+    who = identity.get()
+    if user is None and who:
+        user, project_id, owned_roots = who[:3]
+        if len(who) > 3 and should_cancel is None:
+            should_cancel = who[3]
+    if not user:
+        return False
+    from .settings import CloudSettings
+    if not CloudSettings().effective().admin(user):
+        return False
+    import shutil
+    from .service import render_prepared
+    with tempfile.TemporaryDirectory(prefix=f'editorgpt-{engine}-') as directory:
+        staged = Path(directory) / 'job'
+        (staged / 'in').mkdir(parents=True)
+        for source in files:
+            shutil.copy2(Path(source), staged / 'in' / Path(source).name)
+        (staged / 'job.json').write_text(json.dumps(manifest))
+        return render_prepared(staged, Path(output), user=user, project_id=project_id or engine, engine=engine, duration=float(max_duration), width=int(width),
+                               height=int(height), fps=30, timeout=timeout, on_progress=on_progress, should_cancel=should_cancel, owned_roots=owned_roots,
+                               entrypoint='job.json', features=[engine.replace('_', '-')], audio_required=bool(audio), lock_root=Path(output).parent)
+
+
+def face_effects_on_cloud(src, dst, plan, *, on_progress=None, should_cancel=None) -> bool:
+    """The person's chosen effects over a finished video, on the render cloud (the heavy per-frame model pass). False = run them on the server."""
+    import logging
+    import subprocess
+    src, dst = Path(src), Path(dst)
+    try:
+        w, h = video_size(src)
+        if (w, h) not in CLOUD_SIZES:
+            return False
+        duration = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(src)],
+                                        capture_output=True, text=True, timeout=60).stdout.strip() or 0)
+        return bool(_model_job('face_effects', [src], {'video': f'in/{src.name}', 'plan': plan}, dst, width=w, height=h, max_duration=duration + 1,
+                               audio=True, on_progress=on_progress, should_cancel=should_cancel)) and dst.is_file()
+    except Exception:
+        logging.getLogger(__name__).warning('effects on the render cloud failed; running them on the server', exc_info=True)
+        dst.unlink(missing_ok=True)
+        return False
+
+
+def person_matte_on_cloud(src, start, end, crop, size, out, *, user=None, project_id=None, owned_roots=()) -> bool:
+    """A gray matte (white = the person) of src[start:end], on the render cloud (where the segmentation model runs). False = the server tries."""
+    import logging
+    out = Path(out)
+    try:
+        w, h = int(size[0]), int(size[1])
+        if (w, h) not in CLOUD_SIZES:
+            return False
+        job = {'start': float(start), 'end': float(end), 'crop': [int(v) for v in crop], 'size': [w, h], 'fps': 30}
+        return bool(_model_job('person_matte', [src], {'video': f'in/{Path(src).name}', 'job': job}, out, width=w, height=h,
+                               max_duration=float(end) - float(start) + 1, user=user, project_id=project_id, owned_roots=owned_roots)) and out.is_file()
+    except Exception:
+        logging.getLogger(__name__).warning('person matte on the render cloud failed', exc_info=True)
+        out.unlink(missing_ok=True)
+        return False

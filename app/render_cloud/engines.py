@@ -153,6 +153,25 @@ def _execute(spec: RenderSpec, workspace: Path, *, on_progress=None, should_canc
     elif spec.engine == 'claude_motion':
         from engine.claude_motion_renderer import render
         render(workspace, output, timeout=spec.timeout_seconds, on_progress=on_progress)
+    elif spec.engine == 'face_effects':
+        # The effects a person chose (orbit, spotlight, ...) over a finished video: the same engine.face_effects as on the server.
+        from engine import face_effects
+        from .contracts import relative_path
+        data = prepared_json(entry)
+        video = workspace / relative_path(data['video'])
+        if not video.resolve().is_relative_to(workspace.resolve()) or not video.is_file():
+            raise ValueError('Effects video outside workspace')
+        face_effects.apply(video, output, data['plan'], work=workspace / 'fx-work',
+                           on_progress=(lambda value, stage: on_progress(int(value * 100))) if on_progress else None, should_cancel=should_cancel)
+    elif spec.engine == 'person_matte':
+        # A gray matte video (white = the person) of one window of a video: engine.person_matte, as on the server.
+        from engine import person_matte
+        from .contracts import relative_path
+        data = prepared_json(entry)
+        video = workspace / relative_path(data['video'])
+        if not video.resolve().is_relative_to(workspace.resolve()) or not video.is_file():
+            raise ValueError('Matte video outside workspace')
+        person_matte.matte([{**data['job'], 'src': str(video), 'out': str(output)}], timeout=spec.timeout_seconds)
     elif spec.engine == 'ffmpeg_job':
         _ffmpeg_job(prepared_json(entry), workspace, output, spec.timeout_seconds, on_progress, should_cancel)
     else:
