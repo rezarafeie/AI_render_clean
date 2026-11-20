@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 import httpx
@@ -412,36 +413,80 @@ async def _forward(api: Api, message, live: dict) -> None:
                                 detail=short(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
 
 
+MEDIA = {".mp4", ".mov", ".webm", ".mkv", ".gif", ".mp3", ".wav", ".m4a"}
+
+
+async def _deliver_made(api: Api, work: Path, since: float) -> None:
+    """Bare Claude has no delivery tool: the videos and audio it made in this run (outside in/ and libraries) go to the chat, the largest first."""
+    skip = {"in", "node_modules", ".claude", ".cache", ".git"}
+    found = []
+    for path in work.rglob("*"):
+        try:
+            rel = path.relative_to(work)
+            if path.suffix.lower() in MEDIA and path.is_file() and not (set(rel.parts[:-1]) & skip) and not rel.parts[0].startswith(".") \
+                    and path.stat().st_mtime >= since - 5 and path.stat().st_size > 10_000:
+                found.append(path)
+        except OSError:
+            continue
+    videos = sorted((p for p in found if p.suffix.lower() not in {".mp3", ".wav", ".m4a"}), key=lambda p: p.stat().st_size, reverse=True)
+    for path in (videos or sorted(found, key=lambda p: p.stat().st_size, reverse=True))[:3]:
+        try:
+            await api.tool("deliver", {"path": str(path.relative_to(work)), "title": path.stem[:120]})
+        except Exception:
+            log.warning("bare claude: %s could not be delivered", path, exc_info=True)
+
+
 async def run(job: dict) -> None:
     from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, ResultMessage, SystemMessage
     from claude_agent_sdk.types import StreamEvent
     api = Api(job["token"])
     cid = job["cid"]
     work = workdir(cid)
-    skills = work / ".claude" / "skills"
-    skills.mkdir(parents=True, exist_ok=True)
-    for folder in SKILLS.iterdir():
-        if folder.is_dir():
-            shutil.copytree(folder, skills / folder.name, dirs_exist_ok=True)
-    config = RUNS / cid / ".claude-config"
+    raw = bool(job.get("raw"))
+    if not raw:
+        skills = work / ".claude" / "skills"
+        skills.mkdir(parents=True, exist_ok=True)
+        for folder in SKILLS.iterdir():
+            if folder.is_dir():
+                shutil.copytree(folder, skills / folder.name, dirs_exist_ok=True)
+    config = RUNS / cid / (".claude-config-raw" if raw else ".claude-config")
     config.mkdir(parents=True, exist_ok=True)
-    options = ClaudeAgentOptions(
-        system_prompt={"type": "preset", "preset": "claude_code", "append": SYSTEM_PROMPT},
-        model=job.get("model") or "claude-opus-5-5",
-        cwd=str(work),
-        setting_sources=["project"],
-        allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "TodoWrite", *[f"mcp__editorgpt__{n}" for n in TOOL_NAMES]],
-        disallowed_tools=["WebFetch", "WebSearch", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger", "TaskStop"],
-        mcp_servers={"editorgpt": _tools(api)},
-        permission_mode="dontAsk",
-        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])], "PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
-        max_turns=int(os.environ.get("PRO_MAX_TURNS", "250")),
-        env={"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
-             "CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_TELEMETRY": "1",
-             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "MCP_TOOL_TIMEOUT": "900000", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", "DISABLE_AUTOUPDATER": "1", "REMOTION_BROWSER_EXECUTABLE": os.environ.get("REMOTION_BROWSER_EXECUTABLE", "")},
-        resume=job.get("resume") or None,
-        include_partial_messages=True,
-    )
+    started_at = time.time()
+    base_env = {"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
+                "CLAUDE_CONFIG_DIR": str(config), "DISABLE_TELEMETRY": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1"}
+    if raw:
+        # Claude itself, bare: Claude Code's own system prompt and its own tools, nothing of the studio (no skills, no studio tools, no prompt of ours,
+        # no tool policy, no project settings). The person's message reaches it as written. Only the plumbing stays: the isolated container, the model
+        # proxy (usage, credit), the person's later messages joining the session, and what it makes delivered to the chat when it ends.
+        options = ClaudeAgentOptions(
+            system_prompt={"type": "preset", "preset": "claude_code"},
+            model=job.get("model") or "claude-opus-5-5",
+            cwd=str(work),
+            setting_sources=[],
+            permission_mode="bypassPermissions",
+            hooks={"PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
+            env={**base_env, "IS_SANDBOX": "1", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000"},
+            resume=job.get("resume") or None,
+            include_partial_messages=True,
+        )
+    else:
+        options = ClaudeAgentOptions(
+          system_prompt={"type": "preset", "preset": "claude_code", "append": SYSTEM_PROMPT},
+          model=job.get("model") or "claude-opus-5-5",
+          cwd=str(work),
+          setting_sources=["project"],
+          allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "TodoWrite", *[f"mcp__editorgpt__{n}" for n in TOOL_NAMES]],
+          disallowed_tools=["WebFetch", "WebSearch", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger", "TaskStop"],
+          mcp_servers={"editorgpt": _tools(api)},
+          permission_mode="dontAsk",
+          hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_policy(work)])], "PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
+          max_turns=int(os.environ.get("PRO_MAX_TURNS", "250")),
+          env={"ANTHROPIC_BASE_URL": APP + "/internal/anthropic", "ANTHROPIC_AUTH_TOKEN": job["token"], "ANTHROPIC_API_KEY": "",
+               "CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_TELEMETRY": "1",
+               "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "MCP_TOOL_TIMEOUT": "900000", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", "DISABLE_AUTOUPDATER": "1", "REMOTION_BROWSER_EXECUTABLE": os.environ.get("REMOTION_BROWSER_EXECUTABLE", "")},
+          resume=job.get("resume") or None,
+          include_partial_messages=True,
+      )
     live = {"text": "", "id": None, "sent": 0.0, "tools": {}, "images": {}, "root": str(work)}
     status, error, session, turns, cost, reason = "failed", None, None, None, None, None
     stopped = False
@@ -457,7 +502,7 @@ async def run(job: dict) -> None:
                         return
             watcher = asyncio.create_task(watch())
             try:
-                await client.query(first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
+                await client.query(job["text"] if raw else first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
                 retries = lost = 0
                 while True:
                     live["api_error"] = False
@@ -525,5 +570,7 @@ async def run(job: dict) -> None:
     except Exception as exc:
         log.exception("pro run %s failed", job["run"])
         status, error = ("stopped" if stopped else "failed"), (None if stopped else f"{type(exc).__name__}: {str(exc)[:300]}")
+    if raw and not stopped:
+        await _deliver_made(api, work, started_at)
     await api.finish(status=status, error=error, session_id=session, turns=turns, cli_cost_usd=cost, stop_reason=reason)
     await api.client.aclose()

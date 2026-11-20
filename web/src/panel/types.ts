@@ -1,6 +1,6 @@
 export type Engine = "talking" | "localize" | "motion" | "vox" | "story" | "product" | "clips" | "storyboard" | "discovery";
 export type PanelMode = "manual" | "assisted" | "auto";
-export type PanelPreferences = {mode?: PanelMode | null; agent_mode?: "lite" | "medium" | "pro" | null};
+export type PanelPreferences = {mode?: PanelMode | null; agent_mode?: "lite" | "medium" | "pro" | "claude" | null};
 export type StyleReference = {style_id: string; version: number};
 export type Setup = {
   title: string; engine: Engine; mode: PanelMode; style: string; style_profile?: StyleReference | null;

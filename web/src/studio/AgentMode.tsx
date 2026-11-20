@@ -7,6 +7,7 @@ export const agentModes = [
   {id: "lite" as const, name: "Lite", hint: "سریع، برای ادیت‌های روزمره"},
   {id: "medium" as const, name: "Medium", hint: "پیشرفته، کارهای چندمرحله‌ای"},
   {id: "pro" as const, name: "Pro", hint: "قوی‌ترین؛ کندتر و پرهزینه‌تر (آزمایشی)"},
+  {id: "claude" as const, name: "Claude", hint: "خودِ Claude، بدون مهارت‌ها، ابزارها و قواعد ادیتورجی‌پی‌تی (آزمایشی)"},
 ];
 
 export function AgentModeSelector({value, onChange}: {value: AgentMode; onChange: (mode: AgentMode) => void}) {
@@ -44,7 +45,7 @@ export function AgentSettings() {
       <div className="set-control"><label htmlFor="default-agent-mode"><b>حالت پیش‌فرض ایجنت</b><small>برای گفتگوهای جدید. گفتگوهای موجود انتخاب خودشان را نگه می‌دارند.</small></label>
         <select id="default-agent-mode" className="input" aria-label="حالت پیش‌فرض ایجنت" value={mode} disabled={!loaded || saving}
           onChange={event => void change(event.target.value as AgentMode)}>
-          {agentModes.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}
+          {agentModes.filter(item => item.id !== "claude").map(item => <option value={item.id} key={item.id}>{item.name}</option>)}
         </select></div>
     </div>
     {error ? <p className="notice" data-tone="error" role="alert">{error}</p> : null}

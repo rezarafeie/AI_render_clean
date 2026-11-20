@@ -144,7 +144,7 @@ export default function Studio() {
   activeIdRef.current = activeId;
   React.useEffect(() => {
     if (conversation?.id !== activeId || !activeId || agentChoice.current?.conversation === activeId) return;
-    setAgentMode(conversation.state.agent_mode === "medium" || conversation.state.agent_mode === "pro" ? conversation.state.agent_mode : "lite");
+    setAgentMode(["medium", "pro", "claude"].includes(conversation.state.agent_mode) ? conversation.state.agent_mode : "lite");
   }, [conversation?.id, conversation?.state.agent_mode, activeId]);
   const changeAgentMode = (next: AgentMode) => {
     agentChoice.current = {conversation: activeId, mode: next};

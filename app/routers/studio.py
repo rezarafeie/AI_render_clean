@@ -106,7 +106,7 @@ class ConversationUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     status_voice_enabled: bool | None = None
     execution_mode: Literal["auto", "manual"] | None = None
-    agent_mode: Literal["lite", "medium", "pro"] | None = None
+    agent_mode: Literal["lite", "medium", "pro", "claude"] | None = None
 
 
 class MessageCreate(BaseModel):
@@ -115,7 +115,7 @@ class MessageCreate(BaseModel):
     execution_mode: Literal["auto", "manual"] | None = None
     manual_question_id: str | None = Field(default=None, max_length=64)
     render_target: Literal["server", "browser"] | None = None
-    agent_mode: Literal["lite", "medium", "pro"] | None = None  # omitted: the chat's own engine (set from the person's default when it was created)
+    agent_mode: Literal["lite", "medium", "pro", "claude"] | None = None  # omitted: the chat's own engine; "claude" = Claude itself, bare (runs on Pro's container)
 
 
 class StoryboardUpdate(BaseModel):
@@ -535,7 +535,11 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
     try:
         conversation = await repo.get_conversation(conversation_id, user_key)
         saved_mode = (conversation.get("state") or {}).get("agent_mode")
-        agent_mode = body.agent_mode or (saved_mode if saved_mode in {"medium", "pro"} else "lite")
+        chosen = body.agent_mode or (saved_mode if saved_mode in {"medium", "pro", "claude"} else "lite")
+        # «Claude»: Claude itself with nothing of the studio around it (no skills, tools, prompt or rules); it runs in Pro's isolated container,
+        # so usage, stop, the live steps and the delivery of what it makes work the same.
+        raw = chosen == "claude"
+        agent_mode = "pro" if raw else chosen
         from app.agents.dispatcher import ensure_available
         from app.agents import store as agent_store
         try: ensure_available(agent_mode)
@@ -566,7 +570,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
                 if (current["state"].get("render_started") and current["status"] == "running") or (active_job and active_job.render.status in {"queued", "running"}):
                     raise HTTPException(409, "A backend render is active. Stop it explicitly before switching to this device.")
                 await repo.update_project(current_id, user_key, state={**current["state"], "render_target": "browser"})
-        preferences = {"agent_mode": agent_mode}
+        preferences = {"agent_mode": chosen}
         if body.execution_mode: preferences["execution_mode"] = body.execution_mode
         if body.render_target: preferences["render_target"] = body.render_target
         if preferences:
@@ -583,7 +587,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
         from app.studio_flags import generation
         record = await agent_store.create_run(conversation_id, user_key, message["id"], agent_mode,
             {"text": body.content.strip(), "attachment_ids": body.attachment_ids, "manual_question_id": body.manual_question_id,
-             "initial_project_id": conversation.get("state", {}).get("current_project_id")})
+             "initial_project_id": conversation.get("state", {}).get("current_project_id"), "raw": raw})
         await agent_store.update(record["id"], user_key, patch={"stop_generation": generation(user_key, conversation_id)})
     except KeyError:
         raise HTTPException(404, "conversation or attachment not found")

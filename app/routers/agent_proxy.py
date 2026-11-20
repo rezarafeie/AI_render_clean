@@ -396,10 +396,24 @@ async def claim(request: Request):
     for folder in (pro.RUNS / cid, work, work / "in", work / "out"):
         os.chmod(folder, 0o777)
     request_data = record["data"].get("request") or {}
+    raw = bool(request_data.get("raw"))
     resume = None
-    for other in await store.runs(cid, user):              # the previous Pro run of this chat: its session is resumed (same cwd, same config dir)
-        if other["agent_mode"] == "pro" and other["id"] != rid and (other["data"].get("pro") or {}).get("session_id"):
+    for other in await store.runs(cid, user):              # the previous run of this chat of the same kind (Pro or bare Claude): its session is resumed
+        if other["agent_mode"] == "pro" and other["id"] != rid and (other["data"].get("pro") or {}).get("session_id") \
+                and bool((other["data"].get("request") or {}).get("raw")) == raw:
             resume = other["data"]["pro"]["session_id"]
+    text = request_data.get("text", "")
+    if raw:
+        # Bare Claude has no tool to fetch the person's files: they are put in its folder and named after the message, like files dropped into a chat.
+        rows = await repo.get_attachments([str(i) for i in request_data.get("attachment_ids") or []], cid, user) if request_data.get("attachment_ids") else []
+        names = []
+        for row in rows:
+            target = pro.inside(cid, f"in/{Path(row['filename']).name}")
+            await asyncio.to_thread(shutil.copy2, row["path"], target)
+            os.chmod(target, 0o666)
+            names.append(str(target.relative_to(work)))
+        if names:
+            text = text + "\n\n" + "\n".join(names)
     from app import credits
     try:                                                   # the ceiling shown for this run: the person's credit when it starts; none for an unlimited account
         account = await credits.account(user)
@@ -411,7 +425,7 @@ async def claim(request: Request):
     await repo.emit(cid, "tool.started", {"tool": "pro_agent", "stage": "thinking", "message": "EditorGPT Pro کار را شروع کرد.", "agent_mode": "pro", "run_id": rid})
     from app.studio_flags import generation
     return {"run": rid, "user": user, "cid": cid, "token": pro.token(rid, user, cid), "model": pro.MODEL,
-            "text": request_data.get("text", ""), "attachment_ids": request_data.get("attachment_ids") or [], "resume": resume,
+            "text": text, "attachment_ids": request_data.get("attachment_ids") or [], "resume": resume, "raw": raw,
             "stop_generation": record["data"].get("stop_generation", generation(user, cid))}
 
 
