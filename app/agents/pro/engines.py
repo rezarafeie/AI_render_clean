@@ -346,6 +346,28 @@ async def wait(cid: str, job: str, seconds: float, user: str = "") -> dict:
 FILM_KINDS = {"motion", "vox", "intro-story", "intro-reel", "intro-presenter", "intro-film3d"}
 
 
+def _page_photos(cid: str, user: str, text: str) -> list[dict]:
+    """The product / page photos of the links in the request, read the way Lite reads them (the studio's page reader downloads the pictures): a Pro film
+    of a product link was built without them, and the engine's photo frames came out broken or empty (2026-11-21)."""
+    try:
+        from app.studio_orchestrator import _link_hosts, _read_page
+        _references, pages = _link_hosts(text)
+        out: list[dict] = []
+        for url in pages[:2]:
+            item = _read_page(cid, user, url, request_text=text, quiet=True, allow_search=False)
+            if not item:
+                continue
+            for image in (item.get("page") or {}).get("images", []):
+                if image.get("file"):
+                    out.append({"file": image["file"], "alt": image.get("alt", "")})
+            known = {p["file"] for p in out}
+            out += [{"file": str(path), "alt": ""} for path in item.get("images", []) if str(path) not in known]
+        return out[:16]
+    except Exception:
+        log.warning("pro film: the page photos could not be read", exc_info=True)
+        return []
+
+
 async def film_start(claims: dict, args: dict) -> dict:
     """A film made by the studio's own film engines, exactly as Lite makes it (the same record, the same motion card in the chat with its frames,
     log and video), only started by the Pro agent: motion = the Claude motion film from text; vox = the Vox-style documentary; intro-* = the intro
@@ -377,8 +399,9 @@ async def film_start(claims: dict, args: dict) -> dict:
     attachments = [{"kind": r["kind"], "path": r["path"], "filename": r["filename"], "id": r["id"]} for r in rows] or None
     context = str(args.get("context") or "")[:9000]
     style = str(args.get("style") or "")[:2000]
+    photos = await asyncio.to_thread(_page_photos, cid, user, request + "\n" + context)
     record = await asyncio.to_thread(mg.create, cid, user, request, context, style, state_.get("voice_id", ""), state_.get("voice_style", ""),
-                                     attachments=attachments)
+                                     attachments=attachments, photos=photos or None)
     if record.get("engine") != "claude":
         raise ValueError("the studio's film engines are switched off on this server; build the film by hand")
     directory = mg.folder(user, cid, record["id"])
