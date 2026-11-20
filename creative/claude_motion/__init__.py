@@ -717,7 +717,20 @@ def voice_only_change(change: str) -> bool:
     return bool(change and _VOICE_WORDS.search(change) and not _VISUAL_WORDS.search(change))
 
 
-KIT_NAMES = ("G", "GD", "GL", "INK", "MUTED", "PILL_BG", "PILL_INK", "FONT", "useT", "prog", "clamp", "easeInOut", "easeOut", "useSpr", "useFloat", "fa")
+def _kit_names() -> tuple[str, ...]:
+    """Every name the kit's lib.tsx exports (colours, helpers AND components such as Photo, Txt, Pill): an illustration that drew a product photo
+    with <Photo> failed to build in every retry because Photo was missing from a fixed list here (2026-11-20)."""
+    try:
+        text = (Path(__file__).parent / "kit" / "src" / "lib.tsx").read_text(encoding="utf-8")
+        found = tuple(dict.fromkeys(re.findall(r"^export\s+(?:const|function|let)\s+([A-Za-z_]\w*)", text, re.M)))
+        if found:
+            return found
+    except OSError:
+        pass
+    return ("G", "GD", "GL", "INK", "MUTED", "PILL_BG", "PILL_INK", "FONT", "useT", "prog", "clamp", "easeInOut", "easeOut", "useSpr", "useFloat", "fa")
+
+
+KIT_NAMES = _kit_names()
 
 
 def art_imports(body: str) -> str:
