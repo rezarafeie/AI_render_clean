@@ -46,6 +46,9 @@ DEFAULT_SETTINGS = {
         "gpt_4_1_mini": {"in": 0.1, "out": 0.4, "cache": 0.025, "write": 0.1},
         "gpt_4_1": {"in": 0.5, "out": 2.0, "cache": 0.125, "write": 0.5},
         "gemini_pro": {"in": 0.5, "out": 3.0, "cache": 0.125, "write": 0.5},
+        # Gemini text-to-speech: text in, audio out (25 tokens per second of speech); $0.50 / $10 per million (flash), $1 / $20 (pro)
+        "flash_tts": {"in": 0.125, "out": 2.5, "cache": 0.03, "write": 0.125},
+        "pro_tts": {"in": 0.25, "out": 5.0, "cache": 0.06, "write": 0.25},
         "gemini": {"in": 0.1, "out": 0.75, "cache": 0.025, "write": 0.1},
         "deepseek": {"in": 0.035, "out": 0.07, "cache": 0.01, "write": 0.035},
     },

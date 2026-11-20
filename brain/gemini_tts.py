@@ -12,6 +12,7 @@ from __future__ import annotations
 import array
 import base64
 import concurrent.futures
+import contextvars
 import logging
 import os
 import re
@@ -99,6 +100,7 @@ def _request(text: str, voice: str, direction: str) -> bytes:
                                  "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_name(voice)}}}}}
     headers = {"Content-Type": "application/json", "x-relay-secret": secret, "x-gemini-model": model()}
     last = ""
+    started = time.monotonic()
     for attempt, wait in enumerate((0, 4, 10, 20)):
         if wait:
             time.sleep(wait)
@@ -122,8 +124,25 @@ def _request(text: str, voice: str, direction: str) -> bytes:
         if len(pcm) < RATE // 5:
             last = "the answer's audio is shorter than 0.1 s"
             continue
+        _charge(response, started, len(pcm))
         return pcm
     raise RuntimeError(f"Gemini TTS gave no audio after retries ({last})")
+
+
+def _charge(response: httpx.Response, started: float, pcm_bytes: int) -> None:
+    """The call on the person's credit and in the request log, like every model call: the tokens Gemini reports (text in, audio out), weighted by the
+    credit table («flash_tts» / «pro_tts»); billed to the chat, project and run of the calling engine (its lm_gateway work scope). Never raises."""
+    try:
+        from brain import lm_gateway as gw
+        meta = response.json().get("usageMetadata") or {}
+        tin = int(meta.get("promptTokenCount") or 0)
+        tout = int(meta.get("candidatesTokenCount") or 0) or round(pcm_bytes / 2 / RATE * 25)      # audio: 25 tokens a second when not reported
+        record = gw._record("narration", "speech", model(), started, [{"model": model(), "http_status": response.status_code}],
+                            response={"model": model(), "usage": {"input_tokens": tin, "output_tokens": tout}})
+        record.update(provider="gemini", routed_via="gemini-relay", transport="gemini-relay")
+        gw._audit(record)
+    except Exception:
+        log.exception("gemini tts: the call could not be charged")
 
 
 def _voiced(pcm: bytes) -> tuple[int, int]:
@@ -188,8 +207,10 @@ def synthesize(text: str, voice: str) -> tuple[bytes, dict]:
             active = found                                  # a tag sets the tone until the next one, as in one ElevenLabs take
         tags_before.append(list(active))
         spoken.append(" ".join(_TAG.sub("", text[a:b]).split()))
+    # pool threads do not inherit contextvars: each request runs in a copy of the caller's context, so it is billed to the caller's chat / project / run
+    contexts = [contextvars.copy_context() for _ in pieces]
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(pieces))) as pool:
-        audios = list(pool.map(lambda k: _request(spoken[k], voice, _direction(tags_before[k])), range(len(pieces))))
+        audios = list(pool.map(lambda k: contexts[k].run(_request, spoken[k], voice, _direction(tags_before[k])), range(len(pieces))))
     tag = [False] * len(text)
     for found in _TAG.finditer(text):
         for i in range(found.start(), found.end()):

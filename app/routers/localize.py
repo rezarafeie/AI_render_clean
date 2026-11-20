@@ -144,6 +144,9 @@ def preview_voice(request: Request, voice_id: str, body: VoicePreview):
     if len(text) > 400:
         raise HTTPException(422, "متن آزمایشی حداکثر ۴۰۰ نویسه باشد")
     try:
+        from brain import lm_gateway
+        if user != "local":
+            lm_gateway.user_context.set(user)                 # the test reading is charged to the person like any narration
         script, _ = speech.narration_script([text], body.style if body.style in speech.VOICE_STYLES else "")
         audio, _ = speech._elevenlabs_with_timestamps(script, voice_id)
     except Exception as exc:
