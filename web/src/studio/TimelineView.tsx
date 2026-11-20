@@ -4,7 +4,7 @@ import { currentVersion, planPhase } from "./plan";
 import { CaptionCanvas } from "./CaptionCanvas";
 import { Look, lookIsEmpty } from "./canvas";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
-import { friendlyError } from "../ui";
+import { friendlyError, loadError } from "../ui";
 import { Icon, type IconName } from "../components/Icon";
 import { effectLabel } from "../ResourceEffectEditor";
 import { CaptionForm, MUSIC_LIMITS, MusicForm, PictureForm, TYPE_LABEL, VIA_LABEL, captionForm, captionOp, captionProblem, clock, findElement, musicChanged, musicEdits, musicForm, musicProblem, pictureForm, pictureOp, pictureProblem, playerMatches, stackRows, syncNotice, ticks } from "./timeline";
@@ -223,7 +223,7 @@ export function TimelineView({ project, onChanged, currentOutput }: { project: S
     api.studioDocument(project.id).then(value => { if (active) { setDoc(value);
       if (!fitted.current) { setZoom(Math.max(36, Math.min(180, 320 / Math.max(1, value.duration)))); fitted.current = true; }
     } })
-      .catch(e => { if (active) { setDoc(null); setError(friendlyError(e, "load the timeline")); } });
+      .catch(e => { if (active) { setDoc(null); setError(loadError(e, "load the timeline")); } });
     // The newest rendered file, listed directly: a plan version awaiting approval does not hide it.
     if (project.engine === "talking") api.studioOutputs(project.id).then(items => { if (active) setLatestFile(items[items.length - 1]?.file ?? null); }).catch(() => undefined);
     return () => { active = false; };

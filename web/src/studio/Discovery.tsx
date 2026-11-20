@@ -4,7 +4,7 @@ import { api, DiscoveryAnalysis, DiscoveryCandidate, StudioEvent } from "../api"
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
-import { friendlyError } from "../ui";
+import { friendlyError, loadError } from "../ui";
 import { faNumber, formatDuration } from "../format";
 import { STAGE_LABEL, STATUS_LABEL, STATUS_TONE, SortKey, StepView, categoriesOf, clock, discoverySteps, etaText, isActive, liveLines, logText, parseRange, rangeText, stepsSummary, visibleCandidates } from "./discoveryModel";
 
@@ -88,7 +88,7 @@ export function DiscoveryPanel({ analysisId, events }: { analysisId: string; eve
   const [now, setNow] = React.useState(() => Date.now());
   const liveRef = React.useRef<HTMLOListElement>(null);
 
-  const refresh = React.useCallback(() => api.discoveryView(analysisId).then(setAnalysis).catch(e => setError(friendlyError(e, "load the analysis"))), [analysisId]);
+  const refresh = React.useCallback(() => api.discoveryView(analysisId).then(setAnalysis).catch(e => setError(loadError(e, "load the analysis"))), [analysisId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
   const active = analysis ? (analysis.running || analysis.interrupted || analysis.candidates.some(c => isActive(c.status) || (!c.hidden && c.preview_ready === false))) : true;
   usePoll(active, refresh, 3000, lastEvent);

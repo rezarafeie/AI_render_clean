@@ -57,6 +57,17 @@ export function ToastHost() {
 }
 
 /** Keep operational details in logs while giving people a useful next step. */
+/** A dropped connection or a server that is restarting: the chat shows one calm «can't connect, retrying» line for it, so a background load says nothing. */
+export function connectionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /network|failed to fetch|load failed|networkerror|timeout|timed out|aborted|\b50[234]\b/i.test(message);
+}
+
+/** The message for a failed background read (polling a card, reloading a pane): nothing for a connection problem, the usual message otherwise. */
+export function loadError(error: unknown, action: string): string {
+  return connectionError(error) ? "" : friendlyError(error, action);
+}
+
 export function friendlyError(error: unknown, action = "complete this action"): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (/^402 /.test(message) && /اعتبار/.test(message)) return "اعتبار شما تمام شده است. برای ادامه، اعتبار بخرید یا افزایش دهید.";

@@ -1,6 +1,6 @@
 import React from "react";
 import { api, LibraryAsset, LocalizeBoxColour, LocalizeLine, LocalizeProject } from "../api";
-import { friendlyError, notify } from "../ui";
+import { friendlyError, notify, loadError } from "../ui";
 import { EditCard, EditGrid, EditSwitch } from "./EditCard";
 import VoiceTest from "./VoiceTest";
 
@@ -42,7 +42,7 @@ export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => v
       const value = await api.getLocalize(id);
       setProject(value);
       setDraft(current => (!current || BUSY.has(value.status) || current.status !== value.status ? value : current));
-    } catch (e) { setError(friendlyError(e, "load the project")); }
+    } catch (e) { setError(loadError(e, "load the project")); }
   }, [id]);
   React.useEffect(() => { setProject(null); setDraft(null); void load(); }, [load]);
   React.useEffect(() => {

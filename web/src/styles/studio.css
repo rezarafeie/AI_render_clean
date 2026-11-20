@@ -966,3 +966,12 @@ a.pe-tool { text-decoration: none; }
 .voice-test-row .input { flex: 1 1 auto; min-width: 0; }
 .voice-test-row .btn { flex: none; display: inline-flex; gap: 6px; align-items: center; }
 .voice-test [data-tone="error"] { color: var(--danger, #c0392b); }
+
+/* Errors inside the chat (an engine card, a pane) in the same calm rounded look as the connection line: a quiet card with a small red mark,
+   not a red block. */
+.studio .notice[data-tone="error"], .thread .notice[data-tone="error"], .ws .notice[data-tone="error"], .mg .notice[data-tone="error"], .dv .notice[data-tone="error"] {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border: 1px solid var(--border, rgba(255,255,255,.14)); border-radius: 16px;
+  background: var(--surface, rgba(255,255,255,.02)); color: var(--text, #e8e8e8); font-size: 14px; line-height: 1.7; }
+.studio .notice[data-tone="error"]::before, .thread .notice[data-tone="error"]::before, .ws .notice[data-tone="error"]::before,
+.mg .notice[data-tone="error"]::before, .dv .notice[data-tone="error"]::before {
+  content: ""; flex: none; width: 8px; height: 8px; margin-top: 9px; border-radius: 50%; background: var(--error, #e5534b); }

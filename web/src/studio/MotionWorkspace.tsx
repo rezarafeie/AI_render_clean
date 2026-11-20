@@ -4,7 +4,7 @@ import { api, MotionEditable, MotionField, MotionGraphic, StudioEvent } from "..
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
 import { Icon } from "../components/Icon";
 import { useFullscreen } from "../components/useFullscreen";
-import { friendlyError } from "../ui";
+import { friendlyError, loadError } from "../ui";
 import { EditCard, EditGrid } from "./EditCard";
 import VoiceTest from "./VoiceTest";
 
@@ -13,7 +13,7 @@ function useMotion(motionId: string, events: StudioEvent[]) {
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
   const [error, setError] = React.useState("");
   const last = React.useMemo(() => { const mine = events.filter(e => e.data?.motion_id === motionId); return mine.length ? mine[mine.length - 1].seq : 0; }, [events, motionId]);
-  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(friendlyError(e, "load the motion graphic"))), [motionId]);
+  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(loadError(e, "load the motion graphic"))), [motionId]);
   React.useEffect(() => { void refresh(); }, [refresh, last]);
   React.useEffect(() => {
     if (!motion?.active) return;
@@ -105,7 +105,7 @@ export function MotionEditPane({ motionId, events }: { motionId: string; events:
   React.useEffect(() => {
     let live = true;
     setSchema(null);
-    api.motionEditable(motionId).then(value => { if (live) { setSchema(value); setDraft({}); } }).catch(e => { if (live) setError(friendlyError(e, "load the editable settings")); });
+    api.motionEditable(motionId).then(value => { if (live) { setSchema(value); setDraft({}); } }).catch(e => { if (live) setError(loadError(e, "load the editable settings")); });
     return () => { live = false; };
   }, [motionId, version]);
   if (!schema) return <div className="ws-empty" dir="rtl">{error ? <div className="notice" data-tone="error" role="alert">{error}</div> : <div className="tl-loading" role="status"><span className="spinner"/>در حال بارگذاری…</div>}</div>;

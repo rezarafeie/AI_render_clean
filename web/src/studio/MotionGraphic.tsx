@@ -1,7 +1,7 @@
 import React from "react";
 import { api, MotionGraphic, StudioEvent } from "../api";
 import { AuthenticatedMedia } from "../AuthenticatedMedia";
-import { friendlyError } from "../ui";
+import { friendlyError, loadError } from "../ui";
 import { etaText, motionSteps } from "./motionModel";
 import { ActivityBlock } from "./Activity";
 import { Icon } from "../components/Icon";
@@ -121,7 +121,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
     return mine.length ? mine[mine.length - 1].seq : 0;
   }, [events, motionId]);
 
-  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(friendlyError(e, "load the motion graphic"))), [motionId]);
+  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(loadError(e, "load the motion graphic"))), [motionId]);
   const loaded = React.useRef(false);
   React.useEffect(() => { if (latest || !loaded.current) { loaded.current = true; void refresh(); } }, [refresh, lastEvent, latest]);
   const [watching, setWatching] = React.useState(false);          // after a retry/change: poll until the new run shows up, even if the stream is late
@@ -211,7 +211,7 @@ export function MotionPanel({ motionId, events }: { motionId: string; events: St
   const [version, setVersion] = React.useState<number | null>(null);
   const [error, setError] = React.useState("");
   const lastEvent = React.useMemo(() => { const mine = events.filter(e => e.data?.motion_id === motionId); return mine.length ? mine[mine.length - 1].seq : 0; }, [events, motionId]);
-  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(friendlyError(e, "load the motion graphic"))), [motionId]);
+  const refresh = React.useCallback(() => api.motionView(motionId).then(value => { setMotion(value); setError(""); }).catch(e => setError(loadError(e, "load the motion graphic"))), [motionId]);
   React.useEffect(() => { void refresh(); }, [refresh, lastEvent]);
   React.useEffect(() => { setVersion(null); }, [motion?.current]);                      // a new render replaces what was shown
   React.useEffect(() => {
