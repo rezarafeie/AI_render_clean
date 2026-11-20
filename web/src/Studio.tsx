@@ -758,7 +758,7 @@ export default function Studio() {
             retryHref={current?.status === "error" && !qualityBlocked ? advancedEditorUrl(current) || undefined : undefined}
             onOpenEditor={id => openWorkspace("edit", id)}
             onChoice={choice => void send(choice)} onRetryMessage={retryMessage}/> : null}
-          <AgentRunControls runs={conversation?.agent_runs || []} onChanged={() => void refresh()}/>
+          <AgentRunControls runs={conversation?.agent_runs || []} chatCredits={conversation?.credits_used} onChanged={() => void refresh()}/>
           {qualityBlocked && current ? <div className="rc-actions" aria-label="بازبینی خروجی">
             <button className="btn btn-secondary" disabled={resuming} onClick={() => void acceptOutput()}>تأیید خروجی</button>
             <button className="btn btn-secondary" disabled={resuming} onClick={() => void send('ایرادهای واقعی کنترل کیفیت همین خروجی را اصلاح کن؛ انتخاب‌های طراحی تأییدشده را حفظ کن و مدیای پولی جدید بدون تأیید تولید نکن.')}>درست کردن</button>

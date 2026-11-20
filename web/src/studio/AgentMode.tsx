@@ -52,7 +52,7 @@ export function AgentSettings() {
 }
 
 /** Only actual pending Medium executions get controls; no second chat interface. */
-export function AgentRunControls({runs, onChanged}: {runs: StudioAgentRun[]; onChanged: () => void}) {
+export function AgentRunControls({runs, chatCredits, onChanged}: {runs: StudioAgentRun[]; chatCredits?: number; onChanged: () => void}) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
   const [confirming, setConfirming] = React.useState<string | null>(null);
@@ -67,7 +67,7 @@ export function AgentRunControls({runs, onChanged}: {runs: StudioAgentRun[]; onC
   const fa = (n: number) => n.toLocaleString("fa-IR");
   // The whole chat: every Pro run of it (each run's own figure already counts its engines); a new run ("ادامه بده") adds to it, it never starts again from zero.
   const proRuns = runs.filter(r => r.agent_mode === "pro" && r.pro?.spent_credits != null);
-  const chatTotal = proRuns.reduce((sum, r) => sum + (r.pro?.spent_credits || 0), 0);
+  const chatTotal = Math.max(chatCredits ?? 0, proRuns.reduce((sum, r) => sum + (r.pro?.spent_credits || 0), 0));      // the ledger's figure counts every engine too
   const chatCalls = proRuns.reduce((sum, r) => sum + (r.pro?.calls || 0), 0);
   const k = (n: number) => fa(Math.round(n / 1000));
   const proLine = pro ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>

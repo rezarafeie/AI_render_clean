@@ -202,6 +202,8 @@ export interface StudioConversation {
   /** The server's own answer to "is anything working for this chat" (any process: the API, the worker, a narration, a motion graphic). */
   busy?: boolean;
   agent_runs?: StudioAgentRun[];
+  /** Credits the whole chat used (the agent, Lite / Medium and every engine it started), from the credit ledger. */
+  credits_used?: number;
   /** Present when only the newest messages were asked for: whether older ones exist and the event sequence their history starts after. */
   messages_has_more?: boolean; events_from?: number;
 }

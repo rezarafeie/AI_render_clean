@@ -360,10 +360,28 @@ async def get_conversation(request: Request, conversation_id: str, messages: Opt
                                   "status": r["status"], "plan": r["data"].get("plan"), "error": r["data"].get("error"),
                                   **({"pro": pro_usage(r)} if r["agent_mode"] == "pro" else {})}
                                  for r in records]
+        try:
+            payload["credits_used"] = await _chat_credits(conversation_id, _user(request), conversation.get("projects") or [])
+        except Exception:
+            log.warning("chat credits could not be read", exc_info=True)
         payload["busy"] = await busy_task      # the server's own word, whichever process is working
         return payload
     except KeyError:
         raise HTTPException(404, "conversation not found")
+
+
+async def _chat_credits(conversation_id: str, user_key: str, projects: list) -> int:
+    """Everything this chat used, from the credit ledger: its own calls (the agent, Lite, Medium) and every engine it started (motion, vox, narration,
+    QC... each under its own job id), plus calls of its films that carry the film but not the chat (a render started from a button)."""
+    from sqlalchemy import select, func, or_, and_
+    from app.credits import _session, CreditLedger
+    refs = {str(p.get(k)) for p in projects for k in ("id", "external_ref") if p.get(k)}
+    where = CreditLedger.conversation_id == conversation_id
+    if refs:
+        where = or_(where, and_(CreditLedger.conversation_id.is_(None), CreditLedger.project_id.in_(refs)))
+    async with _session() as db:
+        total = (await db.execute(select(func.sum(-CreditLedger.amount)).where(CreditLedger.user_id == str(user_key), CreditLedger.kind == "usage", where))).scalar()
+    return int(total or 0)
 
 
 @router.get("/conversations/{conversation_id}/messages")
