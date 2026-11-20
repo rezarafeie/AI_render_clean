@@ -264,6 +264,14 @@ TOOL_FA = {"Read": "بررسی فایل", "Write": "نوشتن فایل", "Edit"
            "mcp__editorgpt__ask_user": "پرسیدن از شما", "mcp__editorgpt__request_approval": "گرفتن تأیید شما"}
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
 NO_ALLOCATION = re.compile(r"(\b402\b|token allocation|billing_error|insufficient (credit|balance))", re.I)
+# A reply written by a broken upstream request (seen through Jarvis, 2026-11-20): that one call reached the model with the system prompt folded into the
+# user message and without the tools, so the model said it is "a guest" with "no tools" and ended the run in the middle of the work.
+LOST_TOOLS = re.compile(r"ابزار(?:\s+\S+){0,2}\s+ندارم|نمی\s*‌?\s*توانم\s+(?:هیچ\s+)?(?:فراخوانی\s+ابزار|ابزاری\s+(?:را\s+)?(?:اجرا|فراخوانی))|مهمان\s+گیر|"
+                        r"به\s*‌?\s*عنوان\s+درخواست\s+کاربر\s+ندیدم|(?:do not|don't|no longer)\s+have\s+(?:any\s+|access\s+to\s+)?(?:execution\s+)?tools|"
+                        r"no\s+tools?\s+(?:are\s+)?available|cannot\s+(?:make|call|use)\s+(?:any\s+)?tool", re.I)
+LOST_TOOLS_NOTE = ("A note from the EditorGPT runner (not from the person): your previous reply came from a broken request to the model service - that one call "
+                   "lost your instructions and your tools, which is why it looked like a pasted message and you had no tools. Your instructions and tools are "
+                   "back. Continue the person's task exactly where you stopped; do not redo finished steps and do not mention this hiccup to the person.")
 API_ERROR = re.compile(r"(API Error|could not authenticate with the provider|Internal server error|overloaded_error|stream ended before|Request timed out)", re.I)
 
 
@@ -450,7 +458,7 @@ async def run(job: dict) -> None:
             watcher = asyncio.create_task(watch())
             try:
                 await client.query(first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
-                retries = 0
+                retries = lost = 0
                 while True:
                     live["api_error"] = False
                     spoke, strays = False, 0
@@ -468,6 +476,8 @@ async def run(job: dict) -> None:
                                 status = "stopped" if stopped else ("completed" if not message.is_error else "failed")
                                 if message.is_error:
                                     error = str(getattr(message, "result", "") or message.subtype)[:400]
+                                if not message.is_error and LOST_TOOLS.search(str(getattr(message, "result", "") or "")[:1500]):
+                                    live["lost_tools"] = True
                                 if API_ERROR.search(str(getattr(message, "result", "") or "")):
                                     live["api_error"] = True
                                     if NO_ALLOCATION.search(str(getattr(message, "result", "") or "")):
@@ -476,6 +486,11 @@ async def run(job: dict) -> None:
                             break
                         strays += 1
                         log.info("pro run %s: stray result without a model turn, reading on", job["run"])
+                    if live.pop("lost_tools", False) and not stopped and lost < 2:
+                        lost += 1
+                        log.warning("pro run %s: a reply without tools (broken upstream request), the session goes on", job["run"])
+                        await client.query(LOST_TOOLS_NOTE)
+                        continue
                     if not stopped and not live.get("api_error"):
                         late = await api.inbox()            # written after the agent's last step: it answers them before the run ends
                         if late:
