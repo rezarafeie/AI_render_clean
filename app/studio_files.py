@@ -121,8 +121,8 @@ def _discovery_clips(conversation: dict, user: str):
             target = directory / "clips" / f"library-{revision}.mp4"
             child = candidate.get("child_conversation_id") or ""
             prepared = long_video.ROOT / long_video._safe(user) / child / "attachments" / (candidate["id"] + ".mp4")
-            path = target if target.is_file() else None
-            if path is None and not candidate.get("child_stale") and re.fullmatch(r"[a-f0-9]{32}", child) and prepared.is_file():
+            path = target if media_archive.available(target, user) else None
+            if path is None and not candidate.get("child_stale") and re.fullmatch(r"[a-f0-9]{32}", child) and media_archive.available(prepared, user):
                 path = prepared
             if path is None and not source_exists:
                 continue
@@ -131,7 +131,7 @@ def _discovery_clips(conversation: dict, user: str):
                 "id": f"clip:{conversation['id']}:{directory.name}:{revision}",
                 "name": f"{title[:150]}.mp4",
                 "kind": "video",
-                "size": path.stat().st_size if path else 0,
+                "size": media_archive.media_size_time(path, user)[0] if path else 0,
                 "created_at": _iso(candidate.get("created_at") or analysis.get("created_at") or 0),
                 "source": "discovery",
                 "folder": "discovery",
