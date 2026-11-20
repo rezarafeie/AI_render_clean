@@ -268,13 +268,16 @@ def _mixed_preview(job, volume_level, fade_in_seconds, fade_out_seconds):
     music = job.dir / m.file
     if not music.is_file():
         raise HTTPException(404, "music file not found")
-    video = None
-    if job.render.output and (job.dir / "exports" / job.render.output).is_file():
-        video = job.dir / "exports" / job.render.output
+    from app import media_archive
+
+    video = job.dir / "exports" / job.render.output if job.render.output else None
+    owner = str(job.user_id or "")
+    if video and media_archive.available(video, owner):
+        video = media_archive.materialize(video, owner)
     else:
         video = jobstore.source_media_path(job)
-        if video is None or not video.is_file():
-            raise HTTPException(404, "Source media missing")
+    if video is None or not video.is_file():
+        raise HTTPException(404, "Source media missing")
     with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as handle:
         out = Path(handle.name)
     try:

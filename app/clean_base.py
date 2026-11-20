@@ -81,8 +81,12 @@ def ensure(job_dir: Path, raw_video: Path) -> dict:
 
     def run() -> None:
         try:
-            from app import talking_reel
-            planned, state = _plan(job_dir, raw_video)
+            from app import jobs, talking_reel
+            job = jobs.get(job_dir.name)
+            video = jobs.source_media_path(job) if job and not raw_video.is_file() else raw_video
+            if video is None:
+                raise FileNotFoundError("Source media missing")
+            planned, state = _plan(job_dir, video)
             plan = dataclasses.replace(planned.plan, captions=[])
             out_dir = folder(job_dir)
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -95,9 +99,9 @@ def ensure(job_dir: Path, raw_video: Path) -> dict:
             common = dict(work_dir=work, music=music, cta=state.get("cta") or "", render_settings=planned.settings,
                           logo_path=talking_reel.custom_logo(job_dir))
             if planned.style in talking_reel.SPLIT_STYLES:
-                planned.media.render(raw_video, plan, tmp, **common)
+                planned.media.render(video, plan, tmp, **common)
             else:
-                planned.media.render(raw_video, plan, tmp, hook=state["hook"], highlight=state.get("hook_highlight") or [],
+                planned.media.render(video, plan, tmp, hook=state["hook"], highlight=state.get("hook_highlight") or [],
                                      name=state.get("name") or "", title=state.get("title") or "", **common)
             tmp.replace(out_dir / f"base_{key}.mp4")
             for old in out_dir.glob("base_*.mp4"):             # one base is enough; older ones are for older plans

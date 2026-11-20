@@ -495,7 +495,7 @@ async def _tool(claims: dict, name: str, args: dict):
         ids = []
         for message in conversation.get("messages") or []:
             ids += [a for a in (message.get("attachments") or []) if a not in ids]
-        rows = await repo.get_attachments(ids, cid, user)
+        rows = await repo.get_attachments(ids, cid, user, restore_media=False)
         return {"assets": [{"id": r["id"], "name": r["filename"], "kind": r["kind"], "size_bytes": r["size_bytes"],
                             **{k: v for k, v in (r.get("metadata") or {}).items() if k in {"duration", "width", "height", "fps"}}} for r in rows]}
     if name == "assets_fetch":

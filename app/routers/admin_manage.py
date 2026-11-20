@@ -1,14 +1,14 @@
 """Administrator view of the people who use the app: users, their chats, projects, renders and files, with full detail. Read-only (nothing here edits or deletes)."""
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 
-from app import jobs as jobstore
+from app import jobs as jobstore, media_archive
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Job, StudioAttachment, StudioConversation, StudioEvent, StudioMessage, StudioProject, StudioProjectVersion, UserModel
@@ -191,7 +191,14 @@ async def project_detail(project_id: str):
                         "storage_bytes": _dir_size(job.dir)}
             folder = job.dir / "exports"
             if folder.is_dir():
-                exports = [{"name": f.name, "size": f.stat().st_size} for f in sorted(folder.iterdir()) if f.is_file()]
+                owner = str(job.user_id or project.user_key)
+                files = media_archive.media_paths(folder, "*", owner)
+                exports = [
+                    {"name": file.name, "size": media_archive.media_size_time(file, owner)[0]}
+                    for file in sorted(files)
+                    if not file.name.startswith(".") and not file.name.endswith((".r2.json", ".r2.lock"))
+                    and media_archive.available(file, owner)
+                ]
     return {"project": {"id": project.id, "conversation_id": project.conversation_id, "user": project.user_key, "title": project.title, "engine": project.engine, "status": project.status,
                         "job": project.external_ref, "version": project.current_version, "created_at": _iso(project.created_at), "updated_at": _iso(project.updated_at)},
             "request": str(state.get("request") or "")[:3000], "observed": observed, "design_choice": state.get("design_choice"),
@@ -201,26 +208,28 @@ async def project_detail(project_id: str):
 
 
 @router.get("/files/{attachment_id}")
-async def file_content(attachment_id: str):
+async def file_content(request: Request, attachment_id: str):
     async with _db() as db:
         row = await db.get(StudioAttachment, attachment_id)
     if row is None:
         raise HTTPException(404, "file not found")
     path = Path(row.path).resolve()
     root = Path(settings.JOBS_DIR).expanduser().resolve()
-    if root not in path.parents or not path.is_file():
+    if root not in path.parents:
         raise HTTPException(404, "file not found")
-    return FileResponse(path, media_type=row.mime_type or None, filename=row.filename)
+    return await asyncio.to_thread(media_archive.serve, request, path, row.user_key,
+                                   media_type=row.mime_type or None, filename=row.filename)
 
 
 @router.get("/projects/{project_id}/exports/{name}")
-async def export_content(project_id: str, name: str):
+async def export_content(request: Request, project_id: str, name: str):
     async with _db() as db:
         project = await db.get(StudioProject, project_id)
     job = jobstore.get(project.external_ref) if project is not None and project.external_ref else None
     if job is None or Path(name).name != name:
         raise HTTPException(404, "file not found")
-    path = job.dir / "exports" / name
-    if not path.is_file():
+    directory = (job.dir / "exports").resolve()
+    path = (directory / name).resolve()
+    if not path.is_relative_to(directory) or name.endswith((".r2.json", ".r2.lock")):
         raise HTTPException(404, "file not found")
-    return FileResponse(path)
+    return await asyncio.to_thread(media_archive.serve, request, path, str(job.user_id or project.user_key))

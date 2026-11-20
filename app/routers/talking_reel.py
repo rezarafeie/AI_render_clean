@@ -55,13 +55,16 @@ def effects_preview(request: Request, job_id: str, body: EffectPreview):
     from engine import face_effects as effects
     state = store.load(job.dir)
     output = job.dir / str(state.get("output") or "")
-    source = output if state.get("output") and output.is_file() else job.dir / "raw" / job.raw_name
+    from app import media_archive
+
+    owner = str(job.user_id or "")
+    source = output if state.get("output") and media_archive.available(output, owner) else job.dir / "raw" / job.raw_name
     if not _preview_lock.acquire(blocking=False):
         raise HTTPException(429, "یک پیش‌نمایش دیگر در حال ساخت است؛ چند ثانیه بعد دوباره امتحان کنید.")
     try:
         png = job.dir / "talking_reel_work" / "effects" / "preview.png"
         png.unlink(missing_ok=True)
-        effects.preview(source, body.item, body.t, png, work=job.dir / "talking_reel_work" / "effects")
+        effects.preview(media_archive.materialize(source, owner), body.item, body.t, png, work=job.dir / "talking_reel_work" / "effects")
     except effects.EffectsError as exc:
         raise HTTPException(422, str(exc))
     finally:
