@@ -219,6 +219,8 @@ _dns_cache.install(set(settings.DNS_CACHE_HOSTS.split(',')))
 app.include_router(cloud.router)
 from app.resumable_upload import router as resumable_router
 app.include_router(resumable_router)
+from app.r2_upload import router as r2_upload_router
+app.include_router(r2_upload_router)
 from app.routers import lm_admin
 app.include_router(lm_admin.access_router)
 app.include_router(lm_admin.router)

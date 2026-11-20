@@ -36,15 +36,7 @@ def attachment_folder(user_key: str, conversation_id: str) -> Path:
     return folder
 
 
-async def finalize(user_key: str, conversation_id: str, temporary: Path, original: str, kind: str,
-                   content_type: str, size: int, metadata: dict | None = None) -> dict:
-    """Probe the written file, create the attachment row and move the file to its final path."""
-    suffix = Path(original).suffix.lower()
-    folder = temporary.parent
-    if not (metadata or {}).get("from_library"):           # a file attached again from the person's own files takes no new space
-        from app import studio_files
-        await studio_files.ensure_room(user_key, size)
-    # Decode/probe uploads now, before any engine sees them.
+async def validate_media(temporary: Path, kind: str) -> None:
     if kind == "image":
         from PIL import Image
         with Image.open(temporary) as image:
@@ -57,6 +49,18 @@ async def finalize(user_key: str, conversation_id: str, temporary: Path, origina
             raise IngestError("file has no video stream")
         if kind == "audio" and not any(item.get("codec_type") == "audio" for item in streams):
             raise IngestError("file has no audio stream")
+
+
+async def finalize(user_key: str, conversation_id: str, temporary: Path, original: str, kind: str,
+                   content_type: str, size: int, metadata: dict | None = None, *, validated: bool = False) -> dict:
+    """Validate the media when needed, then register the attachment at its final path."""
+    suffix = Path(original).suffix.lower()
+    folder = temporary.parent
+    if not (metadata or {}).get("from_library"):           # attachments reused from the person's own files take no new space
+        from app import studio_files
+        await studio_files.ensure_room(user_key, size)
+    if not validated:
+        await validate_media(temporary, kind)
     attachment = await repo.create_attachment(conversation_id, user_key, kind=kind,
         filename=original[:255], path=str(temporary), mime_type=(content_type or "application/octet-stream")[:100],
         size_bytes=size, metadata=metadata or {})

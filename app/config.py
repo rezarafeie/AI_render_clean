@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     # Hosts whose DNS answers are cached (the resolver in the containers is intermittent); empty turns the cache off.
     DNS_CACHE_HOSTS: str = "api.elevenlabs.io,api.jarvis.you,lmapi.rafiei.co,generativelanguage.googleapis.com,api.openai.com,backend.composio.dev"
     CLOUD_DOWNLOAD_CONNECTIONS: int = 6
+    STUDIO_DIRECT_R2_UPLOAD: bool = False
     CLOUD_DOWNLOAD_HOSTS: str = ".r2.cloudflarestorage.com,.amazonaws.com,.composio.dev"
     # Localization (Persian voice-over) projects; defaults to a "localize_jobs"
     # folder next to JOBS_DIR.

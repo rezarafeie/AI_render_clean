@@ -1418,10 +1418,54 @@ export const api = {
   /** Small files go in one request; big ones are sent in resumable pieces (up to 10 GB of video). */
   async uploadStudioMedia(id: string, file: File, onProgress?: (value: number) => void, signal?: AbortSignal): Promise<StudioAttachment> {
     if (file.size <= RESUMABLE_FROM) return this.uploadStudioAttachment(id, file, onProgress);
+    const metadata = JSON.stringify({ filename: file.name, size: file.size, content_type: file.type || "application/octet-stream", last_modified: file.lastModified || 0 });
+    if (/\.(mp4|mov|m4v|webm|mkv)$/i.test(file.name)) {
+      const direct = `${BASE}/studio/conversations/${id}/r2-uploads`;
+      const response = await authFetch(direct, {
+        method: "POST", headers: { "content-type": "application/json" }, body: metadata, signal,
+      });
+      if (response.status !== 404 && response.status !== 503) {
+        const started = await j<{ id: string; attachment?: StudioAttachment; parts: { start: number; end: number; url: string }[] }>(response);
+        if (started.attachment) { onProgress?.(100); return started.attachment; }
+        const pending = [...started.parts];
+        let processed = file.size - pending.reduce((bytes, part) => bytes + part.end - part.start, 0);
+        onProgress?.(Math.floor(processed / file.size * 95));
+        try {
+          await Promise.all(Array.from({ length: 3 }, async () => {
+            for (let part = pending.shift(); part; part = pending.shift()) {
+              for (let attempt = 0; ; attempt++) {
+                try {
+                  const uploaded = await fetch(part.url, { method: "PUT", body: file.slice(part.start, part.end),
+                    signal, credentials: "omit", referrerPolicy: "no-referrer" });
+                  if (!uploaded.ok) throw new Error("Storage did not accept the video part");
+                  break;
+                } catch (error) {
+                  if (signal?.aborted || attempt >= 3) throw error;
+                  await new Promise(resolve => setTimeout(resolve, 600 * 2 ** attempt));
+                }
+              }
+              processed += part.end - part.start;
+              onProgress?.(Math.floor(processed / file.size * 95));
+            }
+          }));
+          const statusUrl = `${direct}/${started.id}`;
+          let result = await j<{ attachment?: StudioAttachment }>(await authFetch(`${statusUrl}/complete`, { method: "POST", signal }));
+          while (!result.attachment) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            result = await j(await authFetch(statusUrl, { signal }));
+          }
+          onProgress?.(100);
+          return result.attachment;
+        } catch (error) {
+          if (signal?.aborted) await authFetch(`${direct}/${started.id}`, { method: "DELETE" }).catch(() => {});
+          throw error;
+        }
+      }
+    }
     const base = `${BASE}/studio/conversations/${id}/uploads`;
     const started = await j<{ id: string; received: number; chunk_size: number }>(await authFetch(base, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ filename: file.name, size: file.size, content_type: file.type || "application/octet-stream", last_modified: file.lastModified || 0 }) }));
+      body: metadata }));
     let received = started.received;
     const chunk = started.chunk_size || 8 * 1024 ** 2;
     let failures = 0;
