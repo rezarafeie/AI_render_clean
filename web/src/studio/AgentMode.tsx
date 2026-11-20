@@ -73,8 +73,8 @@ export function AgentRunControls({runs, onChanged}: {runs: StudioAgentRun[]; onC
   const proLine = pro ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
     {pro.status === "running" || pro.status === "queued" ? "Pro در حال کار · " : "Pro · "}
     مصرف کل این چت {k(chatTotal)} هزار اعتبار
-    {proRuns.length > 1 ? ` (این اجرا ${k(pro.pro?.spent_credits || 0)} هزار${pro.pro?.budget_credits ? ` از سقف ${k(pro.pro.budget_credits)} هزار` : ""})`
-      : pro.pro?.budget_credits ? ` از سقف ${k(pro.pro.budget_credits)} هزار` : ""}
+    {proRuns.length > 1 ? ` (این اجرا ${k(pro.pro?.spent_credits || 0)} هزار)` : ""}
+    {pro.pro?.budget_credits ? ` · سقف: اعتبار حساب (${k(pro.pro.budget_credits)} هزار)` : " · بدون سقف"}
     {chatCalls ? ` · ${fa(chatCalls)} تماس با مدل` : ""}
   </p> : null;
   return <>{proLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>

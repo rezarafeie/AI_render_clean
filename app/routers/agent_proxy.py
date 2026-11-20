@@ -202,7 +202,7 @@ async def _add_spent(claims: dict, credits: int, usage: dict) -> None:
     except Exception:
         log.debug("run ledger not read", exc_info=True)
     await store.update(claims["run"], claims["user"], patch={"pro": state})
-    await repo.emit(claims["cid"], "pro.cost", {"run_id": claims["run"], "spent_credits": state.get("total_credits") or state["spent_credits"], "budget_credits": pro.BUDGET_CREDITS})
+    await repo.emit(claims["cid"], "pro.cost", {"run_id": claims["run"], "spent_credits": state.get("total_credits") or state["spent_credits"], "budget_credits": state.get("budget_credits")})
 
 
 def _lift_tool_images(data: dict) -> bool:
@@ -262,8 +262,8 @@ async def messages(request: Request):
     record = await _run_of(claims)
     if record["status"] not in {"running"}:
         return _anthropic_error(403, "permission_error", "this run is not running")
-    if _spent(record) >= pro.BUDGET_CREDITS:
-        return _anthropic_error(402, "billing_error", "بودجهٔ این اجرا تمام شد.")
+    # No fixed per-run ceiling: a run may use what the person's credit allows (an unlimited account, e.g. an administrator, has no ceiling). The
+    # balance gate below stops new model calls once the balance is spent.
     from app import credits
     try:
         await credits.require(claims["user"])
@@ -400,8 +400,14 @@ async def claim(request: Request):
     for other in await store.runs(cid, user):              # the previous Pro run of this chat: its session is resumed (same cwd, same config dir)
         if other["agent_mode"] == "pro" and other["id"] != rid and (other["data"].get("pro") or {}).get("session_id"):
             resume = other["data"]["pro"]["session_id"]
-    await store.update(rid, user, patch={"pro": {"model": pro.MODEL, "budget_credits": pro.BUDGET_CREDITS, "spent_credits": 0, "phase": "start"}})
-    await repo.emit(cid, "pro.started", {"run_id": rid, "model": pro.MODEL, "budget_credits": pro.BUDGET_CREDITS})
+    from app import credits
+    try:                                                   # the ceiling shown for this run: the person's credit when it starts; none for an unlimited account
+        account = await credits.account(user)
+        budget = None if account.get("unlimited") or not account.get("tracked") else max(0, int(account.get("balance") or 0))
+    except Exception:
+        budget = None
+    await store.update(rid, user, patch={"pro": {"model": pro.MODEL, "budget_credits": budget, "spent_credits": 0, "phase": "start"}})
+    await repo.emit(cid, "pro.started", {"run_id": rid, "model": pro.MODEL, "budget_credits": budget})
     await repo.emit(cid, "tool.started", {"tool": "pro_agent", "stage": "thinking", "message": "EditorGPT Pro کار را شروع کرد.", "agent_mode": "pro", "run_id": rid})
     from app.studio_flags import generation
     return {"run": rid, "user": user, "cid": cid, "token": pro.token(rid, user, cid), "model": pro.MODEL,
@@ -416,7 +422,7 @@ async def status(request: Request):
     from app.studio_flags import generation
     stopped = record["status"] in {"cancelled", "stopped", "failed"} or \
         generation(claims["user"], claims["cid"]) != record["data"].get("stop_generation", generation(claims["user"], claims["cid"]))
-    return {"stop": stopped, "spent_credits": _spent(record), "budget_credits": pro.BUDGET_CREDITS}
+    return {"stop": stopped, "spent_credits": _spent(record), "budget_credits": (record["data"].get("pro") or {}).get("budget_credits")}
 
 
 @router.post("/internal/pro/inbox")
