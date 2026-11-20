@@ -77,7 +77,13 @@ export function AgentRunControls({runs, chatCredits, onChanged}: {runs: StudioAg
     {pro.pro?.budget_credits ? ` · سقف: اعتبار حساب (${k(pro.pro.budget_credits)} هزار)` : " · بدون سقف"}
     {chatCalls ? ` · ${fa(chatCalls)} تماس با مدل` : ""}
   </p> : null;
-  return <>{proLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
+  // Lite and Medium chats get the same line: everything the chat used (its own calls and every engine it started), from the credit ledger.
+  const medium = [...runs].reverse().find(r => r.agent_mode === "medium");
+  const mediumBusy = medium && ["queued", "running", "waiting_job"].includes(medium.status);
+  const chatLine = !pro && (chatCredits || 0) > 0 ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
+    {mediumBusy ? "Medium در حال کار · " : ""}مصرف کل این چت {fa(Math.max(1, Math.round((chatCredits || 0) / 1000)))} هزار اعتبار
+  </p> : null;
+  return <>{proLine}{chatLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
     <div className="action-card" key={record.id} aria-label="EditorGPT Medium plan">
       <h3>{record.status === "waiting_approval" ? "تأیید برنامهٔ EditorGPT Medium" : "اجرای Medium کامل نشد"}</h3>
       <p className="bidi" dir="auto">{record.status === "failed" ? record.error : record.plan?.summary}</p>

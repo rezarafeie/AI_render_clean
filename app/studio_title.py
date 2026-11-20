@@ -59,6 +59,13 @@ def make_title(text: str) -> str:
     return fallback_title(text)
 
 
+def _scoped(function):
+    """The title call runs in its own thread, which inherits no context: it is billed to the person and counted in this chat's usage."""
+    from brain.lm_gateway import conversation_scope
+    return conversation_scope(function)
+
+
+@_scoped
 def title_chat(conversation_id: str, user: str, text: str) -> bool:
     """Title the chat when this is its first message and the title is still automatic. True when a title was set."""
     from app.studio_store import repo, run
