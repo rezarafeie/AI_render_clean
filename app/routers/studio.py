@@ -338,11 +338,12 @@ async def get_conversation(request: Request, conversation_id: str, messages: Opt
         from app.studio_orchestrator import conversation_busy
         payload = _public_conversation(conversation)
         from app.agents.store import runs
-        records = await runs(conversation_id, _user(request))
+        records = await runs(conversation_id, _user(request), checked=True)
+        busy_task = asyncio.create_task(asyncio.to_thread(conversation_busy, conversation, _user(request), records))
         ledger = {}
         try:
-            from app.routers.agent_proxy import run_ledger
-            ledger = await run_ledger([r["id"] for r in records if r["agent_mode"] == "pro"])
+            from app.routers.agent_proxy import run_ledger_cached
+            ledger = await run_ledger_cached([r for r in records if r["agent_mode"] == "pro"])
         except Exception:
             pass
 
@@ -359,7 +360,7 @@ async def get_conversation(request: Request, conversation_id: str, messages: Opt
                                   "status": r["status"], "plan": r["data"].get("plan"), "error": r["data"].get("error"),
                                   **({"pro": pro_usage(r)} if r["agent_mode"] == "pro" else {})}
                                  for r in records]
-        payload["busy"] = await asyncio.to_thread(conversation_busy, conversation, _user(request))      # the server's own word, whichever process is working
+        payload["busy"] = await busy_task      # the server's own word, whichever process is working
         return payload
     except KeyError:
         raise HTTPException(404, "conversation not found")

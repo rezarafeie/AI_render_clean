@@ -139,6 +139,9 @@ export default function Studio() {
   // Conversation created only so attachments have somewhere to upload; we don't navigate until the user sends.
   const draftIdRef = React.useRef<string | null>(null);
   const activeId = conversationId || null;
+  // The chat on screen right now: an answer that arrives after the user moved to another chat is dropped (it used to land in the new one).
+  const activeIdRef = React.useRef<string | null>(activeId);
+  activeIdRef.current = activeId;
   React.useEffect(() => {
     if (conversation?.id !== activeId || !activeId || agentChoice.current?.conversation === activeId) return;
     setAgentMode(conversation.state.agent_mode === "medium" || conversation.state.agent_mode === "pro" ? conversation.state.agent_mode : "lite");
@@ -187,6 +190,7 @@ export default function Studio() {
     if (!id) return;
     try {
       const value = await api.getStudioConversation(id, { messages: MESSAGE_WINDOW });
+      if (activeIdRef.current !== id || value?.id !== id) return;
       setOffline(false);
       setConversation(value);
       setLoadedMessages(previous => mergeMessages(previous, value.messages || []));
@@ -198,6 +202,7 @@ export default function Studio() {
         setWindowFor(id);
       }
     } catch (e) {
+      if (activeIdRef.current !== id) return;
       if (offlineError(e)) { setOffline(true); return; }
       if (quiet) return;
       // an administrator who opened someone else's chat (a pasted link, a new tab) enters the admin view of its owner; one opening their own chat leaves it
@@ -217,7 +222,8 @@ export default function Studio() {
   // Switching chats: a chat seen (or hovered) before appears at once from memory and is re-read quietly; one never seen shows the skeleton, never the
   // previous chat. The chat being left is stored on the way out.
   React.useEffect(() => {
-    const hit = authenticated && activeId ? readChat(activeId) : undefined;
+    const cached = authenticated && activeId ? readChat(activeId) : undefined;
+    const hit = cached && cached.conversation?.id === activeId ? cached : undefined;      // a copy saved under the wrong chat is never shown
     setSelectedProject(null); setLiveText({});
     if (hit && activeId) {
       setConversation(hit.conversation); setLoadedMessages(hit.messages); setHasMore(hit.hasMore); setEvents(hit.events);
@@ -230,7 +236,7 @@ export default function Studio() {
     if (authenticated && activeId) void refresh(activeId, Boolean(hit));
     return () => {
       const last = snapshotRef.current;
-      if (last.id && last.conversation && last.id === activeId) {
+      if (last.id && last.conversation && last.id === activeId && last.conversation.id === activeId) {
         writeChat(last.id, { conversation: last.conversation, messages: last.messages, hasMore: last.hasMore, eventsFrom: eventsFromRef.current, events: last.events.slice(-400), cursor: cursorRef.current });
       }
     };
@@ -283,6 +289,7 @@ export default function Studio() {
         try {
           connection = new AbortController();
           await api.streamStudioEvents(activeId, cursorRef.current, event => {
+            if (stopped || activeIdRef.current !== activeId) return;
             setOffline(false);
             if (event.type === "assistant.response.delta" && event.data.live) {      // running text: shown at once, nothing to save or re-read
               setLiveText(value => ({ ...value, [String(event.data.response_id)]: String(event.data.text || "") }));

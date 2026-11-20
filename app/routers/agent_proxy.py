@@ -163,6 +163,29 @@ async def run_ledger(run_ids) -> dict:
             for job, total, agent, tin, tout in rows}
 
 
+_LEDGER_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+async def run_ledger_cached(records) -> dict:
+    """run_ledger for a chat that is read every few seconds: a finished run's total never changes (kept), a running one is re-read at most every 15 s."""
+    now = time.monotonic(); out: dict = {}; ask = []
+    for r in records:
+        hit = _LEDGER_CACHE.get(r["id"])
+        done = r.get("status") not in ("queued", "running")
+        if hit and (done and hit[0] < 0 or now - hit[0] < 15):
+            if hit[1]: out[r["id"]] = hit[1]
+        else:
+            ask.append(r)
+    if ask:
+        fresh = await run_ledger([r["id"] for r in ask])
+        if len(_LEDGER_CACHE) > 5000: _LEDGER_CACHE.clear()
+        for r in ask:
+            value = fresh.get(r["id"]) or {}
+            _LEDGER_CACHE[r["id"]] = (-1.0 if r.get("status") not in ("queued", "running") else now, value)
+            if value: out[r["id"]] = value
+    return out
+
+
 async def _add_spent(claims: dict, credits: int, usage: dict) -> None:
     if credits <= 0:
         return

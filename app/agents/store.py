@@ -93,8 +93,10 @@ async def get_run(rid, user):
         return copy.deepcopy(value)
 
 
-async def runs(cid, user):
-    await s.repo.get_conversation(cid, user)
+async def runs(cid, user, *, checked=False):
+    """`checked`: the caller has already read the conversation as this user (skips a second full read, with every message)."""
+    if not checked:
+        await s.repo.get_conversation(cid, user, message_limit=1)
     if s.DB_AVAILABLE:
         async with s.AsyncSessionLocal() as db:
             rows = (await db.execute(select(StudioAgentRun).where(StudioAgentRun.conversation_id == cid,
