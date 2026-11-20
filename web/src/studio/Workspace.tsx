@@ -22,6 +22,7 @@ import { currentVersion, planPhase } from "./plan";
 import { TimelineView } from "./TimelineView";
 import { useTopbarAction } from '../components/ShellContext';
 import { ProjectStatusDot } from '../components/ProjectStatusDot';
+import VoiceTest from "./VoiceTest";
 
 export type WorkspaceTab = "preview" | "edit";
 
@@ -160,6 +161,7 @@ function StoryboardEditor({ project, onSaved }: { project: StudioProject; onSave
       <div className="field"><label htmlFor="sb-voice-style">حالت صدا</label>
         <select id="sb-voice-style" className="input" value={voiceStyle} onChange={event => { setSaved(false); setVoiceStyle(event.target.value); }}>
           {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(style => <option key={style.id} value={style.id}>{style.label}</option>)}</select></div>
+      <VoiceTest voice={narrator} style={voiceStyle}/>
     </div>
     {scenes.map((scene, index) => <details className="scene" key={scene.index ?? index}>
       <summary><span className="scene-n">{index + 1}</span><b className="wrap-safe bidi" dir="auto">{scene.text_overlay || `صحنهٔ ${index + 1}`}</b><small>{scene.duration_s} ث</small><Icon name="chevronDown" size={16} className="scene-chev"/></summary>

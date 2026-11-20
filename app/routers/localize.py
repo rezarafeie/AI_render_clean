@@ -125,15 +125,18 @@ def rename_voice(request: Request, voice_id: str, body: VoiceRename):
 
 class VoicePreview(BaseModel):
     text: str
+    style: str = ""
 
 
 @router.post("/voices/{voice_id}/preview")
 def preview_voice(request: Request, voice_id: str, body: VoicePreview):
-    """A short reading of the person's own text in their cloned voice, to hear it. The text is limited (it spends ElevenLabs characters)."""
+    """A short reading of the person's own text by a narrator (the studio's ElevenLabs and Gemini narrators, or their own cloned voice) in a delivery style,
+    to hear it before choosing. The text is limited (it spends the provider's characters)."""
     from fastapi.responses import Response
     from brain import localize as speech, voice_clone
     user = "local" if is_local_auth_bypass(request) else str(request.state.user.id)
-    if not voice_clone.owns(user, voice_id):
+    stock = {voice for voice, _, _ in speech.NARRATORS if voice}
+    if voice_id not in stock and not voice_clone.owns(user, voice_id):
         raise HTTPException(404, "voice not found")
     text = " ".join(body.text.split())
     if len(text) < 3:
@@ -141,9 +144,11 @@ def preview_voice(request: Request, voice_id: str, body: VoicePreview):
     if len(text) > 400:
         raise HTTPException(422, "متن آزمایشی حداکثر ۴۰۰ نویسه باشد")
     try:
-        audio, _ = speech._elevenlabs_with_timestamps(speech.speakable(text), voice_id)
+        script, _ = speech.narration_script([text], body.style if body.style in speech.VOICE_STYLES else "")
+        audio, _ = speech._elevenlabs_with_timestamps(script, voice_id)
     except Exception as exc:
-        reason = "اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ElevenLabs پاسخ نداد"
+        provider = "Gemini" if voice_id.startswith("gemini:") else "ElevenLabs"
+        reason = f"اعتبار {provider} کافی نیست" if "quota" in str(exc).lower() else f"{provider} پاسخ نداد"
         raise HTTPException(502, f"ساخت صدای آزمایشی ناموفق بود: {reason} ({str(exc)[:120]})")
     return Response(content=audio, media_type="audio/mpeg", headers={"cache-control": "private, no-store"})
 

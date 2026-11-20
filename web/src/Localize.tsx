@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, LibraryAsset, LocalizeBoxColour, LocalizeLine, LocalizeProject, LocalizeSummary } from "./api";
 import { AuthenticatedMedia } from "./AuthenticatedMedia";
 import { LoadingState, friendlyError, notify } from "./ui";
+import VoiceTest from "./studio/VoiceTest";
 
 const BUSY = new Set(["queued", "analyzing", "rendering"]);
 const STATUS_LABELS: Record<LocalizeProject["status"], string> = {
@@ -228,6 +229,7 @@ function ProjectEditor({ id, onChanged }: { id: string; onChanged: () => void })
                 {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
               </select>
             </label>
+            <VoiceTest voice={draft.voice_id ?? ""} style={draft.voice_style ?? ""} disabled={busy}/>
             <label>رنگ کادر متن‌ها
               <BoxColourSelect value={draft.caption_box} auto="هر رندر یه رنگ" disabled={busy} onChange={caption_box => setDraft({ ...draft, caption_box })} />
             </label>

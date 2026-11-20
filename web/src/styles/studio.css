@@ -959,3 +959,10 @@ a.pe-tool { text-decoration: none; }
 .audio-action:hover { background: var(--active); color: var(--text); }
 .act-audio { margin: 6px 0 4px 24px; }
 .attach-preview .audio-card { width: min(100%, 360px); }
+
+/* Voice test under a narrator picker: the sample text and its button on one row, the player below. */
+.voice-test { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.voice-test-row { display: flex; gap: 8px; align-items: center; }
+.voice-test-row .input { flex: 1 1 auto; min-width: 0; }
+.voice-test-row .btn { flex: none; display: inline-flex; gap: 6px; align-items: center; }
+.voice-test [data-tone="error"] { color: var(--danger, #c0392b); }

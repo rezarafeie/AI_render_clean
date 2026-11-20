@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { useFullscreen } from "../components/useFullscreen";
 import { friendlyError } from "../ui";
 import { EditCard, EditGrid } from "./EditCard";
+import VoiceTest from "./VoiceTest";
 
 /** The chat's motion graphic, kept fresh: the newest state, refreshed as events arrive and while a version is being made. */
 function useMotion(motionId: string, events: StudioEvent[]) {
@@ -82,7 +83,9 @@ export function MotionEditForm({ schema, draft, disabled, onChange }: { schema: 
     const edited = group.fields.filter(f => f.key in draft).length;
     return <EditCard key={group.id} title={group.title} icon={group.id === "scenes" ? "film" : group.id === "colours" ? "image" : group.id === "fonts" ? "captions" : group.id === "voice" ? "mic2" : "music"}
       summary={edited ? `${edited} تغییر اعمال‌نشده` : `${group.fields.length} مورد`}>
-      <EditGrid>{group.fields.map(field => <FieldInput key={field.key} field={field} value={field.key in draft ? draft[field.key] : field.value} disabled={disabled} onChange={next => onChange(field, next)}/>)}</EditGrid>
+      <EditGrid>{group.fields.map(field => <FieldInput key={field.key} field={field} value={field.key in draft ? draft[field.key] : field.value} disabled={disabled} onChange={next => onChange(field, next)}/>)}
+        {group.id === "voice" ? (() => { const pick = (key: string) => { const f = group.fields.find(x => x.key === key); return String(f ? (key in draft ? draft[key] : f.value) : ""); };
+          return <VoiceTest voice={pick("voice.narrator")} style={pick("voice.style")} disabled={disabled}/>; })() : null}</EditGrid>
     </EditCard>;
   })}</>;
 }

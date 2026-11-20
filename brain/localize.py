@@ -444,6 +444,8 @@ NARRATORS = (
     ("Xb7hH8MSUJpSbSDYk0k2", "Alice", "زن، مطمئن و آموزگار"),
     ("XrExE9yKIg1WjnnlVkGX", "Matilda", "زن، دوستانه و بانشاط"),
 )
+from brain import gemini_tts as _gemini
+NARRATORS = NARRATORS + tuple(_gemini.narrators())          # Gemini text-to-speech voices ("gemini:<Voice>"), read by brain/gemini_tts.py
 
 # Names a person may write for a narrator (Latin or Persian spelling) -> the voice id: «گوینده کانری», "narrator Connery".
 NARRATOR_ALIASES = {
@@ -457,6 +459,7 @@ NARRATOR_ALIASES = {
     "aramofen": "QMSZ0tTD0GwA4wrqCGak", "آرامفن": "QMSZ0tTD0GwA4wrqCGak",
     "liam": "TX3LPaxmHKxFdv7VOQHJ", "لیام": "TX3LPaxmHKxFdv7VOQHJ",
 }
+NARRATOR_ALIASES.update({name.lower(): _gemini.PREFIX + name for name in _gemini.NAMES})          # «گوینده Charon», "voice kore"
 
 
 _MY_VOICE = re.compile(r"با\s+صدای\s*(?:من|خودم)(?![\u0600-\u06ff])|صدای\s*(?:من|خودم)(?![\u0600-\u06ff])|با\s+صدام|\bmy\s+(?:own\s+)?voice\b|صدای\s*کلون", re.I)
@@ -534,7 +537,7 @@ def elevenlabs_characters_left() -> Optional[int]:
 
 def check_voice_budget(texts: list[str], provider: str, cache_dir: Path, voice: str = "", style: str = "") -> None:
     """Fail before rendering when ElevenLabs cannot voice the uncached lines."""
-    if provider != "elevenlabs":
+    if provider != "elevenlabs" or _gemini.is_gemini(voice):
         return
     full, _ = narration_script(texts, style)
     needed = 0 if _narration_paths(full, cache_dir, voice)[1].is_file() else len(full)
@@ -643,6 +646,8 @@ def narration_brief(text: str):
 
 def _cast(text: str, voice: str = "") -> tuple[str, str]:
     """The person's own pick from NARRATORS is used as chosen; otherwise the studio's Persian casting (which also reads the person's brief for the speaker's gender)."""
+    if _gemini.is_gemini(voice):
+        return voice, _gemini.model()
     if voice and voice in narrator_ids():
         return voice, "eleven_v3"
     from .speech_policy import eleven_cast
@@ -667,6 +672,8 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     import httpx
     from brain.elevenlabs_transport import url as elevenlabs_url
 
+    if _gemini.is_gemini(voice):
+        return _gemini.speak_with_timestamps(text, voice)
     key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not key:
         raise RuntimeError("ElevenLabs API key is not set")

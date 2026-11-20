@@ -1379,7 +1379,7 @@ def _run_job(job: Job, preview: bool, loudnorm: bool = False, *, raise_errors: b
             try:
                 from creative.checks import output_issues
                 from brain.localize import NARRATORS
-                persian = {voice for voice, _, _ in NARRATORS[1:10]}
+                persian = {voice for voice, _, _ in NARRATORS[1:10]} | {voice for voice, _, _ in NARRATORS if voice.startswith("gemini:")}
                 used = {n.get('voice_id') for n in (job.plan_data or {}).get('generation_meta', {}).get('voices', []) if isinstance(n, dict)}
                 notes = output_issues(board, music=bool(data.get('music')), voice_ids=used, persian_voices=persian)
                 if getattr(job, 'designer_note', None):

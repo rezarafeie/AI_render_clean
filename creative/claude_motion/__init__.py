@@ -404,6 +404,12 @@ def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Pa
     audio, stamps = folder / f"{name}-{digest}.mp3", folder / f"{name}-{digest}.json"
     if audio.is_file() and stamps.is_file():
         return audio, json.loads(stamps.read_text())
+    from brain import gemini_tts
+    if gemini_tts.is_gemini(voice):
+        raw, alignment = gemini_tts.speak_with_timestamps(text, voice)
+        audio.write_bytes(raw)
+        stamps.write_text(json.dumps(alignment, ensure_ascii=False))
+        return audio, alignment
     key = api_key()
     if not key:
         raise RuntimeError("ElevenLabs API key is not set")

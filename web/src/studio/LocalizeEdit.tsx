@@ -2,6 +2,7 @@ import React from "react";
 import { api, LibraryAsset, LocalizeBoxColour, LocalizeLine, LocalizeProject } from "../api";
 import { friendlyError, notify } from "../ui";
 import { EditCard, EditGrid, EditSwitch } from "./EditCard";
+import VoiceTest from "./VoiceTest";
 
 const BUSY = new Set(["queued", "analyzing", "rendering"]);
 const STATUS: Record<LocalizeProject["status"], [string, "success" | "error" | "warning" | "working" | undefined]> = {
@@ -126,6 +127,7 @@ export function LocalizeEdit({ id, onChanged }: { id: string; onChanged: () => v
           <div className="field"><label htmlFor="loc-voice-style">حالت صدا</label>
             <select id="loc-voice-style" className="input" disabled={locked} value={draft.voice_style ?? ""} onChange={event => set({ voice_style: event.target.value })}>
               {(voices?.styles ?? [{ id: "", label: "طبیعی" }]).map(style => <option key={style.id} value={style.id}>{style.label}</option>)}</select></div>
+          <VoiceTest voice={draft.voice_id ?? ""} style={draft.voice_style ?? ""} disabled={locked}/>
         </EditGrid>
       </EditCard>
 

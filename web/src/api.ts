@@ -1100,9 +1100,9 @@ export const api = {
   async renameVoice(id: string, name: string): Promise<{ id: string; name: string }> {
     return j(await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }));
   },
-  /** The person's own text read in their cloned voice; returns an object URL of the audio. */
-  async previewVoice(id: string, text: string): Promise<string> {
-    const response = await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+  /** The person's own text read by a narrator (ElevenLabs, Gemini or their cloned voice) in a delivery style; returns an object URL of the audio. */
+  async previewVoice(id: string, text: string, style = ""): Promise<string> {
+    const response = await authFetch(`${BASE}/localize/voices/${encodeURIComponent(id)}/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, style }) });
     if (!response.ok) { let detail = ""; try { detail = (await response.json()).detail; } catch { /* no body */ } throw new Error(typeof detail === "string" && detail ? detail : `HTTP ${response.status}`); }
     return URL.createObjectURL(await response.blob());
   },

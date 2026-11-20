@@ -46,6 +46,10 @@ def _generate_elevenlabs(
     *, language: str = "", context: str = "",
 ) -> None:
     """Generate one MP3 through the AI router (its speech route: Jarvis TTS models; the gateway's own fallbacks apply there)."""
+    from . import gemini_tts
+    if gemini_tts.is_gemini(voice_id):                     # a Gemini narrator is read by Gemini, not by the router's ElevenLabs route
+        gemini_tts.speak(text, voice_id, Path(output_path))
+        return
     from . import lm_gateway
     if not lm_gateway.configured():
         raise RuntimeError("The AI router is not configured; no speech request was sent")
