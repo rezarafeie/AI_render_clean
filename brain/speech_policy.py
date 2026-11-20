@@ -121,9 +121,9 @@ def eleven_voices() -> list[dict]:
 def eleven_cast(text: str, voice: str = "", model: str = "", *, language: str = "", context: str = "") -> tuple[str, str]:
     if not persian(text, language):
         return voice, model
-    # v2/Flash/Turbo do not support Persian. v3's fa support is documented;
-    # newer models must be verified before being added to this allow-list.
-    model = "eleven_v3"
+    # v2/Flash/Turbo do not support Persian. v3 and v4 read Persian and the delivery tags (v4 verified 2026-11-21); a voice that refuses v4 gets v3.
+    from .localize import model_for
+    model = model_for(voice, "eleven_v4")
     preferred = os.environ.get("PERSIAN_ELEVENLABS_VOICE_ID", "").strip() or voice
     return choose_voice(eleven_voices(), context, preferred), model
 

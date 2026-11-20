@@ -47,7 +47,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "anthropic": {"title": "Anthropic (EditorGPT Pro agent only)", "base_url": ANTHROPIC_RELAY, "model": "claude-opus-5-5", "format": "openai",
                   "group": None, "agent_only": True},
     # The account's own ElevenLabs voices (My Voices), through the studio's Vercel relay (ELEVENLABS_PROXY_URL). Speech only: a route lists its models as `elevenlabs:<model>`.
-    "elevenlabs": {"title": "ElevenLabs (via Vercel relay)", "base_url": "https://api.elevenlabs.io", "model": "eleven_v3", "format": "elevenlabs", "group": None, "speech_only": True},
+    "elevenlabs": {"title": "ElevenLabs (via Vercel relay)", "base_url": "https://api.elevenlabs.io", "model": "eleven_v4", "format": "elevenlabs", "group": None, "speech_only": True},
 }
 FORMATS = ("openai", "gemini", "elevenlabs")
 

@@ -20,6 +20,7 @@ class VoiceCapabilities:
 
 
 CAPABILITIES: dict[str, VoiceCapabilities] = {
+    "elevenlabs:eleven_v4": VoiceCapabilities(frozenset({"fa", "en"}), inline_tags=True, pauses=True, word_timestamps=True),
     "elevenlabs:eleven_v3": VoiceCapabilities(frozenset({"fa", "en"}), inline_tags=True, pauses=True, word_timestamps=True),
     "elevenlabs:eleven_multilingual_v2": VoiceCapabilities(frozenset({"fa", "en"}), word_timestamps=True),
 }

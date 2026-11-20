@@ -394,7 +394,8 @@ def polish_speech(lines: list[str]) -> list[str]:
 
 
 def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Path, dict]:
-    """One sentence with character timestamps (cached). The reference film's settings: eleven_v3, language fa, stability .5, similarity .8."""
+    """One sentence with character timestamps (cached). Settings: eleven_v4 (v3 for a voice that refuses it), language fa, stability .5, similarity .8; the
+    line's delivery tags ([excited], [calm]...) travel in the text and both models read them as direction."""
     import base64
     import hashlib
     import httpx
@@ -404,6 +405,9 @@ def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Pa
     audio, stamps = folder / f"{name}-{digest}.mp3", folder / f"{name}-{digest}.json"
     if audio.is_file() and stamps.is_file():
         return audio, json.loads(stamps.read_text())
+    old = hashlib.sha256(f"{voice}|eleven_v3|{text}".encode()).hexdigest()[:12]     # a film voiced before v4: its unchanged lines keep their take
+    if (folder / f"{name}-{old}.mp3").is_file() and (folder / f"{name}-{old}.json").is_file():
+        return folder / f"{name}-{old}.mp3", json.loads((folder / f"{name}-{old}.json").read_text())
     from brain import gemini_tts
     if gemini_tts.is_gemini(voice):
         raw, alignment = gemini_tts.speak_with_timestamps(text, voice)
@@ -413,9 +417,17 @@ def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Pa
     key = api_key()
     if not key:
         raise RuntimeError("ElevenLabs API key is not set")
-    response = httpx.post(elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"), params={"output_format": "mp3_44100_128"}, headers={"xi-api-key": key},
-                          json={"text": text, "model_id": model, "language_code": "fa", "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}},
+    from brain import localize as _speech
+    model = _speech.model_for(voice, model)
+
+    def send(model_id: str):
+        return httpx.post(elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"), params={"output_format": "mp3_44100_128"}, headers={"xi-api-key": key},
+                          json={"text": text, "model_id": model_id, "language_code": "fa", "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}},
                           timeout=httpx.Timeout(300.0, connect=20.0))
+    response = send(model)
+    if model == _speech.V4 and _speech.refused_model(response):        # this voice does not take v4: v3, remembered for the next lines
+        _speech.remember_no_v4(voice)
+        response = send(_speech.V3)
     if response.status_code == 402 or (response.status_code >= 400 and "quota" in response.text.lower()):
         raise RuntimeError("ElevenLabs quota exceeded")
     response.raise_for_status()

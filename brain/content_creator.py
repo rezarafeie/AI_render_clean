@@ -489,7 +489,7 @@ def _run_generation(job_id: str, provider_name: str, *, raise_errors: bool = Fal
                     else:
                         voice_kwargs = {
                             "voice_id": chosen_voice or _default_elevenlabs_voice(storyboard.language),
-                            "model_id": "eleven_v3" if chosen_voice else tts_model(),     # the person's pick is used as chosen (eleven_v3 understands the style tags)
+                            "model_id": tts_model(),     # v4 (v3 for a voice that refuses it): both read the style tags as direction
                         }
                         if not voice_kwargs["voice_id"]:
                             raise ValueError("Set an ElevenLabs voice ID for generated narration.")

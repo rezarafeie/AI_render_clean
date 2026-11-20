@@ -395,7 +395,31 @@ def speakable(text: str) -> str:
 # --- Voice --------------------------------------------------------------------
 
 def tts_model() -> str:
-    return os.environ.get("LOCALIZE_TTS_MODEL", "eleven_v3").strip() or "eleven_v3"
+    return os.environ.get("LOCALIZE_TTS_MODEL", "eleven_v4").strip() or "eleven_v4"
+
+
+# ElevenLabs v4 reads Persian and the bracketed delivery tags ([excited], [whispers], [calm]...) like v3, with a better voice (checked 2026-11-21 on library,
+# premade and cloned voices). A voice that refuses v4 is read with v3 and remembered for the rest of the process.
+V4, V3 = "eleven_v4", "eleven_v3"
+_NO_V4: set[str] = set()
+
+
+def model_for(voice: str, model: str = "") -> str:
+    model = model or tts_model()
+    return V3 if model == V4 and voice in _NO_V4 else model
+
+
+def refused_model(response) -> bool:
+    """ElevenLabs refused the model for this voice (not a quota, key or rate problem): the caller retries the same text with v3."""
+    if response.status_code not in (400, 422):
+        return False
+    text = response.text.lower()
+    return "model" in text or "not supported" in text or "unsupported" in text or "voice" in text
+
+
+def remember_no_v4(voice: str) -> None:
+    _NO_V4.add(voice)
+    log.warning("voice %s does not take eleven_v4; it is read with eleven_v3", voice)
 
 
 LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"   # ElevenLabs premade "Liam"
@@ -649,7 +673,7 @@ def _cast(text: str, voice: str = "") -> tuple[str, str]:
     if _gemini.is_gemini(voice):
         return voice, _gemini.model()
     if voice and voice in narrator_ids():
-        return voice, "eleven_v3"
+        return voice, model_for(voice)
     from .speech_policy import eleven_cast
     context = (_BRIEF.get() + " narration educational").strip()
     return eleven_cast(text, tts_voice(), tts_model(), language=language_of(text), context=context)
@@ -659,6 +683,10 @@ def _narration_paths(full: str, out_dir: Path, voice: str = "") -> tuple[Path, P
     voice, model = _cast(full, voice)
     digest = hashlib.sha256(f"casting-v1|{voice}|{model}|{full}".encode()).hexdigest()[:16]
     base = out_dir / f"narration_{digest}"
+    if model == V4 and not (base.with_suffix(".mp3").is_file() and base.with_suffix(".json").is_file()):
+        old = out_dir / f"narration_{hashlib.sha256(f'casting-v1|{voice}|{V3}|{full}'.encode()).hexdigest()[:16]}"
+        if old.with_suffix(".mp3").is_file() and old.with_suffix(".json").is_file():
+            base = old                                     # a take made before v4 for this same text and voice: kept (no new spend, same voice)
     return base.with_suffix(".mp3"), base.with_suffix(".json")
 
 
@@ -678,12 +706,19 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     if not key:
         raise RuntimeError("ElevenLabs API key is not set")
     voice, model = _cast(text, voice)
-    response = httpx.post(
-        elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"),
-        headers={"xi-api-key": key},
-        json={"text": text, "model_id": model, "language_code": language_of(text)},       # English text is not sent as Persian
-        timeout=httpx.Timeout(300.0, connect=20.0),
-    )
+    model = model_for(voice, model)
+
+    def send(model_id: str):
+        return httpx.post(
+            elevenlabs_url(f"v1/text-to-speech/{voice}/with-timestamps"),
+            headers={"xi-api-key": key},
+            json={"text": text, "model_id": model_id, "language_code": language_of(text)},       # English text is not sent as Persian
+            timeout=httpx.Timeout(300.0, connect=20.0),
+        )
+    response = send(model)
+    if model == V4 and refused_model(response):           # this voice does not take v4: the same text with v3 (nothing was spent on the refusal)
+        remember_no_v4(voice)
+        response = send(V3)
     if response.status_code == 403:
         raise RuntimeError("ElevenLabs refused the request (HTTP 403); check the network/VPN")
     # only an error response can mean "quota": a successful body is base64 audio, which can contain the letters q-u-o-t-a by chance
