@@ -17,7 +17,7 @@ import os
 import secrets
 import tempfile
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from starlette.datastructures import Headers, UploadFile
 from contextlib import asynccontextmanager
@@ -340,25 +340,36 @@ async def _run_reply(db, token, job_id):
 
 
 @router.get("/media/{ticket}")
-async def telegram_media(ticket: str):
+async def telegram_media(request: Request, ticket: str):
     if len(ticket) != 43 or not all(c.isalnum() or c in "_-" for c in ticket):
         raise HTTPException(404)
     async with storage() as db:
         raw = await db.get(PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest())
     if not raw:
         raise HTTPException(404)
-    path, _ = json.loads(raw)
+    path, _, *owner = json.loads(raw)
     file = Path(path)
+    media_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+    if owner:
+        from app import media_archive
+
+        response = await asyncio.to_thread(media_archive.serve, request, file, owner[0], filename=file.name, media_type=media_type)
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
     if not file.is_file():
         raise HTTPException(404)
-    return FileResponse(file, filename=file.name, media_type=mimetypes.guess_type(file.name)[0] or "application/octet-stream",
+    return FileResponse(file, filename=file.name, media_type=media_type,
                         headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
 
 
-async def _media_url(db, path, kind):
+async def _media_url(db, path, kind, *, owner=None, ttl=180):
     ticket = secrets.token_urlsafe(32)
     key = PREFIX + "media:" + hashlib.sha256(ticket.encode()).hexdigest()
-    await db.set(key, json.dumps([str(path), kind]), ex=180)
+    value = [str(path), kind]
+    if owner is not None:
+        value.append(owner)
+    await db.set(key, json.dumps(value), ex=ttl)
     return _config()[2] + "/api/integrations/telegram/media/" + ticket
 
 
@@ -387,6 +398,55 @@ async def _send_file(token, chat, path, kind):
         except (httpx.HTTPError, ValueError):
             pass
     raise HTTPException(502, "ارسال فایل به تلگرام انجام نشد.")
+
+
+async def _send_output_file(db, token, chat, conversation, owner, path, size, title, identity, *, link_only=False):
+    """Use a file message when possible and a scoped download when Telegram cannot accept it."""
+    base = _config()[2]
+    caption = f"خروجی «{title.strip()[:120]}» آماده شد." if title.strip() else "خروجی ویدیو آماده شد."
+    kind = "video" if path.suffix.lower() == ".mp4" else "document"
+    ticket = await _media_url(db, path, kind, owner=owner, ttl=24 * 3600)
+    studio_button = [{"text": "باز کردن در Studio", "web_app": {"url": base + "/studio/" + conversation}}]
+    relay = os.environ.get("EDITOR_TELEGRAM_DOWNLOAD_RELAY_URL")
+    if not link_only and relay and 18_000_000 < size <= 1_950_000_000:
+        endpoint = urlsplit(relay)
+        destination = urlunsplit((endpoint.scheme, endpoint.netloc, "/api/upload", "", ""))
+        key = f"{PREFIX}multipart:{chat}:{conversation}:{identity}"
+        raw = await db.get(key)
+        state = json.loads(raw) if raw else {"offset": 0, "fileId": str(secrets.randbits(62) + 1),
+                                             "randomId": str(secrets.randbits(62) + 1), "session": None}
+        async with httpx.AsyncClient(timeout=65) as client:
+            while True:
+                if await db.get(PREFIX + f"tg:{chat}") != owner:
+                    raise HTTPException(403, "Telegram account disconnected")
+                response = await client.post(destination, headers=_relay_headers(), json={
+                    **state, "chatId": str(chat), "size": size, "source": ticket, "name": path.name[:200],
+                    "caption": caption, "conversation": conversation,
+                })
+                if response.status_code in {401, 404, 405, 413, 422, 501, 503}:
+                    break
+                if not response.is_success:
+                    raise HTTPException(502, "Telegram upload will be retried")
+                result = response.json()
+                if result.get("sent") is True:
+                    await db.delete(key)
+                    return
+                offset = result.get("offset")
+                if type(offset) is not int or not state["offset"] < offset <= size:
+                    raise HTTPException(502, "Telegram upload made no progress")
+                state.update(offset=offset, session=result["session"])
+                await db.set(key, json.dumps(state), ex=7200)
+    elif not link_only and size <= (18_000_000 if os.environ.get("EDITOR_TELEGRAM_BOT_RELAY_URL") else 50_000_000):
+        method = "sendVideo" if kind == "video" else "sendDocument"
+        async with httpx.AsyncClient(timeout=30) as client:
+            result = await _bot_call(client, token, method, {"chat_id": chat, kind: ticket, "caption": caption,
+                                                             "reply_markup": {"inline_keyboard": [studio_button]}})
+        if result.is_success and result.json().get("ok"):
+            return
+        if result.status_code == 429 or result.status_code >= 500:
+            raise HTTPException(502, "Telegram upload will be retried")
+    await _send(token, chat, caption + "\nفایل را با دکمهٔ دانلود بگیرید.", buttons=[
+        [{"text": "دانلود فایل", "url": ticket}], studio_button])
 
 
 async def _ingest(request, conversation, file, download):
@@ -515,8 +575,6 @@ async def _updates(request, db, token, tg, conversation):
                     buttons.append([{"text": choice[:64], "callback_data": "studio:choice:" + action}])
                 await _send(token, tg, str(data.get("question") or "یک گزینه را انتخاب کنید.")[:3900], buttons=buttons)
         elif kind == "render.completed" and data.get("project_id"):
-            media = await _ready_asset(studio.project_output(request, data["project_id"]))
-            await _output_media(db, token, tg, conversation, cursor_key, media, f"render:{data['project_id']}")
             line = _activity(event)
             if line and (not lines or lines[-1] != line):
                 lines.append(line)
@@ -624,29 +682,31 @@ async def _live_replies(db, token, tg, conversation, cursor_key, events):
 
 
 async def _message_assets(request, db, token, tg, conversation, cursor_key, message):
+    from app import media_archive
+    from app.telegram_outputs import enqueue_attachment
+
+    owner = str(request.state.user.id)
     photos = []
     complete = True
-    for attachment_id in message["attachments"]:
-        media = await _ready_asset(studio.get_attachment(request, conversation, attachment_id))
-        if media is None:
+    attachments = await studio.repo.get_attachments(message["attachments"], conversation, owner, restore_media=False)
+    for attachment in attachments:
+        attachment_id = attachment["id"]
+        path = Path(attachment["path"])
+        if not media_archive.available(path, owner):
             continue
-        path = Path(media.path)
-        if media.media_type in {"image/jpeg", "image/png"}:
+        media_type = attachment["mime_type"] or ""
+        if media_type in {"image/jpeg", "image/png"}:
             key = _asset_key(cursor_key, conversation, attachment_id, path)
             if not await db.exists(key):
                 photos.append((key, path))
-        elif path.stat().st_size <= 50_000_000:
-            kind = "audio" if (media.media_type or "").startswith("audio/") else "document"
+        elif media_type.startswith("audio/") and path.is_file() and path.stat().st_size <= 18_000_000:
             key = _asset_key(cursor_key, conversation, attachment_id, path)
             if not await db.exists(key):
-                complete = (await _deliver_motion_asset(db, token, tg, cursor_key, conversation, kind, media, attachment_id)
+                media = SimpleNamespace(path=path)
+                complete = (await _deliver_motion_asset(db, token, tg, cursor_key, conversation, "audio", media, attachment_id)
                             and complete)
         else:
-            key = cursor_key + ":large:" + attachment_id
-            if not await db.exists(key):
-                await _send(token, tg, "فایل آماده است. برای دریافت فایل حجیم آن را در Studio باز کنید.", buttons=[
-                    [{"text": "باز کردن Studio", "web_app": {"url": _config()[2] + "/studio/" + conversation}}]])
-                await db.set(key, "1", ex=30 * 86400)
+            await enqueue_attachment(db, conversation, owner, attachment_id)
     return await _send_albums(db, token, tg, photos) and complete
 
 
@@ -680,28 +740,6 @@ async def _motion_assets(request, db, token, tg, conversation, cursor_key):
             pending.append((key, path))
 
     await _send_albums(db, token, tg, pending)
-    if motion["status"] == "completed" and motion.get("current"):
-        version = motion["current"]
-        media = await _ready_asset(studio.motion_media(request, motion_id, "video", version))
-        await _output_media(db, token, tg, conversation, cursor_key, media, f"motion:{motion_id}:{version}")
-
-
-async def _output_media(db, token, tg, conversation, cursor_key, media, label):
-    if media is None:
-        return
-    path = Path(media.path)
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return
-    if size <= 50_000_000:
-        await _deliver_motion_asset(db, token, tg, cursor_key, conversation, "document", media, label)
-        return
-    key = cursor_key + ":large:" + label
-    if not await db.exists(key):
-        await _send(token, tg, "ویدیو آماده است. فایل حجیم را از پیش‌نمایش Studio بگیرید.", buttons=[
-            [{"text": "مشاهده و دانلود", "web_app": {"url": _config()[2] + "/studio/" + conversation}}]])
-        await db.set(key, "1", ex=30 * 86400)
 
 
 async def _send_albums(db, token, tg, pending):
@@ -972,7 +1010,8 @@ async def telegram_loop():
                 log.warning("Telegram timeline worker: %s", type(exc).__name__)
             await asyncio.sleep(1)
 
-    await asyncio.gather(transfer(), monitor(), replies())
+    from app.telegram_outputs import delivery_loop
+    await asyncio.gather(transfer(), monitor(), replies(), delivery_loop())
 
 
 def _private_message(update):
@@ -1137,12 +1176,8 @@ async def webhook(request: Request):
                     project = next((p for p in reversed(chat["projects"]) if p["status"] == "done"), None)
                     if not project:
                         raise HTTPException(409, "خروجی آماده‌ای پیدا نشد.")
-                    result = await studio.project_output(request, project["id"])
-                    path = Path(getattr(result, "path", ""))
-                    if not path.is_file() or path.stat().st_size > 50_000_000:
-                        await _send(token, tg, "خروجی را از تب پیش‌نمایش Studio بگیرید.", buttons=_menu(base, conversation_id))
-                    else:
-                        await _send_file(token, tg, path, "document")
+                    await studio.repo.emit(conversation_id, "render.completed", {"project_id": project["id"]})
+                    await _send(token, tg, "خروجی برای تحویل به تلگرام ثبت شد. هر نسخه یک بار فرستاده می‌شود.")
             except (KeyError, HTTPException) as exc:
                 await _send(token, tg, str(getattr(exc, "detail", "گفتگو پیدا نشد."))[:500],
                             buttons=_menu(base, conversation_id))

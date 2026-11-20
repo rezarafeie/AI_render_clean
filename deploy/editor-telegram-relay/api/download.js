@@ -4,13 +4,13 @@ import bigInt from 'big-integer';
 import { parseDocument } from '../lib/file-location.js';
 import { createHash, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
 
-function seal(value) {
+export function seal(value) {
   const iv=randomBytes(12), key=createHash('sha256').update(process.env.RELAY_SECRET).digest();
   const cipher=createCipheriv('aes-256-gcm',key,iv);
   const data=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);
   return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');
 }
-function unseal(value) {
+export function unseal(value) {
   const data=Buffer.from(value,'base64url'), decipher=createDecipheriv('aes-256-gcm',createHash('sha256').update(process.env.RELAY_SECRET).digest(),data.subarray(0,12));
   decipher.setAuthTag(data.subarray(12,28));
   return Buffer.concat([decipher.update(data.subarray(28)),decipher.final()]).toString('utf8');
