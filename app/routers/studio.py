@@ -1620,13 +1620,19 @@ async def motion_media(request: Request, motion_id: str, kind: str, v: Optional[
     if kind not in {"video", "thumb", "source", "voice"}:
         raise HTTPException(404, "unknown file")
     try:
-        path = await asyncio.to_thread(motion_graphic.media_path, _motion_dir(request, motion_id), kind, v)
+        path = await asyncio.to_thread(motion_graphic.media_path, _motion_dir(request, motion_id), kind, v,
+                                       restore_media=False)
     except KeyError:
         raise HTTPException(404, "file not ready")
     media_type = {"video": "video/mp4", "thumb": "image/jpeg", "source": "text/html", "voice": "audio/mpeg"}[kind]
     headers = {"Cache-Control": "private, max-age=3600"}
-    if kind in {"video", "source"}:
-        headers["Content-Disposition"] = f'inline; filename="motion-graphic.{"mp4" if kind == "video" else "html"}"'
+    if kind == "video":
+        from app.media_archive import serve
+
+        return await asyncio.to_thread(serve, request, path, _user(request),
+                                       media_type=media_type, inline_name="motion-graphic.mp4")
+    if kind == "source":
+        headers["Content-Disposition"] = 'inline; filename="motion-graphic.html"'
     return FileResponse(path, media_type=media_type, headers=headers)
 
 

@@ -2210,7 +2210,7 @@ def make_thumb(video: Path, thumb: Path, duration: float) -> None:
                    capture_output=True, timeout=60)
 
 
-def media_path(directory: Path, kind: str, version: Optional[int] = None) -> Path:
+def media_path(directory: Path, kind: str, version: Optional[int] = None, *, restore_media: bool = True) -> Path:
     if kind == "voice":                                    # the narration take of the latest run, playable from the step's log
         try:
             audio = json.loads((directory / "voice.json").read_text())["audio"][0]["path"]
@@ -2231,6 +2231,14 @@ def media_path(directory: Path, kind: str, version: Optional[int] = None) -> Pat
         raise KeyError("version")
     names = {"video": "motion.mp4", "thumb": "thumb.jpg", "source": "index.html", "page": "page.json"}
     path = directory / f"v{item['n']}" / names[kind]
+    if kind == "video" and not path.is_file():
+        from app import media_archive
+
+        owner = record.get("user_key")
+        if restore_media:
+            path = media_archive.materialize(path, owner)
+        elif media_archive.available(path, owner):
+            return path
     if not path.is_file():
         raise KeyError(kind)
     return path

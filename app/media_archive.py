@@ -68,13 +68,18 @@ def _range(header: str, size: int) -> tuple[int, int] | None:
     raise HTTPException(416, "Invalid byte range", headers={"Content-Range": f"bytes */{size}"})
 
 
-def serve(request: Request, path: Path, owner: str, *, filename: str | None = None, media_type: str | None = None):
+def serve(request: Request, path: Path, owner: str, *, filename: str | None = None, media_type: str | None = None,
+          inline_name: str | None = None):
+    def local_response():
+        return FileResponse(path, filename=inline_name or filename, media_type=media_type,
+                            content_disposition_type="inline" if inline_name else "attachment")
+
     local = path.is_file()
     record = receipt(path, owner)
     if local:
         stat = path.stat()
         if record is None or (record["size"], record["mtime_ns"]) != (stat.st_size, stat.st_mtime_ns):
-            return FileResponse(path, filename=filename, media_type=media_type)
+            return local_response()
     if record is None:
         raise HTTPException(404, "Media not found")
     size = record["size"]
@@ -89,10 +94,12 @@ def serve(request: Request, path: Path, owner: str, *, filename: str | None = No
         size = end - start + 1
         status = 206
     headers["Content-Length"] = str(size)
-    if filename:
+    name = inline_name or filename
+    if name:
         from urllib.parse import quote
 
-        headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(filename, safe="")
+        disposition = "inline" if inline_name else "attachment"
+        headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''" + quote(name, safe="")
     content_type = media_type or VIDEO_TYPES[path.suffix.lower()]
     if request.method == "HEAD":
         return Response(status_code=status, media_type=content_type, headers=headers)
@@ -102,13 +109,13 @@ def serve(request: Request, path: Path, owner: str, *, filename: str | None = No
         result = _store().client.get_object(**params)
     except (BotoCoreError, ClientError) as error:
         if local:
-            return FileResponse(path, filename=filename, media_type=media_type)
+            return local_response()
         raise HTTPException(503, "Archived media is temporarily unavailable") from error
     body = result["Body"]
     if result["ContentLength"] != size or (requested and result.get("ContentRange") != headers["Content-Range"]):
         body.close()
         if local:
-            return FileResponse(path, filename=filename, media_type=media_type)
+            return local_response()
         raise HTTPException(503, "Unexpected archived media response")
 
     def chunks():

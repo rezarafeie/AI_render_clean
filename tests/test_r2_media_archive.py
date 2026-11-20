@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app import media_archive
+from app import media_archive, motion_graphic
 from app.routers import studio
 
 
@@ -66,3 +66,42 @@ def test_private_range_and_local_restore(tmp_path, monkeypatch):
     assert not path.exists()
     assert media_archive.materialize(path, "owner-one").read_bytes() == contents
     assert len(requests) == len(closed) == 2
+
+
+def test_archived_motion_version_remains_playable(tmp_path, monkeypatch):
+    content = b"abc"
+    digest = hashlib.sha256(content).hexdigest()
+    owner = "owner-one"
+    folder = tmp_path / "motion"
+    version = folder / "v1"
+    version.mkdir(parents=True)
+    (folder / "motion.json").write_text(json.dumps(
+        {"current": 1, "versions": [{"n": 1}], "user_key": owner},
+    ))
+    path = version / "motion.mp4"
+    key = f"media-archive/v1/{hashlib.sha256(owner.encode()).hexdigest()}/{digest}.mp4"
+    path.with_suffix(".mp4.r2.json").write_text(json.dumps(
+        {"path": "motion/v1/motion.mp4", "key": key, "sha256": digest, "size": 3, "mtime_ns": 1000000000},
+    ))
+    monkeypatch.setattr(media_archive.settings, "JOBS_DIR", str(tmp_path))
+    store = SimpleNamespace(bucket="media", client=SimpleNamespace(get_object=lambda **kwargs: {
+        "ContentLength": len(content),
+        "Body": SimpleNamespace(iter_chunks=lambda **options: iter([content]), close=lambda: None),
+    }))
+    monkeypatch.setattr(media_archive, "_store", lambda: store)
+    monkeypatch.setattr(motion_graphic, "locate", lambda motion_id, user: folder)
+    app = FastAPI()
+    app.include_router(studio.router)
+
+    @app.middleware("http")
+    async def test_identity(request, call_next):
+        request.state.user = SimpleNamespace(id=request.headers.get("x-test-owner", owner))
+        return await call_next(request)
+
+    with TestClient(app) as client:
+        response = client.get("/studio/motion/example/video?v=1")
+        assert response.status_code == 200 and response.content == content
+        assert response.headers["content-disposition"].startswith("inline;")
+        assert client.get("/studio/motion/example/video?v=1", headers={"x-test-owner": "other"}).status_code == 404
+    assert not path.exists()
+    assert motion_graphic.media_path(folder, "video", 1).read_bytes() == content

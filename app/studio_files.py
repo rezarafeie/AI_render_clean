@@ -93,7 +93,7 @@ def _motion_videos(conversation: dict, user: str) -> list[dict]:
     rows = []
     for version in (record.get("versions") or [])[-3:]:
         path = directory / f"v{version['n']}" / "motion.mp4"
-        if path.is_file():
+        if media_archive.available(path, user):
             rows.append({"path": path, "id": f"mot:{pointer['motion_id']}:{version['n']}", "name": f"{record.get('title') or conversation.get('title') or 'motion'} — v{version['n']}.mp4"})
     return rows
 
@@ -267,7 +267,7 @@ async def _resolve(user: str, file_id: str) -> tuple[Path, dict]:
         if not number.isdigit():
             raise KeyError(file_id)
         path = directory / f"v{int(number)}" / "motion.mp4"
-        if not path.is_file():
+        if not media_archive.available(path, user):
             raise KeyError(file_id)
         return path, {"kind": "mot", "directory": directory}
     raise KeyError(file_id)
