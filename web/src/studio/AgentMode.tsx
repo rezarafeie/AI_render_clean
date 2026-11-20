@@ -65,11 +65,17 @@ export function AgentRunControls({runs, onChanged}: {runs: StudioAgentRun[]; onC
   };
   const pro = [...runs].reverse().find(r => r.agent_mode === "pro" && r.pro?.spent_credits != null);
   const fa = (n: number) => n.toLocaleString("fa-IR");
+  // The whole chat: every Pro run of it (each run's own figure already counts its engines); a new run ("ادامه بده") adds to it, it never starts again from zero.
+  const proRuns = runs.filter(r => r.agent_mode === "pro" && r.pro?.spent_credits != null);
+  const chatTotal = proRuns.reduce((sum, r) => sum + (r.pro?.spent_credits || 0), 0);
+  const chatCalls = proRuns.reduce((sum, r) => sum + (r.pro?.calls || 0), 0);
+  const k = (n: number) => fa(Math.round(n / 1000));
   const proLine = pro ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
-    {pro.status === "running" || pro.status === "queued" ? "Pro در حال کار · " : "آخرین اجرای Pro · "}
-    {fa(Math.round((pro.pro?.spent_credits || 0) / 1000))} هزار اعتبار مصرف شد
-    {pro.pro?.budget_credits ? ` از سقف ${fa(Math.round(pro.pro.budget_credits / 1000))} هزار` : ""}
-    {pro.pro?.calls ? ` · ${fa(pro.pro.calls)} تماس با مدل` : ""}
+    {pro.status === "running" || pro.status === "queued" ? "Pro در حال کار · " : "Pro · "}
+    مصرف کل این چت {k(chatTotal)} هزار اعتبار
+    {proRuns.length > 1 ? ` (این اجرا ${k(pro.pro?.spent_credits || 0)} هزار${pro.pro?.budget_credits ? ` از سقف ${k(pro.pro.budget_credits)} هزار` : ""})`
+      : pro.pro?.budget_credits ? ` از سقف ${k(pro.pro.budget_credits)} هزار` : ""}
+    {chatCalls ? ` · ${fa(chatCalls)} تماس با مدل` : ""}
   </p> : null;
   return <>{proLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
     <div className="action-card" key={record.id} aria-label="EditorGPT Medium plan">
