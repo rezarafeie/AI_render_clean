@@ -413,6 +413,13 @@ async def _forward(api: Api, message, live: dict) -> None:
                                 detail=short(("خطا: " if block.is_error else "") + (_result_text(block) or "انجام شد")))
 
 
+# Bare Claude may install packages like Claude does elsewhere: npm and PyPI only, through the package proxy on the agent network
+# (deploy/agent-pkg-proxy; every other host is refused). The app itself (the model proxy) is reached directly.
+_PROXY = os.environ.get("PRO_PACKAGE_PROXY", "http://pkg-proxy:3128")
+PACKAGE_PROXY = {k: _PROXY for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "npm_config_proxy", "npm_config_https_proxy")} | \
+    {k: "editor.rafiei.co,localhost,127.0.0.1" for k in ("NO_PROXY", "no_proxy")} if _PROXY else {}
+
+
 MEDIA = {".mp4", ".mov", ".webm", ".mkv", ".gif", ".mp3", ".wav", ".m4a"}
 
 
@@ -465,7 +472,7 @@ async def run(job: dict) -> None:
             setting_sources=[],
             permission_mode="bypassPermissions",
             hooks={"PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
-            env={**base_env, "IS_SANDBOX": "1", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000"},
+            env={**base_env, "IS_SANDBOX": "1", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", **PACKAGE_PROXY},
             resume=job.get("resume") or None,
             include_partial_messages=True,
         )
