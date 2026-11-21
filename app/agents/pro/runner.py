@@ -423,6 +423,28 @@ PACKAGE_PROXY = {k: _PROXY for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy",
 MEDIA = {".mp4", ".mov", ".webm", ".mkv", ".gif", ".mp3", ".wav", ".m4a"}
 
 
+def _busy_children(work: Path) -> list[int]:
+    """Processes still working in this run's folder (a background render, ffmpeg, an install), the Claude CLI itself and its shell wrappers aside."""
+    root, me, busy = str(work), os.getpid(), []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) == me:
+            continue
+        try:
+            if not os.readlink(f"/proc/{entry}/cwd").startswith(root):
+                continue
+            with open(f"/proc/{entry}/stat") as handle:
+                if handle.read().rsplit(")", 1)[1].split()[0] == "Z":
+                    continue
+            with open(f"/proc/{entry}/cmdline", "rb") as handle:
+                command = handle.read().replace(b"\0", b" ").decode("utf-8", "replace").lower()
+        except OSError:
+            continue
+        if not command.strip() or "claude" in command or command.startswith(("bash ", "sh ", "/bin/bash", "/bin/sh", "tail ", "sleep ")):
+            continue
+        busy.append(int(entry))
+    return busy
+
+
 async def _deliver_made(api: Api, work: Path, since: float) -> None:
     """Bare Claude has no delivery tool: the videos and audio it made in this run (outside in/ and libraries) go to the chat, the largest first."""
     skip = {"in", "node_modules", ".claude", ".cache", ".git"}
@@ -435,8 +457,14 @@ async def _deliver_made(api: Api, work: Path, since: float) -> None:
                 found.append(path)
         except OSError:
             continue
+    # a project's own assets (public/, assets/: a copy of the input it used) and its test or preview renders are not the output while a real one exists
+    assets = {"public", "assets", "static", "src"}
+    found = [p for p in found if not (set(p.relative_to(work).parts[:-1]) & assets)] or found
+    trial = ("test", "preview", "draft", "sample", "tmp", "temp", "check", "probe")
+    final = [p for p in found if not any(t in p.stem.lower() for t in trial)]
+    found = final or found
     videos = sorted((p for p in found if p.suffix.lower() not in {".mp3", ".wav", ".m4a"}), key=lambda p: p.stat().st_size, reverse=True)
-    for path in (videos or sorted(found, key=lambda p: p.stat().st_size, reverse=True))[:3]:
+    for path in (videos or sorted(found, key=lambda p: p.stat().st_size, reverse=True))[:2]:
         try:
             await api.tool("deliver", {"path": str(path.relative_to(work)), "title": path.stem[:120]})
         except Exception:
@@ -510,7 +538,7 @@ async def run(job: dict) -> None:
             watcher = asyncio.create_task(watch())
             try:
                 await client.query(job["text"] if raw else first_message(job["text"], job.get("attachment_ids") or [], bool(job.get("resume"))))
-                retries = lost = 0
+                retries = lost = waits = 0
                 while True:
                     live["api_error"] = False
                     spoke, strays = False, 0
@@ -543,6 +571,19 @@ async def run(job: dict) -> None:
                         log.warning("pro run %s: a reply without tools (broken upstream request), the session goes on", job["run"])
                         await client.query(LOST_TOOLS_NOTE)
                         continue
+                    if raw and not stopped and not live.get("api_error") and waits < 6 and _busy_children(work):
+                        # Claude ended its turn while work it started still runs in the background (a render, an install): as in Claude itself, the
+                        # session stays open; it is told when the work has ended and goes on to the end (a closed run killed a final render, 2026-11-21).
+                        waits += 1
+                        await api.event(kind="tool_start", id=f"wait-bg-{waits}", tool="Bash", label="منتظر تمام شدن کار در حال اجرا")
+                        for _ in range(540):
+                            if stopped or not _busy_children(work):
+                                break
+                            await asyncio.sleep(10)
+                        await api.event(kind="tool_done", id=f"wait-bg-{waits}", tool="Bash", label="منتظر تمام شدن کار در حال اجرا", detail="تمام شد")
+                        if not stopped:
+                            await client.query("The background work you started has finished. Check its result and continue the task to the end.")
+                            continue
                     if not stopped and not live.get("api_error"):
                         late = await api.inbox()            # written after the agent's last step: it answers them before the run ends
                         if late:
