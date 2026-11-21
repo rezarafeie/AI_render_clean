@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""cloud-render - render a Remotion project on the studio's cloud render servers (RunPod, 8 vCPU) instead of this small container.
+
+usage: cloud-render PROJECT_DIR OUTPUT.mp4 [--audio AUDIO_FILE]
+
+The project (any Remotion project in this folder):
+  * registers a composition with id "Main" (src/index.ts or src/index.tsx calling registerRoot);
+  * has src/timing.json: {"total": <seconds>, "width": W, "height": H, "fps": 30}
+    with W x H one of 1080x1920, 1920x1080, 1080x1080, 1080x1350, and total up to 600 seconds;
+  * keeps its pictures, fonts, video and audio under public/ (read with staticFile()); links are copied in.
+The video is rendered muted; with --audio the file is put on it when it comes back, so OUTPUT is final.
+It waits until the render ends and prints its progress. Exit code 0 = OUTPUT written.
+"""
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+APP = os.environ.get("EDITORGPT_APP", "http://editor.rafiei.co:8000")
+TOKEN = os.environ.get("EDITORGPT_RUN_TOKEN", "")
+WORK = os.environ.get("EDITORGPT_WORK", os.getcwd())
+
+
+def call(name, args):
+    request = urllib.request.Request(APP + "/internal/pro/tool", data=json.dumps({"name": name, "args": args}).encode(),
+                                     headers={"x-pro-token": TOKEN, "Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))      # the studio is reached directly, never through the web proxy
+    try:
+        with opener.open(request, timeout=900) as response:
+            value = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        sys.exit(f"cloud-render: the studio refused the request (HTTP {exc.code}): {exc.read()[:300].decode('utf-8', 'replace')}")
+    if not value.get("ok"):
+        sys.exit("cloud-render: " + str(value.get("error")))
+    return value.get("result") or {}
+
+
+def inside(path):
+    full = os.path.realpath(os.path.join(os.getcwd(), path))
+    root = os.path.realpath(WORK)
+    if not (full == root or full.startswith(root + os.sep)):
+        sys.exit(f"cloud-render: {path} must be inside {root}")
+    return os.path.relpath(full, root)
+
+
+def main(argv):
+    if len(argv) < 2 or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0 if argv[:1] in (["-h"], ["--help"]) else 2
+    if not TOKEN:
+        sys.exit("cloud-render: not available in this environment")
+    audio = ""
+    if "--audio" in argv:
+        i = argv.index("--audio")
+        audio = inside(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
+    project, output = inside(argv[0]), inside(argv[1])
+    job = call("render_cloud", {"project_dir": project, "output": output, **({"audio": audio} if audio else {})})
+    print(f"cloud render started (job {job.get('job_id')})", flush=True)
+    last = ""
+    while True:
+        state = call("render_status", {"job_id": job.get("job_id")})
+        line = f"{state.get('state')} {state.get('progress', '')}% {state.get('detail') or state.get('stage') or ''}".strip()
+        if line != last:
+            print(line, flush=True)
+            last = line
+        if state.get("state") == "done":
+            print(f"done: {output} ({state.get('size_bytes')} bytes{', with audio' if state.get('with_audio') else ''})")
+            return 0
+        if state.get("state") in ("failed", "cancelled"):
+            sys.exit("cloud-render failed: " + str(state.get("error") or state.get("state")))
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -420,6 +420,10 @@ PACKAGE_PROXY = {k: _PROXY for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy",
     {k: "editor.rafiei.co,localhost,127.0.0.1" for k in ("NO_PROXY", "no_proxy")} if _PROXY else {}
 
 
+RAW_NOTE = ("This machine has 2 CPU cores and no GPU. To render a Remotion project on a fast cloud server (RunPod, 8 vCPU) instead, "
+            "the command `cloud-render` is available (run `cloud-render --help`).")
+
+
 MEDIA = {".mp4", ".mov", ".webm", ".mkv", ".gif", ".mp3", ".wav", ".m4a"}
 
 
@@ -494,13 +498,17 @@ async def run(job: dict) -> None:
         # no tool policy, no project settings). The person's message reaches it as written. Only the plumbing stays: the isolated container, the model
         # proxy (usage, credit), the person's later messages joining the session, and what it makes delivered to the chat when it ends.
         options = ClaudeAgentOptions(
-            system_prompt={"type": "preset", "preset": "claude_code"},
+            # One line about the machine, nothing about how to work: this container has 2 cores; heavy Remotion renders can go to the cloud.
+            system_prompt={"type": "preset", "preset": "claude_code", "append": RAW_NOTE},
             model=job.get("model") or "claude-opus-5-5",
             cwd=str(work),
             setting_sources=[],
             permission_mode="bypassPermissions",
             hooks={"PostToolUse": [HookMatcher(matcher=None, hooks=[_inbox(api)])]},
-            env={**base_env, "IS_SANDBOX": "1", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", **PACKAGE_PROXY},
+            env={**base_env, "IS_SANDBOX": "1", "BASH_DEFAULT_TIMEOUT_MS": "600000", "BASH_MAX_TIMEOUT_MS": "1800000", **PACKAGE_PROXY,
+                 # `cloud-render` (bin/): a Remotion project rendered on the studio's RunPod servers instead of this 2-core container
+                 "PATH": str(Path(__file__).resolve().parent / "bin") + ":" + os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+                 "EDITORGPT_APP": APP, "EDITORGPT_RUN_TOKEN": job["token"], "EDITORGPT_WORK": str(work)},
             resume=job.get("resume") or None,
             include_partial_messages=True,
         )
