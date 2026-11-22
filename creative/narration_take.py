@@ -55,5 +55,7 @@ def voice(storyboard: dict, texts: list[str], folder, user=None) -> dict:
     try:
         return localize.continuous_narration(spoken, folder, voice_id, style)
     except Exception as exc:
+        if type(exc).__name__ == "VoiceError":                # plan, credit, key or voice: the plain reason, nothing technical
+            raise NarrationFailed(f"ساخت نریشن انجام نشد: {exc}") from exc
         reason = "اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ارائه‌دهندهٔ صدا پاسخ نداد"
         raise NarrationFailed(f"ساخت نریشن انجام نشد: {reason} ({str(exc)[:140]}). دوباره امتحان کنید.") from exc

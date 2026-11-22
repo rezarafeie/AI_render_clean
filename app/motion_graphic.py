@@ -837,7 +837,7 @@ def _with_retries(call, attempts: int = 3, pause=time.sleep):
         try:
             return call()
         except Exception as exc:
-            if number == attempts or _PERMANENT.search(str(exc)):
+            if number == attempts or _PERMANENT.search(str(exc)) or type(exc).__name__ == "VoiceError":
                 raise
             log.warning("provider call failed (%s), attempt %d of %d: %s", type(exc).__name__, number, attempts, str(exc)[:120])
             pause(2 * number)
@@ -900,10 +900,11 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         except Exception as exc:
             # No quiet return to the old line-by-line voicing (that is what sounded cut up): the failure is shown in the log and stops the build.
             log.warning("continuous narration failed: %s", str(exc)[:200])
-            reason = ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "نریشن پیوسته ساخته نشد") + f" ({str(exc)[:140]})"
+            clear = type(exc).__name__ == "VoiceError"            # a reason the person can act on (plan, credit, key, voice), said as is
+            reason = str(exc) if clear else ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "نریشن پیوسته ساخته نشد") + f" ({str(exc)[:140]})"
             _note(directory, "voice", "ساخت نریشن پیوسته ناموفق بود؛ ساخت متوقف شد", "done", detail=reason)
             _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
-            raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}. دوباره امتحان کنید.") from exc
+            raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}" + ("" if clear else " دوباره امتحان کنید.")) from exc
     partial = None
     try:
         from brain import localize
@@ -911,11 +912,12 @@ def _narrate(directory: Path, record: dict, plan, fp: str):
         clips = partial["clips"] if partial else _with_retries(lambda: localize.synthesize_narration(texts, directory / "voice", voice_id, voice_style))
     except Exception as exc:
         log.warning("motion narration could not be made: %s", str(exc)[:200])
-        reason = ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ارائه‌دهندهٔ صدا پاسخ نداد") + f" ({str(exc)[:120]})"
+        clear = type(exc).__name__ == "VoiceError"
+        reason = str(exc) if clear else ("اعتبار ElevenLabs کافی نیست" if "quota" in str(exc).lower() else "ارائه‌دهندهٔ صدا پاسخ نداد") + f" ({str(exc)[:120]})"
         _note(directory, "voice", "ساخت نریشن انجام نشد؛ ساخت متوقف شد", "done", detail=reason)
         _remember_voice_error(directory, record, f"{type(exc).__name__}: {str(exc)[:200]}")
         # a reel without its voice is not what was asked for: the build stops with the reason (the plan is kept, so retrying starts from the voice)
-        raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}. دوباره امتحان کنید؛ ویدیو بی‌صدا ساخته نمی‌شود.")
+        raise RuntimeError(f"ساخت نریشن انجام نشد: {reason}" + ("" if clear else " دوباره امتحان کنید؛ ویدیو بی‌صدا ساخته نمی‌شود."))
     _remember_voice_error(directory, record, None)
     if partial:
         verified = ["نریشن فقط برای صحنه‌های " + "، ".join(str(i + 1) for i in partial["changed"]) + " دوباره ساخته شد؛ بقیهٔ صحنه‌ها همان صدای قبلی را نگه داشتند."]

@@ -428,9 +428,7 @@ def _tts(text: str, voice: str, model: str, folder: Path, name: str) -> tuple[Pa
     if model == _speech.V4 and _speech.refused_model(response):        # this voice does not take v4: v3, remembered for the next lines
         _speech.remember_no_v4(voice)
         response = send(_speech.V3)
-    if response.status_code == 402 or (response.status_code >= 400 and "quota" in response.text.lower()):
-        raise RuntimeError("ElevenLabs quota exceeded")
-    response.raise_for_status()
+    _speech.check_voice_response(response)               # a refusal is raised as a plain Persian reason (plan, credit, key, voice)
     data = response.json()
     raw = base64.b64decode(data["audio_base64"])
     if len(raw) < 1000:

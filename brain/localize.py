@@ -417,6 +417,39 @@ def refused_model(response) -> bool:
     return "model" in text or "not supported" in text or "unsupported" in text or "voice" in text
 
 
+class VoiceError(RuntimeError):
+    """ElevenLabs refused for a reason the person can act on; the message is the plain Persian reason (no HTTP codes, no URLs). Retrying does not help."""
+
+
+def check_voice_response(response) -> None:
+    """A failed ElevenLabs answer as a clear Persian reason: a cloned voice the plan does not include, characters used up, a bad key, a voice that is
+    gone, a busy service (the person saw "Client error '401 Unauthorized' for url ..." before)."""
+    if response.status_code < 400:
+        return
+    try:
+        detail = response.json().get("detail") or {}
+        detail = detail if isinstance(detail, dict) else {"message": str(detail)}
+    except ValueError:
+        detail = {"message": response.text[:300]}
+    code = str(detail.get("code") or detail.get("status") or "").lower()
+    text = (code + " " + str(detail.get("message") or "")).lower()
+    status = response.status_code
+    log.warning("ElevenLabs refused (HTTP %s): %s", status, text[:200])
+    if "cloned voice" in text or "ivc" in code or (status == 401 and "subscription" in text):
+        raise VoiceError("صدای کلون‌شدهٔ انتخاب‌شده روی پلن فعلی ElevenLabs فعال نیست. پلن ElevenLabs را ارتقا دهید یا در تب «ادیت» گویندهٔ دیگری انتخاب کنید.")
+    if status == 402 or "quota" in text or "credits" in text or "character" in text and "limit" in text:
+        raise VoiceError("اعتبار کاراکتر حساب ElevenLabs تمام شده است. حساب ElevenLabs را شارژ کنید یا در تب «ادیت» یک گویندهٔ Gemini انتخاب کنید.")
+    if status == 401 or "api_key" in text or "api key" in text:
+        raise VoiceError("کلید ElevenLabs معتبر نیست یا منقضی شده است؛ کلید را در تنظیمات سرور به‌روز کنید.")
+    if status == 404 or "voice_not_found" in text or "voice not found" in text:
+        raise VoiceError("گویندهٔ انتخاب‌شده در حساب ElevenLabs پیدا نشد (شاید پاک شده باشد). در تب «ادیت» گویندهٔ دیگری انتخاب کنید.")
+    if status == 403:
+        raise VoiceError("ElevenLabs این درخواست را نپذیرفت (دسترسی رد شد). چند دقیقه بعد دوباره امتحان کنید.")
+    if status == 429:
+        raise RuntimeError("ElevenLabs is busy (HTTP 429)")              # temporary: the caller may retry
+    raise RuntimeError(f"ElevenLabs answered HTTP {status}")
+
+
 def remember_no_v4(voice: str) -> None:
     _NO_V4.add(voice)
     log.warning("voice %s does not take eleven_v4; it is read with eleven_v3", voice)
@@ -719,12 +752,7 @@ def _elevenlabs_with_timestamps(text: str, voice: str = "") -> tuple[bytes, dict
     if model == V4 and refused_model(response):           # this voice does not take v4: the same text with v3 (nothing was spent on the refusal)
         remember_no_v4(voice)
         response = send(V3)
-    if response.status_code == 403:
-        raise RuntimeError("ElevenLabs refused the request (HTTP 403); check the network/VPN")
-    # only an error response can mean "quota": a successful body is base64 audio, which can contain the letters q-u-o-t-a by chance
-    if response.status_code == 402 or (response.status_code >= 400 and "quota" in response.text.lower()):
-        raise RuntimeError(f"ElevenLabs quota exceeded (HTTP {response.status_code})")
-    response.raise_for_status()
+    check_voice_response(response)
     data = response.json()
     return base64.b64decode(data["audio_base64"]), data["alignment"]
 
