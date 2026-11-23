@@ -228,6 +228,8 @@ from app.routers import admin_manage
 app.include_router(admin_manage.router)
 from app.routers.telegram_studio import router as telegram_studio_router
 app.include_router(telegram_studio_router)
+from app.routers import hub_api as _hub_api      # Rafiei Hub API (server to server; its own shared-secret check)
+app.include_router(_hub_api.router)
 from app.routers import agent_proxy as _agent_proxy
 app.include_router(_agent_proxy.router)
 app.include_router(_agent_proxy.admin_router)
@@ -265,7 +267,8 @@ async def auth_middleware(request: Request, call_next):
 
     path = request.url.path
     if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/") or path == "/webhook/rafieipay" or path == "/webhook/rafieipay/return" \
-            or path.startswith(("/internal/anthropic/", "/internal/pro/")):        # EditorGPT Pro: run token / worker secret checked by app.routers.agent_proxy
+            or path.startswith(("/internal/anthropic/", "/internal/pro/")) \
+            or path.startswith("/hub-api/") or path == "/hub-api/health":   # EditorGPT Pro: run token / worker secret (agent_proxy); Rafiei Hub: shared secret, signed upload/media tickets (hub_api)
 
         return await call_next(request)
     # The CEP panel cannot hold the user's web-app JWT. These protocol routes
