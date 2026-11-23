@@ -384,9 +384,39 @@ async def _list(request, body):
     except (TypeError, ValueError):
         raise HubError(400, "مقدار cursor نامعتبر است.")
     page = rows[start:start + PAGE]
+    thumbs = await _list_thumbnails(str(user.id), [r.get("id") for r in page])
     items = [{"id": r.get("id"), "title": r.get("title") or "", "status": "running" if r.get("busy") else (r.get("status") or "done"),
-              "updated_at": r.get("updated_at")} for r in page]
+              **({"thumbnail_url": thumbs[r.get("id")]} if thumbs.get(r.get("id")) else {}), "updated_at": r.get("updated_at")} for r in page]
     return {"items": items, "next_cursor": str(start + PAGE) if start + PAGE < len(rows) else None}
+
+
+async def _list_thumbnails(user_id: str, ids: list) -> dict:
+    """A thumbnail for each listed project that made a video: its latest output (render, motion graphic, Pro delivery), one frame, signed."""
+    if not ids:
+        return {}
+    from sqlalchemy import select
+    from app.models import StudioEvent
+    from app.studio_store import AsyncSessionLocal
+    from app import telegram_outputs
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(select(StudioEvent.conversation_id, StudioEvent.event_type, StudioEvent.data, StudioEvent.seq)
+                                 .where(StudioEvent.conversation_id.in_(ids), StudioEvent.event_type.in_(OUTPUTS)).order_by(StudioEvent.seq))).all()
+    latest = {}
+    for cid, kind, data, _seq in rows:
+        latest[cid] = (kind, data or {})
+    out = {}
+
+    async def one(cid, kind, data):
+        try:
+            found = await telegram_outputs._output(cid, user_id, kind, data)
+            if found and Path(found[0]).is_file():
+                thumb = await asyncio.to_thread(_thumbnail, Path(found[0]))
+                if thumb:
+                    out[cid] = await _sign(thumb, user_id, "image")
+        except Exception:
+            pass
+    await asyncio.gather(*(one(cid, *value) for cid, value in latest.items()))
+    return out
 
 
 def _hints(body: dict) -> str:
@@ -539,8 +569,26 @@ def _error(status: int, message: str) -> JSONResponse:
 
 
 @router.get("/health")
-async def health():
-    return {"data": {"ok": True, "app": "editor", "version": VERSION}}
+async def health(request: Request):
+    """With the hub's secret: ok, the app and the actions. Without it (or a wrong one): 401, never a 404 or a page."""
+    if not _authorized(request):
+        _audit("health", None, 401, "bad or missing secret")
+        return _error(401, "دسترسی مجاز نیست.")
+    return {"data": {"ok": True, "app": "editor", "version": VERSION, "actions": ["health", *ACTIONS]}}
+
+
+@router.post("")
+@router.post("/")
+async def run_body(request: Request):
+    """The hub's other form: POST /hub-api with {"action": "...", ...} in the body."""
+    try:
+        body = await request.json()
+        action = str(body.get("action") or "") if isinstance(body, dict) else ""
+    except ValueError:
+        action = ""
+    if action == "health":
+        return await health(request)
+    return await run(action or "-", request)
 
 
 @router.post("/{action}")
@@ -557,6 +605,7 @@ async def run(action: str, request: Request):
         body = await request.json() if (await request.body()) else {}
         if not isinstance(body, dict):
             raise ValueError
+        body.pop("action", None)
     except ValueError:
         _audit(action, None, 400, "bad json", started)
         return _error(400, "بدنهٔ درخواست باید JSON معتبر باشد.")

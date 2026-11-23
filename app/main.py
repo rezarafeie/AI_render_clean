@@ -268,7 +268,7 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or path in {"/", "/health", "/api/health/ready"} or path.startswith("/auth/") or path == "/webhook/rafieipay" or path == "/webhook/rafieipay/return" \
             or path.startswith(("/internal/anthropic/", "/internal/pro/")) \
-            or path.startswith("/hub-api/") or path == "/hub-api/health":   # EditorGPT Pro: run token / worker secret (agent_proxy); Rafiei Hub: shared secret, signed upload/media tickets (hub_api)
+            or path.startswith("/hub-api/") or path == "/hub-api":   # EditorGPT Pro: run token / worker secret (agent_proxy); Rafiei Hub: shared secret, signed upload/media tickets (hub_api)
 
         return await call_next(request)
     # The CEP panel cannot hold the user's web-app JWT. These protocol routes

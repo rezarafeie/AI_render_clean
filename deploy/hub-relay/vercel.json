@@ -1,0 +1,2 @@
+{"rewrites":[{"source":"/api/hub-api","destination":"/api/hub"},{"source":"/api/hub-api/:path*","destination":"/api/hub?p=:path*"}],
+ "functions":{"api/hub.js":{"maxDuration":60}}}
