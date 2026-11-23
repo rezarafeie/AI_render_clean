@@ -176,6 +176,9 @@ async def wizard_catalog(request: Request):
         tracks = []
     music = [{"file": t.get("filename") or t.get("file") or t.get("name"), "label": (t.get("description") or t.get("filename") or "").replace("_", " ")[:60],
               "mood": t.get("mood") or "", "energy": t.get("energy")} for t in tracks if isinstance(t, dict)][:60]
+    if not music:                                   # the bundled music beds (assets/music), the ones the engines pick from
+        from app import talking_reel
+        music = [{"file": t["path"].rsplit("/", 1)[-1], "label": t["label"], "mood": "", "energy": None} for t in talking_reel.music_library()]
     cards = await asyncio.to_thread(_film_style_cards)
     return {"film_styles": cards, "talking_styles": style_list(),
             "voices": [{"id": i, "name": n, "note": d} for i, n, d in localize.NARRATORS if i],
@@ -187,6 +190,22 @@ async def wizard_catalog(request: Request):
                          {"name": "طبیعت آرام", "colors": ["#eef2ea", "#d6e2cf", "#2f7d5b", "#1e2a24"]},
                          {"name": "اقیانوس", "colors": ["#0a1a2a", "#12304a", "#3fc1ff", "#eaf6ff"]},
                          {"name": "مینیمال سفید", "colors": ["#ffffff", "#f1f1f1", "#2d6cdf", "#111111"]}]}
+
+
+@router.get("/wizard/music/{name}")
+async def wizard_music(name: str):
+    """A music bed to play in the wizard (the library's own files only)."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    from app import talking_reel
+    from engine.library import LIBRARY_ROOT
+    if not re.fullmatch(r"[\w .()-]{1,120}\.(mp3|wav|m4a)", name):
+        raise HTTPException(404, "track not found")
+    for folder in (LIBRARY_ROOT / "music", Path(talking_reel.PROJECT_ROOT) / "assets" / "music"):
+        path = folder / name
+        if path.is_file():
+            return FileResponse(path, media_type="audio/mpeg")
+    raise HTTPException(404, "track not found")
 
 
 @router.get("/capabilities")
