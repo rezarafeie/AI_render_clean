@@ -14,11 +14,12 @@ export function AgentModeSelector({value, onChange}: {value: AgentMode; onChange
   return <Menu label="Agent mode" side="top" trigger={props => <button type="button" className="composer-agent" {...props}>
     <span>{agentModes.find(m => m.id === value)?.name || "Lite"}</span><Icon name="chevronDown" size={12}/>
   </button>}>
-    {close => agentModes.map(mode => <button type="button" key={mode.id} role="menuitem" className="menu-item agent-option"
+    {close => <>{agentModes.map(mode => <button type="button" key={mode.id} role="menuitem" className="menu-item agent-option"
       aria-current={mode.id === value ? "true" : undefined} onClick={() => {onChange(mode.id); close();}}>
       <span aria-hidden="true" className="agent-tick">{mode.id === value ? "✓" : ""}</span>
       <span><b>{mode.name}</b><small>{mode.hint}</small></span>
     </button>)}
+    <a className="menu-item agent-option agent-guide-link" href="/guide" role="menuitem" onClick={close}><span aria-hidden="true" className="agent-tick"/><span><b>کدام موتور؟</b><small>راهنما و مشاور انتخاب موتور</small></span></a></>}
   </Menu>;
 }
 

@@ -190,6 +190,7 @@ export default function EditorShell() {
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
+          <NavLink to="/guide" {...tip("کدام موتور؟")}><Icon name="spark"/><span>کدام موتور؟</span></NavLink>
           </>}
         </nav>
 

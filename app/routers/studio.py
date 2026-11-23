@@ -384,6 +384,44 @@ async def _chat_credits(conversation_id: str, user_key: str, projects: list) -> 
     return int(total or 0)
 
 
+class EngineAdvice(BaseModel):
+    text: str = Field(min_length=2, max_length=4000)
+
+
+ENGINE_ADVISOR = """You are EditorGPT's engine advisor. A person describes the video they want (maybe with a sample link). Choose the ONE engine that fits
+best and write the ready prompt they should send. Engines:
+- lite: fast and cheap; the studio's fixed flows: a talking-head reel edited from their own footage (cuts, captions, graphics, music), an ad reel from a
+  product link, a motion graphic / kinetic typography / explainer from text, a Vox-style documentary, a brand intro, finding clips in a long video,
+  dubbing/translation. Choose it whenever the request is one of these, even if long or detailed.
+- medium: multi-step work with a plan the person approves first: check or measure first then make (loudness, silence, clipping, a caption or script
+  review), search the effect/template library, inspect a link or an existing project's timeline, combine several steps.
+- pro: experimental, slow and costly but the most capable: a custom film no fixed flow can make, a specific style copied from a sample, mixing engines,
+  a long or unusual project, or after Lite did not manage it.
+Never recommend any other engine. Prefer the cheapest engine that can do the job well.
+Answer in Persian. Return JSON {"engine": "lite"|"medium"|"pro", "title": "<3-6 word name of the job>", "why": "<one or two sentences: why this engine>",
+"prompt": "<the full prompt to send, in the person's language, clear and specific: what to make, length and format if known, style, voice, music;
+keep every link and fact they gave; invent no product facts>", "attach": "<what files to attach, if any, else empty>", "tips": ["<up to 3 short tips>"]}"""
+
+
+@router.post("/engine-advice")
+async def engine_advice(request: Request, body: EngineAdvice):
+    """The engine advisor of the guide page: which engine fits (lite / medium / pro), why, and a ready prompt to start with. One small model call,
+    billed to the person like every call."""
+    _user(request)
+    from brain.llm import gateway_json
+    try:
+        result, _ = await asyncio.to_thread(gateway_json, ENGINE_ADVISOR, body.text.strip(), "intent_classification", 900)
+    except Exception:
+        log.warning("engine advisor failed", exc_info=True)
+        raise HTTPException(502, "مشاور الان در دسترس نیست؛ کمی بعد دوباره امتحان کنید.")
+    engine = str((result or {}).get("engine") or "lite").lower()
+    if engine not in {"lite", "medium", "pro"}:
+        engine = "lite"
+    tips = [str(t)[:200] for t in ((result or {}).get("tips") or []) if str(t).strip()][:3]
+    return {"engine": engine, "title": str(result.get("title") or "")[:80], "why": str(result.get("why") or "")[:600],
+            "prompt": str(result.get("prompt") or body.text)[:4000], "attach": str(result.get("attach") or "")[:300], "tips": tips}
+
+
 @router.get("/conversations/{conversation_id}/messages")
 async def older_messages(request: Request, conversation_id: str, before: int = Query(..., ge=1), limit: int = Query(30, ge=1, le=100)):
     """The messages just before message `before`, for scrolling up in a long chat."""

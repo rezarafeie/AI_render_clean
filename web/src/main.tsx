@@ -24,6 +24,7 @@ import "./styles/legacy.css";
 const Studio = React.lazy(loaders.studio);
 const Projects = React.lazy(loaders.projects);
 const Templates = React.lazy(loaders.templates);
+const EngineGuide = React.lazy(() => import("./EngineGuide"));
 const TelegramLink = React.lazy(() => import("./TelegramLink"));
 const Settings = React.lazy(() => import("./Settings"));
 const AIModels = React.lazy(() => import("./AIModels"));
@@ -103,7 +104,7 @@ function App() {
     <Route path="/welcome" element={<Landing/>}/>
     <Route element={<EditorShell/>}>
       <Route index element={<Navigate to="/studio" replace/>}/><Route path="studio/:conversationId?" element={<Studio/>}/>
-      <Route path="projects" element={<RequireAuth><Projects/></RequireAuth>}/><Route path="templates" element={<Templates/>}/><Route path="settings" element={<RequireAuth><Settings/></RequireAuth>}/>
+      <Route path="projects" element={<RequireAuth><Projects/></RequireAuth>}/><Route path="templates" element={<Templates/>}/><Route path="guide" element={<RequireAuth><EngineGuide/></RequireAuth>}/><Route path="settings" element={<RequireAuth><Settings/></RequireAuth>}/>
       <Route path="settings/ai" element={<RequireAuth><AIModels/></RequireAuth>}/>
       <Route path="credits" element={<RequireAuth><CreditsPage/></RequireAuth>}/>
       <Route path="settings/users" element={<RequireAuth><AdminUsers/></RequireAuth>}/>
