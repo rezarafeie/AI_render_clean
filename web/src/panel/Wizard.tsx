@@ -4,8 +4,8 @@ import { Icon } from "../components/Icon";
 import { AuthenticatedMedia, useAuthenticatedMediaUrl } from "../AuthenticatedMedia";
 import { friendlyError } from "../ui";
 import { useProFonts, loadFontFaces } from "../studio/FontPicker";
-import VoiceTest from "../studio/VoiceTest";
 import { engines } from "./Setup";
+import { StylePreview, archetypeOf } from "./StylePreview";
 import type { Capabilities, Engine, FilmStyleCard, Setup as SetupData, WizardCatalog } from "./types";
 
 const FilesPicker = React.lazy(() => import("../studio/FilesPicker").then(m => ({ default: m.FilesPicker })));
@@ -70,6 +70,8 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
   const [error, setError] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [launch, setLaunch] = React.useState(false);
+  const [sample, setSample] = React.useState("سلام! این یک نمونهٔ کوتاه از صدای گوینده برای ویدیوی توست.");
+  const [playingVoice, setPlayingVoice] = React.useState<string | null>(null);
   const latest = React.useRef(initial);
   const persisted = React.useRef(JSON.stringify(initial));
   const queue = React.useRef(Promise.resolve());
@@ -188,7 +190,8 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <button key={v} type="button" role="radio" aria-checked={(data.aspect === "source" ? "vertical" : data.aspect) === v} onClick={() => update({ aspect: v })}>{l}</button>)}</div>
           {media}
         </div>
-        <aside className="wz-preview"><Frame palette={palette} title={title} font={fontFamily} motion={style?.motion} aspect={data.aspect} big/><small>پیش‌نمایش زنده — با هر انتخاب به‌روز می‌شود</small></aside>
+        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
+          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}<small>پیش‌نمایش زنده — با هر انتخاب به‌روز می‌شود</small></aside>
       </div>}
 
       {step === "media" && <div className="wz-form wz-narrow">
@@ -213,7 +216,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>انتخاب خودکار</b><small>کارگردان سبک مناسب موضوع را انتخاب می‌کند</small></button>
           {styles.map((s: FilmStyleCard) => <button key={s.id} type="button" className="wz-card" aria-pressed={data.film_style === s.id}
             onClick={() => update({ film_style: s.id, palette: [] })}>
-            <Frame palette={s.palette} title={title || s.title} font={fontFamily} motion={s.motion} aspect="vertical" playing={data.film_style === s.id}/>
+            <StylePreview archetype={archetypeOf(s.id, `${s.summary} ${s.title}`, s.archetype)} palette={s.palette} title={title || s.title} font={fontFamily} playing/>
             <b>{s.title}</b><small>{s.summary}</small>{s.mood ? <span className="wz-mood">{s.mood}</span> : null}
           </button>)}
         </div>
@@ -224,7 +227,8 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <button type="button" className="wz-card wz-font" aria-pressed={!data.title_font} onClick={() => update({ title_font: "" })}><b className="wz-font-sample">خودکار</b><small>فونت متناسب با سبک</small></button>
           {fonts.slice(0, 40).map(f => <FontCard key={f.id} font={f} text={title || "عنوان ویدیوی تو"} active={data.title_font === f.id} onPick={() => update({ title_font: f.id })}/>)}
         </div>
-        <aside className="wz-preview"><Frame palette={palette} title={title} font={fontFamily} motion={style?.motion} aspect={data.aspect} big/></aside>
+        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
+          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}</aside>
       </div>}
 
       {step === "color" && <div className="wz-two">
@@ -236,18 +240,20 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <div className="wz-custom"><b>رنگ دلخواه</b>{["زمینه", "سطح", "تأکید", "متن"].map((label, i) => <label key={label}>
             <input type="color" value={palette[i] || "#000000"} onChange={e => { const next = [...palette]; next[i] = e.target.value.toUpperCase(); update({ palette: next.slice(0, 4) }); }}/>{label}</label>)}</div>
         </div>
-        <aside className="wz-preview"><Frame palette={palette} title={title} font={fontFamily} motion={style?.motion} aspect={data.aspect} big/></aside>
+        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
+          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}</aside>
       </div>}
 
       {step === "voice" && <div className="wz-form">
-        <div className="wz-grid wz-voices">
-          <button type="button" className="wz-voice" aria-pressed={!data.narrator} onClick={() => update({ narrator: "" })}><span className="wz-wave"><i/><i/><i/><i/></span><b>پیشنهاد استودیو</b><small>گوینده‌ای متناسب با موضوع</small></button>
-          {(catalog?.voices || []).map(v => <button key={v.id} type="button" className="wz-voice" aria-pressed={data.narrator === v.id} onClick={() => update({ narrator: v.id })}>
-            <span className="wz-wave" data-on={data.narrator === v.id || undefined}><i/><i/><i/><i/></span><b>{v.name}</b><small>{v.note}</small></button>)}
-        </div>
+        <label className="wz-sample">متنی که در تست شنیده می‌شود<input className="input bidi" dir="auto" maxLength={300} value={sample} onChange={e => setSample(e.target.value)}/></label>
         <div className="wz-pills" role="radiogroup" aria-label="لحن">{(catalog?.voice_styles || []).map(s => <button key={s.id} type="button" role="radio" aria-checked={(data.voice_style || "natural") === s.id}
           onClick={() => update({ voice_style: s.id })}>{s.label}</button>)}</div>
-        {data.narrator ? <VoiceTest voice={data.narrator} style={data.voice_style === "natural" ? "" : data.voice_style || ""}/> : <p className="eg-muted">برای شنیدن نمونه، یک گوینده انتخاب کن.</p>}
+        <div className="wz-grid wz-voices" role="radiogroup" aria-label="گوینده">
+          <div role="radio" tabIndex={0} className="wz-voice" aria-checked={!data.narrator} aria-pressed={!data.narrator} onClick={() => update({ narrator: "" })}
+            onKeyDown={e => (e.key === "Enter" || e.key === " ") && update({ narrator: "" })}><span className="wz-wave"><i/><i/><i/><i/></span><b>پیشنهاد استودیو</b><small>گوینده‌ای متناسب با موضوع</small></div>
+          {(catalog?.voices || []).map(v => <VoiceCard key={v.id} voice={v} active={data.narrator === v.id} text={sample} styleId={data.voice_style === "natural" ? "" : data.voice_style || ""}
+            playing={playingVoice === v.id} onPlaying={setPlayingVoice} onPick={() => update({ narrator: v.id })}/>)}
+        </div>
       </div>}
 
       {step === "music" && <div className="wz-form wz-narrow">
@@ -276,7 +282,8 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <option value="manual">دستی — هر مرحله را خودم تأیید می‌کنم</option><option value="assisted">با کمک دستیار</option><option value="auto">ساخت خودکار</option></select></label>
           <label className="wz-mode">نام پروژه<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
-        <aside className="wz-preview">{MOTION.includes(data.engine) ? <Frame palette={palette} title={title} font={fontFamily} motion={style?.motion} aspect={data.aspect} big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+        <aside className="wz-preview">{MOTION.includes(data.engine) ? (style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
+          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>) : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
     </div>
 
@@ -294,6 +301,38 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
       {picker === "cloud" && <CloudPicker onClose={() => setPicker(null)} onImport={cloud}/>}
     </React.Suspense>
   </section>;
+}
+
+/** A narrator card with its own test button: one tap plays the sample text in this voice and delivery (made on the server, a few seconds). */
+function VoiceCard({ voice, active, text, styleId, playing, onPlaying, onPick }: { voice: WizardCatalog["voices"][number]; active: boolean; text: string; styleId: string;
+  playing: boolean; onPlaying: (id: string | null) => void; onPick: () => void }) {
+  const [state, setState] = React.useState<"idle" | "loading" | "error">("idle");
+  const audio = React.useRef<HTMLAudioElement | null>(null);
+  const cache = React.useRef<{ key: string; url: string } | null>(null);
+  React.useEffect(() => { if (!playing) audio.current?.pause(); }, [playing]);
+  React.useEffect(() => () => { audio.current?.pause(); if (cache.current) URL.revokeObjectURL(cache.current.url); }, []);
+  const test = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (playing) { audio.current?.pause(); onPlaying(null); return; }
+    const key = `${text}|${styleId}`;
+    try {
+      setState("loading");
+      if (cache.current?.key !== key) { if (cache.current) URL.revokeObjectURL(cache.current.url); cache.current = { key, url: await api.previewVoice(voice.id, text.trim() || "سلام", styleId) }; }
+      audio.current?.pause();
+      audio.current = new Audio(cache.current.url);
+      audio.current.onended = () => onPlaying(null);
+      onPlaying(voice.id); setState("idle");
+      await audio.current.play();
+    } catch { setState("error"); onPlaying(null); }
+  };
+  return <div role="radio" tabIndex={0} className="wz-voice" aria-checked={active} aria-pressed={active} onClick={onPick} onKeyDown={e => (e.key === "Enter" || e.key === " ") && onPick()}>
+    <div className="wz-voice-top">
+      <span className="wz-wave" data-on={playing || undefined}><i/><i/><i/><i/></span>
+      <button type="button" className="wz-voice-play" data-state={playing ? "playing" : state} aria-label={playing ? "توقف" : `تست صدای ${voice.name}`} onClick={e => void test(e)}>
+        {state === "loading" ? <span className="wz-spin"/> : <Icon name={playing ? "close" : "play"} size={13}/>}</button>
+    </div>
+    <b>{voice.name}</b><small>{state === "error" ? "تست صدا ناموفق بود؛ دوباره بزن" : voice.note}</small>
+  </div>;
 }
 
 function Row({ label, value, onEdit }: { label: string; value: React.ReactNode; onEdit: () => void }) {

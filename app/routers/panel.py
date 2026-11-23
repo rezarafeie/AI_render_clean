@@ -126,7 +126,7 @@ def _film_style_cards() -> list[dict]:
             _STYLE_CACHE.update(json.loads(path.read_text()))
         except ValueError:
             pass
-    missing = [r for r in rows if r["id"] not in _STYLE_CACHE]
+    missing = [r for r in rows if r["id"] not in _STYLE_CACHE or not (_STYLE_CACHE.get(r["id"]) or {}).get("archetype")]
     if missing and not _STYLE_CACHE.get("_filling"):
         _STYLE_CACHE["_filling"] = True
         import threading
@@ -141,10 +141,11 @@ def _film_style_cards() -> list[dict]:
                         "For each film style below write a card for a Persian video app. Return JSON {\"styles\": [{\"id\": \"<exact id>\", \"title\": \"<2-4 word "
                         "Persian name>\", \"summary\": \"<one short Persian sentence: what the film looks and feels like>\", \"palette\": [\"#RRGGBB\" x4: background, "
                         "surface, accent, text - colours this style would really use], \"mood\": \"<one Persian word>\", \"motion\": \"slide|pop|drift|glitch|"
-                        "draw|zoom\"}]}.", text, "translation", 4000)
+                        "draw|zoom\", \"archetype\": \"<the ONE scene that best shows this style: terminal|paper|blueprint|swiss|deco|bauhaus|newsreel|lighttable|"
+                        "isometric|toy|anime|neon|data|map|cinema|minimal|riso|vhs|assembly|sketch>\"}]}.", text, "translation", 4000)
                     for item in (out or {}).get("styles", []):
                         if item.get("id") in {r["id"] for r in batch}:
-                            _STYLE_CACHE[item["id"]] = {k: item.get(k) for k in ("title", "summary", "palette", "mood", "motion")}
+                            _STYLE_CACHE[item["id"]] = {k: item.get(k) for k in ("title", "summary", "palette", "mood", "motion", "archetype")}
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(json.dumps({k: v for k, v in _STYLE_CACHE.items() if not k.startswith("_")}, ensure_ascii=False))
             except Exception:
@@ -159,7 +160,7 @@ def _film_style_cards() -> list[dict]:
         palette = [c for c in (made.get("palette") or []) if isinstance(c, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", c)][:4]
         cards.append({"id": r["id"][5:], "title": made.get("title") or r["name"].replace("-", " ").title(),
                       "summary": made.get("summary") or (r.get("hint") or "").split(":", 1)[0][:90], "palette": palette or ["#111318", "#1d2230", "#f2b84b", "#f5f1e8"],
-                      "mood": made.get("mood") or "", "motion": made.get("motion") or "slide"})
+                      "mood": made.get("mood") or "", "motion": made.get("motion") or "slide", "archetype": made.get("archetype") or ""})
     return cards
 
 
