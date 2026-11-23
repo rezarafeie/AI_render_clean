@@ -384,42 +384,64 @@ async def _chat_credits(conversation_id: str, user_key: str, projects: list) -> 
     return int(total or 0)
 
 
+class AdviceTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
 class EngineAdvice(BaseModel):
-    text: str = Field(min_length=2, max_length=4000)
+    messages: list[AdviceTurn] = Field(min_length=1, max_length=16)
 
 
-ENGINE_ADVISOR = """You are EditorGPT's engine advisor. A person describes the video they want (maybe with a sample link). Choose the ONE engine that fits
-best and write the ready prompt they should send. Engines:
-- lite: fast and cheap; the studio's fixed flows: a talking-head reel edited from their own footage (cuts, captions, graphics, music), an ad reel from a
+ENGINE_ADVISOR = """You are EditorGPT's engine advisor, chatting in Persian with a person who wants a video. Read what they want (and the earlier turns),
+think it through, and either ask ONE short clarifying question (only when the answer would change the engine or the prompt: what they have - their own
+footage, a product link, only an idea -, length, platform, the look) or give the final recommendation. Never ask more than two questions in the whole chat;
+if enough is known, recommend.
+Engines:
+- lite: fast and cheap; the studio's fixed flows: editing a talking-head reel from their own footage (cuts, captions, graphics, music), an ad reel from a
   product link, a motion graphic / kinetic typography / explainer from text, a Vox-style documentary, a brand intro, finding clips in a long video,
-  dubbing/translation. Choose it whenever the request is one of these, even if long or detailed.
-- medium: multi-step work with a plan the person approves first: check or measure first then make (loudness, silence, clipping, a caption or script
-  review), search the effect/template library, inspect a link or an existing project's timeline, combine several steps.
-- pro: experimental, slow and costly but the most capable: a custom film no fixed flow can make, a specific style copied from a sample, mixing engines,
-  a long or unusual project, or after Lite did not manage it.
-Never recommend any other engine. Prefer the cheapest engine that can do the job well.
-Answer in Persian. Return JSON {"engine": "lite"|"medium"|"pro", "title": "<3-6 word name of the job>", "why": "<one or two sentences: why this engine>",
-"prompt": "<the full prompt to send, in the person's language, clear and specific: what to make, length and format if known, style, voice, music;
-keep every link and fact they gave; invent no product facts>", "attach": "<what files to attach, if any, else empty>", "tips": ["<up to 3 short tips>"]}"""
+  dubbing/translation. The right choice whenever the request is one of these, even if long or detailed.
+- medium: multi-step work with a plan the person approves first: check or measure first then make (loudness, silence, clipping, a caption review),
+  search the effect/template library, inspect a link or an earlier project's timeline, several steps in one request.
+- pro: experimental, slow and costly but the most capable: a custom film no fixed flow makes, a look copied closely from a sample, mixing engines,
+  an unusual or long project, or after Lite did not manage it.
+- claude: experimental; plain Claude with none of the studio's tools, skills or Persian craft (it installs what it needs and renders by itself). Recommend
+  it ONLY when the person explicitly wants to compare with plain Claude.
+Prefer the cheapest engine that does the job well.
+Return JSON {"steps": ["<2-4 very short Persian lines: what you noticed while reading, e.g. «نوع کار: ریلز تبلیغاتی از لینک محصول»>"],
+"reply": "<what you say to the person, Persian, 1-3 sentences, warm and plain>",
+"question": null or {"text": "<the one question>", "options": ["<2-4 short tappable answers>"]},
+"recommendation": null or {"engine": "lite"|"medium"|"pro"|"claude", "title": "<3-6 word name of the job>", "why": "<one or two sentences>",
+"prompt": "<the full prompt to send, in the person's language: what to make, length and format if known, style, voice, music; keep every link and fact
+they gave; invent no product facts>", "attach": "<files to attach, else empty>", "tips": ["<up to 3 short tips>"]}}
+Exactly one of question / recommendation is set."""
 
 
 @router.post("/engine-advice")
 async def engine_advice(request: Request, body: EngineAdvice):
-    """The engine advisor of the guide page: which engine fits (lite / medium / pro), why, and a ready prompt to start with. One small model call,
-    billed to the person like every call."""
+    """The guide page's advisor chat (Sonnet): reads the request, shows what it noticed, asks at most a couple of questions, then recommends an
+    engine (lite / medium / pro / claude) with a ready prompt. Each turn is one small model call, billed to the person like every call."""
     _user(request)
     from brain.llm import gateway_json
+    transcript = "\n".join(("Person: " if t.role == "user" else "Advisor: ") + t.content.strip() for t in body.messages)
     try:
-        result, _ = await asyncio.to_thread(gateway_json, ENGINE_ADVISOR, body.text.strip(), "intent_classification", 900)
+        result, _ = await asyncio.to_thread(gateway_json, ENGINE_ADVISOR, transcript, "engine_advisor", 1500)
     except Exception:
         log.warning("engine advisor failed", exc_info=True)
         raise HTTPException(502, "مشاور الان در دسترس نیست؛ کمی بعد دوباره امتحان کنید.")
-    engine = str((result or {}).get("engine") or "lite").lower()
-    if engine not in {"lite", "medium", "pro"}:
-        engine = "lite"
-    tips = [str(t)[:200] for t in ((result or {}).get("tips") or []) if str(t).strip()][:3]
-    return {"engine": engine, "title": str(result.get("title") or "")[:80], "why": str(result.get("why") or "")[:600],
-            "prompt": str(result.get("prompt") or body.text)[:4000], "attach": str(result.get("attach") or "")[:300], "tips": tips}
+    result = result if isinstance(result, dict) else {}
+    question = result.get("question") if isinstance(result.get("question"), dict) else None
+    rec = result.get("recommendation") if isinstance(result.get("recommendation"), dict) else None
+    if rec:
+        engine = str(rec.get("engine") or "lite").lower()
+        rec = {"engine": engine if engine in {"lite", "medium", "pro", "claude"} else "lite", "title": str(rec.get("title") or "")[:80],
+               "why": str(rec.get("why") or "")[:600], "prompt": str(rec.get("prompt") or body.messages[0].content)[:4000],
+               "attach": str(rec.get("attach") or "")[:300], "tips": [str(t)[:200] for t in (rec.get("tips") or []) if str(t).strip()][:3]}
+        question = None
+    elif question:
+        question = {"text": str(question.get("text") or "")[:400], "options": [str(o)[:80] for o in (question.get("options") or []) if str(o).strip()][:4]}
+    return {"steps": [str(x)[:160] for x in (result.get("steps") or []) if str(x).strip()][:4], "reply": str(result.get("reply") or "")[:800],
+            "question": question, "recommendation": rec}
 
 
 @router.get("/conversations/{conversation_id}/messages")

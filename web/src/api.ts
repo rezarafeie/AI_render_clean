@@ -1339,8 +1339,10 @@ export const api = {
 
   // ── Chat-first Video Studio ──
   /** The guide page's advisor: which engine fits what the person wants, why, and a ready prompt. */
-  async engineAdvice(text: string): Promise<{ engine: "lite" | "medium" | "pro"; title: string; why: string; prompt: string; attach: string; tips: string[] }> {
-    return j(await authFetch(`${BASE}/studio/engine-advice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }));
+  async engineAdvice(messages: { role: "user" | "assistant"; content: string }[]): Promise<{ steps: string[]; reply: string;
+    question: { text: string; options: string[] } | null;
+    recommendation: { engine: "lite" | "medium" | "pro" | "claude"; title: string; why: string; prompt: string; attach: string; tips: string[] } | null }> {
+    return j(await authFetch(`${BASE}/studio/engine-advice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }) }));
   },
   async createStudioConversation(title = "گفتگوی جدید"): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/studio/conversations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }));

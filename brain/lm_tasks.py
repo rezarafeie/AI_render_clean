@@ -100,6 +100,7 @@ TASKS = {
     "hermes_chat": _task("Hermes · Agent Chat", "chat",
                          [("jarvis", "CLAUDE_SONNET_5_5"), ("jarvis", "CLAUDE_OPUS_5_5"), ("arvancloud", "Claude-Sonnet-4.6")], "general_chat"),
     "segment_analysis": _task("Segment Analysis", "chat", LIGHT, "editing_agent"),
+    "engine_advisor": _task("Engine Advisor (guide page chat)", "chat", STORY, "editing_agent"),
     "transcript_correction": _task("Transcript Correction", "chat", LIGHT, "subtitles"),
     # Long-video discovery (creative/discovery.py): one card per stage so each can be tuned on its own.
     "long_video_enhance": _task("Long Video · Transcript Enhancement", "chat", LIGHT, "subtitles"),
