@@ -9,6 +9,7 @@ import { type ActivityStep, buildTimeline, renderView, serverBusy, stageText } f
 import { motionSteps } from "../studio/motionModel";
 import { mergeEvents } from "../studio/windowing";
 import { Setup } from "./Setup";
+import { Wizard } from "./Wizard";
 import type { Capabilities, PanelPreferences, Setup as SetupData } from "./types";
 import "./panel.css";
 
@@ -86,6 +87,7 @@ function TimelineDetails({project, refresh, output}: {project: StudioProject; re
 function AuthorizedPanel({id}: {id: string}) {
   const [chat, setChat] = React.useState<StudioConversation | null>(null);
   const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
+  const [simpleSetup, setSimpleSetup] = React.useState(false);
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
   const [historyLoaded, setHistoryLoaded] = React.useState(false);
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
@@ -285,7 +287,8 @@ function AuthorizedPanel({id}: {id: string}) {
       </div>
     </header>
     {error && <p className="mp-error notice" role="alert" data-tone="error">{error}</p>}
-    {!chat ? (!error && <Loading/>) : isDraft ? (capabilities && setup ? <Setup id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/> : <Loading/>) : discoveryId ? <div className="mp-home">
+    {!chat ? (!error && <Loading/>) : isDraft ? (capabilities && setup ? (simpleSetup ? <><button type="button" className="btn btn-sm btn-secondary mp-mode-switch" onClick={() => setSimpleSetup(false)}>ساخت مرحله‌به‌مرحله (ویزارد)</button><Setup id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/></>
+      : <><button type="button" className="btn btn-sm btn-secondary mp-mode-switch" onClick={() => setSimpleSetup(true)}>فرم ساده</button><Wizard id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/></>) : <Loading/>) : discoveryId ? <div className="mp-home">
       <React.Suspense fallback={<Loading/>}><PanelDiscovery key={discoveryId} id={discoveryId} events={events}/></React.Suspense>
     </div> : <>
       <div className="mp-workspace" data-view={effective}>

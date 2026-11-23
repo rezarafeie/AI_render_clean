@@ -5,6 +5,13 @@ export type StyleReference = {style_id: string; version: number};
 export type Setup = {
   title: string; engine: Engine; mode: PanelMode; style: string; style_profile?: StyleReference | null;
   topic: string; motion_so?: boolean; aspect: "source" | "vertical" | "square" | "landscape"; seconds: 15 | 30 | 45 | 60; source_url: string; attachment_ids: string[];
+  film_style?: string; title_font?: string; palette?: string[]; narrator?: string; voice_style?: string; music?: string;
+};
+export type FilmStyleCard = {id: string; title: string; summary: string; palette: string[]; mood: string; motion: "slide" | "pop" | "drift" | "glitch" | "draw" | "zoom" | string};
+export type WizardCatalog = {
+  film_styles: FilmStyleCard[]; talking_styles: {id: string; label: string}[];
+  voices: {id: string; name: string; note: string}[]; voice_styles: {id: string; label: string}[];
+  music: {file: string; label: string; mood: string; energy?: number | null}[]; palettes: {name: string; colors: string[]}[];
 };
 export type Capabilities = { talking_styles: {id: string; label: string}[]; claude_motion: boolean; motion_so: boolean };
 export type SpeechWord = {text: string; start: number; end: number};

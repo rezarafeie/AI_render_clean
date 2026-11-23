@@ -1,3 +1,4 @@
+import type { WizardCatalog } from "./panel/types";
 import type { Capabilities as PanelCapabilities, PanelTranscript, Setup as PanelSetup, NativeTimeline, SegmentChange, LayerChange, ResourceChange, CaptionFont, PanelPreferences } from "./panel/types";
 import { getToken, ensureFreshToken, handleUnauthorized, setToken } from "./auth";
 
@@ -545,6 +546,10 @@ export const api = {
   async panelCapabilities(): Promise<PanelCapabilities> {
     return j(await authFetch(`${BASE}/panel/capabilities`));
   },
+  async panelWizardCatalog(): Promise<WizardCatalog> {
+    return j(await authFetch(`${BASE}/panel/wizard/catalog`));
+  },
+  libraryMusicUrl(file: string): string { return `${BASE}/library/music/${encodeURIComponent(file)}/preview`; },
   async createPanelDraft(): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/panel/draft`, { method: "POST" }));
   },

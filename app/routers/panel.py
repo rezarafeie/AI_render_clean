@@ -39,6 +39,13 @@ class ProjectSetup(BaseModel):
     source_url: str = Field(default="", max_length=2000)
     motion_so: bool = False
     attachment_ids: list[str] = Field(default_factory=list, max_length=16)
+    # The wizard's choices (each previewed before it is chosen); empty = the engine decides
+    film_style: str = Field(default="", max_length=80)
+    title_font: str = Field(default="", max_length=80)
+    palette: list[str] = Field(default_factory=list, max_length=5)
+    narrator: str = Field(default="", max_length=80)
+    voice_style: str = Field(default="", max_length=30)
+    music: str = Field(default="", max_length=200)
 
 
 @contextmanager
@@ -66,6 +73,120 @@ async def _owned(request: Request, conversation: str):
 def _motion_enabled():
     from creative import claude_motion
     return claude_motion.enabled()
+
+
+_ASPECT_FA = {"vertical": "قطع عمودی ۹:۱۶", "square": "قطع مربع ۱:۱", "landscape": "قطع افقی ۱۶:۹"}
+
+
+def _wizard_lines(setup: "ProjectSetup") -> list[str]:
+    """The wizard's choices as lines the engines read: the director's brief (film style, title font, palette, format) and the production directives
+    (Narrator:, Voice style:, Music:) that creative.directives applies exactly."""
+    lines = []
+    if setup.aspect in _ASPECT_FA:
+        lines.append(_ASPECT_FA[setup.aspect])
+    if setup.film_style:
+        from creative import film_styles
+        sid = film_styles.valid(setup.film_style)
+        if sid:
+            lines.append(f"سبک فیلم را از کتابخانهٔ سبک‌ها بگیر: {sid[5:]} (style id: {sid}).")
+    if setup.title_font:
+        from creative import font_catalog
+        font = next((f for f in font_catalog.load() if f["id"] == setup.title_font), None)
+        if font:
+            lines.append(f"فونت تیتر: {font['label']} (font id: {font['id']}).")
+    colours = [c for c in setup.palette if re.fullmatch(r"#[0-9A-Fa-f]{6}", c or "")]
+    if colours:
+        lines.append("پالت رنگ فیلم: " + "، ".join(colours) + " (رنگ اول زمینه، بقیه تأکید و متن).")
+    if setup.narrator:
+        lines.append(f"Narrator: {setup.narrator}")
+    if setup.voice_style in {"calm", "serious", "energetic", "reflective", "natural"}:
+        lines.append(f"Voice style: {setup.voice_style}")
+    if setup.music == "off":
+        lines.append("Music: off")
+    elif setup.music.startswith("library:"):
+        name = re.sub(r"\.[a-z0-9]{2,4}$", "", setup.music.split(":", 1)[1]).replace("_", " ").replace("-", " ").strip()
+        if name:
+            lines.append(f"Music: library {name}")
+    return lines
+
+
+_STYLE_CACHE: dict = {}
+
+
+def _film_style_cards() -> list[dict]:
+    """The 99 film styles for the wizard's gallery: id, a Persian name and one-line description, a 4-colour palette and a mood, written once by a model
+    from each style's own text and kept on disk (job_data/panel_wizard/film_styles_fa.json); the English name until then."""
+    from pathlib import Path
+    from app.config import settings
+    from creative import film_styles
+    rows = sorted(film_styles._rows(), key=lambda r: r["id"])
+    path = Path(settings.JOBS_DIR) / "panel_wizard" / "film_styles_fa.json"
+    if not _STYLE_CACHE and path.is_file():
+        try:
+            _STYLE_CACHE.update(json.loads(path.read_text()))
+        except ValueError:
+            pass
+    missing = [r for r in rows if r["id"] not in _STYLE_CACHE]
+    if missing and not _STYLE_CACHE.get("_filling"):
+        _STYLE_CACHE["_filling"] = True
+        import threading
+
+        def fill():
+            try:
+                from brain.llm import gateway_json
+                for start in range(0, len(missing), 25):
+                    batch = missing[start:start + 25]
+                    text = "\n".join(f"{r['id']}: {(r.get('hint') or r.get('description') or '')[:220]}" for r in batch)
+                    out, _ = gateway_json(
+                        "For each film style below write a card for a Persian video app. Return JSON {\"styles\": [{\"id\": \"<exact id>\", \"title\": \"<2-4 word "
+                        "Persian name>\", \"summary\": \"<one short Persian sentence: what the film looks and feels like>\", \"palette\": [\"#RRGGBB\" x4: background, "
+                        "surface, accent, text - colours this style would really use], \"mood\": \"<one Persian word>\", \"motion\": \"slide|pop|drift|glitch|"
+                        "draw|zoom\"}]}.", text, "translation", 4000)
+                    for item in (out or {}).get("styles", []):
+                        if item.get("id") in {r["id"] for r in batch}:
+                            _STYLE_CACHE[item["id"]] = {k: item.get(k) for k in ("title", "summary", "palette", "mood", "motion")}
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(json.dumps({k: v for k, v in _STYLE_CACHE.items() if not k.startswith("_")}, ensure_ascii=False))
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning("film style cards could not be written", exc_info=True)
+            finally:
+                _STYLE_CACHE.pop("_filling", None)
+        threading.Thread(target=fill, daemon=True, name="film-style-cards").start()
+    cards = []
+    for r in rows:
+        made = _STYLE_CACHE.get(r["id"]) or {}
+        palette = [c for c in (made.get("palette") or []) if isinstance(c, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", c)][:4]
+        cards.append({"id": r["id"][5:], "title": made.get("title") or r["name"].replace("-", " ").title(),
+                      "summary": made.get("summary") or (r.get("hint") or "").split(":", 1)[0][:90], "palette": palette or ["#111318", "#1d2230", "#f2b84b", "#f5f1e8"],
+                      "mood": made.get("mood") or "", "motion": made.get("motion") or "slide"})
+    return cards
+
+
+@router.get("/wizard/catalog")
+async def wizard_catalog(request: Request):
+    """Everything the wizard previews: film styles (with palettes), talking edit styles, narrators and delivery styles, the music library, palettes."""
+    from engine.talking_reel import style_list
+    from brain import localize
+    try:
+        from engine.library import library_for_api
+        library = library_for_api()
+        tracks = [a for a in (library.get("assets") or []) if isinstance(a, dict) and a.get("category") == "music"]
+    except Exception:
+        tracks = []
+    music = [{"file": t.get("filename") or t.get("file") or t.get("name"), "label": (t.get("description") or t.get("filename") or "").replace("_", " ")[:60],
+              "mood": t.get("mood") or "", "energy": t.get("energy")} for t in tracks if isinstance(t, dict)][:60]
+    cards = await asyncio.to_thread(_film_style_cards)
+    return {"film_styles": cards, "talking_styles": style_list(),
+            "voices": [{"id": i, "name": n, "note": d} for i, n, d in localize.NARRATORS if i],
+            "voice_styles": [{"id": k or "natural", "label": v[0]} for k, v in localize.VOICE_STYLES.items()],
+            "music": [m for m in music if m["file"]],
+            "palettes": [{"name": "شب و طلا", "colors": ["#0f1115", "#1b1f2a", "#f2b84b", "#f6f1e7"]},
+                         {"name": "کاغذ و جوهر", "colors": ["#f3ecdf", "#e4d8c3", "#c0392b", "#1d1d1d"]},
+                         {"name": "نئون شب", "colors": ["#0b0b14", "#16162a", "#ff3d81", "#e8f0ff"]},
+                         {"name": "طبیعت آرام", "colors": ["#eef2ea", "#d6e2cf", "#2f7d5b", "#1e2a24"]},
+                         {"name": "اقیانوس", "colors": ["#0a1a2a", "#12304a", "#3fc1ff", "#eaf6ff"]},
+                         {"name": "مینیمال سفید", "colors": ["#ffffff", "#f1f1f1", "#2d6cdf", "#111111"]}]}
 
 
 @router.get("/capabilities")
@@ -303,7 +424,7 @@ async def start(request: Request, conversation: str):
             if setup.engine in _MOTION_BRIEFS:
                 from app.studio_orchestrator import _start_motion_graphic
                 brief = "\n".join(filter(None, [_MOTION_BRIEFS[setup.engine], setup.topic.strip(),
-                                               f"مدت حدود {setup.seconds} ثانیه", setup.source_url]))
+                                               f"مدت حدود {setup.seconds} ثانیه", setup.source_url, *_wizard_lines(setup)]))
                 await asyncio.to_thread(_start_motion_graphic, conversation, user, chat, brief, attachments)
                 _, updated = await _owned(request, conversation)
                 if not updated["state"].get("motion"):
@@ -312,7 +433,7 @@ async def start(request: Request, conversation: str):
                 from app.studio_orchestrator import _create_motion
                 brief = "\n".join(filter(None, ["یک ویدیوی تصویری با استوری‌بورد قابل‌ویرایش بساز.",
                                                setup.topic.strip(), f"مدت حدود {setup.seconds} ثانیه",
-                                               "Motion.so" if setup.motion_so else "", setup.source_url]))
+                                               "Motion.so" if setup.motion_so else "", setup.source_url, *_wizard_lines(setup)]))
                 try:
                     await asyncio.to_thread(_create_motion, conversation, user, f"panel:{conversation}", brief, attachments)
                 except ValueError as exc:
