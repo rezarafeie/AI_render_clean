@@ -5,6 +5,7 @@ export const config = { api: { bodyParser: false } };
 
 const ORIGINS = (process.env.EDITOR_ORIGINS || "https://editorgpt.ir/api,https://editor.rafiei.co/api").split(",").map(s => s.trim()).filter(Boolean);
 const PASS = ["authorization", "x-hub-user", "idempotency-key", "content-type", "range", "accept"];
+// the upstream body is read decoded, so its own length/encoding headers would not match what is sent on: only these are passed back
 
 async function readBody(req) {
   if (req.method === "GET" || req.method === "HEAD") return undefined;
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
   url.searchParams.delete("p");
   if (sub && !/^[A-Za-z0-9._\/-]{1,300}$/.test(sub)) return res.status(400).json({ error: "درخواست نامعتبر است." });
   const path = "/hub-api" + (sub ? "/" + sub : "") + (url.searchParams.toString() ? "?" + url.searchParams : "");
-  const headers = {};
+  const headers = { "accept-encoding": "identity" };
   for (const name of PASS) if (req.headers[name]) headers[name] = req.headers[name];
   const body = await readBody(req);
   let last;
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
     try {
       const upstream = await fetch(origin + path, { method: req.method, headers, body, redirect: "manual", signal: AbortSignal.timeout(55000) });
       res.status(upstream.status);
-      for (const name of ["content-type", "content-length", "content-range", "accept-ranges", "content-disposition", "cache-control"]) {
+      for (const name of ["content-type", "content-range", "accept-ranges", "content-disposition", "cache-control"]) {
         const value = upstream.headers.get(name);
         if (value) res.setHeader(name, value);
       }
