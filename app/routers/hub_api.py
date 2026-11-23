@@ -307,8 +307,13 @@ async def _project_view(user_id: str, project_id: str) -> dict:
         output_at = ""
     busy = bool(value.get("busy"))
     failed = next((e for e in reversed(since) if e.get("type") in FAIL), None)
-    rendering = any(("render" in json.dumps(e.get("data") or {}, ensure_ascii=False).lower()) for e in since[-15:]
-                    if e.get("type") in ("tool.started", "tool.progress", "motion.progress", "pro.job"))
+    def at_render(event: dict) -> bool:
+        """The render stage itself (the motion engine's rendering status, a cloud render row, an engine job's render state), not a word in a message."""
+        data = event.get("data") or {}
+        marks = " ".join(str(data.get(k) or "") for k in ("status", "stage", "tool", "state", "key")).lower()
+        return "render" in marks or "cloud_render" in marks
+    recent = [e for e in since[-12:] if e.get("type") in ("tool.started", "tool.progress", "motion.progress", "motion.log", "pro.job")]
+    rendering = bool(recent) and at_render(recent[-1])
     if busy:
         status = "rendering" if rendering else "running"
     elif output_at and output_at >= last_user_at:
