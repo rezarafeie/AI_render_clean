@@ -549,6 +549,9 @@ export const api = {
   async panelWizardCatalog(): Promise<WizardCatalog> {
     return j(await authFetch(`${BASE}/panel/wizard/catalog`));
   },
+  async panelTitleIdea(text: string): Promise<{ title: string }> {
+    return j(await authFetch(`${BASE}/panel/wizard/title`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }));
+  },
   libraryMusicUrl(file: string): string { return `${BASE}/panel/wizard/music/${encodeURIComponent(file)}`; },
   async createPanelDraft(): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/panel/draft`, { method: "POST" }));

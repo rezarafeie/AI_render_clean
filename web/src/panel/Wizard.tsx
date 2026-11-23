@@ -104,6 +104,15 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
     const timer = setTimeout(() => void save(data).catch(e => setError(friendlyError(e, "save the draft"))), 450);
     return () => clearTimeout(timer);
   }, [data, save]);
+  const titled = React.useRef("");
+  React.useEffect(() => {
+    if (step !== "review") return;
+    const text = [data.topic, data.source_url, engines.find(e => e.id === data.engine)?.name].filter(Boolean).join(" — ");
+    const generic = !data.title.trim() || /^(پروژهٔ? ?(جدید|دستی جدید)|New project)$/i.test(data.title.trim());
+    if (!generic || text.trim().length < 3 || titled.current === text) return;
+    titled.current = text;
+    api.panelTitleIdea(text).then(r => { if (r.title && (!latest.current.title.trim() || /^(پروژهٔ? ?(جدید|دستی جدید)|New project)$/i.test(latest.current.title.trim()))) update({ title: r.title }); }).catch(() => {});
+  }, [step]);
   const update = (next: Partial<SetupData>) => { latest.current = { ...latest.current, ...next }; setData(latest.current); };
   const go = (target: StepId) => { setDir(steps.indexOf(target) >= index ? 1 : -1); setStep(target); setError(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const next = () => { if (index < steps.length - 1) go(steps[index + 1]); };
@@ -278,9 +287,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <Row label="موسیقی" value={data.music === "off" ? "بدون موسیقی" : data.music?.startsWith("library:") ? data.music.slice(8) : "خودکار"} onEdit={() => go("music")}/>
           </> : <Row label="فایل‌ها" value={`${data.attachment_ids.length} فایل`} onEdit={() => go("media")}/>}
           {data.engine === "talking" ? <Row label="سبک تدوین" value={capabilities.talking_styles.find(s => s.id === data.style)?.label || (data.style === "premium" ? "پریمیوم" : "پیشنهاد موتور")} onEdit={() => go("edit")}/> : null}
-          <label className="wz-mode">گردش کار<select className="input" value={data.mode} onChange={e => update({ mode: e.target.value as SetupData["mode"] })}>
-            <option value="manual">دستی — هر مرحله را خودم تأیید می‌کنم</option><option value="assisted">با کمک دستیار</option><option value="auto">ساخت خودکار</option></select></label>
-          <label className="wz-mode">نام پروژه<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
+          <label className="wz-mode">نام پروژه (پیشنهاد خودکار — قابل تغییر)<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
         <aside className="wz-preview">{MOTION.includes(data.engine) ? (style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
           : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>) : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>

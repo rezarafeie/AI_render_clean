@@ -462,3 +462,24 @@
 .wz-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: wz-rot .8s linear infinite; }
 @keyframes wz-rot { to { transform: rotate(360deg) } }
 .wz-sample { max-width: 620px; }
+/* phones: the live preview sits above the step at a modest size and does not float over the fields */
+@media (max-width: 860px) {
+  .wz-preview { position: static; order: -1; }
+  .wz-preview .wz-frame[data-big], .wz-preview .sp[data-big] { max-height: 300px; max-width: 170px; }
+  .wz-two { gap: 14px; }
+  .wz-types, .wz-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .wz-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wz-type-art { height: 64px; }
+  .wz-row { grid-template-columns: 84px 1fr auto; }
+  .wz-head h1 { font-size: 20px; }
+  .wz-path { overflow-x: auto; }
+}
+/* the project's own chat, beside the editor (the studio chat of this same conversation, embedded) */
+.mp-chat-drawer { position: fixed; top: 0; bottom: 0; left: 0; width: min(460px, 100vw); z-index: 60; display: flex; flex-direction: column;
+  background: var(--bg, #141414); border-right: 1px solid var(--border, #333); box-shadow: 20px 0 60px -20px rgba(0,0,0,.6); animation: mp-chat-in .35s cubic-bezier(.2,.8,.2,1); }
+@keyframes mp-chat-in { from { transform: translateX(-100%) } to { transform: none } }
+.mp-chat-drawer header { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border, #333); direction: rtl; }
+.mp-chat-drawer header small { grid-row: 2; color: var(--muted, #9a9a9a); font-size: 12px; }
+.mp-chat-drawer header button { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.mp-chat-drawer iframe { flex: 1; width: 100%; border: 0; background: var(--bg, #141414); }
+.app-embed { display: block; min-height: 100vh; }

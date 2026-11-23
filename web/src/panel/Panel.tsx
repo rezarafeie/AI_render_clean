@@ -88,6 +88,7 @@ function AuthorizedPanel({id}: {id: string}) {
   const [chat, setChat] = React.useState<StudioConversation | null>(null);
   const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
   const [simpleSetup, setSimpleSetup] = React.useState(false);
+  const [chatOpen, setChatOpen] = React.useState(false);
   const [events, setEvents] = React.useState<StudioEvent[]>([]);
   const [historyLoaded, setHistoryLoaded] = React.useState(false);
   const [motion, setMotion] = React.useState<MotionGraphic | null>(null);
@@ -282,10 +283,15 @@ function AuthorizedPanel({id}: {id: string}) {
       <Link to="/panel" className="mp-bar-back icon-btn" aria-label="پروژه‌ها"><Icon name="projects" size={20}/></Link>
       <div className="mp-bar-title"><b dir="auto">{chat?.title || "ادیتور دستی"}</b><small>{busy || (isDraft ? "پیش‌نویس" : statusLabel)}</small></div>
       <div className="mp-bar-actions">
-        <Link reloadDocument to={`/studio/${id}`} className="btn btn-secondary btn-sm"><Icon name="spark" size={16}/><span>چت</span></Link>
+        <button type="button" className="btn btn-secondary btn-sm" aria-pressed={chatOpen} onClick={() => setChatOpen(value => !value)}><Icon name="spark" size={16}/><span>چت</span></button>
         {!isDraft && !discoveryId && <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(busy)} onClick={() => void download()}><Icon name="download" size={16}/>{currentOutput ? "خروجی" : "رندر"}</button>}
       </div>
     </header>
+    {chatOpen ? <aside className="mp-chat-drawer" aria-label="چت همین پروژه">
+      <header><b>چت همین پروژه</b><small>هر چیزی دربارهٔ این پروژه بپرس یا بخواه</small>
+        <button type="button" className="icon-btn" aria-label="بستن چت" onClick={() => { setChatOpen(false); void refresh(); }}><Icon name="close" size={18}/></button></header>
+      <iframe title="چت پروژه" src={`/studio/${id}?embed=1`}/>
+    </aside> : null}
     {error && <p className="mp-error notice" role="alert" data-tone="error">{error}</p>}
     {!chat ? (!error && <Loading/>) : isDraft ? (capabilities && setup ? (simpleSetup ? <><button type="button" className="btn btn-sm btn-secondary mp-mode-switch" onClick={() => setSimpleSetup(false)}>ساخت مرحله‌به‌مرحله (ویزارد)</button><Setup id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/></>
       : <><button type="button" className="btn btn-sm btn-secondary mp-mode-switch" onClick={() => setSimpleSetup(true)}>فرم ساده</button><Wizard id={id} initial={setup} capabilities={capabilities} onStarted={refresh}/></>) : <Loading/>) : discoveryId ? <div className="mp-home">

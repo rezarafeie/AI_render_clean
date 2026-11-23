@@ -165,6 +165,11 @@ export default function EditorShell() {
   const initial = user?.name?.trim()?.[0]?.toUpperCase();
   const settingsActive = /^\/(settings|new|my-effects|library|style-library|style-learner|fonts|hermes|content|localize|talking)/.test(location.pathname);
 
+  // ?embed=1: the page alone, without the sidebar, top bar or bottom tabs (the manual editor shows the project's chat in a side panel this way)
+  if (new URLSearchParams(location.search).get("embed") === "1") return <ShellContext.Provider value={shellValue}>
+    <div className="app app-embed" data-bare><main id="main-content" className="main" data-route={kind} tabIndex={-1}>
+      <React.Suspense fallback={<PaneSkeleton/>}><Outlet/></React.Suspense></main></div>
+  </ShellContext.Provider>;
   return <ShellContext.Provider value={shellValue}>
     <div className="app" data-collapsed={collapsed || undefined} data-resizing={resizing || undefined}
       style={!collapsed && !isMobile && (liveWidth ?? sidebarWidth) ? { ["--sb" as string]: `${liveWidth ?? sidebarWidth}px` } : undefined} data-bare={kind === "studio" || undefined} data-hide-bottom-nav={/^\/studio\/[^/]+/.test(location.pathname) || undefined}>

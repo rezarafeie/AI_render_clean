@@ -209,6 +209,17 @@ async def wizard_music(name: str):
     raise HTTPException(404, "track not found")
 
 
+class TitleIdea(BaseModel):
+    text: str = Field(min_length=2, max_length=1200)
+
+
+@router.post("/wizard/title")
+async def wizard_title(request: Request, body: TitleIdea):
+    """A short project name suggested from what the person wrote (the same title writer the chats use)."""
+    from app.studio_title import make_title
+    return {"title": (await asyncio.to_thread(make_title, body.text))[:100]}
+
+
 @router.get("/capabilities")
 async def capabilities():
     from brain import motion_so
