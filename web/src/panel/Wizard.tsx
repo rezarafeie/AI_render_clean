@@ -1,4 +1,5 @@
 import React from "react";
+import { TalkingPreview } from "./TalkingPreview";
 import { api, type CloudFile, type StudioAttachment, type StudioFile } from "../api";
 import { Icon } from "../components/Icon";
 import { AuthenticatedMedia, useAuthenticatedMediaUrl } from "../AuthenticatedMedia";
@@ -29,6 +30,14 @@ const STEP_HINT: Record<StepId, string> = {
 };
 
 /* ── the live mini-frame every preview uses ───────────────────────────────────── */
+const TALKING_NOTE: Record<string, string> = {
+  talking_1: "تمام‌قاب با کات دور و نزدیک، تیتر قلاب و معرفی گوینده",
+  talking_2: "دوتکه: تصویر هر جمله بالا، گوینده پایین، کلمهٔ کلیدی زرد",
+  talking_3: "دوتکهٔ سینمایی: رنگ‌بندی فیلم، گرین، تیتر فصل‌ها",
+  talking_5: "پنل گرافیکی بالا، کارت گوینده پایین، کلمه‌های ضربه‌ای",
+  premium: "تمام‌قاب با زیرنویس کلمه‌به‌کلمه و موشن‌گرافیک",
+};
+
 function Frame({ palette, title, font, motion = "slide", aspect = "vertical", big = false, playing = true }:
   { palette: string[]; title: string; font?: string; motion?: string; aspect?: string; big?: boolean; playing?: boolean }) {
   const [bg, surface, accent, ink] = [palette[0] || "#111318", palette[1] || "#1d2230", palette[2] || "#f2b84b", palette[3] || "#f5f1e8"];
@@ -214,7 +223,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
         <button type="button" className="wz-card" aria-pressed={!data.style} onClick={() => update({ style: "" })}>
           <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>پیشنهاد موتور</b><small>بعد از تحلیل ویدیو بهترین سبک را خودش انتخاب می‌کند</small></button>
         {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map((s, i) => <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
-          <Frame palette={(catalog?.palettes[i % (catalog?.palettes.length || 1)]?.colors) || palette} title={s.label} motion={["slide", "pop", "zoom", "drift"][i % 4]}/><b>{s.label}</b></button>)}
+          <TalkingPreview style={s.id}/><b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>)}
       </div>}
 
       {step === "style" && <>
@@ -290,7 +299,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <label className="wz-mode">نام پروژه (پیشنهاد خودکار — قابل تغییر)<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
         <aside className="wz-preview">{MOTION.includes(data.engine) ? (style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
-          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>) : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>) : data.engine === "talking" && data.style ? <TalkingPreview style={data.style} big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
     </div>
 

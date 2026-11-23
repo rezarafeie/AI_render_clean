@@ -483,3 +483,78 @@
 .mp-chat-drawer header button { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
 .mp-chat-drawer iframe { flex: 1; width: 100%; border: 0; background: var(--bg, #141414); }
 .app-embed { display: block; min-height: 100vh; }
+
+/* ---- talking-edit style previews (TalkingPreview.tsx) ---- */
+.tp { position: relative; width: 100%; aspect-ratio: 9 / 16; max-height: 270px; overflow: hidden; border-radius: 12px; background: #1a1d22; isolation: isolate; font-weight: 800; color: #fff; container-type: inline-size; margin-inline: auto; }
+.tp[data-big] { max-height: 520px; max-width: 300px; border-radius: 22px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
+.tp:not([data-play]) * { animation-play-state: paused !important; }
+.tp-speaker { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tp-full { position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 30%, #5b4a3d, #23201d); }
+.tp-full .tp-speaker { transform-origin: 50% 45%; }
+.tp-full.cuts .tp-speaker { animation: tp-cuts 4s steps(1) infinite; }
+@keyframes tp-cuts { 0% { transform: scale(1); } 33% { transform: scale(1.45) translateY(6%); } 66% { transform: scale(1.12) translateX(-4%); } }
+.tp[data-s="talking_1"] .tp-full { filter: sepia(.25) saturate(1.15); }
+.tp-bw { position: absolute; inset: 0; pointer-events: none; backdrop-filter: grayscale(1); background: rgba(255,240,210,0); animation: tp-bw 6s infinite; opacity: 0; }
+@keyframes tp-bw { 0%, 62% { opacity: 0; background: rgba(255,240,210,0); } 64% { opacity: 1; background: rgba(255,236,200,.85); } 68%, 88% { opacity: 1; background: rgba(255,240,210,0); } 90% { background: rgba(255,236,200,.7); } 92%, 100% { opacity: 0; } }
+.tp-hook { position: absolute; inset-inline: 7%; bottom: 20%; padding: 5% 6%; border-radius: 10px; background: rgba(10,10,12,.62); backdrop-filter: blur(4px); text-align: center; font-size: 8.5cqw; line-height: 1.5; }
+.tp-hook mark { background: none; color: #ffd400; }
+.tp-caption { position: absolute; inset-inline: 0; bottom: 37%; text-align: center; font-size: 6cqw; text-shadow: 0 1px 4px #000; animation: tp-pop 2s infinite; }
+.tp-lower { position: absolute; inset-inline-start: 6%; top: 8%; display: grid; padding: 3% 5%; border-inline-start: 3px solid #ffd400; background: rgba(0,0,0,.45); font-size: 5.5cqw; }
+.tp-lower small { font-weight: 500; font-size: 4.2cqw; opacity: .8; }
+@keyframes tp-pop { 0%, 100% { transform: scale(1); } 8% { transform: scale(1.12); } 16% { transform: scale(1); } }
+
+.tp-top { position: absolute; inset: 0 0 50% 0; overflow: hidden; }
+.tp-bottom { position: absolute; inset: 50% 0 0 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 30%, #4d4a46, #1e1d1c); }
+.tp-bottom .tp-speaker { animation: tp-punch 3s steps(1) infinite; transform-origin: 50% 40%; }
+@keyframes tp-punch { 0% { transform: scale(1); } 50% { transform: scale(1.3); } }
+.tp[data-s="talking_2"] .tp-top { background: linear-gradient(160deg, #2f6df6, #8b5cf6); display: grid; place-items: center; }
+.tp-card { width: 78%; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 24px rgba(0,0,0,.35); }
+.tp-pic { display: block; width: 100%; height: 100%; background: linear-gradient(180deg, #ffd38a 0 40%, #6fb7ff 40% 42%, #3b8d4c 42%), #6fb7ff; animation: tp-zoom 6s ease-in-out infinite alternate; }
+.tp-pic::before { content: ""; position: absolute; }
+@keyframes tp-zoom { from { transform: scale(1); } to { transform: scale(1.18); } }
+.tp-chips { position: absolute; inset-inline-end: 6%; top: 8%; display: grid; gap: 4px; }
+.tp-chips span { font-size: 4.6cqw; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.22); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.35); opacity: 0; animation: tp-chip 6s infinite; }
+.tp-chips span:nth-child(2) { animation-delay: .5s; } .tp-chips span:nth-child(3) { animation-delay: 1s; }
+@keyframes tp-chip { 0%, 30% { opacity: 0; transform: translateX(-10px) scale(.9); } 36%, 85% { opacity: 1; transform: none; } 95%, 100% { opacity: 0; } }
+.tp-seam { position: absolute; inset-inline: 0; top: 50%; transform: translateY(-50%); display: grid; justify-items: center; line-height: 1.1; text-shadow: 0 2px 6px rgba(0,0,0,.6); z-index: 2; }
+.tp-seam small { font-size: 6cqw; }
+.tp-seam b { font-size: 14cqw; color: #ffd400; animation: tp-pop 2.4s infinite; }
+.tp-seam.plain b { font-size: 8cqw; color: #fff; font-weight: 700; }
+
+.tp[data-s="talking_3"] { filter: saturate(1.1); }
+.tp-pic.cine { background: linear-gradient(180deg, #ff9a4d 0%, #c65a3a 38%, #1e4b5a 39%, #0f2a33 100%); animation: tp-zoom 8s ease-in-out infinite alternate; }
+.tp[data-s="talking_3"] .tp-bottom { background: radial-gradient(120% 90% at 50% 30%, #2d4a50, #0c1517); }
+.tp[data-s="talking_3"] .tp-bottom .tp-speaker { filter: sepia(.3) hue-rotate(-10deg) contrast(1.1); animation: none; }
+.tp-fade { position: absolute; inset-inline: 0; top: 38%; height: 24%; background: linear-gradient(to bottom, transparent, rgba(5,10,12,.85) 50%, transparent); }
+.tp-chapter { position: absolute; inset-inline: 8%; top: 14%; display: grid; text-align: start; animation: tp-slide 6s infinite; }
+.tp-chapter em { font-family: "Nastaliq", "IranNastaliq", serif; font-style: normal; color: #ffb36b; font-size: 8cqw; font-weight: 400; }
+.tp-chapter b { font-size: 10cqw; }
+@keyframes tp-slide { 0%, 8% { opacity: 0; transform: translateX(20%); } 16%, 70% { opacity: 1; transform: none; } 80%, 100% { opacity: 0; transform: translateX(-10%); } }
+.tp-grain { position: absolute; inset: 0; opacity: .18; mix-blend-mode: overlay; background-image: repeating-radial-gradient(circle at 17% 32%, #fff 0 1px, transparent 1px 3px); animation: tp-grain .4s steps(2) infinite; }
+@keyframes tp-grain { 50% { transform: translate(2%, -1%); } }
+.tp-vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75)); pointer-events: none; }
+.tp-vig.soft { background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.5)); }
+
+.tp[data-s="talking_5"] .tp-full { animation: tp-show5 6s steps(1) infinite; }
+.tp-split5 { position: absolute; inset: 0; background: #0d1220; animation: tp-hide5 6s steps(1) infinite; }
+@keyframes tp-show5 { 0% { opacity: 0; } 60% { opacity: 1; } }
+@keyframes tp-hide5 { 0% { opacity: 1; } 60% { opacity: 0; } }
+.tp-panel { position: absolute; inset: 6% 6% 50% 6%; border-radius: 14px; padding: 7%; background: linear-gradient(150deg, #1f6bff, #00c2a8); display: flex; flex-direction: column; gap: 6%; justify-content: center; }
+.tp-tag { align-self: flex-start; font-size: 4.5cqw; background: #ff3b3b; padding: 1px 7px; border-radius: 4px; }
+.tp-panel b { font-size: 8.5cqw; line-height: 1.4; }
+.tp-panel i { display: block; height: 4%; border-radius: 4px; background: rgba(255,255,255,.5); width: 80%; } .tp-panel i.s { width: 55%; }
+.tp-speakercard { position: absolute; inset: 53% 6% 4% 6%; border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 30%, #4a4f5a, #1b1e24); }
+.tp-name { position: absolute; bottom: 6%; inset-inline-start: 6%; font-size: 4.4cqw; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,.9); color: #111; }
+.tp-slam { position: absolute; inset-inline: 0; top: 40%; text-align: center; font-size: 17cqw; color: #ffe14d; text-shadow: 0 4px 0 #000; opacity: 0; animation: tp-slam 6s infinite; z-index: 3; }
+@keyframes tp-slam { 0%, 62% { opacity: 0; transform: scale(2.2); } 66% { opacity: 1; transform: scale(1); } 68% { transform: scale(1.08); } 70%, 90% { opacity: 1; transform: scale(1); } 94%, 100% { opacity: 0; } }
+
+.tp-full.zoom .tp-speaker { animation: tp-zoom 7s ease-in-out infinite alternate; }
+.tp[data-s="premium"] .tp-full { background: radial-gradient(120% 80% at 50% 25%, #3c3a5a, #12111c); }
+.tp-ring { position: absolute; width: 60%; aspect-ratio: 1; inset-inline-start: 20%; top: 12%; border-radius: 50%; border: 2px solid rgba(160,140,255,.6); animation: tp-ring 3s ease-out infinite; }
+@keyframes tp-ring { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+.tp-kinetic { position: absolute; inset-inline: 6%; bottom: 16%; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 2.5cqw; font-size: 9cqw; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.tp-kinetic > * { opacity: 0; animation: tp-word 5s infinite; }
+.tp-kinetic b { color: #b9a7ff; font-size: 12cqw; }
+.tp-kinetic > :nth-child(2) { animation-delay: .3s; } .tp-kinetic > :nth-child(3) { animation-delay: .6s; } .tp-kinetic > :nth-child(4) { animation-delay: .9s; } .tp-kinetic > :nth-child(5) { animation-delay: 1.2s; }
+@keyframes tp-word { 0% { opacity: 0; transform: translateY(40%) scale(.8); } 6%, 75% { opacity: 1; transform: none; } 85%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tp * { animation: none !important; } }
