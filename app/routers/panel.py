@@ -53,6 +53,7 @@ class ProjectSetup(BaseModel):
     sample_id: str = Field(default="", max_length=80)
     offer: str = Field(default="", max_length=300)
     cta: str = Field(default="", max_length=200)
+    library_items: list[str] = Field(default_factory=list, max_length=6)
 
 
 @contextmanager
@@ -121,6 +122,9 @@ def _wizard_lines(setup: "ProjectSetup") -> list[str]:
         sample = next((r for r in panel_previews.samples() if r["id"] == setup.sample_id), None)
         if sample:
             lines.append(f"زبان تصویری را نزدیک به این فیلم نمونهٔ استودیو بگیر: «{sample['title']}» — {sample.get('summary', '')}")
+    items = [i for i in setup.library_items if re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", i)]
+    if items:
+        lines.append("قطعه‌های آمادهٔ کتابخانهٔ موشن که کاربر از روی پیش‌نمایش‌شان انتخاب کرده (در صحنه‌های مناسب از همین‌ها یا همین حرکت‌ها استفاده کن): " + ", ".join(items))
     if setup.offer.strip():
         lines.append(f"پیشنهاد ویژه / تخفیف: {setup.offer.strip()}")
     if setup.cta.strip():

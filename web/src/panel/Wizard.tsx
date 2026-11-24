@@ -5,6 +5,7 @@ import { AuthenticatedMedia, useAuthenticatedMediaUrl } from "../AuthenticatedMe
 import { friendlyError } from "../ui";
 import { useProFonts, loadFontFaces } from "../studio/FontPicker";
 import { engines } from "./Setup";
+import { toItem, type LibraryItem } from "../MotionLibrary";
 import type { Capabilities, Engine, FilmStyleCard, Setup as SetupData, WizardCatalog, WizardSample } from "./types";
 
 const FilesPicker = React.lazy(() => import("../studio/FilesPicker").then(m => ({ default: m.FilesPicker })));
@@ -32,7 +33,7 @@ function hintFor(step: StepId, engine: Engine): string {
   if (step === "content") return engine === "vox" ? "مستند دربارهٔ چه موضوعی باشد؟" : engine === "storyboard" ? "ویدیو دربارهٔ چیست؟ صحنه‌ها را بعداً تأیید می‌کنی" : "دربارهٔ چیست و از چه چیزی ساخته شود؟";
   if (step === "samples") return engine === "product" ? "تبلیغ‌هایی که همین موتور ساخته — شبیه کدام باشد؟" : engine === "story" ? "فیلم‌های روایی همین موتور — حال‌وهوای کدام را می‌خواهی؟" : "فیلم‌هایی که همین موتور ساخته — زبان تصویری کدام را می‌خواهی؟";
   return ({ type: "چه ویدیویی می‌خواهی بسازی؟", product: "محصولت را معرفی کن", story: "قصه دربارهٔ کیست و چه پیامی دارد؟", media: "ویدیوی خودت را اضافه کن",
-    edit: "پیش‌نمایش هر سبک روی همین ویدیوی تو", look: "مستند با کدام لوک ساخته شود؟", font: "تیترها با کدام فونت نوشته شوند؟", color: "رنگ‌های فیلم",
+    edit: "خروجی واقعی هر سبک — کدام را می‌خواهی؟", look: "مستند با کدام لوک ساخته شود؟", font: "تیترها با کدام فونت نوشته شوند؟", color: "رنگ‌های فیلم",
     voice: "چه کسی و با چه لحنی روایت کند؟", music: "موسیقی زمینه", review: "همه‌چیز آماده است" } as Record<string, string>)[step] || "";
 }
 
@@ -60,10 +61,18 @@ function SampleVideo({ sample, play = false, big = false }: { sample: WizardSamp
   </span>;
 }
 
-/** A still made on the server from the person's own video (fetched with the session token). */
-function Still({ url, label, big = false }: { url: string; label: string; big?: boolean }) {
-  const src = useAuthenticatedMediaUrl(url);
-  return src ? <img className={`wz-still${big ? " big" : ""}`} src={src} alt={label}/> : <span className={`wz-still wz-still-wait${big ? " big" : ""}`}><span className="wz-spin"/></span>;
+/** A ready component of the motion library, with the same poster and clip the library page shows (public files, no session needed). */
+function LibraryCard({ item, active, onPick }: { item: LibraryItem; active: boolean; onPick: () => void }) {
+  const [hover, setHover] = React.useState(false);
+  const on = (active || hover) && Boolean(item.video);
+  return <button type="button" className="wz-card wz-libcard" aria-pressed={active} onClick={onPick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onTouchStart={() => setHover(true)}>
+    <span className="wz-sample-video" data-format={item.format || "vertical"}>
+      {item.poster ? <img src={item.poster} alt="" className="wz-sample-poster" loading="lazy"/> : null}
+      {on ? <video src={item.video!} muted loop playsInline autoPlay/> : null}
+      {item.video ? <span className="wz-real">ویدیو</span> : null}
+    </span>
+    <b dir="ltr">{item.name.replace(/^shotcraft-native-/, "")}</b>{item.use ? <small>{item.use.slice(0, 90)}</small> : null}
+  </button>;
 }
 
 /** The poster of a real film with the person's title written in the chosen font and colours: what the font and colour steps change. */
@@ -120,16 +129,14 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
   const samplesOf = (engine: Engine) => (catalog?.samples || []).filter(s => s.engine === engine);
   const mySamples = samplesOf(data.engine);
   const chosenSample = mySamples.find(s => s.id === data.sample_id) || (data.engine === "vox" ? mySamples.find(s => s.look === data.vox_look) : undefined) || mySamples[0];
-  const [stills, setStills] = React.useState<{ key: string; urls: Record<string, string>; state: "loading" | "ready" | "error" } | null>(null);
-  const firstVideo = data.attachment_ids.find(a => assets[a]?.kind === "video") || (data.engine === "talking" ? data.attachment_ids[0] : undefined);
+  const talkingSample = (styleId: string) => (catalog?.samples || []).find(s => s.engine === "talking" && s.style === styleId);
+  const [library, setLibrary] = React.useState<LibraryItem[] | null>(null);
   React.useEffect(() => {
-    if (step !== "edit" || !firstVideo) return;
-    const key = `${firstVideo}|${data.title}`;
-    if (stills?.key.startsWith(firstVideo)) return;
-    setStills({ key, urls: {}, state: "loading" });
-    api.panelTalkingStills(id, firstVideo, latest.current.title).then(urls => setStills({ key, urls, state: "ready" })).catch(() => setStills({ key, urls: {}, state: "error" }));
-  }, [step, firstVideo]); // eslint-disable-line react-hooks/exhaustive-deps
-
+    if (step !== "samples" || data.engine !== "motion" || library) return;
+    Promise.all(["index.json", "native-shotcraft.json"].map(f => fetch(`/creative-previews/${f}`).then(r => r.ok ? r.json() : { items: {} }).catch(() => ({ items: {} }))))
+      .then(groups => setLibrary(groups.flatMap((g: { items?: Record<string, unknown> }) => Object.values(g.items || {}) as Record<string, unknown>[]).map(toItem).filter(i => i.poster)));
+  }, [step, data.engine, library]);
+  const toggleItem = (itemId: string) => { const cur = latest.current.library_items || []; update({ library_items: cur.includes(itemId) ? cur.filter(x => x !== itemId) : [...cur, itemId].slice(-6) }); };
   React.useEffect(() => { api.panelWizardCatalog().then(setCatalog).catch(e => setError(friendlyError(e, "load the choices"))); }, []);
   React.useEffect(() => { if (font) void loadFontFaces(font); }, [font]);
   React.useEffect(() => {
@@ -268,8 +275,13 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           {mySamples.map(s => <button key={s.id} type="button" className="wz-card" aria-pressed={data.sample_id === s.id} onClick={() => update({ sample_id: s.id })}>
             <SampleVideo sample={s} play={data.sample_id === s.id}/><b>{s.title}</b>{s.summary ? <small>{s.summary.slice(0, 110)}</small> : null}</button>)}
         </div>
+        {data.engine === "motion" ? <section className="wz-libsec">
+          <h2>قطعه‌های کتابخانهٔ موشن <small>هر کدام را بخواهی در فیلمت باشد انتخاب کن (تا ۶ قطعه){data.library_items?.length ? ` — ${data.library_items.length} انتخاب شده` : ""}</small></h2>
+          {library ? <div className="wz-grid wz-samples">{library.map(item => <LibraryCard key={item.id} item={item} active={Boolean(data.library_items?.includes(item.id))} onPick={() => toggleItem(item.id)}/>)}</div>
+            : <p className="wz-note"><span className="wz-spin"/> در حال بارگذاری کتابخانه…</p>}
+        </section> : null}
         {data.engine === "motion" && catalog?.film_styles.length ? <details className="wz-lib">
-          <summary>یا یک سبک از کتابخانهٔ سبک‌ها ({catalog.film_styles.length}) — بدون نمونهٔ ویدیویی</summary>
+          <summary>سبک‌های نوشتاری کارگردان ({catalog.film_styles.length}) — فقط توضیح و رنگ، این‌ها فیلم نمونه ندارند</summary>
           <div className="wz-toolbar"><input className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجوی سبک: کاغذی، نئون، مستند، مینیمال…"/></div>
           <ul className="wz-stylelist">{styles.map((s: FilmStyleCard) => <li key={s.id}><button type="button" aria-pressed={data.film_style === s.id}
             onClick={() => update({ film_style: data.film_style === s.id ? "" : s.id, palette: [] })}>
@@ -307,17 +319,14 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
       </div>}
 
       {step === "edit" && <>
-        {stills?.state === "loading" ? <p className="wz-note"><span className="wz-spin"/> در حال ساخت پیش‌نمایش هر سبک از فریم‌های ویدیوی خودت…</p> : null}
-        {stills?.state === "error" ? <p className="wz-note">ساخت پیش‌نمایش از ویدیو ممکن نشد؛ سبک را از روی توضیح انتخاب کن.</p> : null}
-        {!firstVideo ? <p className="wz-note">برای دیدن پیش‌نمایش روی ویدیوی خودت، اول در مرحلهٔ قبل ویدیو را اضافه کن.</p> : null}
         <div className="wz-grid wz-stills">
           <button type="button" className="wz-card" aria-pressed={!data.style} onClick={() => update({ style: "" })}>
             <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>پیشنهاد موتور</b><small>بعد از تحلیل ویدیو بهترین سبک را خودش انتخاب می‌کند</small></button>
-          {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map(s => <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
-            {stills?.urls[s.id] ? <Still url={stills.urls[s.id]} label={`پیش‌نمایش ${s.label} روی ویدیوی تو`}/> : <span className="wz-still wz-still-wait">{stills?.state === "loading" ? <span className="wz-spin"/> : null}</span>}
-            <b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>)}
+          {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map(s => { const real = talkingSample(s.id); return <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
+            {real ? <SampleVideo sample={real} play={data.style === s.id}/> : <span className="wz-still wz-still-wait"><em>هنوز فیلم تمام‌شده‌ای با این سبک نیست</em></span>}
+            <b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>; })}
         </div>
-        {stills?.state === "ready" ? <p className="wz-note">تصویرها از ویدیوی خودت ساخته شده‌اند با چیدمان، برش و رنگ‌بندی واقعی هر سبک؛ فقط متن‌ها نمونه‌اند.</p> : null}
+        <p className="wz-note">هر کارت چند ثانیه از خروجی واقعی همین سبک است (از فیلم‌های تمام‌شدهٔ استودیو). برای پخش، روی کارت بزن یا نشانگر را رویش ببر.</p>
       </>}
 
       {step === "font" && <div className="wz-two">
@@ -368,6 +377,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <Row label={data.engine === "product" ? "محصول" : data.engine === "story" ? "قصه" : "موضوع"} value={data.topic || data.source_url || "از فایل‌ها"} onEdit={() => go(steps[1])}/>
             <Row label="مدت" value={`${data.seconds} ثانیه${steps.includes("content") ? ` · ${data.aspect === "landscape" ? "افقی" : data.aspect === "square" ? "مربع" : "عمودی"}` : ""}`} onEdit={() => go(steps[1])}/>
             {steps.includes("samples") ? <Row label="سبک" value={mySamples.find(s => s.id === data.sample_id)?.title || style?.title || "انتخاب کارگردان"} onEdit={() => go("samples")}/> : null}
+            {data.library_items?.length ? <Row label="قطعه‌ها" value={<span dir="ltr">{data.library_items.map(i => i.replace(/^[a-z-]+:/, "")).join("، ")}</span>} onEdit={() => go("samples")}/> : null}
             {steps.includes("look") ? <Row label="لوک" value={catalog?.vox_looks?.find(l => l.id === data.vox_look)?.name || "انتخاب کارگردان"} onEdit={() => go("look")}/> : null}
             {data.engine === "product" && (data.offer || data.cta) ? <Row label="پیشنهاد" value={[data.offer, data.cta].filter(Boolean).join(" · ")} onEdit={() => go("product")}/> : null}
             {steps.includes("font") ? <Row label="فونت" value={font?.label || "خودکار"} onEdit={() => go("font")}/> : null}
@@ -379,7 +389,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <label className="wz-mode">نام پروژه (پیشنهاد خودکار — قابل تغییر)<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
         <aside className="wz-preview">{MOTION.includes(data.engine) && chosenSample ? <SampleVideo sample={chosenSample} play big/>
-          : data.engine === "talking" && data.style && stills?.urls[data.style] ? <Still url={stills.urls[data.style]} label="" big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+          : data.engine === "talking" && data.style && talkingSample(data.style) ? <SampleVideo sample={talkingSample(data.style)!} play big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
     </div>
 
