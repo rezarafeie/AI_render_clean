@@ -489,3 +489,9 @@ button.cloud-row:disabled { opacity: .6; cursor: progress; }
 .eg-rule { padding: 18px; border-radius: 18px; background: var(--surface, rgba(255,255,255,.02)); border: 1px solid var(--border, rgba(255,255,255,.12)); }
 .eg-rule h2 { margin: 0 0 8px; font-size: 18px; }
 .eg-rule ol { margin: 0; padding-inline-start: 20px; line-height: 2; }
+
+.app-fresh { position: fixed; z-index: 9999; inset-inline: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); margin-inline: auto; max-width: 460px;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: 16px; background: #111; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 14px; }
+.app-fresh span { flex: 1; }
+.app-fresh .btn { background: #fff; color: #111; }
+.app-fresh .icon-btn { color: #fff; }

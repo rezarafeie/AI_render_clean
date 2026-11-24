@@ -28,7 +28,28 @@ export function AppFeatures() {
     }
     return () => { window.removeEventListener("beforeinstallprompt", prompt); window.removeEventListener("appinstalled", installed); };
   }, []);
-  return null;
+  return <NewVersionBanner/>;
+}
+
+/** The app keeps running the bundle it opened with; when the server has a newer build, offer a reload (never forced: a device render may be running). */
+function NewVersionBanner() {
+  const [fresh, setFresh] = React.useState(false);
+  React.useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    const mine = (document.querySelector('script[type="module"][src*="/assets/index-"]') as HTMLScriptElement | null)?.src.match(/index-[\w-]+\.js/)?.[0];
+    if (!mine) return;
+    let stop = false;
+    const check = () => { if (document.visibilityState !== "visible" || stop) return;
+      fetch("/index.html", { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(html => { const live = html.match(/index-[\w-]+\.js/)?.[0]; if (live && live !== mine) setFresh(true); }).catch(() => {}); };
+    const timer = setInterval(check, 3 * 60_000);
+    document.addEventListener("visibilitychange", check);
+    check();
+    return () => { stop = true; clearInterval(timer); document.removeEventListener("visibilitychange", check); };
+  }, []);
+  if (!fresh) return null;
+  return <div className="app-fresh" role="status"><span>A new version of EditorGPT is ready.</span>
+    <button type="button" className="btn btn-sm" onClick={() => location.reload()}>Reload</button>
+    <button type="button" className="icon-btn" aria-label="Later" onClick={() => setFresh(false)}><Icon name="close" size={14}/></button></div>;
 }
 
 export function InstallationSettings() {
