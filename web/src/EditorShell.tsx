@@ -201,6 +201,7 @@ export default function EditorShell() {
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
           <NavLink to="/panel" {...tip("Create panel")}><Icon name="grid"/><span>Create panel</span></NavLink>
           <NavLink to="/guide" {...tip("Which engine?")}><Icon name="spark"/><span>Which engine?</span></NavLink>
+          <NavLink to="/scheduled" {...tip("Scheduled tasks")}><Icon name="clock"/><span>Scheduled tasks</span></NavLink>
           </>}
         </nav>
 

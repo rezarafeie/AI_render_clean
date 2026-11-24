@@ -29,6 +29,8 @@ const TelegramLink = React.lazy(() => import("./TelegramLink"));
 const Settings = React.lazy(() => import("./Settings"));
 const AIModels = React.lazy(() => import("./AIModels"));
 const CreditsPage = React.lazy(() => import("./CreditsPage"));
+const ScheduledPage = React.lazy(() => import("./Scheduled"));
+const ScheduledDetail = React.lazy(() => import("./Scheduled").then(m => ({ default: m.ScheduledDetail })));
 const AdminUsers = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUsers })));
 const ProRuns = React.lazy(() => import("./settings/ProRuns").then(module => ({ default: module.ProRuns })));
 const AdminUserDetail = React.lazy(() => import("./settings/AdminUsers").then(module => ({ default: module.AdminUserDetail })));
@@ -107,6 +109,7 @@ function App() {
       <Route path="projects" element={<RequireAuth><Projects/></RequireAuth>}/><Route path="templates" element={<Templates/>}/><Route path="guide" element={<RequireAuth><EngineGuide/></RequireAuth>}/><Route path="settings" element={<RequireAuth><Settings/></RequireAuth>}/>
       <Route path="settings/ai" element={<RequireAuth><AIModels/></RequireAuth>}/>
       <Route path="credits" element={<RequireAuth><CreditsPage/></RequireAuth>}/>
+      <Route path="scheduled" element={<RequireAuth><ScheduledPage/></RequireAuth>}/><Route path="scheduled/:id" element={<RequireAuth><ScheduledDetail/></RequireAuth>}/>
       <Route path="settings/users" element={<RequireAuth><AdminUsers/></RequireAuth>}/>
       <Route path="settings/pro-runs" element={<RequireAuth><ProRuns/></RequireAuth>}/>
       <Route path="settings/users/:id" element={<RequireAuth><AdminUserDetail/></RequireAuth>}/>

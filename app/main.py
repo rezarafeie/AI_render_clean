@@ -101,9 +101,17 @@ async def lifespan(app: FastAPI):
     from contextlib import suppress
     from app.routers.telegram_studio import telegram_loop
     telegram = asyncio.create_task(telegram_loop())
+    scheduler = None
+    try:                                              # scheduled tasks (app/scheduled_tasks.py): guarded, an older image without the module still starts
+        from app.scheduled_tasks import scheduler_loop
+        scheduler = asyncio.create_task(scheduler_loop())
+    except Exception:
+        log.exception("scheduled tasks loop not started")
     try:
         yield
     finally:
+        if scheduler is not None:
+            scheduler.cancel()
         telegram.cancel()
         with suppress(asyncio.CancelledError):
             await telegram
@@ -233,6 +241,11 @@ app.include_router(_hub_api.router)
 from app.routers import agent_proxy as _agent_proxy
 app.include_router(_agent_proxy.router)
 app.include_router(_agent_proxy.admin_router)
+try:
+    from app.scheduled_tasks import router as _scheduled_router
+    app.include_router(_scheduled_router)
+except Exception:
+    log.exception("scheduled tasks routes not mounted")
 
 
 @app.middleware("http")

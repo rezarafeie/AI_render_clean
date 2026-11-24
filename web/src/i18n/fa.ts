@@ -136,6 +136,7 @@ export const FA: Record<string, string> = {
 "Recent": "اخیر",
 "Search chats": "جست‌وجوی چت‌ها",
 "Which engine?": "کدام موتور؟",
+"Scheduled tasks": "کارهای زمان‌بندی‌شده",
   "A new version of EditorGPT is ready.": "نسخهٔ جدید ادیتور جی‌پی‌تی آماده است.",
   "Later": "بعداً",
 "Create panel": "پنل ساخت",
