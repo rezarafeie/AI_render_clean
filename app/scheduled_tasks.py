@@ -169,7 +169,7 @@ Rules:
 - Each prompt is a complete, standalone request the studio can act on with no questions: the video type, the exact topic/angle, key facts and numbers to
   use, the tone and length, aspect ratio, and anything the instruction fixes (brand, call to action, style). Keep every fact, name, number and link the
   person wrote.
-- When N > 1, every brief takes a clearly different topic or angle. Never repeat a topic from RECENT RUNS.
+- When N > 1, every brief is about a DIFFERENT subject (a different news story, fact, product or idea), not different angles of one subject — unless the instruction itself names a single subject. With FRESH SOURCES, use a different story for each brief. Never repeat a topic from RECENT RUNS.
 - When FRESH SOURCES are given, build the briefs on them (today's news or facts), name the facts concretely, and never invent facts or numbers.
 - Write the prompt as the person would talk to the studio ("یک موشن‌گرافیک ۴۰ ثانیه‌ای عمودی بساز درباره‌ی ..."). No markdown."""
 
@@ -188,7 +188,14 @@ def _briefs(task: dict, user: str, recent: list[str]) -> list[dict]:
         if task.get("research"):
             try:
                 from brain.lm_gateway import search
-                sources = search(task["instructions"][:380], count=8)
+                sources = search(task["instructions"][:380], count=10)
+                if int(task.get("per_run") or 1) > 1:          # one search tends to return one big story: ask once more for other recent ones
+                    try:
+                        more = search("other recent news and developments, different stories: " + task["instructions"][:330], count=10)
+                        seen = {x.get("url") for x in sources}
+                        sources += [x for x in more if x.get("url") not in seen]
+                    except Exception:
+                        pass
             except Exception as exc:
                 log.warning("scheduled task %s: web search failed (%s)", task["id"], str(exc)[:160])
         today = _now().astimezone(IRAN).strftime("%Y-%m-%d")
