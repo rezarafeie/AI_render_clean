@@ -69,7 +69,11 @@ export default function EditorShell() {
   const [searching, setSearching] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [conversations, setConversations] = React.useState<StudioConversation[]>(() => (peekCache("studio-chats") as any) || []);   // the last list seen paints first
-  const [hermesChats, setHermesChats] = React.useState<{ id: string; title: string; updated_at: string }[]>(() => (peekCache("chats") as any) || []);
+  const [hermesChats, setHermesChats] = React.useState<{ id: string; title: string; updated_at: string }[]>(() => {
+    // HermesHome caches the raw answer ({chats: [...]}) under "chats": a non-array here crashed every Instagram page opened after it ("d is not iterable").
+    const cached = peekCache("sidebar-chats") as any;
+    return Array.isArray(cached) ? cached : [];
+  });
   const [pageTitle, setPageTitle] = React.useState("");
   const [topbarAction, setTopbarAction] = React.useState<TopbarAction | null>(null);
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -102,7 +106,7 @@ export default function EditorShell() {
   const hermesMode = routeKind(location.pathname) === "workspace";
   const refreshHermes = React.useCallback(() => {
     if (!authenticated || !hermesMode) return;
-    void hermesApi.listChats().then((out: any) => { const list = out?.chats || []; writeCache("chats", list); setHermesChats(list); }).catch(() => undefined);
+    void hermesApi.listChats().then((out: any) => { const list = Array.isArray(out?.chats) ? out.chats : Array.isArray(out) ? out : []; writeCache("sidebar-chats", list); setHermesChats(list); }).catch(() => undefined);
   }, [authenticated, hermesMode]);
   React.useEffect(() => { refreshHermes(); }, [refreshHermes, location.pathname]);
   React.useEffect(() => { window.addEventListener("hermes:chats-updated", refreshHermes); return () => window.removeEventListener("hermes:chats-updated", refreshHermes); }, [refreshHermes]);
