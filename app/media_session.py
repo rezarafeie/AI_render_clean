@@ -10,5 +10,6 @@ def allowed(method: str, path: str) -> bool:
         r'/localize/[^/]+/output',
         r'/admin/manage/(?:files/[^/]+|projects/[^/]+/exports/[^/]+)',
         r'/library/[^/]+/[^/]+/preview',
+        r'/panel/wizard/(?:sample/[\w.-]+|tstill/[\w-]+/[\w.]+)',   # the panel wizard's sample clips and talking stills (<video>/<img>)
     )
     return method in {'GET', 'HEAD'} and any(re.fullmatch(pattern, path) for pattern in routes)
