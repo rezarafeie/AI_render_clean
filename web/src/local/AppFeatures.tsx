@@ -31,7 +31,8 @@ export function AppFeatures() {
   return <NewVersionBanner/>;
 }
 
-/** The app keeps running the bundle it opened with; when the server has a newer build, offer a reload (never forced: a device render may be running). */
+/** The query string makes the service worker skip its cached shell (an old index.html there kept the banner up after reloading).
+ *  The app keeps running the bundle it opened with; when the server has a newer build, offer a reload (never forced: a device render may be running). */
 function NewVersionBanner() {
   const [fresh, setFresh] = React.useState(false);
   React.useEffect(() => {
@@ -40,7 +41,7 @@ function NewVersionBanner() {
     if (!mine) return;
     let stop = false;
     const check = () => { if (document.visibilityState !== "visible" || stop) return;
-      fetch("/index.html", { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(html => { const live = html.match(/index-[\w-]+\.js/)?.[0]; if (live && live !== mine) setFresh(true); }).catch(() => {}); };
+      fetch(`/index.html?fresh=${Date.now()}`, { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(html => { const live = html.match(/index-[\w-]+\.js/)?.[0]; if (live && live !== mine) setFresh(true); }).catch(() => {}); };
     const timer = setInterval(check, 3 * 60_000);
     document.addEventListener("visibilitychange", check);
     check();
