@@ -258,9 +258,9 @@ async def wizard_autofill(request: Request, conversation: str, body: AutofillReq
     cat = await wizard_catalog(request)
     lib = {}
     for row in body.library:
-        key = row.split(":", 1)[0].strip() if isinstance(row, str) else ""
-        if re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", key.replace(":", "_", 1)) or re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", key):
-            lib[key] = row[len(key) + 1:].strip()[:80]
+        key, _, note = row.partition(": ") if isinstance(row, str) else ("", "", "")
+        if re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", key.strip()):
+            lib[key.strip()] = note.strip()[:80]
     options = {
         "film_style": [f"{c['id']} = {c['title']} — {c['summary'][:70]}" for c in cat["film_styles"]],
         "vox_look": [f"{l['id']} = {l['name']}" for l in cat["vox_looks"]],
