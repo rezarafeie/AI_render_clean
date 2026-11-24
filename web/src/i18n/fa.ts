@@ -137,6 +137,7 @@ export const FA: Record<string, string> = {
 "Search chats": "جست‌وجوی چت‌ها",
 "Which engine?": "کدام موتور؟",
 "Scheduled tasks": "کارهای زمان‌بندی‌شده",
+"Schedule": "زمان‌بندی",
   "A new version of EditorGPT is ready.": "نسخهٔ جدید ادیتور جی‌پی‌تی آماده است.",
   "Later": "بعداً",
 "Create panel": "پنل ساخت",

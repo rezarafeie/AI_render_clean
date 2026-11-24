@@ -76,6 +76,12 @@ def _public_conversation(conversation: dict) -> dict:
     from app.studio_manual import question
     session = result.get('state', {}).get('manual_session')
     result['state']['manual_question'] = question(session) if session and session.get('question_id') else None
+    if result['state'].get('scheduled_setup'):                  # a chat that sets up a scheduled task: its assistant's question is the option card
+        try:
+            from app.scheduled_tasks import setup_question
+            result['state']['manual_question'] = setup_question(result['state'])
+        except Exception:
+            log.exception("scheduled setup question")
     return result
 
 
@@ -594,6 +600,10 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
     await credits.gate(user_key)                      # a new request needs credit; work already running is never cut
     try:
         conversation = await repo.get_conversation(conversation_id, user_key)
+        if (conversation.get("state") or {}).get("scheduled_setup"):
+            # «ساخت با هوش مصنوعی» on the scheduled tasks page: this chat talks to the setup assistant, not to an engine.
+            from app.scheduled_tasks import setup_message
+            return await setup_message(conversation, user_key, body.content.strip())
         saved_mode = (conversation.get("state") or {}).get("agent_mode")
         chosen = body.agent_mode or (saved_mode if saved_mode in {"medium", "pro", "claude"} else "lite")
         # «Claude»: Claude itself with nothing of the studio around it (no skills, tools, prompt or rules); it runs in Pro's isolated container,

@@ -304,10 +304,10 @@ _FINAL = {"done", "failed"}
 
 async def _item_status(user: str, conversation_id: str) -> tuple[str, str | None]:
     """done / failed / needs_you / running for one chat, plus the id of a Medium run waiting for plan approval."""
-    from app.studio_store import get_conversation
+    from app.studio_store import repo
     from app.agents import store as agent_store
     try:
-        conversation = await get_conversation(conversation_id, user)
+        conversation = await repo.get_conversation(conversation_id, user)
         runs = await agent_store.runs(conversation_id, user)
     except Exception:
         return "failed", None
@@ -535,26 +535,14 @@ class AssistIn(BaseModel):
     messages: list[dict] = Field(min_length=1, max_length=30)
 
 
-@router.post("/assist")
-async def assist(request: Request, body: AssistIn):
-    user = _owner(request)
-    from app import credits
-    await credits.gate(user)
-    lines = []
-    for m in body.messages[-30:]:
-        role = "PERSON" if m.get("role") == "user" else "YOU"
-        lines.append(f"{role}: {str(m.get('content', ''))[:3000]}")
+def _assist_call(user: str, messages: list[dict]) -> dict:
+    """One turn of the setup assistant (blocking). Returns {reply, question, draft} with the draft validated against TaskIn."""
+    from brain.llm import gateway_json
+    from brain.lm_gateway import work_scope
+    lines = [f"{'PERSON' if m.get('role') == 'user' else 'YOU'}: {str(m.get('content', ''))[:3000]}" for m in messages[-30:]]
     today = _now().astimezone(IRAN).strftime("%Y-%m-%d %H:%M")
-
-    def call():
-        from brain.llm import gateway_json
-        from brain.lm_gateway import work_scope
-        with work_scope("scheduled", "assist", user=user):
-            return gateway_json(ASSIST, f"NOW (Iran): {today}\n\nCONVERSATION:\n" + "\n".join(lines), route="engine_advisor", max_tokens=3000)[0]
-    try:
-        out = await asyncio.to_thread(call)
-    except Exception as exc:
-        raise HTTPException(502, "دستیار پاسخ نداد؛ دوباره امتحان کنید. " + str(exc)[:120])
+    with work_scope("scheduled", "assist", user=user):
+        out = gateway_json(ASSIST, f"NOW (Iran): {today}\n\nCONVERSATION:\n" + "\n".join(lines), route="engine_advisor", max_tokens=3000)[0]
     draft = out.get("draft") if isinstance(out.get("draft"), dict) else None
     if draft:
         try:
@@ -567,3 +555,155 @@ async def assist(request: Request, body: AssistIn):
                     "options": [{"label": str(o.get("label", ""))[:80], "detail": str(o.get("detail", ""))[:200]}
                                 for o in (question.get("options") or [])[:4] if isinstance(o, dict) and o.get("label")]}
     return {"reply": str(out.get("reply", ""))[:1500], "question": question, "draft": draft}
+
+
+@router.post("/assist")
+async def assist(request: Request, body: AssistIn):
+    user = _owner(request)
+    from app import credits
+    await credits.gate(user)
+    try:
+        return await asyncio.to_thread(_assist_call, user, body.messages)
+    except Exception as exc:
+        raise HTTPException(502, "دستیار پاسخ نداد؛ دوباره امتحان کنید. " + str(exc)[:120])
+
+
+# ── setup inside a Studio chat ("ساخت با هوش مصنوعی") ───────────────────────
+# The chat's state carries {"scheduled_setup": {"history": [...], "question": {...}|None, "draft": {...}|None}}. While it is there, the chat's messages go
+# to the setup assistant instead of the engines (app/routers/studio.py send_message), and its question shows as the chat's option card.
+
+SETUP_SEED = "می‌خواهم یک کار زمان‌بندی‌شده بسازم. از من بپرس هر بار چه چیزی ساخته شود، چند وقت یک‌بار و چه ساعتی، بعد آن را بساز."
+CREATE, CREATE_PAUSED = "__create__", "__create_paused__"
+ENGINE_FA = {"lite": "Lite", "medium": "Medium", "pro": "Pro"}
+DAYS_FA = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+
+
+def _fa(value) -> str:
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
+def describe(schedule: dict) -> str:
+    s = Schedule(**schedule)
+    at = f"ساعت {_fa(s.time)}"
+    return {"hourly": f"هر {_fa(s.every_hours)} ساعت، دقیقه‌ی {_fa(s.time[3:])}" if s.every_hours > 1 else f"هر ساعت، دقیقه‌ی {_fa(s.time[3:])}",
+            "daily": f"هر روز {at}", "weekdays": f"روزهای کاری (شنبه تا چهارشنبه) {at}", "weekly": f"هر {DAYS_FA[s.weekday]} {at}",
+            "once": f"یک‌بار، {_fa(s.date)} {at}"}[s.kind]
+
+
+def setup_question(state: dict) -> dict | None:
+    """The chat's option card for the setup step it is on (ManualQuestion shape), or None."""
+    setup = state.get("scheduled_setup")
+    if not isinstance(setup, dict) or setup.get("busy"):
+        return None
+    turn = len(setup.get("history") or [])
+    if setup.get("draft"):
+        return {"id": f"sched-{turn}", "key": "scheduled", "title": "این کار ساخته شود؟", "input": True,
+                "description": "برای تغییر، هر چیزی را که می‌خواهید عوض شود در همین چت بنویسید.",
+                "choices": [{"value": CREATE, "label": "بساز و فعال کن", "description": "طبق زمان‌بندی خودکار اجرا می‌شود"},
+                            {"value": CREATE_PAUSED, "label": "بساز ولی فعلاً متوقف بماند", "description": "بعداً از صفحه‌ی کارهای زمان‌بندی‌شده فعالش کنید"}]}
+    q = setup.get("question")
+    if not q:
+        return None
+    return {"id": f"sched-{turn}", "key": "scheduled", "title": q.get("text", ""), "input": True,
+            "choices": [{"value": o["label"] + (f" ({o['detail']})" if o.get("detail") else ""), "label": o["label"], "description": o.get("detail", "")}
+                        for o in q.get("options", [])]}
+
+
+def _draft_text(draft: dict) -> str:
+    lines = [f"پیش‌نویس کار: «{draft['name']}»", f"• زمان اجرا: {describe(draft['schedule'])} (به وقت ایران)",
+             f"• موتور: {ENGINE_FA.get(draft['engine'], draft['engine'])} · {_fa(draft['per_run'])} ویدیو در هر اجرا" + (" · با جست‌وجوی تازه در وب" if draft.get("research") else ""),
+             "• دستور کار هر اجرا:", draft["instructions"]]
+    return "\n".join(lines)
+
+
+async def _say(cid: str, user: str, text: str) -> None:
+    from app.studio_store import repo
+    response_id = f"response:sched:{uuid.uuid4().hex[:8]}"
+    await repo.emit(cid, "assistant.response.started", {"response_id": response_id})
+    saved = await repo.add_message(cid, user, "assistant", text)
+    await repo.emit(cid, "assistant.response.completed", {"response_id": response_id, "text": text, "message_id": saved["id"]})
+
+
+async def _set_setup(cid: str, user: str, setup: dict | None) -> None:
+    from app.studio_store import repo
+    conversation = await repo.get_conversation(cid, user)
+    await repo.set_conversation(cid, user, state={**(conversation.get("state") or {}), "scheduled_setup": setup})
+
+
+def _base_url() -> str:
+    from app.config import settings
+    return "https://" + (settings.ALLOWED_HOSTS.split(",")[0].strip() or "editor.rafiei.co")
+
+
+async def _setup_answer(cid: str, user: str) -> None:
+    """Background: the assistant's next turn in a setup chat."""
+    from app.studio_store import repo
+    try:
+        conversation = await repo.get_conversation(cid, user)
+        setup = dict((conversation.get("state") or {}).get("scheduled_setup") or {})
+        try:
+            out = await asyncio.to_thread(_assist_call, user, setup.get("history") or [])
+        except Exception as exc:
+            log.warning("scheduled setup turn failed: %s", str(exc)[:200])
+            setup["busy"] = False
+            await _set_setup(cid, user, setup)
+            await _say(cid, user, "دستیار الان پاسخ نداد؛ لطفاً پیامتان را دوباره بفرستید.")
+            return
+        text = out["reply"]
+        if out["draft"]:
+            text = (text + "\n\n" if text else "") + _draft_text(out["draft"])
+        elif out["question"]:
+            text = (text + "\n" if text else "") + out["question"]["text"]
+        history = list(setup.get("history") or []) + [{"role": "assistant", "content": text}]
+        await _set_setup(cid, user, {"history": history, "question": out["question"], "draft": out["draft"], "busy": False})
+        await _say(cid, user, text or "…")
+    except Exception:
+        log.exception("scheduled setup answer failed")
+
+
+async def setup_message(conversation: dict, user: str, text: str) -> dict:
+    """A message sent in a setup chat (called by send_message instead of dispatching to an engine)."""
+    from app.studio_store import repo
+    cid = conversation["id"]
+    setup = dict((conversation.get("state") or {}).get("scheduled_setup") or {})
+    card = setup_question(conversation.get("state") or {})
+    label = next((c["label"] for c in (card or {}).get("choices", []) if c["value"] == text), None)
+    message = await repo.add_message(cid, user, "user", label or text)
+    if setup.get("draft") and text in (CREATE, CREATE_PAUSED):
+        draft = dict(setup["draft"]) | {"status": "paused" if text == CREATE_PAUSED else "active"}
+        with _lock:
+            tasks = _load(user)
+            if len(tasks) >= MAX_TASKS:
+                await _say(cid, user, f"حداکثر {_fa(MAX_TASKS)} کار زمان‌بندی‌شده می‌توانید داشته باشید؛ یکی را از صفحه‌ی کارهای زمان‌بندی‌شده حذف کنید.")
+                return message
+            stamp = _iso(_now())
+            task = TaskIn(**draft).model_dump() | {"id": uuid.uuid4().hex[:12], "created_at": stamp, "updated_at": stamp, "last_run_at": None, "runs": []}
+            task["next_run_at"] = _iso(next_run(task["schedule"], _now())) if task["status"] == "active" else None
+            tasks.append(task)
+            _save(user, tasks)
+        await _set_setup(cid, user, None)
+        first = _parse(task["next_run_at"])
+        when = first.astimezone(IRAN).strftime("%Y-%m-%d %H:%M") if first else ""
+        done = f"کار «{task['name']}» ساخته شد" + (f" و اولین اجرایش {_fa(when)} به وقت ایران است." if when else "؛ فعلاً متوقف است.")
+        await _say(cid, user, done + f"\nهر اجرا در چت‌های تازه انجام می‌شود و تاریخچه‌اش در صفحه‌ی کار هست:\n{_base_url()}/scheduled/{task['id']}")
+        return message
+    history = list(setup.get("history") or []) + [{"role": "user", "content": label or text}]
+    await _set_setup(cid, user, {**setup, "history": history, "busy": True})
+    asyncio.create_task(_setup_answer(cid, user))
+    return message
+
+
+@router.post("/setup", status_code=201)
+async def start_setup(request: Request):
+    """Open a new Studio chat that sets up a scheduled task with the assistant."""
+    from app.studio_store import repo
+    from app import credits
+    user = _owner(request)
+    await credits.gate(user)
+    conversation = await repo.create_conversation(user, "تنظیم کار زمان‌بندی‌شده")
+    cid = conversation["id"]
+    await repo.add_message(cid, user, "user", SETUP_SEED)
+    await repo.set_conversation(cid, user, state={**(conversation.get("state") or {}), "agent_mode": "lite",
+                                                  "scheduled_setup": {"history": [{"role": "user", "content": SETUP_SEED}], "question": None, "draft": None, "busy": True}})
+    asyncio.create_task(_setup_answer(cid, user))
+    return {"id": cid}

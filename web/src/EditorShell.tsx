@@ -194,6 +194,7 @@ export default function EditorShell() {
             <NavLink to="/insta/overview" {...tip("My page")}><Icon name="user"/><span>پیج من</span></NavLink>
             <NavLink to="/insta/content" {...tip("Content")}><Icon name="film"/><span>Content</span></NavLink>
             <NavLink to="/insta/analytics" {...tip("Analytics")}><Icon name="list"/><span>Analytics</span></NavLink>
+            <NavLink to="/scheduled" {...tip("Scheduled tasks")}><Icon name="clock"/><span>Scheduled tasks</span></NavLink>
           </> : <>
           <NavLink to="/insta" {...tip("Switch to InstaGPT")} aria-label="Switch to InstaGPT" onPointerEnter={() => void preloadHermes()}><Icon name="instagram"/><span>InstaGPT</span></NavLink>
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
@@ -267,6 +268,7 @@ export default function EditorShell() {
           </> : <>
             <NavLink to="/studio" end><Icon name="edit"/><span>New edit</span></NavLink>
             <NavLink to="/projects"><Icon name="projects"/><span>Projects</span></NavLink>
+            <NavLink to="/scheduled"><Icon name="clock"/><span>Schedule</span></NavLink>
           </>}
         </nav>
       </div>

@@ -10,8 +10,8 @@ export interface ManualQuestionData {
 /** Only a live persisted backend question is interactive; no local wizard or fake stages. */
 export function ManualQuestion({ question, busy, onAnswer }: { question: ManualQuestionData; busy: boolean; onAnswer: (value: string) => void }) {
   const summary = question.summary;
-  return <section className="action-card manual-question" dir="rtl" aria-label="تأیید مرحلهٔ دستی">
-    <div className="manual-heading"><Icon name="hand" size={16}/><span>Manual</span></div>
+  return <section className="action-card manual-question" dir="rtl" aria-label={question.key === "scheduled" ? "تنظیم کار زمان‌بندی‌شده" : "تأیید مرحلهٔ دستی"}>
+    {question.key === "scheduled" ? <div className="manual-heading"><Icon name="clock" size={16}/><span>کار زمان‌بندی‌شده</span></div> : <div className="manual-heading"><Icon name="hand" size={16}/><span>Manual</span></div>}
     <h3>{question.title}</h3>
     {question.description ? <p>{question.description}</p> : null}
     {typeof summary === "string" ? <p>{summary}</p> : summary ? <div className="manual-summary">

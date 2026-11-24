@@ -16,8 +16,6 @@ type Summary = TaskDraft & { id: string; status: "active" | "paused"; created_at
 type RunItem = { title: string; prompt: string; conversation_id: string; status: string; error: string; credits: number };
 type Run = { id: string; at: string; trigger: string; status: string; items: RunItem[]; error: string; credits: number };
 type Detail = Summary & { runs: Run[]; running_now: boolean };
-type Question = { text: string; options: { label: string; detail: string }[] };
-type AssistOut = { reply: string; question: Question | null; draft: TaskDraft | null };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await authFetch(`${BASE}/scheduled${path}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
@@ -129,62 +127,19 @@ function TaskForm({ initial, title, onClose, onSaved, onAssist }: { initial: Tas
   </div>;
 }
 
-/* ── create with AI ───────────────────────────────────────────────────────── */
+/* ── create with AI: a new Studio chat with the setup assistant (app/scheduled_tasks.py start_setup) ── */
 
-function Assist({ onClose, onDraft, onCreated }: { onClose: () => void; onDraft: (d: TaskDraft) => void; onCreated: (id: string) => void }) {
-  const [log, setLog] = React.useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [last, setLast] = React.useState<AssistOut | null>(null);
+function useStartSetup() {
+  const navigate = useNavigate();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [text, setText] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
-  const end = React.useRef<HTMLDivElement>(null);
-  const seed = "می‌خواهم یک کار زمان‌بندی‌شده بسازم. از من بپرس هر بار چه چیزی ساخته شود، چند وقت یک‌بار و چه ساعتی، بعد آن را آماده کن.";
-  async function send(content: string, history = log) {
-    const next = [...history, { role: "user" as const, content }];
-    setLog(next); setBusy(true); setError(""); setText("");
-    try {
-      const out = await call<AssistOut>("/assist", { method: "POST", body: JSON.stringify({ messages: next }) });
-      const said = [out.reply, out.question?.text].filter(Boolean).join("\n");
-      setLog([...next, { role: "assistant", content: said + (out.draft ? `\n[پیش‌نویس: ${out.draft.name}]` : "") }]); setLast(out);
-    } catch (e) { setError((e as Error).message); setLog(history); } finally { setBusy(false); }
-  }
-  React.useEffect(() => { void send(seed, []); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  React.useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [log, last, busy]);
-  async function create(d: TaskDraft) {
-    setCreating(true); setError("");
-    try { const out = await call<Summary>("/tasks", { method: "POST", body: JSON.stringify({ ...d, status: "active" }) }); onCreated(out.id); }
-    catch (e) { setError((e as Error).message); } finally { setCreating(false); }
-  }
-  const shown = log.slice(1);
-  return <div className="st-modal-back" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className="st-modal st-assist" role="dialog" aria-modal="true" aria-label="ساخت کار زمان‌بندی‌شده با هوش مصنوعی">
-      <header><h2>ساخت با هوش مصنوعی</h2><button className="st-x" aria-label="بستن" onClick={onClose}><Icon name="close" size={16}/></button></header>
-      <div className="st-thread">
-        <div className="st-msg me">{seed}</div>
-        {shown.map((m, i) => <div key={i} className={`st-msg ${m.role === "user" ? "me" : "ai"}`}>{m.role === "assistant" && i === shown.length - 1 && last ? last.reply : m.content.replace(/\n\[پیش‌نویس:.*\]$/, "")}</div>)}
-        {busy ? <div className="st-msg ai st-typing"><i/><i/><i/></div> : null}
-        {!busy && last?.draft ? <div className="st-draft">
-          <div className="st-draft-head"><Icon name="clock" size={16}/><b>{last.draft.name}</b></div>
-          <p>{last.draft.instructions}</p>
-          <div className="st-chips"><span>{describe(last.draft.schedule)}</span><span>{ENGINE[last.draft.engine]}</span><span>{fa(last.draft.per_run)} ویدیو در هر اجرا</span>{last.draft.research ? <span>جست‌وجوی وب</span> : null}</div>
-          <div className="st-draft-actions"><button className="st-btn" disabled={creating} onClick={() => void create(last.draft!)}>{creating ? "در حال ساخت…" : "ساخت این کار"}</button>
-            <button className="st-btn ghost" onClick={() => onDraft(last.draft!)}>ویرایش جزئیات</button></div>
-        </div> : null}
-        <div ref={end}/>
-      </div>
-      {error ? <div className="st-error" role="alert">{error}</div> : null}
-      {!busy && last?.question && !last.draft ? <div className="st-q">
-        <div className="st-q-text">{last.question.text}</div>
-        {last.question.options.map((o, i) => <button key={i} className="st-q-opt" onClick={() => void send(o.label + (o.detail ? ` (${o.detail})` : ""))}>
-          <span className="n">{fa(i + 1)}</span><span><b>{o.label}</b>{o.detail ? <small>{o.detail}</small> : null}</span></button>)}
-      </div> : null}
-      <form className="st-reply" onSubmit={e => { e.preventDefault(); if (text.trim() && !busy) void send(text.trim()); }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder={last?.question ? "یا پاسخ خودتان را بنویسید…" : "پاسخ بدهید…"} disabled={busy}/>
-        <button className="st-send" disabled={!text.trim() || busy} aria-label="ارسال"><Icon name="send" size={15}/></button>
-      </form>
-    </div>
-  </div>;
+  const start = async () => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try { const out = await call<{ id: string }>("/setup", { method: "POST" }); window.dispatchEvent(new Event("editorgpt:conversations-updated")); navigate(`/studio/${out.id}`); }
+    catch (e) { setError((e as Error).message); setBusy(false); }
+  };
+  return { start, busy, error };
 }
 
 /* ── list ─────────────────────────────────────────────────────────────────── */
@@ -206,12 +161,12 @@ export default function ScheduledPage() {
   const [tasks, setTasks] = React.useState<Summary[] | null>(null);
   const [error, setError] = React.useState("");
   const [form, setForm] = React.useState<TaskDraft | null>(null);
-  const [assist, setAssist] = React.useState(false);
+  const setup = useStartSetup();
   const [query, setQuery] = React.useState("");
   const navigate = useNavigate();
   const load = React.useCallback(() => { void call<{ tasks: Summary[] }>("/tasks").then(r => setTasks(r.tasks)).catch(e => setError((e as Error).message)); }, []);
   React.useEffect(load, [load]);
-  const opened = (id: string) => { setForm(null); setAssist(false); navigate(`/scheduled/${id}`); };
+  const opened = (id: string) => { setForm(null); navigate(`/scheduled/${id}`); };
   const shown = (tasks || []).filter(t => !query.trim() || (t.name + " " + t.instructions).includes(query.trim()));
   const templates = <div className="st-templates">{TEMPLATES.map(t => <button key={t.title} className="st-tpl" onClick={() => setForm({ ...t.draft })}>
     <span className="st-tpl-ic"><Icon name={t.icon} size={18}/></span>
@@ -223,15 +178,15 @@ export default function ScheduledPage() {
       <nav className="st-tabs"><button aria-pressed={tab === "mine"} onClick={() => setTab("mine")}>کارهای من</button><button aria-pressed={tab === "templates"} onClick={() => setTab("templates")}>قالب‌ها</button></nav>
       <div className="st-tools">
         {tab === "mine" && (tasks?.length || 0) > 3 ? <label className="st-search"><Icon name="search" size={15}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجو"/></label> : null}
-        <NewMenu onAssist={() => setAssist(true)} onManual={() => setForm(blank())}/>
+        <NewMenu onAssist={() => void setup.start()} onManual={() => setForm(blank())}/>
       </div>
     </div>
-    {error ? <div className="st-error" role="alert">{error}</div> : null}
+    {error || setup.error ? <div className="st-error" role="alert">{error || setup.error}</div> : null}
     {tab === "templates" ? templates : tasks === null ? <div className="st-empty-sm">در حال بارگذاری…</div> : !tasks.length ? <>
       <div className="st-empty">
         <svg viewBox="0 0 120 130" width="104" height="112" aria-hidden="true"><rect x="45" y="6" width="30" height="10" rx="3" fill="none" stroke="currentColor" strokeWidth="4"/><path d="M60 16v10" stroke="currentColor" strokeWidth="4"/><circle cx="60" cy="76" r="46" fill="var(--st-dial)" stroke="currentColor" strokeWidth="4"/><path d="M60 46v32l20 12" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/></svg>
         <p>هنوز کار زمان‌بندی‌شده‌ای ندارید.</p>
-        <div className="st-empty-actions"><button className="st-btn" onClick={() => setAssist(true)}><Icon name="thinking" size={15}/>ساخت با هوش مصنوعی</button><button className="st-btn ghost" onClick={() => setForm(blank())}>تنظیم دستی</button></div>
+        <div className="st-empty-actions"><button className="st-btn" disabled={setup.busy} onClick={() => void setup.start()}><Icon name="thinking" size={15}/>{setup.busy ? "در حال باز کردن چت…" : "ساخت با هوش مصنوعی"}</button><button className="st-btn ghost" onClick={() => setForm(blank())}>تنظیم دستی</button></div>
       </div>
       <div className="st-wave" aria-hidden="true"/>
       <h2 className="st-sub">یا از یک قالب شروع کنید</h2>
@@ -243,8 +198,7 @@ export default function ScheduledPage() {
         <span className="st-card-engine">{ENGINE[t.engine]}{t.per_run > 1 ? ` × ${fa(t.per_run)}` : ""}</span></div>
       {t.status === "active" && t.next_run_at ? <small className="st-card-next">اجرای بعدی: {when(t.next_run_at)}</small> : t.last_run ? <small className="st-card-next">آخرین اجرا: {when(t.last_run.at)} · {STATUS[t.last_run.status] || t.last_run.status}</small> : null}
     </Link>)}</div>}
-    {form ? <TaskForm initial={form} title="کار زمان‌بندی‌شده‌ی جدید" onClose={() => setForm(null)} onSaved={opened} onAssist={() => { setForm(null); setAssist(true); }}/> : null}
-    {assist ? <Assist onClose={() => setAssist(false)} onDraft={d => { setAssist(false); setForm(d); }} onCreated={opened}/> : null}
+    {form ? <TaskForm initial={form} title="کار زمان‌بندی‌شده‌ی جدید" onClose={() => setForm(null)} onSaved={opened} onAssist={() => { setForm(null); void setup.start(); }}/> : null}
   </main>;
 }
 
