@@ -796,24 +796,27 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
     foundation = _one_ask(ART_FOUNDATION_GUIDE, _art_context(direction, timeline, extra), 28000, tries=4, seconds=720, label=("art_base", "دارم پایهٔ تصویرسازی فیلم را می‌نویسم: پس‌زمینه، گرادیان‌ها و سایه."), on_retry=lambda t: _say(notes, "art-base", "پایهٔ تصویرسازی: " + t))
     _say(notes, "art-base", f"پایهٔ تصویرسازی نوشته شد ({len(foundation.splitlines())} خط)", "done")
     chunks = [comps[i:i + ART_CHUNK] for i in range(0, len(comps), ART_CHUNK)]
+    # Cached by the gateway (system message only): the guide plus everything every illustrator shares; the user message is just the component list.
+    parts_guide = ART_PARTS_GUIDE + "\n\n" + _art_context(direction, timeline, extra + [f"THE FOUNDATION ALREADY WRITTEN:\n{foundation}"])
 
     def part(group: list[dict], index: int = 0) -> str:
         names = "، ".join(c["name"] for c in group)
         key = f"art-{index + 1}" if index >= 0 else "art-x"
         listing = "\n".join(f"- {c['name']}: props {{{c.get('props', '')}}} - {c.get('what', '')}" for c in group)
-        user = _art_context(direction, timeline, [f"THE FOUNDATION ALREADY WRITTEN:\n{foundation}", f"WRITE THESE COMPONENTS NOW:\n{listing}"])
+        user = f"WRITE THESE COMPONENTS NOW:\n{listing}"
         _say(notes, key, f"دارم تصویرسازی‌های {names} را می‌کشم", "active", listing)
 
         def split() -> str:
-            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(ART_PARTS_GUIDE, user, 14000, None, tries=3)
+            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(parts_guide, user, 14000, None, tries=3)
 
-        code = _one_ask(ART_PARTS_GUIDE, user, 14000, split if len(group) > 1 else None, tries=3, label=("art_parts", f"دارم تصویرسازی‌های {names} را می‌کشم."), on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
+        code = _one_ask(parts_guide, user, 14000, split if len(group) > 1 else None, tries=3, label=("art_parts", f"دارم تصویرسازی‌های {names} را می‌کشم."), on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
                         on_split=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t))
         _say(notes, key, f"تصویرسازی‌های {names} آماده شد ({len(code.splitlines())} خط)", "done")
         return code
 
+    bodies = [part(chunks[0], 0)] if chunks else []         # alone first: it writes the prompt cache the others then read
     with ThreadPoolExecutor(max_workers=3) as pool:
-        bodies = list(pool.map(lambda pair: part(pair[1], pair[0]), enumerate(chunks)))
+        bodies += list(pool.map(lambda pair: part(pair[1], pair[0] + 1), enumerate(chunks[1:])))
     body = foundation + "\n\n" + "\n\n".join(bodies)
     body, dropped = dedupe_art(body)
     if dropped:
@@ -832,9 +835,11 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     # (the guide, the kit, the example), then what this film's groups share (its header, art and brief), then this group's own part.
     system = (SCENES_GUIDE.replace("@HEADER@", "(the header is given at the end of these instructions)") + "\n\nTHE KIT, src/lib.tsx:\n" + _kit_api()
               + "\n\nEXAMPLE Scenes.tsx (another film; a craft reference, never its topic or texts):\n" + (EXAMPLES / "Scenes.example.tsx").read_text(encoding="utf-8"))
-    guide = system + "\n\nYOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only its names):\n" + header(art_tsx)
-    parts = ["THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx, *_brief(direction, timeline)]
-    parts.append(f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues).")
+    # The gateway caches the SYSTEM message only (a cache marker inside the user message is ignored; measured 2026-11-24): everything this film's
+    # groups share (header, art, brief) is part of the system text, and the user message holds only this group's own request.
+    guide = "\n\n".join([system + "\n\nYOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only its names):\n" + header(art_tsx),
+                          "THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx, *_brief(direction, timeline)])
+    parts = [f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues)."]
     if previous:
         parts.append("YOUR PREVIOUS CODE FOR THESE SCENES:\n" + previous)
     if change:
