@@ -49,17 +49,28 @@ function SampleVideo({ sample, play = false, big = false }: { sample: WizardSamp
   const ref = React.useRef<HTMLVideoElement>(null);
   const [hover, setHover] = React.useState(false);
   const on = play || hover;
-  React.useEffect(() => { const v = ref.current; if (!v) return; if (on) void v.play().catch(() => {}); else { v.pause(); } }, [on]);
-  return <span className="wz-sample-video" data-big={big || undefined} data-format={sample.format || "vertical"} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-    <video ref={ref} src={api.wizardSampleUrl(sample.video)} poster={api.wizardSampleUrl(sample.poster)} muted loop playsInline preload={on ? "auto" : "none"}/>
+  const poster = useAuthenticatedMediaUrl(api.wizardSampleUrl(sample.poster));
+  const video = useAuthenticatedMediaUrl(on ? api.wizardSampleUrl(sample.video) : null);
+  React.useEffect(() => { const v = ref.current; if (!v) return; if (on && video) void v.play().catch(() => {}); else v.pause(); }, [on, video]);
+  return <span className="wz-sample-video" data-big={big || undefined} data-format={sample.format || "vertical"} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    onTouchStart={() => setHover(true)}>
+    {poster ? <img src={poster} alt="" className="wz-sample-poster"/> : <span className="wz-spin"/>}
+    {on && video ? <video ref={ref} src={video} muted loop playsInline autoPlay/> : null}
     <span className="wz-real">نمونهٔ واقعی</span>
   </span>;
 }
 
+/** A still made on the server from the person's own video (fetched with the session token). */
+function Still({ url, label, big = false }: { url: string; label: string; big?: boolean }) {
+  const src = useAuthenticatedMediaUrl(url);
+  return src ? <img className={`wz-still${big ? " big" : ""}`} src={src} alt={label}/> : <span className={`wz-still wz-still-wait${big ? " big" : ""}`}><span className="wz-spin"/></span>;
+}
+
 /** The poster of a real film with the person's title written in the chosen font and colours: what the font and colour steps change. */
 function PosterPreview({ sample, title, font, palette }: { sample?: WizardSample; title: string; font?: string; palette: string[] }) {
+  const poster = useAuthenticatedMediaUrl(sample ? api.wizardSampleUrl(sample.poster) : null);
   return <div className="wz-poster" style={{ ["--p-bg" as string]: palette[0], ["--p-accent" as string]: palette[2] || palette[1], ["--p-ink" as string]: palette[3] || "#fff" }}>
-    {sample ? <img src={api.wizardSampleUrl(sample.poster)} alt=""/> : null}
+    {poster ? <img src={poster} alt=""/> : null}
     <b style={font ? { fontFamily: font } : undefined}>{title || "عنوان ویدیوی تو"}</b>
     <span className="wz-poster-pal">{palette.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }}/>)}</span>
   </div>;
@@ -303,7 +314,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <button type="button" className="wz-card" aria-pressed={!data.style} onClick={() => update({ style: "" })}>
             <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>پیشنهاد موتور</b><small>بعد از تحلیل ویدیو بهترین سبک را خودش انتخاب می‌کند</small></button>
           {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map(s => <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
-            {stills?.urls[s.id] ? <img className="wz-still" src={stills.urls[s.id]} alt={`پیش‌نمایش ${s.label} روی ویدیوی تو`}/> : <span className="wz-still wz-still-wait">{stills?.state === "loading" ? <span className="wz-spin"/> : null}</span>}
+            {stills?.urls[s.id] ? <Still url={stills.urls[s.id]} label={`پیش‌نمایش ${s.label} روی ویدیوی تو`}/> : <span className="wz-still wz-still-wait">{stills?.state === "loading" ? <span className="wz-spin"/> : null}</span>}
             <b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>)}
         </div>
         {stills?.state === "ready" ? <p className="wz-note">تصویرها از ویدیوی خودت ساخته شده‌اند با چیدمان، برش و رنگ‌بندی واقعی هر سبک؛ فقط متن‌ها نمونه‌اند.</p> : null}
@@ -368,7 +379,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <label className="wz-mode">نام پروژه (پیشنهاد خودکار — قابل تغییر)<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
         <aside className="wz-preview">{MOTION.includes(data.engine) && chosenSample ? <SampleVideo sample={chosenSample} play big/>
-          : data.engine === "talking" && data.style && stills?.urls[data.style] ? <img className="wz-still big" src={stills.urls[data.style]} alt=""/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+          : data.engine === "talking" && data.style && stills?.urls[data.style] ? <Still url={stills.urls[data.style]} label="" big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
     </div>
 

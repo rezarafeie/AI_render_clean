@@ -563,7 +563,8 @@
 .wz-sample-video { position: relative; display: block; width: 100%; aspect-ratio: 9 / 16; max-height: 260px; border-radius: 12px; overflow: hidden; background: #0d0f12; margin-inline: auto; }
 .wz-sample-video[data-format="horizontal"], .wz-sample-video[data-format="landscape"] { aspect-ratio: 16 / 9; max-height: none; }
 .wz-sample-video[data-big] { max-height: 520px; max-width: 300px; border-radius: 22px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
-.wz-sample-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wz-sample-video { display: grid; place-items: center; }
+.wz-sample-video video, .wz-sample-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .wz-real { position: absolute; top: 8px; inset-inline-start: 8px; font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(6px); }
 .wz-type .wz-sample-video { max-height: 180px; }
 .wz-still { display: block; width: 100%; aspect-ratio: 9 / 16; max-height: 300px; object-fit: cover; border-radius: 12px; background: var(--elevated, #1b1d22); margin-inline: auto; }
