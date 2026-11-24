@@ -37,20 +37,32 @@ function Groups({ rows, title, project }: { rows: CreditGroup[]; title: string; 
     })}</section>;
 }
 
-/* Typical credits per finished job, from the ledger (Nov 2026): Lite simple edit median ~75K, Lite film (motion/Vox/story/product) median ~0.6M (p75 ~1M),
-   Medium median ~1.3M (p75 ~3.3M), Pro median ~0.8M (p75 ~1.6M, heavy tail to ~7M), Claude ~11M. "typical" is the conservative figure used for the counts. */
-const ENGINE_COST = [
-  { id: "edit", name: "تدوین ساده (Lite)", typical: 100_000, range: "۵۰ تا ۱۵۰ هزار", note: "تدوین ریلز صحبتی، زیرنویس، برش و دوبله" },
-  { id: "film", name: "فیلم موشن / ووکس / تبلیغ (Lite)", typical: 800_000, range: "۴۰۰ هزار تا ۱٫۵ میلیون", note: "موشن‌گرافیک، مستند ووکس، معرفی محصول و روایی" },
-  { id: "medium", name: "Medium", typical: 2_000_000, range: "۱ تا ۵ میلیون", note: "کارهای چندمرحله‌ای با برنامهٔ تأییدشده" },
-  { id: "pro", name: "Pro", typical: 1_500_000, range: "۰٫۸ تا ۷ میلیون", note: "فیلم سفارشی و پروژه‌های خاص؛ بسته به اصلاح‌ها" },
-  { id: "claude", name: "Claude", typical: 10_000_000, range: "حدود ۱۰ میلیون و بیشتر", note: "خودِ Claude بدون ابزارهای استودیو (آزمایشی)" },
+/* Credits per finished job, from the ledger (14–24 Nov 2026, 32 Pro runs, 23 motion films, 7 talking reels, 15 Medium chats; failed runs left out):
+   talking median ~260K (p75 ~290K, up to ~1M), motion/Vox film median ~0.9M (p75 ~1.1M, heavy revisions 3–5M; the prompt cache of 24 Nov should lower it),
+   Medium median ~0.4M (p75 ~1.3M, up to 5.5M), Pro median ~0.4M (p75 ~0.95M, up to 7.5M). "typical" is the conservative figure the pack counts divide by. */
+type EngineCost = { id: string; name: string; typical: number; min: number; max: number; tail?: string; note: string };
+const ENGINE_COST: EngineCost[] = [
+  { id: "edit", name: "زیرنویس، برش و دوبله", typical: 100_000, min: 50_000, max: 150_000, note: "کارهای سادهٔ Lite روی ویدیوی خودتان" },
+  { id: "talking", name: "ریلز صحبتی", typical: 300_000, min: 200_000, max: 400_000, tail: "با اصلاح‌های زیاد تا ۱ میلیون", note: "تحلیل گفتار، تدوین، زیرنویس و B-roll (Lite)" },
+  { id: "film", name: "فیلم موشن / ووکس / تبلیغ", typical: 900_000, min: 500_000, max: 1_500_000, tail: "با اصلاح‌های زیاد تا ۳ میلیون", note: "موشن‌گرافیک، مستند ووکس، معرفی محصول و روایی (Lite)" },
+  { id: "medium", name: "Medium", typical: 1_200_000, min: 300_000, max: 2_000_000, tail: "کارهای چندمرحله‌ای سنگین تا ۵ میلیون", note: "چند مرحله با برنامه‌ای که اول تأیید می‌کنید" },
+  { id: "pro", name: "Pro", typical: 1_000_000, min: 300_000, max: 1_500_000, tail: "پروژه‌های سنگین تا ۷ میلیون", note: "فیلم سفارشی و پروژه‌های خاص" },
+  { id: "claude", name: "Claude", typical: 10_000_000, min: 8_000_000, max: 15_000_000, note: "خودِ Claude بدون ابزارهای استودیو (آزمایشی)" },
 ];
-function about(n: number): string {
-  if (n < 1) return "کمتر از یک کار";
-  const v = n >= 10 ? Math.floor(n / 5) * 5 : Math.floor(n);
-  return `حدود ${v.toLocaleString("fa-IR")} کار`;
+/** «۲۰۰ تا ۴۰۰ هزار», «۵۰۰ هزار تا ۱٫۵ میلیون», «۸ تا ۱۵ میلیون». */
+function rangeText(min: number, max: number): string {
+  const unit = (n: number) => n >= 1_000_000 ? "میلیون" : "هزار";
+  const num = (n: number) => (n >= 1_000_000 ? Math.round(n / 100_000) / 10 : Math.round(n / 1000)).toLocaleString("fa-IR");
+  return unit(min) === unit(max) ? `${num(min)} تا ${num(max)} ${unit(max)}` : `${num(min)} ${unit(min)} تا ${num(max)} ${unit(max)}`;
 }
+/** Position on a log scale from 30 thousand to 20 million, in percent. */
+const scale = (n: number) => Math.max(0, Math.min(100, (Math.log10(n) - Math.log10(30_000)) / (Math.log10(20_000_000) - Math.log10(30_000)) * 100));
+function count(n: number): string {
+  if (n < 1) return "کمتر از ۱";
+  const v = n >= 20 ? Math.floor(n / 5) * 5 : Math.floor(n);
+  return v.toLocaleString("fa-IR");
+}
+const PACK_USES = ["talking", "film", "pro"];
 
 export default function CreditsPage() {
   const [state, setState] = React.useState<CreditsState | null>(null);
@@ -99,16 +111,28 @@ export default function CreditsPage() {
     </nav>
 
     {tab === "buy" ? <>
-      <div className="cp-packs">{packs.map(p => <div className="cp-pack" key={p.id} data-best={p.id === best || undefined}>
-        <div className="name"><span>{p.title}</span>{p.id === best ? <span className="tag">پرفروش</span> : null}</div>
-        <div className="big">{short(p.credits)}</div><div className="unit">اعتبار</div>
-        <div className="price">{p.price > 0 ? `${p.price.toLocaleString("fa-IR")} ${p.currency === "IRT" ? "تومان" : p.currency}` : "به‌زودی"}</div>
-        <ul className="cp-est" aria-label="تقریباً به اندازهٔ">{ENGINE_COST.map(e => <li key={e.id}><span>{e.name}</span><b>{about(p.credits / e.typical)}</b></li>)}</ul>
-        <button disabled={p.price <= 0 || buying !== ""} onClick={() => void buy(p.id)}>{buying === p.id ? "در حال انتقال…" : p.price > 0 ? "خرید" : "به‌زودی"}</button>
-      </div>)}</div>
-      <section className="cp-card cp-engines"><h2>مصرف حدودی هر موتور</h2>
-        <p className="cp-sub">بر پایهٔ مصرف واقعی کارهای اخیر؛ مقدار دقیق به طول ویدیو، تعداد اصلاح‌ها و پیچیدگی کار بستگی دارد.</p>
-        {ENGINE_COST.map(e => <div className="cp-row" key={e.id}><div className="main"><b>{e.name}</b><small>{e.note}</small></div><span className="amt">{e.range}</span></div>)}
+      <div className="cp-packs">{packs.map(p => {
+        const base = packs.find(x => x.price > 0 && x.credits > 0);
+        const per = p.price > 0 ? p.price / (p.credits / 1_000_000) : 0;
+        const basePer = base ? base.price / (base.credits / 1_000_000) : 0;
+        const off = per && basePer && per < basePer ? Math.round((1 - per / basePer) * 100) : 0;
+        return <div className="cp-pack" key={p.id} data-best={p.id === best || undefined}>
+          <div className="cp-pack-head"><span className="name">{p.title}</span>{p.id === best ? <span className="tag">پرفروش</span> : off ? <span className="tag soft">{off.toLocaleString("fa-IR")}٪ به‌صرفه‌تر</span> : null}</div>
+          <div className="cp-pack-amount"><span className="big">{short(p.credits)}</span><span className="unit">اعتبار</span></div>
+          <div className="cp-pack-price"><span>{p.price > 0 ? <><b>{p.price.toLocaleString("fa-IR")}</b> {p.currency === "IRT" ? "تومان" : p.currency}</> : "به‌زودی"}</span>
+            {per ? <small>هر میلیون اعتبار {Math.round(per).toLocaleString("fa-IR")} تومان</small> : null}</div>
+          <div className="cp-uses" aria-label="تقریباً به اندازهٔ">{PACK_USES.map(id => { const e = ENGINE_COST.find(x => x.id === id)!; const n = p.credits / e.typical;
+            return <div key={id} data-low={n < 1 || undefined}><b>{count(n)}</b><span>{e.id === "pro" ? "اجرای Pro" : e.name}</span></div>; })}</div>
+          <button disabled={p.price <= 0 || buying !== ""} onClick={() => void buy(p.id)}>{buying === p.id ? "در حال انتقال…" : p.price > 0 ? "خرید" : "به‌زودی"}</button>
+        </div>; })}</div>
+      <section className="cp-card cp-engines"><div className="cp-engines-head"><h2>مصرف حدودی هر کار</h2>
+        <p className="cp-sub">بر پایهٔ مصرف واقعی کارهای ۱۰ روز اخیر. مقدار دقیق به طول ویدیو، تعداد اصلاح‌ها و پیچیدگی کار بستگی دارد.</p></div>
+        <div className="cp-scale" aria-hidden="true"><span style={{ insetInlineStart: `${scale(100_000)}%` }}>۱۰۰ هزار</span><span style={{ insetInlineStart: `${scale(1_000_000)}%` }}>۱ میلیون</span><span style={{ insetInlineStart: `${scale(10_000_000)}%` }}>۱۰ میلیون</span></div>
+        {ENGINE_COST.map(e => <div className="cp-eng" key={e.id}>
+          <div className="cp-eng-text"><b>{e.name}</b><small>{e.note}</small></div>
+          <div className="cp-eng-bar" aria-hidden="true"><i style={{ insetInlineStart: `${scale(e.min)}%`, width: `${Math.max(2, scale(e.max) - scale(e.min))}%` }}/><em style={{ insetInlineStart: `${scale(e.typical)}%` }}/></div>
+          <div className="cp-eng-amt"><b>{rangeText(e.min, e.max)}</b>{e.tail ? <small>{e.tail}</small> : null}</div>
+        </div>)}
       </section>
       <p className="cp-note">پرداخت از طریق درگاه امن رفیعی‌پی انجام می‌شود و بعد از تأیید، اعتبار خودکار به حساب شما اضافه می‌شود.</p>
       {orders.length ? <section className="cp-card"><h2>سفارش‌های من{paid ? ` · ${fmt(paid)} پرداخت‌شده` : ""}</h2>{orders.slice(0, 8).map(o => <div className="cp-row" key={o.id}><div className="main"><b>{short(o.credits)} اعتبار</b><small>{when(o.created_at)}</small></div><span className="amt" style={{ fontWeight: 500, color: o.status === "paid" ? "var(--success)" : undefined }}>{STATUS[o.status] || o.status}</span></div>)}</section> : null}
