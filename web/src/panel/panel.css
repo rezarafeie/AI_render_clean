@@ -598,3 +598,4 @@
 .wz-libsec h2 small { font-size: 12.5px; font-weight: 400; color: var(--muted, #777); }
 .wz-libcard b { overflow-wrap: anywhere; font-size: 13px; }
 .wz-still-wait em { font-style: normal; font-size: 12px; color: var(--muted, #777); padding: 0 12px; text-align: center; }
+.wz-more { display: block; margin: 14px auto 0; }
