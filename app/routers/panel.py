@@ -2,6 +2,7 @@
 import asyncio
 import fcntl
 import json
+import logging
 import os
 import re
 from contextlib import contextmanager
@@ -13,6 +14,8 @@ from pydantic import BaseModel, Field
 from app.routers import studio
 from engine.operations import ResourceTransitionSettings
 from engine.schema import CaptionStyle
+
+log = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/panel", tags=["manual-editor"])
@@ -46,6 +49,10 @@ class ProjectSetup(BaseModel):
     narrator: str = Field(default="", max_length=80)
     voice_style: str = Field(default="", max_length=30)
     music: str = Field(default="", max_length=200)
+    vox_look: str = Field(default="", max_length=40)
+    sample_id: str = Field(default="", max_length=80)
+    offer: str = Field(default="", max_length=300)
+    cta: str = Field(default="", max_length=200)
 
 
 @contextmanager
@@ -107,6 +114,17 @@ def _wizard_lines(setup: "ProjectSetup") -> list[str]:
         name = re.sub(r"\.[a-z0-9]{2,4}$", "", setup.music.split(":", 1)[1]).replace("_", " ").replace("-", " ").strip()
         if name:
             lines.append(f"Music: library {name}")
+    if setup.vox_look and re.fullmatch(r"[a-z0-9_]{2,40}", setup.vox_look):
+        lines.append(f"Vox look: {setup.vox_look}")
+    if setup.sample_id:
+        from app import panel_previews
+        sample = next((r for r in panel_previews.samples() if r["id"] == setup.sample_id), None)
+        if sample:
+            lines.append(f"زبان تصویری را نزدیک به این فیلم نمونهٔ استودیو بگیر: «{sample['title']}» — {sample.get('summary', '')}")
+    if setup.offer.strip():
+        lines.append(f"پیشنهاد ویژه / تخفیف: {setup.offer.strip()}")
+    if setup.cta.strip():
+        lines.append(f"دعوت به اقدام پایانی: {setup.cta.strip()}")
     return lines
 
 
@@ -181,7 +199,8 @@ async def wizard_catalog(request: Request):
         from app import talking_reel
         music = [{"file": t["path"].rsplit("/", 1)[-1], "label": t["label"], "mood": "", "energy": None} for t in talking_reel.music_library()]
     cards = await asyncio.to_thread(_film_style_cards)
-    return {"film_styles": cards, "talking_styles": style_list(),
+    from app import panel_previews
+    return {"film_styles": cards, "talking_styles": style_list(), "samples": panel_previews.samples(), "vox_looks": panel_previews.vox_looks(),
             "voices": [{"id": i, "name": n, "note": d} for i, n, d in localize.NARRATORS if i],
             "voice_styles": [{"id": k or "natural", "label": v[0]} for k, v in localize.VOICE_STYLES.items()],
             "music": [m for m in music if m["file"]],
@@ -191,6 +210,57 @@ async def wizard_catalog(request: Request):
                          {"name": "طبیعت آرام", "colors": ["#eef2ea", "#d6e2cf", "#2f7d5b", "#1e2a24"]},
                          {"name": "اقیانوس", "colors": ["#0a1a2a", "#12304a", "#3fc1ff", "#eaf6ff"]},
                          {"name": "مینیمال سفید", "colors": ["#ffffff", "#f1f1f1", "#2d6cdf", "#111111"]}]}
+
+
+@router.get("/wizard/sample/{name}")
+async def wizard_sample(name: str):
+    """A sample clip or poster cut from the owner's finished films (public: <video> and <img> cannot send the token)."""
+    from fastapi.responses import FileResponse
+    from app import panel_previews
+    if not re.fullmatch(r"[a-z]+-[0-9a-f]{8}\.(mp4|jpg)", name) or not (panel_previews.SAMPLES / name).is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(panel_previews.SAMPLES / name, media_type="video/mp4" if name.endswith(".mp4") else "image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+class TalkingStillsRequest(BaseModel):
+    attachment_id: str = Field(max_length=80)
+    title: str = Field(default="", max_length=100)
+
+
+@router.post("/{conversation}/wizard/talking-stills")
+async def wizard_talking_stills(request: Request, conversation: str, body: TalkingStillsRequest):
+    """One still per talking edit style, built from a frame of the person's own uploaded video with that style's real layout and grade."""
+    from pathlib import Path
+    from app import panel_previews
+    from engine.talking_reel import style_list
+    user, _ = await _owned(request, conversation)
+    try:
+        items = await repo.get_attachments([body.attachment_id], conversation, user)
+    except KeyError as exc:
+        raise HTTPException(404, "فایل پیدا نشد.") from exc
+    video = next((i for i in items if i["kind"] == "video"), None)
+    if not video or not Path(video["path"]).is_file():
+        raise HTTPException(422, "برای پیش‌نمایش، یک فایل ویدیو لازم است.")
+    styles = [s["id"] for s in style_list()] + ["premium"]
+    try:
+        token, files = await asyncio.to_thread(panel_previews.talking_stills, Path(video["path"]), styles, body.title.strip())
+    except Exception as exc:
+        log.warning("talking stills failed", exc_info=True)
+        raise HTTPException(502, "ساخت پیش‌نمایش از ویدیو ممکن نشد.") from exc
+    return {"stills": {style: f"/panel/wizard/tstill/{token}/{name}" for style, name in files.items()}}
+
+
+@router.get("/wizard/tstill/{token}/{name}")
+async def wizard_tstill(token: str, name: str):
+    from fastapi.responses import FileResponse
+    from app import panel_previews
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,40}", token) or not re.fullmatch(r"[a-z0-9_]{3,20}\.jpg", name):
+        raise HTTPException(404, "not found")
+    path = panel_previews.STILLS / token / name
+    if not path.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/wizard/music/{name}")

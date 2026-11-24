@@ -552,6 +552,12 @@ export const api = {
   async panelTitleIdea(text: string): Promise<{ title: string }> {
     return j(await authFetch(`${BASE}/panel/wizard/title`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }));
   },
+  wizardSampleUrl(file: string): string { return `${BASE}/panel/wizard/sample/${encodeURIComponent(file)}`; },
+  async panelTalkingStills(id: string, attachmentId: string, title: string): Promise<Record<string, string>> {
+    const out: { stills: Record<string, string> } = await j(await authFetch(`${BASE}/panel/${id}/wizard/talking-stills`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attachment_id: attachmentId, title }) }));
+    return Object.fromEntries(Object.entries(out.stills).map(([k, v]) => [k, `${BASE}${v}`]));
+  },
   libraryMusicUrl(file: string): string { return `${BASE}/panel/wizard/music/${encodeURIComponent(file)}`; },
   async createPanelDraft(): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/panel/draft`, { method: "POST" }));

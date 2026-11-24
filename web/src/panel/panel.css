@@ -558,3 +558,35 @@
 .tp-kinetic > :nth-child(2) { animation-delay: .3s; } .tp-kinetic > :nth-child(3) { animation-delay: .6s; } .tp-kinetic > :nth-child(4) { animation-delay: .9s; } .tp-kinetic > :nth-child(5) { animation-delay: 1.2s; }
 @keyframes tp-word { 0% { opacity: 0; transform: translateY(40%) scale(.8); } 6%, 75% { opacity: 1; transform: none; } 85%, 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tp * { animation: none !important; } }
+
+/* ---- real previews: sample clips from finished films, stills from the person's own video ---- */
+.wz-sample-video { position: relative; display: block; width: 100%; aspect-ratio: 9 / 16; max-height: 260px; border-radius: 12px; overflow: hidden; background: #0d0f12; margin-inline: auto; }
+.wz-sample-video[data-format="horizontal"], .wz-sample-video[data-format="landscape"] { aspect-ratio: 16 / 9; max-height: none; }
+.wz-sample-video[data-big] { max-height: 520px; max-width: 300px; border-radius: 22px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
+.wz-sample-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wz-real { position: absolute; top: 8px; inset-inline-start: 8px; font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(6px); }
+.wz-type .wz-sample-video { max-height: 180px; }
+.wz-still { display: block; width: 100%; aspect-ratio: 9 / 16; max-height: 300px; object-fit: cover; border-radius: 12px; background: var(--elevated, #1b1d22); margin-inline: auto; }
+.wz-still.big { max-height: 520px; max-width: 300px; border-radius: 22px; }
+.wz-still-wait { display: grid; place-items: center; }
+.wz-note { display: flex; gap: 8px; align-items: center; color: var(--text-2, #aaa); font-size: 13px; margin: 0 0 12px; }
+.wz-poster { position: relative; width: 100%; max-width: 300px; aspect-ratio: 9 / 16; margin-inline: auto; border-radius: 22px; overflow: hidden; background: var(--p-bg, #111); display: grid; place-items: center; }
+.wz-poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(.55); }
+.wz-poster b { position: relative; z-index: 1; padding: 0 10%; text-align: center; font-size: 30px; line-height: 1.4; color: var(--p-ink, #fff); text-shadow: 0 2px 12px rgba(0,0,0,.5); }
+.wz-poster b::after { content: ""; display: block; width: 40%; height: 5px; margin: 14px auto 0; border-radius: 4px; background: var(--p-accent, #f2b84b); }
+.wz-poster-pal { position: absolute; bottom: 14px; inset-inline: 0; display: flex; justify-content: center; gap: 6px; z-index: 1; }
+.wz-poster-pal i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,.7); }
+.wz-lib { margin-top: 18px; border: 1px solid var(--border-subtle, rgba(255,255,255,.1)); border-radius: 14px; padding: 10px 14px; }
+.wz-lib summary { cursor: pointer; color: var(--text-2, #aaa); font-size: 14px; }
+.wz-lib .wz-toolbar { margin-top: 10px; }
+.wz-stylelist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; max-height: 420px; overflow-y: auto; }
+.wz-stylelist button { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; text-align: start; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.wz-stylelist button[aria-pressed="true"] { border-color: var(--ink, #fff); background: var(--elevated, rgba(255,255,255,.04)); }
+.wz-stylelist b { font-size: 13px; } .wz-stylelist small { grid-column: 2; font-size: 11.5px; color: var(--text-3, #888); line-height: 1.6; }
+.wz-dots { grid-row: span 2; display: flex; gap: 2px; align-items: center; } .wz-dots i { width: 10px; height: 10px; border-radius: 50%; }
+.wz-look-swatch { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); width: 100%; aspect-ratio: 9 / 16; max-height: 260px; border-radius: 12px; overflow: hidden; }
+.wz-look-swatch em { position: absolute; bottom: 8px; inset-inline: 0; text-align: center; font-style: normal; font-size: 11px; color: #fff; text-shadow: 0 1px 3px #000; }
+@media (max-width: 640px) {
+  .wz-sample-video, .wz-still, .wz-look-swatch { max-height: 220px; }
+  .wz-sample-video[data-big], .wz-still.big, .wz-poster { max-width: 220px; max-height: 390px; }
+}

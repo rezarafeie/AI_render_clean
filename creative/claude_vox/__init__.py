@@ -382,6 +382,9 @@ def write_story(request: str, *, context: str = "", sources: list[dict] | None =
     story = clean_story(story)
     if wants_3d(request) and not _looks.is_3d(story.look):
         story.look = "clay_3d"                     # the person asked for 3D: never a flat look
+    chosen = re.search(r"Vox look:\s*([a-z0-9_]+)", request or "")
+    if chosen and chosen.group(1) in _looks.LOOKS:
+        story.look = chosen.group(1)               # picked by the person in the panel wizard: exactly that look
     return story
 
 

@@ -1,35 +1,41 @@
 import React from "react";
-import { TalkingPreview } from "./TalkingPreview";
 import { api, type CloudFile, type StudioAttachment, type StudioFile } from "../api";
 import { Icon } from "../components/Icon";
 import { AuthenticatedMedia, useAuthenticatedMediaUrl } from "../AuthenticatedMedia";
 import { friendlyError } from "../ui";
 import { useProFonts, loadFontFaces } from "../studio/FontPicker";
 import { engines } from "./Setup";
-import { StylePreview, archetypeOf } from "./StylePreview";
-import type { Capabilities, Engine, FilmStyleCard, Setup as SetupData, WizardCatalog } from "./types";
+import type { Capabilities, Engine, FilmStyleCard, Setup as SetupData, WizardCatalog, WizardSample } from "./types";
 
 const FilesPicker = React.lazy(() => import("../studio/FilesPicker").then(m => ({ default: m.FilesPicker })));
 const CloudPicker = React.lazy(() => import("../studio/CloudPicker").then(m => ({ default: m.CloudPicker })));
 
-type StepId = "type" | "content" | "media" | "edit" | "style" | "font" | "color" | "voice" | "music" | "review";
+type StepId = "type" | "content" | "product" | "story" | "media" | "edit" | "samples" | "look" | "font" | "color" | "voice" | "music" | "review";
 const MOTION: Engine[] = ["motion", "vox", "story", "product", "storyboard"];
 const SOURCE: Engine[] = ["talking", "localize", "clips", "discovery"];
 
+/* Every engine has its own path: what it really needs from the person, and only the choices it really honours. */
 function stepsFor(engine: Engine): StepId[] {
-  if (MOTION.includes(engine)) return ["type", "content", "style", "font", "color", "voice", "music", "review"];
-  if (engine === "talking") return ["type", "media", "edit", "review"];
-  return ["type", "media", "review"];
+  switch (engine) {
+    case "motion": return ["type", "content", "samples", "font", "color", "voice", "music", "review"];
+    case "vox": return ["type", "content", "look", "voice", "music", "review"];
+    case "story": return ["type", "story", "samples", "voice", "music", "review"];
+    case "product": return ["type", "product", "samples", "voice", "music", "review"];
+    case "storyboard": return ["type", "content", "voice", "music", "review"];
+    case "talking": return ["type", "media", "edit", "review"];
+    default: return ["type", "media", "review"];
+  }
 }
-const STEP_NAME: Record<StepId, string> = { type: "نوع ویدیو", content: "محتوا", media: "ویدیو", edit: "سبک تدوین", style: "سبک فیلم", font: "فونت",
-  color: "رنگ", voice: "صدا", music: "موسیقی", review: "ساخت" };
-const STEP_HINT: Record<StepId, string> = {
-  type: "چه ویدیویی می‌خواهی بسازی؟", content: "دربارهٔ چیست و از چه چیزی ساخته شود؟", media: "ویدیوی خودت را اضافه کن",
-  edit: "تدوین با چه حال‌وهوایی باشد؟", style: "زبان تصویری فیلم را انتخاب کن — هر کارت پیش‌نمایش زندهٔ همان سبک است",
-  font: "تیترها با کدام فونت نوشته شوند؟", color: "رنگ‌های فیلم", voice: "چه کسی و با چه لحنی روایت کند؟", music: "موسیقی زمینه", review: "همه‌چیز آماده است",
-};
+const STEP_NAME: Record<StepId, string> = { type: "نوع ویدیو", content: "محتوا", product: "محصول", story: "داستان", media: "ویدیو", edit: "سبک تدوین",
+  samples: "سبک", look: "لوک", font: "فونت", color: "رنگ", voice: "صدا", music: "موسیقی", review: "ساخت" };
+function hintFor(step: StepId, engine: Engine): string {
+  if (step === "content") return engine === "vox" ? "مستند دربارهٔ چه موضوعی باشد؟" : engine === "storyboard" ? "ویدیو دربارهٔ چیست؟ صحنه‌ها را بعداً تأیید می‌کنی" : "دربارهٔ چیست و از چه چیزی ساخته شود؟";
+  if (step === "samples") return engine === "product" ? "تبلیغ‌هایی که همین موتور ساخته — شبیه کدام باشد؟" : engine === "story" ? "فیلم‌های روایی همین موتور — حال‌وهوای کدام را می‌خواهی؟" : "فیلم‌هایی که همین موتور ساخته — زبان تصویری کدام را می‌خواهی؟";
+  return ({ type: "چه ویدیویی می‌خواهی بسازی؟", product: "محصولت را معرفی کن", story: "قصه دربارهٔ کیست و چه پیامی دارد؟", media: "ویدیوی خودت را اضافه کن",
+    edit: "پیش‌نمایش هر سبک روی همین ویدیوی تو", look: "مستند با کدام لوک ساخته شود؟", font: "تیترها با کدام فونت نوشته شوند؟", color: "رنگ‌های فیلم",
+    voice: "چه کسی و با چه لحنی روایت کند؟", music: "موسیقی زمینه", review: "همه‌چیز آماده است" } as Record<string, string>)[step] || "";
+}
 
-/* ── the live mini-frame every preview uses ───────────────────────────────────── */
 const TALKING_NOTE: Record<string, string> = {
   talking_1: "تمام‌قاب با کات دور و نزدیک، تیتر قلاب و معرفی گوینده",
   talking_2: "دوتکه: تصویر هر جمله بالا، گوینده پایین، کلمهٔ کلیدی زرد",
@@ -38,17 +44,24 @@ const TALKING_NOTE: Record<string, string> = {
   premium: "تمام‌قاب با زیرنویس کلمه‌به‌کلمه و موشن‌گرافیک",
 };
 
-function Frame({ palette, title, font, motion = "slide", aspect = "vertical", big = false, playing = true }:
-  { palette: string[]; title: string; font?: string; motion?: string; aspect?: string; big?: boolean; playing?: boolean }) {
-  const [bg, surface, accent, ink] = [palette[0] || "#111318", palette[1] || "#1d2230", palette[2] || "#f2b84b", palette[3] || "#f5f1e8"];
-  const ratio = aspect === "landscape" ? "16 / 9" : aspect === "square" ? "1 / 1" : "9 / 16";
-  return <div className="wz-frame" data-motion={motion} data-big={big || undefined} data-playing={playing || undefined}
-    style={{ aspectRatio: ratio, ["--f-bg" as string]: bg, ["--f-surface" as string]: surface, ["--f-accent" as string]: accent, ["--f-ink" as string]: ink }}>
-    <span className="wz-f-blob a"/><span className="wz-f-blob b"/>
-    <span className="wz-f-bar"/>
-    <b className="wz-f-title" style={font ? { fontFamily: font } : undefined}>{title || "عنوان ویدیوی تو"}</b>
-    <span className="wz-f-line"/><span className="wz-f-line short"/>
-    <span className="wz-f-chip">{"●"}</span>
+/** A real clip from a finished film of this engine: the poster until it is chosen or hovered, then the muted loop. */
+function SampleVideo({ sample, play = false, big = false }: { sample: WizardSample; play?: boolean; big?: boolean }) {
+  const ref = React.useRef<HTMLVideoElement>(null);
+  const [hover, setHover] = React.useState(false);
+  const on = play || hover;
+  React.useEffect(() => { const v = ref.current; if (!v) return; if (on) void v.play().catch(() => {}); else { v.pause(); } }, [on]);
+  return <span className="wz-sample-video" data-big={big || undefined} data-format={sample.format || "vertical"} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <video ref={ref} src={api.wizardSampleUrl(sample.video)} poster={api.wizardSampleUrl(sample.poster)} muted loop playsInline preload={on ? "auto" : "none"}/>
+    <span className="wz-real">نمونهٔ واقعی</span>
+  </span>;
+}
+
+/** The poster of a real film with the person's title written in the chosen font and colours: what the font and colour steps change. */
+function PosterPreview({ sample, title, font, palette }: { sample?: WizardSample; title: string; font?: string; palette: string[] }) {
+  return <div className="wz-poster" style={{ ["--p-bg" as string]: palette[0], ["--p-accent" as string]: palette[2] || palette[1], ["--p-ink" as string]: palette[3] || "#fff" }}>
+    {sample ? <img src={api.wizardSampleUrl(sample.poster)} alt=""/> : null}
+    <b style={font ? { fontFamily: font } : undefined}>{title || "عنوان ویدیوی تو"}</b>
+    <span className="wz-poster-pal">{palette.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }}/>)}</span>
   </div>;
 }
 
@@ -93,6 +106,18 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
   const font = fonts.find(f => f.id === data.title_font);
   const fontFamily = font ? `lib-${font.faces?.[0]?.css_family ?? font.id}` : undefined;
   const title = data.topic.trim().split(/\s+/).slice(0, 5).join(" ") || data.title || "";
+  const samplesOf = (engine: Engine) => (catalog?.samples || []).filter(s => s.engine === engine);
+  const mySamples = samplesOf(data.engine);
+  const chosenSample = mySamples.find(s => s.id === data.sample_id) || (data.engine === "vox" ? mySamples.find(s => s.look === data.vox_look) : undefined) || mySamples[0];
+  const [stills, setStills] = React.useState<{ key: string; urls: Record<string, string>; state: "loading" | "ready" | "error" } | null>(null);
+  const firstVideo = data.attachment_ids.find(a => assets[a]?.kind === "video") || (data.engine === "talking" ? data.attachment_ids[0] : undefined);
+  React.useEffect(() => {
+    if (step !== "edit" || !firstVideo) return;
+    const key = `${firstVideo}|${data.title}`;
+    if (stills?.key.startsWith(firstVideo)) return;
+    setStills({ key, urls: {}, state: "loading" });
+    api.panelTalkingStills(id, firstVideo, latest.current.title).then(urls => setStills({ key, urls, state: "ready" })).catch(() => setStills({ key, urls: {}, state: "error" }));
+  }, [step, firstVideo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => { api.panelWizardCatalog().then(setCatalog).catch(e => setError(friendlyError(e, "load the choices"))); }, []);
   React.useEffect(() => { if (font) void loadFontFaces(font); }, [font]);
@@ -157,7 +182,8 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
   }
 
   const sourceVideo = SOURCE.includes(data.engine);
-  const canNext = step === "type" ? true : step === "content" ? Boolean(data.topic.trim() || data.source_url || data.attachment_ids.length)
+  const canNext = step === "type" ? true : step === "content" || step === "story" ? Boolean(data.topic.trim() || data.source_url || data.attachment_ids.length)
+    : step === "product" ? Boolean(data.source_url || data.topic.trim() || data.attachment_ids.length)
     : step === "media" ? data.attachment_ids.length > 0 : true;
   const styles = (catalog?.film_styles || []).filter(s => !query.trim() || `${s.title} ${s.summary} ${s.mood} ${s.id}`.includes(query.trim()));
   const media = <>
@@ -185,17 +211,68 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
       <span className="wz-path-glow" style={{ width: `${steps.length > 1 ? (index / (steps.length - 1)) * 100 : 0}%` }}/>
     </nav>
 
-    <header className="wz-head" key={`h-${step}`}><h1>{STEP_HINT[step]}</h1></header>
+    <header className="wz-head" key={`h-${step}`}><h1>{hintFor(step, data.engine)}</h1></header>
 
     <div className="wz-stage" key={step} data-dir={dir}>
       {step === "type" && <div className="wz-types">{engines.map(e => {
         const off = e.claude && !capabilities.claude_motion;
         return <button key={e.id} type="button" className="wz-type" aria-pressed={data.engine === e.id} disabled={off}
-          onClick={() => update({ engine: e.id, style: "", style_profile: null, motion_so: false })}>
-          <span className="wz-type-art" data-engine={e.id}><Icon name={e.icon} size={26}/><i/><i/><i/></span>
+          onClick={() => update({ engine: e.id, style: "", style_profile: null, motion_so: false, sample_id: "", vox_look: "" })}>
+          {samplesOf(e.id)[0] ? <SampleVideo sample={samplesOf(e.id)[0]} play={data.engine === e.id}/> : <span className="wz-type-art" data-engine={e.id}><Icon name={e.icon} size={26}/><i/><i/><i/></span>}
           <b>{e.name}</b><small>{off ? "روی این سرور فعال نیست" : e.detail}</small>
         </button>;
       })}</div>}
+
+      {step === "product" && <div className="wz-two">
+        <div className="wz-form">
+          <label>لینک صفحهٔ محصول<input type="url" dir="ltr" className="input" value={data.source_url} onChange={e => update({ source_url: e.target.value })} placeholder="https://فروشگاه.ir/product/…"/></label>
+          <small className="eg-muted">عکس‌ها و مشخصات از همین صفحه خوانده می‌شوند. اگر لینک نداری، نام و ویژگی‌ها را بنویس و عکس بگذار.</small>
+          <label>نام و ویژگی‌های اصلی<textarea className="input bidi" dir="auto" rows={3} maxLength={1000} value={data.topic} onChange={e => update({ topic: e.target.value })} placeholder="مثلاً: ساعت هوشمند آرتا — باتری ۷ روزه، ضدآب، مناسب ورزش"/></label>
+          <label>پیشنهاد ویژه یا تخفیف (اختیاری)<input className="input bidi" dir="auto" maxLength={300} value={data.offer || ""} onChange={e => update({ offer: e.target.value })} placeholder="مثلاً: ۲۰٪ تخفیف تا آخر هفته"/></label>
+          <label>دعوت به اقدام (اختیاری)<input className="input bidi" dir="auto" maxLength={200} value={data.cta || ""} onChange={e => update({ cta: e.target.value })} placeholder="مثلاً: همین حالا از لینک بیو سفارش بده"/></label>
+          <div className="wz-pills" role="radiogroup" aria-label="مدت">{[15, 30, 45, 60].map(n => <button key={n} type="button" role="radio" aria-checked={data.seconds === n}
+            onClick={() => update({ seconds: n as SetupData["seconds"] })}>{n} ثانیه</button>)}</div>
+          {media}
+        </div>
+        <aside className="wz-preview">{chosenSample ? <><SampleVideo sample={chosenSample} play big/><small>{chosenSample.title} — ساختهٔ همین موتور</small></> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+      </div>}
+
+      {step === "story" && <div className="wz-two">
+        <div className="wz-form">
+          <label>قصه دربارهٔ کیست و چه اتفاقی می‌افتد؟<textarea className="input bidi" dir="auto" rows={4} maxLength={1000} value={data.topic} onChange={e => update({ topic: e.target.value })}
+            placeholder="مثلاً: ندا، طراح تازه‌کاری که با یک ابزار ساده اولین مشتری‌اش را پیدا می‌کند؛ پیام: شروع کردن از ابزار شروع می‌شود"/></label>
+          <label>برند یا محصولی که قصه معرفی می‌کند (اختیاری)<input className="input bidi" dir="auto" maxLength={300} value={data.offer || ""} onChange={e => update({ offer: e.target.value })} placeholder="مثلاً: Canva"/></label>
+          <label>لینک مرتبط (اختیاری)<input type="url" dir="ltr" className="input" value={data.source_url} onChange={e => update({ source_url: e.target.value })} placeholder="https://"/></label>
+          <div className="wz-pills" role="radiogroup" aria-label="مدت">{[30, 45, 60].map(n => <button key={n} type="button" role="radio" aria-checked={data.seconds === n}
+            onClick={() => update({ seconds: n as SetupData["seconds"] })}>{n} ثانیه</button>)}</div>
+          {media}
+        </div>
+        <aside className="wz-preview">{chosenSample ? <><SampleVideo sample={chosenSample} play big/><small>{chosenSample.title} — ساختهٔ همین موتور</small></> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+      </div>}
+
+      {step === "samples" && <>
+        <div className="wz-grid wz-samples">
+          <button type="button" className="wz-card" aria-pressed={!data.sample_id} onClick={() => update({ sample_id: "" })}>
+            <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>انتخاب کارگردان</b><small>زبان تصویری متناسب با موضوع خودت</small></button>
+          {mySamples.map(s => <button key={s.id} type="button" className="wz-card" aria-pressed={data.sample_id === s.id} onClick={() => update({ sample_id: s.id })}>
+            <SampleVideo sample={s} play={data.sample_id === s.id}/><b>{s.title}</b>{s.summary ? <small>{s.summary.slice(0, 110)}</small> : null}</button>)}
+        </div>
+        {data.engine === "motion" && catalog?.film_styles.length ? <details className="wz-lib">
+          <summary>یا یک سبک از کتابخانهٔ سبک‌ها ({catalog.film_styles.length}) — بدون نمونهٔ ویدیویی</summary>
+          <div className="wz-toolbar"><input className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجوی سبک: کاغذی، نئون، مستند، مینیمال…"/></div>
+          <ul className="wz-stylelist">{styles.map((s: FilmStyleCard) => <li key={s.id}><button type="button" aria-pressed={data.film_style === s.id}
+            onClick={() => update({ film_style: data.film_style === s.id ? "" : s.id, palette: [] })}>
+            <span className="wz-dots">{s.palette.map(c => <i key={c} style={{ background: c }}/>)}</span><b>{s.title}</b><small>{s.summary}</small></button></li>)}</ul>
+        </details> : null}
+      </>}
+
+      {step === "look" && <div className="wz-grid wz-looks">
+        <button type="button" className="wz-card" aria-pressed={!data.vox_look} onClick={() => update({ vox_look: "" })}>
+          <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>انتخاب کارگردان</b><small>لوکی که به موضوع می‌خورد</small></button>
+        {(catalog?.vox_looks || []).map(l => { const real = mySamples.find(s => s.look === l.id); return <button key={l.id} type="button" className="wz-card" aria-pressed={data.vox_look === l.id} onClick={() => update({ vox_look: l.id })}>
+          {real ? <SampleVideo sample={real} play={data.vox_look === l.id}/> : <span className="wz-look-swatch">{l.colors.map((c, i) => <i key={i} style={{ background: c }}/>)}<em>بدون نمونهٔ ویدیویی</em></span>}
+          <b>{l.name}{l.is3d ? " · سه‌بعدی" : ""}</b><small>{l.note}</small></button>; })}
+      </div>}
 
       {step === "content" && <div className="wz-two">
         <div className="wz-form">
@@ -208,8 +285,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
             <button key={v} type="button" role="radio" aria-checked={(data.aspect === "source" ? "vertical" : data.aspect) === v} onClick={() => update({ aspect: v })}>{l}</button>)}</div>
           {media}
         </div>
-        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
-          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}<small>پیش‌نمایش زنده — با هر انتخاب به‌روز می‌شود</small></aside>
+        <aside className="wz-preview">{chosenSample ? <><SampleVideo sample={chosenSample} play big/><small>{chosenSample.title} — ساختهٔ همین موتور</small></> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
 
       {step === "media" && <div className="wz-form wz-narrow">
@@ -219,25 +295,18 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <button key={v} type="button" role="radio" aria-checked={data.aspect === v} onClick={() => update({ aspect: v })}>{l}</button>)}</div> : null}
       </div>}
 
-      {step === "edit" && <div className="wz-grid">
-        <button type="button" className="wz-card" aria-pressed={!data.style} onClick={() => update({ style: "" })}>
-          <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>پیشنهاد موتور</b><small>بعد از تحلیل ویدیو بهترین سبک را خودش انتخاب می‌کند</small></button>
-        {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map((s, i) => <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
-          <TalkingPreview style={s.id}/><b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>)}
-      </div>}
-
-      {step === "style" && <>
-        <div className="wz-toolbar"><input className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجوی سبک: کاغذی، نئون، مستند، مینیمال…"/>
-          <span className="eg-muted">{styles.length} سبک</span></div>
-        <div className="wz-grid wz-styles">
-          <button type="button" className="wz-card" aria-pressed={!data.film_style} onClick={() => update({ film_style: "", palette: [] })}>
-            <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>انتخاب خودکار</b><small>کارگردان سبک مناسب موضوع را انتخاب می‌کند</small></button>
-          {styles.map((s: FilmStyleCard) => <button key={s.id} type="button" className="wz-card" aria-pressed={data.film_style === s.id}
-            onClick={() => update({ film_style: s.id, palette: [] })}>
-            <StylePreview archetype={archetypeOf(s.id, `${s.summary} ${s.title}`, s.archetype)} palette={s.palette} title={title || s.title} font={fontFamily} playing/>
-            <b>{s.title}</b><small>{s.summary}</small>{s.mood ? <span className="wz-mood">{s.mood}</span> : null}
-          </button>)}
+      {step === "edit" && <>
+        {stills?.state === "loading" ? <p className="wz-note"><span className="wz-spin"/> در حال ساخت پیش‌نمایش هر سبک از فریم‌های ویدیوی خودت…</p> : null}
+        {stills?.state === "error" ? <p className="wz-note">ساخت پیش‌نمایش از ویدیو ممکن نشد؛ سبک را از روی توضیح انتخاب کن.</p> : null}
+        {!firstVideo ? <p className="wz-note">برای دیدن پیش‌نمایش روی ویدیوی خودت، اول در مرحلهٔ قبل ویدیو را اضافه کن.</p> : null}
+        <div className="wz-grid wz-stills">
+          <button type="button" className="wz-card" aria-pressed={!data.style} onClick={() => update({ style: "" })}>
+            <span className="wz-card-art auto"><Icon name="spark" size={26}/></span><b>پیشنهاد موتور</b><small>بعد از تحلیل ویدیو بهترین سبک را خودش انتخاب می‌کند</small></button>
+          {[...capabilities.talking_styles, { id: "premium", label: "پریمیوم تمام‌قاب" }].map(s => <button key={s.id} type="button" className="wz-card" aria-pressed={data.style === s.id} onClick={() => update({ style: s.id })}>
+            {stills?.urls[s.id] ? <img className="wz-still" src={stills.urls[s.id]} alt={`پیش‌نمایش ${s.label} روی ویدیوی تو`}/> : <span className="wz-still wz-still-wait">{stills?.state === "loading" ? <span className="wz-spin"/> : null}</span>}
+            <b>{s.label}</b>{TALKING_NOTE[s.id] ? <small>{TALKING_NOTE[s.id]}</small> : null}</button>)}
         </div>
+        {stills?.state === "ready" ? <p className="wz-note">تصویرها از ویدیوی خودت ساخته شده‌اند با چیدمان، برش و رنگ‌بندی واقعی هر سبک؛ فقط متن‌ها نمونه‌اند.</p> : null}
       </>}
 
       {step === "font" && <div className="wz-two">
@@ -245,8 +314,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <button type="button" className="wz-card wz-font" aria-pressed={!data.title_font} onClick={() => update({ title_font: "" })}><b className="wz-font-sample">خودکار</b><small>فونت متناسب با سبک</small></button>
           {fonts.slice(0, 40).map(f => <FontCard key={f.id} font={f} text={title || "عنوان ویدیوی تو"} active={data.title_font === f.id} onPick={() => update({ title_font: f.id })}/>)}
         </div>
-        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
-          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}</aside>
+        <aside className="wz-preview"><PosterPreview sample={chosenSample} title={title} font={fontFamily} palette={palette}/></aside>
       </div>}
 
       {step === "color" && <div className="wz-two">
@@ -258,8 +326,7 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
           <div className="wz-custom"><b>رنگ دلخواه</b>{["زمینه", "سطح", "تأکید", "متن"].map((label, i) => <label key={label}>
             <input type="color" value={palette[i] || "#000000"} onChange={e => { const next = [...palette]; next[i] = e.target.value.toUpperCase(); update({ palette: next.slice(0, 4) }); }}/>{label}</label>)}</div>
         </div>
-        <aside className="wz-preview">{style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
-          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>}</aside>
+        <aside className="wz-preview"><PosterPreview sample={chosenSample} title={title} font={fontFamily} palette={palette}/></aside>
       </div>}
 
       {step === "voice" && <div className="wz-form">
@@ -287,19 +354,21 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
         <div className="wz-summary">
           <Row label="نوع" value={engines.find(e => e.id === data.engine)?.name} onEdit={() => go("type")}/>
           {MOTION.includes(data.engine) ? <>
-            <Row label="موضوع" value={data.topic || data.source_url || "از فایل‌ها"} onEdit={() => go("content")}/>
-            <Row label="مدت و قطع" value={`${data.seconds} ثانیه · ${data.aspect === "landscape" ? "افقی" : data.aspect === "square" ? "مربع" : "عمودی"}`} onEdit={() => go("content")}/>
-            <Row label="سبک فیلم" value={style?.title || "خودکار"} onEdit={() => go("style")}/>
-            <Row label="فونت" value={font?.label || "خودکار"} onEdit={() => go("font")}/>
-            <Row label="رنگ" value={<span className="wz-mini-pal">{palette.map(c => <i key={c} style={{ background: c }}/>)}</span>} onEdit={() => go("color")}/>
+            <Row label={data.engine === "product" ? "محصول" : data.engine === "story" ? "قصه" : "موضوع"} value={data.topic || data.source_url || "از فایل‌ها"} onEdit={() => go(steps[1])}/>
+            <Row label="مدت" value={`${data.seconds} ثانیه${steps.includes("content") ? ` · ${data.aspect === "landscape" ? "افقی" : data.aspect === "square" ? "مربع" : "عمودی"}` : ""}`} onEdit={() => go(steps[1])}/>
+            {steps.includes("samples") ? <Row label="سبک" value={mySamples.find(s => s.id === data.sample_id)?.title || style?.title || "انتخاب کارگردان"} onEdit={() => go("samples")}/> : null}
+            {steps.includes("look") ? <Row label="لوک" value={catalog?.vox_looks?.find(l => l.id === data.vox_look)?.name || "انتخاب کارگردان"} onEdit={() => go("look")}/> : null}
+            {data.engine === "product" && (data.offer || data.cta) ? <Row label="پیشنهاد" value={[data.offer, data.cta].filter(Boolean).join(" · ")} onEdit={() => go("product")}/> : null}
+            {steps.includes("font") ? <Row label="فونت" value={font?.label || "خودکار"} onEdit={() => go("font")}/> : null}
+            {steps.includes("color") ? <Row label="رنگ" value={<span className="wz-mini-pal">{palette.map(c => <i key={c} style={{ background: c }}/>)}</span>} onEdit={() => go("color")}/> : null}
             <Row label="گوینده" value={(catalog?.voices.find(v => v.id === data.narrator)?.name || "پیشنهاد استودیو") + (data.voice_style && data.voice_style !== "natural" ? ` · ${catalog?.voice_styles.find(s => s.id === data.voice_style)?.label}` : "")} onEdit={() => go("voice")}/>
             <Row label="موسیقی" value={data.music === "off" ? "بدون موسیقی" : data.music?.startsWith("library:") ? data.music.slice(8) : "خودکار"} onEdit={() => go("music")}/>
           </> : <Row label="فایل‌ها" value={`${data.attachment_ids.length} فایل`} onEdit={() => go("media")}/>}
           {data.engine === "talking" ? <Row label="سبک تدوین" value={capabilities.talking_styles.find(s => s.id === data.style)?.label || (data.style === "premium" ? "پریمیوم" : "پیشنهاد موتور")} onEdit={() => go("edit")}/> : null}
           <label className="wz-mode">نام پروژه (پیشنهاد خودکار — قابل تغییر)<input className="input" maxLength={100} value={data.title} onChange={e => update({ title: e.target.value })}/></label>
         </div>
-        <aside className="wz-preview">{MOTION.includes(data.engine) ? (style ? <StylePreview archetype={archetypeOf(style.id, `${style.summary} ${style.title}`, style.archetype)} palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>
-          : <Frame palette={palette} title={title} font={fontFamily} aspect={data.aspect} big/>) : data.engine === "talking" && data.style ? <TalkingPreview style={data.style} big/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
+        <aside className="wz-preview">{MOTION.includes(data.engine) && chosenSample ? <SampleVideo sample={chosenSample} play big/>
+          : data.engine === "talking" && data.style && stills?.urls[data.style] ? <img className="wz-still big" src={stills.urls[data.style]} alt=""/> : <div className="wz-ready"><Icon name="spark" size={34}/></div>}</aside>
       </div>}
     </div>
 
