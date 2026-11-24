@@ -71,19 +71,21 @@ export function AgentRunControls({runs, chatCredits, onChanged}: {runs: StudioAg
   const proRuns = runs.filter(r => r.agent_mode === "pro" && r.pro?.spent_credits != null);
   const chatTotal = Math.max(chatCredits ?? 0, proRuns.reduce((sum, r) => sum + (r.pro?.spent_credits || 0), 0));      // the ledger's figure counts every engine too
   const chatCalls = proRuns.reduce((sum, r) => sum + (r.pro?.calls || 0), 0);
-  const k = (n: number) => fa(Math.round(n / 1000));
+  // Amount + unit: «۸۵۰ هزار», «۱٫۰۳ میلیون» (a bare «۱,۰۳۴ هزار» read as if it were small).
+  const amount = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString("fa-IR", { maximumFractionDigits: n >= 10_000_000 ? 1 : 2 })} میلیون`
+    : `${fa(Math.max(1, Math.round(n / 1000)))} هزار`;
   const proLine = pro ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
     {pro.status === "running" || pro.status === "queued" ? "Pro در حال کار · " : "Pro · "}
-    مصرف کل این چت {k(chatTotal)} هزار اعتبار
-    {proRuns.length > 1 ? ` (این اجرا ${k(pro.pro?.spent_credits || 0)} هزار)` : ""}
-    {pro.pro?.budget_credits ? ` · سقف: اعتبار حساب (${k(pro.pro.budget_credits)} هزار)` : " · بدون سقف"}
+    مصرف کل این چت {amount(chatTotal)} اعتبار
+    {proRuns.length > 1 ? ` (این اجرا ${amount(pro.pro?.spent_credits || 0)})` : ""}
+    {pro.pro?.budget_credits ? ` · سقف: اعتبار حساب (${amount(pro.pro.budget_credits)})` : " · بدون سقف"}
     {chatCalls ? ` · ${fa(chatCalls)} تماس با مدل` : ""}
   </p> : null;
   // Lite and Medium chats get the same line: everything the chat used (its own calls and every engine it started), from the credit ledger.
   const medium = [...runs].reverse().find(r => r.agent_mode === "medium");
   const mediumBusy = medium && ["queued", "running", "waiting_job"].includes(medium.status);
   const chatLine = !pro && (chatCredits || 0) > 0 ? <p className="pro-cost" dir="rtl" style={{ margin: "4px 0", fontSize: 12, color: "var(--muted, #8b8b8b)" }}>
-    {mediumBusy ? "Medium در حال کار · " : ""}مصرف کل این چت {fa(Math.max(1, Math.round((chatCredits || 0) / 1000)))} هزار اعتبار
+    {mediumBusy ? "Medium در حال کار · " : ""}مصرف کل این چت {amount(chatCredits || 0)} اعتبار
   </p> : null;
   return <>{proLine}{chatLine}{runs.filter(r => r.agent_mode === "medium" && ["waiting_approval", "failed"].includes(r.status)).map(record =>
     <div className="action-card" key={record.id} aria-label="EditorGPT Medium plan">
