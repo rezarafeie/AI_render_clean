@@ -135,6 +135,8 @@ export const FA: Record<string, string> = {
 "Projects": "پروژه‌ها",
 "Recent": "اخیر",
 "Search chats": "جست‌وجوی چت‌ها",
+"Which engine?": "کدام موتور؟",
+"Create panel": "پنل ساخت",
 "Sign up": "ثبت‌نام",
 "Skip to content": "رفتن به محتوا",
 "Switch to EditorGPT": "رفتن به ادیتورجی‌پی‌تی",

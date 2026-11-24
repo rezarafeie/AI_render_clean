@@ -444,6 +444,9 @@ button.cloud-row:disabled { opacity: .6; cursor: progress; }
 .eg-sample { display: flex; gap: 10px; align-items: flex-start; text-align: start; font: inherit; font-size: 13px; line-height: 1.8; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border-subtle, rgba(255,255,255,.1)); background: transparent; color: var(--text-2); cursor: pointer; }
 .eg-sample:hover { color: var(--text); border-color: var(--border, rgba(255,255,255,.2)); }
 .eg-sample .eg-badge { flex: none; }
+.eg-sample { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.eg-sample > span:last-child { min-width: 0; }
+.eg-guide { width: 100%; box-sizing: border-box; overflow-x: hidden; }
 .eg-alt { font-size: 13px; color: var(--text-3, #888); display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .eg-link { font: inherit; background: none; border: 0; padding: 0; color: var(--text-2); text-decoration: underline; cursor: pointer; }
 .eg-link:disabled { opacity: .5; }

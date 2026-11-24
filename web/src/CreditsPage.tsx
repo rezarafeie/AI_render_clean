@@ -37,6 +37,21 @@ function Groups({ rows, title, project }: { rows: CreditGroup[]; title: string; 
     })}</section>;
 }
 
+/* Typical credits per finished job, from the ledger (Nov 2026): Lite simple edit median ~75K, Lite film (motion/Vox/story/product) median ~0.6M (p75 ~1M),
+   Medium median ~1.3M (p75 ~3.3M), Pro median ~0.8M (p75 ~1.6M, heavy tail to ~7M), Claude ~11M. "typical" is the conservative figure used for the counts. */
+const ENGINE_COST = [
+  { id: "edit", name: "تدوین ساده (Lite)", typical: 100_000, range: "۵۰ تا ۱۵۰ هزار", note: "تدوین ریلز صحبتی، زیرنویس، برش و دوبله" },
+  { id: "film", name: "فیلم موشن / ووکس / تبلیغ (Lite)", typical: 800_000, range: "۴۰۰ هزار تا ۱٫۵ میلیون", note: "موشن‌گرافیک، مستند ووکس، معرفی محصول و روایی" },
+  { id: "medium", name: "Medium", typical: 2_000_000, range: "۱ تا ۵ میلیون", note: "کارهای چندمرحله‌ای با برنامهٔ تأییدشده" },
+  { id: "pro", name: "Pro", typical: 1_500_000, range: "۰٫۸ تا ۷ میلیون", note: "فیلم سفارشی و پروژه‌های خاص؛ بسته به اصلاح‌ها" },
+  { id: "claude", name: "Claude", typical: 10_000_000, range: "حدود ۱۰ میلیون و بیشتر", note: "خودِ Claude بدون ابزارهای استودیو (آزمایشی)" },
+];
+function about(n: number): string {
+  if (n < 1) return "کمتر از یک کار";
+  const v = n >= 10 ? Math.floor(n / 5) * 5 : Math.floor(n);
+  return `حدود ${v.toLocaleString("fa-IR")} کار`;
+}
+
 export default function CreditsPage() {
   const [state, setState] = React.useState<CreditsState | null>(null);
   const [usage, setUsage] = React.useState<CreditsUsage | null>(null);
@@ -88,8 +103,13 @@ export default function CreditsPage() {
         <div className="name"><span>{p.title}</span>{p.id === best ? <span className="tag">پرفروش</span> : null}</div>
         <div className="big">{short(p.credits)}</div><div className="unit">اعتبار</div>
         <div className="price">{p.price > 0 ? `${p.price.toLocaleString("fa-IR")} ${p.currency === "IRT" ? "تومان" : p.currency}` : "به‌زودی"}</div>
+        <ul className="cp-est" aria-label="تقریباً به اندازهٔ">{ENGINE_COST.map(e => <li key={e.id}><span>{e.name}</span><b>{about(p.credits / e.typical)}</b></li>)}</ul>
         <button disabled={p.price <= 0 || buying !== ""} onClick={() => void buy(p.id)}>{buying === p.id ? "در حال انتقال…" : p.price > 0 ? "خرید" : "به‌زودی"}</button>
       </div>)}</div>
+      <section className="cp-card cp-engines"><h2>مصرف حدودی هر موتور</h2>
+        <p className="cp-sub">بر پایهٔ مصرف واقعی کارهای اخیر؛ مقدار دقیق به طول ویدیو، تعداد اصلاح‌ها و پیچیدگی کار بستگی دارد.</p>
+        {ENGINE_COST.map(e => <div className="cp-row" key={e.id}><div className="main"><b>{e.name}</b><small>{e.note}</small></div><span className="amt">{e.range}</span></div>)}
+      </section>
       <p className="cp-note">پرداخت از طریق درگاه امن رفیعی‌پی انجام می‌شود و بعد از تأیید، اعتبار خودکار به حساب شما اضافه می‌شود.</p>
       {orders.length ? <section className="cp-card"><h2>سفارش‌های من{paid ? ` · ${fmt(paid)} پرداخت‌شده` : ""}</h2>{orders.slice(0, 8).map(o => <div className="cp-row" key={o.id}><div className="main"><b>{short(o.credits)} اعتبار</b><small>{when(o.created_at)}</small></div><span className="amt" style={{ fontWeight: 500, color: o.status === "paid" ? "var(--success)" : undefined }}>{STATUS[o.status] || o.status}</span></div>)}</section> : null}
     </> : null}

@@ -53,7 +53,7 @@ type RouteKind = "studio" | "page" | "legacy" | "workspace";
 function routeKind(pathname: string): RouteKind {
   if (pathname === "/" || pathname.startsWith("/studio")) return "studio";
   if (pathname === "/insta" || pathname.startsWith("/insta/")) return "workspace";   // laid out like the Studio chat: a page column and a side panel
-  if (/^\/(projects|templates|settings|motion-library)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
+  if (/^\/(projects|templates|settings|motion-library|guide)(\/|$)/.test(pathname) && !pathname.startsWith("/settings/ai")) return "page";
   return "legacy";
 }
 const ROUTE_TITLES: Record<string, string> = { "/projects": "Projects", "/templates": "Templates", "/settings": "Settings", "/motion-library": "Motion library" };
@@ -195,7 +195,8 @@ export default function EditorShell() {
           <NavLink to="/studio" end {...tip("New edit")} aria-label="New edit"><Icon name="edit"/><span>New edit</span></NavLink>
           <button type="button" {...tip("Search chats")} aria-label="Search chats" onClick={startSearch}><Icon name="search"/><span>Search chats</span></button>
           <NavLink to="/projects" {...tip("Projects")}><Icon name="projects"/><span>Projects</span></NavLink>
-          <NavLink to="/guide" {...tip("کدام موتور؟")}><Icon name="spark"/><span>کدام موتور؟</span></NavLink>
+          <NavLink to="/panel" {...tip("Create panel")}><Icon name="grid"/><span>Create panel</span></NavLink>
+          <NavLink to="/guide" {...tip("Which engine?")}><Icon name="spark"/><span>Which engine?</span></NavLink>
           </>}
         </nav>
 

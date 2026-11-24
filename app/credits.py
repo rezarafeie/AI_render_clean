@@ -56,6 +56,7 @@ DEFAULT_SETTINGS = {
     "per_call": {"image": 10_000, "speech": 3_000, "video": 50_000, "transcription": 3_000, "embeddings": 50, "default": 1_000},
 }
 DEFAULT_PACKAGES = [
+    {"id": "p0", "title": "بستهٔ آزمایشی", "credits": 1_000_000, "price": 250_000, "currency": "IRT", "active": True, "sort": 0},
     {"id": "p1", "title": "بستهٔ شروع", "credits": 5_000_000, "price": 0, "currency": "IRT", "active": True, "sort": 1},
     {"id": "p2", "title": "بستهٔ حرفه‌ای", "credits": 20_000_000, "price": 0, "currency": "IRT", "active": True, "sort": 2},
     {"id": "p3", "title": "بستهٔ تیم", "credits": 100_000_000, "price": 0, "currency": "IRT", "active": True, "sort": 3},
