@@ -3,6 +3,7 @@ import asyncio
 import fcntl
 import json
 import logging
+from pathlib import Path
 import os
 import re
 from contextlib import contextmanager
@@ -230,6 +231,76 @@ async def wizard_sample(name: str):
 class TalkingStillsRequest(BaseModel):
     attachment_id: str = Field(max_length=80)
     title: str = Field(default="", max_length=100)
+
+
+class AutofillRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=2000)
+    library: list[str] = Field(default_factory=list, max_length=120)   # "id: what it is" for the motion library items the page loaded
+
+
+AUTOFILL = """You set up a Persian video studio's creation wizard from what the person wrote. Choose every field from the OPTIONS only (the exact id before " = "); leave a
+field empty ("") when nothing fits or the engine decides better. Engines: talking (edit the person's own talking-head video: needs their video), clips (manual
+cut of a video), discovery (find short clips inside a long video), localize (translate/dub an existing video), motion (motion-graphics explainer from a topic),
+vox (Vox-style documentary/collage explainer), story (narrative film that tells a story, may introduce a brand), product (product ad from a link/photos),
+storyboard (scenes reviewed before production). Prefer motion for a topic explainer, product when a product/shop is named, story when a story or character is
+described, vox for history/economy/documentary topics, talking when they speak about their own recorded video.
+Return JSON: {"engine","title" (2-5 Persian words),"topic" (the brief in Persian, keep every fact and number they gave),"seconds" (15|30|45|60),
+"aspect" ("vertical"|"square"|"landscape"),"source_url","film_style","vox_look","sample_id","library_items" (0-3 ids),"narrator","voice_style","music"
+("auto"|"off"|"library:<file>"),"style" (talking edit style id or ""),"offer","cta","why" (one short Persian sentence: why these choices)}."""
+
+
+@router.post("/{conversation}/wizard/autofill")
+async def wizard_autofill(request: Request, conversation: str, body: AutofillRequest):
+    """One request in the person's words -> a filled wizard (every field still editable). Unknown ids are dropped, never guessed."""
+    import json as _json
+    from brain.llm import gateway_json
+    await _owned(request, conversation)
+    cat = await wizard_catalog(request)
+    lib = {}
+    for row in body.library:
+        key = row.split(":", 1)[0].strip() if isinstance(row, str) else ""
+        if re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", key.replace(":", "_", 1)) or re.fullmatch(r"[a-z0-9][a-z0-9:_-]{2,80}", key):
+            lib[key] = row[len(key) + 1:].strip()[:80]
+    options = {
+        "film_style": [f"{c['id']} = {c['title']} — {c['summary'][:70]}" for c in cat["film_styles"]],
+        "vox_look": [f"{l['id']} = {l['name']}" for l in cat["vox_looks"]],
+        "sample_id": [f"{s['id']} ({s['engine']}{', ' + s['style'] if s.get('style') else ''}): {s['title'][:60]}".replace("): ", ") = ") for s in cat["samples"]],
+        "library_items": [f"{k} = {v}" for k, v in lib.items()],
+        "narrator": [f"{v['id']} = {v['name']} — {v['note']}" for v in cat["voices"]],
+        "voice_style": [v["id"] for v in cat["voice_styles"]],
+        "music": [m["file"] for m in cat["music"]][:40],
+        "style": [s["id"] for s in cat["talking_styles"]] + ["premium"],
+    }
+    user_text = "OPTIONS:\n" + _json.dumps(options, ensure_ascii=False) + "\n\nWHAT THE PERSON WROTE:\n" + body.text.strip()
+    try:
+        out, _ = await asyncio.to_thread(gateway_json, AUTOFILL, user_text, "engine_advisor", 1200)
+    except Exception as exc:
+        log.warning("wizard autofill failed", exc_info=True)
+        raise HTTPException(502, "پیشنهاد خودکار الان ممکن نشد؛ مرحله‌ها را دستی پر کن.") from exc
+    out = out if isinstance(out, dict) else {}
+    valid = {"film_style": {c["id"] for c in cat["film_styles"]}, "vox_look": {l["id"] for l in cat["vox_looks"]}, "sample_id": {x["id"] for x in cat["samples"]},
+             "narrator": {v["id"] for v in cat["voices"]}, "voice_style": set(options["voice_style"]), "style": set(options["style"])}
+    ids = lambda key: valid[key]
+    pick = lambda key: str(out.get(key) or "") if str(out.get(key) or "") in ids(key) else ""
+    engine = out.get("engine") if out.get("engine") in Engines.__args__ else "motion"
+    music = str(out.get("music") or "auto")
+    if music.startswith("library:") and music[8:] not in options["music"]:
+        music = "auto"
+    if music not in ("auto", "off") and not music.startswith("library:"):
+        music = "auto"
+    result = {"engine": engine, "title": str(out.get("title") or "")[:100], "topic": str(out.get("topic") or body.text)[:1000],
+              "seconds": out.get("seconds") if out.get("seconds") in (15, 30, 45, 60) else 30,
+              "aspect": out.get("aspect") if out.get("aspect") in ("vertical", "square", "landscape") else "vertical",
+              "source_url": str(out.get("source_url") or "")[:2000] if str(out.get("source_url") or "").startswith("http") else "",
+              "film_style": pick("film_style"), "vox_look": pick("vox_look") if engine == "vox" else "",
+              "sample_id": pick("sample_id"), "narrator": pick("narrator"), "voice_style": pick("voice_style"), "music": music,
+              "style": pick("style") if engine == "talking" else "",
+              "library_items": [i for i in (out.get("library_items") or []) if isinstance(i, str) and i in lib][:3],
+              "offer": str(out.get("offer") or "")[:300], "cta": str(out.get("cta") or "")[:200], "why": str(out.get("why") or "")[:300]}
+    sample = next((s for s in cat["samples"] if s["id"] == result["sample_id"]), None)
+    if sample and sample["engine"] != engine:
+        result["sample_id"] = ""
+    return result
 
 
 @router.post("/{conversation}/wizard/talking-stills")

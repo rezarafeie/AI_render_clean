@@ -599,3 +599,21 @@
 .wz-libcard b { overflow-wrap: anywhere; font-size: 13px; }
 .wz-still-wait em { font-style: normal; font-size: 12px; color: var(--muted, #777); padding: 0 12px; text-align: center; }
 .wz-more { display: block; margin: 14px auto 0; }
+
+/* type step: one request fills the wizard; equal cards */
+.wz-wish { display: grid; gap: 8px; margin-bottom: 18px; padding: 14px; border-radius: 18px; border: 1px solid var(--border, #e3e3e3); background: var(--surface, #fafafa); }
+.wz-wish label { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14.5px; }
+.wz-wish-row { display: flex; gap: 8px; align-items: stretch; }
+.wz-wish-row textarea { flex: 1; min-height: 72px; resize: vertical; font: inherit; }
+.wz-wish-row .btn { align-self: flex-end; min-width: 72px; }
+.wz-wish small { color: var(--muted, #888); font-size: 12px; line-height: 1.7; }
+.wz-why { display: flex; gap: 6px; align-items: flex-start; margin: -6px 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface, #f6f6f6); font-size: 13px; line-height: 1.8; }
+.wz-types { align-items: stretch; }
+.wz-types .wz-type { height: 100%; }
+.wz-types .wz-type > .wz-sample-video, .wz-types .wz-type > .wz-type-art { width: 100%; height: auto; aspect-ratio: 4 / 5; max-height: none; }
+.wz-types .wz-type > .wz-sample-video img, .wz-types .wz-type > .wz-sample-video video { width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 640px) {
+  .wz-types { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wz-types .wz-type > .wz-sample-video, .wz-types .wz-type > .wz-type-art { aspect-ratio: 1 / 1; }
+  .wz-wish-row { flex-direction: column; } .wz-wish-row .btn { align-self: stretch; }
+}

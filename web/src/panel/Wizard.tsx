@@ -133,10 +133,25 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
   const talkingSample = (styleId: string) => (catalog?.samples || []).find(s => s.engine === "talking" && s.style === styleId);
   const [library, setLibrary] = React.useState<LibraryItem[] | null>(null);
   React.useEffect(() => {
-    if ((step !== "samples" && step !== "look") || library) return;
+    if ((step !== "samples" && step !== "look" && step !== "type") || library) return;
     Promise.all(["index.json", "native-shotcraft.json"].map(f => fetch(`/creative-previews/${f}`).then(r => r.ok ? r.json() : { items: {} }).catch(() => ({ items: {} }))))
       .then(groups => setLibrary(groups.flatMap((g: { items?: Record<string, unknown> }) => Object.values(g.items || {}) as Record<string, unknown>[]).map(toItem).filter(i => i.poster)));
   }, [step, data.engine, library]);
+  const [wish, setWish] = React.useState("");
+  const [why, setWhy] = React.useState("");
+  async function autofill() {
+    if (wish.trim().length < 3) return;
+    setBusy("در حال چیدن همهٔ مرحله‌ها…"); setError(""); setWhy("");
+    try {
+      const r = await api.panelWizardAutofill(id, wish.trim(), (library || []).map(i => `${i.id}: ${i.use.slice(0, 70)}`));
+      const { why: reason, ...fields } = r;
+      update({ ...(fields as Partial<SetupData>), palette: [], title_font: "" });
+      setWhy(String(reason || "همه‌چیز را از روی درخواستت چیدم؛ هر مرحله را می‌توانی عوض کنی."));
+      const engine = fields.engine as Engine;
+      const target: StepId = SOURCE.includes(engine) && !latest.current.attachment_ids.length ? "media" : "review";
+      setDir(1); setStep(target); window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) { setError(friendlyError(e, "fill the steps")); } finally { setBusy(""); }
+  }
   const toggleItem = (itemId: string) => { const cur = latest.current.library_items || []; update({ library_items: cur.includes(itemId) ? cur.filter(x => x !== itemId) : [...cur, itemId].slice(-6) }); };
   React.useEffect(() => { api.panelWizardCatalog().then(setCatalog).catch(e => setError(friendlyError(e, "load the choices"))); }, []);
   React.useEffect(() => { if (font) void loadFontFaces(font); }, [font]);
@@ -256,8 +271,19 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
     </nav>
 
     <header className="wz-head" key={`h-${step}`}><h1>{hintFor(step, data.engine)}</h1></header>
+    {why && step !== "type" ? <p className="wz-why"><Icon name="spark" size={14}/> {why}</p> : null}
 
     <div className="wz-stage" key={step} data-dir={dir}>
+      {step === "type" && <div className="wz-wish">
+        <label htmlFor="wz-wish"><Icon name="spark" size={16}/> درخواستت را بنویس تا همه‌چیز را برایت بچینیم</label>
+        <div className="wz-wish-row">
+          <textarea id="wz-wish" className="input bidi" dir="auto" rows={3} maxLength={2000} value={wish} onChange={e => setWish(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void autofill(); }}
+            placeholder="مثلاً: یک ویدیوی ۳۰ ثانیه‌ای برای معرفی کافه‌ام با لحن گرم؛ سه ویژگی: قهوهٔ تازه، فضای دنج، تخفیف ۲۰٪ تا جمعه"/>
+          <button type="button" className="btn" disabled={wish.trim().length < 3 || Boolean(busy)} onClick={() => void autofill()}>بچین</button>
+        </div>
+        <small>نوع ویدیو، سبک، صدا، موسیقی و بقیه پیش‌فرض انتخاب می‌شوند و همه قابل تغییرند. یا خودت از پایین نوع ویدیو را انتخاب کن.</small>
+      </div>}
       {step === "type" && <div className="wz-types">{engines.map(e => {
         const off = e.claude && !capabilities.claude_motion;
         return <button key={e.id} type="button" className="wz-type" aria-pressed={data.engine === e.id} disabled={off}

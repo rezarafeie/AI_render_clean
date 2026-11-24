@@ -558,6 +558,9 @@ export const api = {
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attachment_id: attachmentId, title }) }));
     return Object.fromEntries(Object.entries(out.stills).map(([k, v]) => [k, `${BASE}${v}`]));
   },
+  async panelWizardAutofill(id: string, text: string, library: string[]): Promise<Record<string, unknown> & { why?: string }> {
+    return j(await authFetch(`${BASE}/panel/${id}/wizard/autofill`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, library: library.slice(0, 120) }) }));
+  },
   libraryMusicUrl(file: string): string { return `${BASE}/panel/wizard/music/${encodeURIComponent(file)}`; },
   async createPanelDraft(): Promise<StudioConversation> {
     return j(await authFetch(`${BASE}/panel/draft`, { method: "POST" }));
