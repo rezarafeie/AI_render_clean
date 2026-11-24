@@ -223,11 +223,6 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
 
   const shownStyles = moreStyles || query.trim() ? styles : styles.slice(0, 24);
   const extras = <>
-    <section className="wz-libsec">
-      <h2>قطعه‌های کتابخانهٔ موشن <small>هر کدام را بخواهی در فیلمت باشد انتخاب کن (تا ۶ قطعه){data.library_items?.length ? ` — ${data.library_items.length} انتخاب شده` : ""}</small></h2>
-      {library ? <div className="wz-grid wz-samples">{library.map(item => <LibraryCard key={item.id} item={item} active={Boolean(data.library_items?.includes(item.id))} onPick={() => toggleItem(item.id)}/>)}</div>
-        : <p className="wz-note"><span className="wz-spin"/> در حال بارگذاری کتابخانه…</p>}
-    </section>
     {catalog?.film_styles.length ? <section className="wz-libsec">
       <h2>کتابخانهٔ سبک‌ها <small>{catalog.film_styles.length} سبک — پیش‌نمایش با رنگ و چیدمان هر سبک و عنوان خودت</small></h2>
       <div className="wz-toolbar"><input className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجوی سبک: کاغذی، نئون، مستند، مینیمال…"/>
@@ -243,6 +238,11 @@ export function Wizard({ id, initial, capabilities, onStarted }: Props) {
       </div>
       {!moreStyles && !query.trim() && styles.length > 24 ? <button type="button" className="btn btn-secondary wz-more" onClick={() => setMoreStyles(true)}>نمایش همهٔ {styles.length} سبک</button> : null}
     </section> : null}
+    <section className="wz-libsec">
+      <h2>قطعه‌های کتابخانهٔ موشن <small>هر کدام را بخواهی در فیلمت باشد انتخاب کن (تا ۶ قطعه){data.library_items?.length ? ` — ${data.library_items.length} انتخاب شده` : ""}</small></h2>
+      {library ? <div className="wz-grid wz-samples">{library.map(item => <LibraryCard key={item.id} item={item} active={Boolean(data.library_items?.includes(item.id))} onPick={() => toggleItem(item.id)}/>)}</div>
+        : <p className="wz-note"><span className="wz-spin"/> در حال بارگذاری کتابخانه…</p>}
+    </section>
   </>;
 
   return <section className="wz" dir="rtl" data-launch={launch || undefined}>
