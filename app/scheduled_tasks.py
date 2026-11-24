@@ -48,6 +48,12 @@ class Schedule(BaseModel):
     date: str = Field(default="", pattern=r"^(\d{4}-\d{2}-\d{2})?$")  # once (Gregorian, Iran time)
 
 
+class Source(BaseModel):
+    file_id: str = Field(min_length=3, max_length=200)         # a library file ("att:<attachment id>", an output, …): attached to each run's chat
+    name: str = Field(default="", max_length=300)
+    kind: str = Field(default="", max_length=20)
+
+
 class TaskIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     instructions: str = Field(min_length=3, max_length=6000)
@@ -56,6 +62,8 @@ class TaskIn(BaseModel):
     research: bool = False
     schedule: Schedule = Field(default_factory=Schedule)
     status: Literal["active", "paused"] = "active"
+    sources: list[Source] = Field(default_factory=list, max_length=60)
+    source_use: Literal["rotate", "all"] = "rotate"            # rotate: the next unused file(s) each video; all: every file in every video
 
 
 class TaskPatch(BaseModel):
@@ -66,6 +74,8 @@ class TaskPatch(BaseModel):
     research: bool | None = None
     schedule: Schedule | None = None
     status: Literal["active", "paused"] | None = None
+    sources: list[Source] | None = Field(default=None, max_length=60)
+    source_use: Literal["rotate", "all"] | None = None
 
 
 def _now() -> datetime:
@@ -200,6 +210,10 @@ def _briefs(task: dict, user: str, recent: list[str]) -> list[dict]:
                 log.warning("scheduled task %s: web search failed (%s)", task["id"], str(exc)[:160])
         today = _now().astimezone(IRAN).strftime("%Y-%m-%d")
         parts = [f"N = {n}", f"TODAY (Iran): {today}", "INSTRUCTION:\n" + task["instructions"]]
+        if task.get("sources"):
+            parts.append("Each video gets the person's own source file(s) attached to its chat (" +
+                         ("a different file for each video" if task.get("source_use", "rotate") == "rotate" else "the same files every time") +
+                         "): write each prompt as a request to make the video FROM the attached file, without inventing its content.")
         if recent:
             parts.append("RECENT RUNS (do not repeat these topics):\n" + "\n".join("- " + t for t in recent[-40:]))
         if sources:
@@ -258,6 +272,13 @@ async def run_task(user: str, task_id: str, trigger: str = "schedule") -> dict |
             task["last_run_at"] = run["at"]
         task = _mutate(user, task_id, add)
         recent = [i.get("title", "") for r in task.get("runs", [])[1:] for i in r.get("items", [])]
+        sources = list(task.get("sources") or [])
+        rotate = task.get("source_use", "rotate") == "rotate" and bool(sources)
+        cursor = int(task.get("source_cursor") or 0)
+        if rotate and cursor >= len(sources):
+            raise RuntimeError("همه‌ی فایل‌های منبع این کار استفاده شده‌اند؛ از صفحه‌ی کار فایل تازه اضافه کنید یا «استفاده‌ی دوباره از اول» را بزنید.")
+        if rotate:                                        # never more videos than unused files
+            task = dict(task, per_run=min(int(task.get("per_run") or 1), len(sources) - cursor))
         briefs = await asyncio.to_thread(_briefs, task, user, recent)
         items, error = [], ""
         for index, brief in enumerate(briefs):
@@ -268,8 +289,26 @@ async def run_task(user: str, task_id: str, trigger: str = "schedule") -> dict |
             if status >= 300:
                 item.update(status="failed", error=_error_text(status, data)); items.append(item); error = item["error"]; break
             item["conversation_id"] = data.get("id", "")
+            attachment_ids, used = [], []
+            chosen = [sources[cursor]] if rotate else (sources if sources else [])
+            for source in chosen:
+                code, attached = await _api(user, "POST", f"/studio/conversations/{item['conversation_id']}/attachments/library", {"file_id": source["file_id"]})
+                if code < 300 and attached.get("id"):
+                    attachment_ids.append(attached["id"]); used.append(source.get("name") or source["file_id"])
+            if chosen and not attachment_ids:
+                item.update(status="failed", error="فایل منبع پیدا نشد (شاید حذف شده باشد): " + (chosen[0].get("name") or chosen[0]["file_id"]))
+                items.append(item); error = item["error"]
+                if rotate:
+                    cursor += 1
+                continue
+            if rotate:
+                cursor += 1
+                def advance_cursor(task, cursor=cursor):
+                    task["source_cursor"] = cursor
+                _mutate(user, task_id, advance_cursor)
+            item["sources"] = used
             status, data = await _api(user, "POST", f"/studio/conversations/{item['conversation_id']}/messages",
-                                      {"content": AUTO_NOTE + brief["prompt"], "agent_mode": task.get("engine") or "lite",
+                                      {"content": AUTO_NOTE + brief["prompt"], "agent_mode": task.get("engine") or "lite", "attachment_ids": attachment_ids,
                                        "execution_mode": "auto", "render_target": "server"})
             if status >= 300:
                 item.update(status="failed", error=_error_text(status, data)); items.append(item); error = item["error"]
@@ -437,7 +476,7 @@ def _owner(request: Request) -> str:
 def _summary(task: dict) -> dict:
     last = (task.get("runs") or [None])[0]
     return {k: task.get(k) for k in ("id", "name", "instructions", "engine", "per_run", "research", "schedule", "status", "created_at", "updated_at",
-                                     "next_run_at", "last_run_at")} | {"last_run": {"at": last["at"], "status": last["status"]} if last else None,
+                                     "next_run_at", "last_run_at", "sources", "source_use")} | {"source_cursor": int(task.get("source_cursor") or 0)} | {"last_run": {"at": last["at"], "status": last["status"]} if last else None,
                                                                       "runs_count": len(task.get("runs") or [])}
 
 
@@ -487,7 +526,12 @@ async def get_task(request: Request, task_id: str):
 async def update_task(request: Request, task_id: str, body: TaskPatch):
     user = _owner(request)
     patch = body.model_dump(exclude_none=True)
+    reset = request.query_params.get("reset_sources") == "1"
     def change(task):
+        if "sources" in patch and [s["file_id"] for s in patch["sources"]] != [s["file_id"] for s in task.get("sources") or []]:
+            task["source_cursor"] = 0                    # a changed file list starts again from its first file
+        if reset:
+            task["source_cursor"] = 0
         task.update(patch)
         task["next_run_at"] = _iso(next_run(task["schedule"], _now())) if task["status"] == "active" else None
     try:
@@ -522,46 +566,63 @@ async def run_now(request: Request, task_id: str):
     return {"ok": True}
 
 
-ASSIST = """You help a person set up a scheduled task in EditorGPT, a Persian AI video studio (engines: lite = fast everyday edits and films —
-talking reels from their own video, product ads from a link, motion graphics and kinetic type from a text, Vox-style documentaries, brand intros;
-medium = multi-step work that measures and checks first; pro = the strongest, custom films and research-heavy work, slower and costlier).
-A scheduled task runs on its own: each run opens new chats that make videos from the instruction, and outputs also go to the person's Telegram if linked.
-Talk Persian, briefly. Ask ONE question at a time, with 2-4 concrete options, until you know: what to make (video type, topic, tone, length/aspect,
-brand or call to action if any), how many per run (1-5), whether fresh web research is needed each time, which engine, and the schedule.
-Never ask about something the person already said. As soon as you know enough, return the draft (you may fill sensible defaults and say so).
-Return strict JSON:
-{"reply": "<short Persian message>",
- "question": {"text": "<the question>", "options": [{"label": "<short>", "detail": "<one line>"}]} or null,
- "draft": {"name": "<short Persian name>", "instructions": "<complete instruction for each run, Persian>", "engine": "lite|medium|pro", "per_run": 1-5,
-           "research": true|false, "schedule": {"kind": "hourly|daily|weekdays|weekly|once", "time": "HH:MM", "every_hours": 1-12,
-           "weekday": 0-6 (0 = Saturday), "date": "YYYY-MM-DD or empty"}} or null}
-Exactly one of question / draft is non-null. Times are Iran time. Weekdays = Saturday to Wednesday."""
+ASSIST = """You are EditorGPT's assistant, setting up a SCHEDULED TASK with the person in a chat. Talk like a capable colleague in natural, short Persian:
+understand what they want, ask only what you really need, suggest good defaults, and never run a rigid questionnaire.
+
+What a scheduled task is: on its schedule (Iran time) it opens new studio chats that each make one finished video from the task's instruction, with no one
+there to answer questions; outputs also reach the person's Telegram if linked. Before each run a planner picks distinct topics (and can search the web).
+
+What each kind of video NEEDS — make sure the task will have it, or it cannot run:
+- Talking reel / edited reel from the person's own footage (ریلز صحبتی، تدوین ویدیوی خودم): their recorded videos. A scheduled task can only use files it
+  is given: ask them to attach the videos here in the chat (the + button), or pick from their earlier files listed below; one video is used per output
+  (a pool that is consumed), or the same file every time. Also: the speaker's name/title shown on screen, style, subtitles, music.
+- Dubbing / Persian localization (دوبله، فارسی‌سازی) and clips from a long video (کلیپ از ویدیوی بلند): the source videos, same way.
+- Product ad (تبلیغ محصول): the product page link(s) or product photos, price/offer, call to action, brand.
+- Motion graphic / kinetic typography / Vox-style documentary / story / brand intro: a subject is enough. Ask about the area or topic, the angle, the
+  audience, length (default 30-60 s), vertical 9:16 by default, brand name/handle and call to action if they want one, and whether it should use fresh news
+  (web research).
+Engines: lite = fast and cheap, right for nearly everything above; medium = multi-step work that checks and measures first; pro = strongest and costly,
+for custom or research-heavy films. Suggest lite unless the work needs more. Videos per run: 1-5.
+
+Files: the person may attach files in this chat (listed under FILES ATTACHED IN THIS CHAT) or you may offer files from their library (EARLIER FILES).
+Put the ones the task should use in draft.sources as {"file_id", "name", "kind"} exactly as listed, and set draft.source_use to "rotate" (a different
+file for each video; the task stops when they run out) or "all" (every file in every video, e.g. a logo or intro clip).
+
+Each turn return strict JSON:
+{"reply": "<your message: what you understood, a suggestion, and AT MOST one question; plain Persian, no markdown headings>",
+ "options": [{"label": "<short quick answer>", "detail": "<one line>"}],
+ "draft": null or {"name": "...", "instructions": "<complete Persian instruction for each video: type, subject/angle, facts the person gave, tone,
+            length, aspect, brand, call to action, how to use the source file>", "engine": "lite|medium|pro", "per_run": 1-5, "research": true|false,
+            "schedule": {"kind": "hourly|daily|weekdays|weekly|once", "time": "HH:MM", "every_hours": 1-12, "weekday": 0-6 (0 = Saturday), "date": "YYYY-MM-DD or empty"},
+            "sources": [...], "source_use": "rotate|all"}}
+- options: 0-4 quick answers ONLY when the question has natural short answers (never for open questions like a topic or a link). The person can always type.
+- Return a draft only when everything the task needs is known (including the source files for footage-based work); the reply then summarizes it in one or
+  two sentences and asks for confirmation (the chat shows the create buttons). After a change request, return the updated draft.
+- Never invent the person's facts, links, names or files. Never claim the task is already created. Weekdays = Saturday to Wednesday."""
 
 
 class AssistIn(BaseModel):
-    messages: list[dict] = Field(min_length=1, max_length=30)
+    messages: list[dict] = Field(min_length=1, max_length=40)
 
 
-def _assist_call(user: str, messages: list[dict]) -> dict:
-    """One turn of the setup assistant (blocking). Returns {reply, question, draft} with the draft validated against TaskIn."""
+def _assist_call(user: str, messages: list[dict], context: str = "") -> dict:
+    """One turn of the setup assistant (blocking). Returns {reply, options, draft}; the draft validated against TaskIn (sources only from known files)."""
     from brain.llm import gateway_json
     from brain.lm_gateway import work_scope
-    lines = [f"{'PERSON' if m.get('role') == 'user' else 'YOU'}: {str(m.get('content', ''))[:3000]}" for m in messages[-30:]]
-    today = _now().astimezone(IRAN).strftime("%Y-%m-%d %H:%M")
+    lines = [f"{'PERSON' if m.get('role') == 'user' else 'YOU'}: {str(m.get('content', ''))[:3000]}" for m in messages[-40:]]
+    today = _now().astimezone(IRAN).strftime("%Y-%m-%d %H:%M (%A)")
     with work_scope("scheduled", "assist", user=user):
-        out = gateway_json(ASSIST, f"NOW (Iran): {today}\n\nCONVERSATION:\n" + "\n".join(lines), route="engine_advisor", max_tokens=3000)[0]
+        out = gateway_json(ASSIST, f"NOW (Iran): {today}\n{context}\n\nCONVERSATION:\n" + "\n".join(lines), route="engine_advisor", max_tokens=3500)[0]
     draft = out.get("draft") if isinstance(out.get("draft"), dict) else None
     if draft:
         try:
             draft = TaskIn(**{k: v for k, v in draft.items() if k in TaskIn.model_fields}).model_dump()
         except Exception:
+            log.warning("setup draft rejected: %s", json.dumps(draft, ensure_ascii=False)[:300])
             draft = None
-    question = out.get("question") if isinstance(out.get("question"), dict) and not draft else None
-    if question:
-        question = {"text": str(question.get("text", ""))[:400],
-                    "options": [{"label": str(o.get("label", ""))[:80], "detail": str(o.get("detail", ""))[:200]}
-                                for o in (question.get("options") or [])[:4] if isinstance(o, dict) and o.get("label")]}
-    return {"reply": str(out.get("reply", ""))[:1500], "question": question, "draft": draft}
+    options = [{"label": str(o.get("label", ""))[:80], "detail": str(o.get("detail", ""))[:200]}
+               for o in (out.get("options") or [])[:4] if isinstance(o, dict) and o.get("label")] if not draft else []
+    return {"reply": str(out.get("reply", "")).strip()[:2500], "options": options, "draft": draft}
 
 
 @router.post("/assist")
@@ -576,10 +637,10 @@ async def assist(request: Request, body: AssistIn):
 
 
 # ── setup inside a Studio chat ("ساخت با هوش مصنوعی") ───────────────────────
-# The chat's state carries {"scheduled_setup": {"history": [...], "question": {...}|None, "draft": {...}|None}}. While it is there, the chat's messages go
-# to the setup assistant instead of the engines (app/routers/studio.py send_message), and its question shows as the chat's option card.
+# The chat's state carries {"scheduled_setup": {"history", "options", "draft", "files", "busy"}}. While it is there, the chat's messages go to the setup
+# assistant instead of the engines (app/routers/studio.py send_message); its quick answers / create buttons show as the chat's option card.
 
-SETUP_SEED = "می‌خواهم یک کار زمان‌بندی‌شده بسازم. از من بپرس هر بار چه چیزی ساخته شود، چند وقت یک‌بار و چه ساعتی، بعد آن را بساز."
+SETUP_SEED = "می‌خواهم یک کار زمان‌بندی‌شده بسازم که خودش طبق برنامه ویدیو بسازد."
 CREATE, CREATE_PAUSED = "__create__", "__create_paused__"
 ENGINE_FA = {"lite": "Lite", "medium": "Medium", "pro": "Pro"}
 DAYS_FA = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
@@ -598,29 +659,28 @@ def describe(schedule: dict) -> str:
 
 
 def setup_question(state: dict) -> dict | None:
-    """The chat's option card for the setup step it is on (ManualQuestion shape), or None."""
+    """The chat's option card for the current setup turn (ManualQuestion shape), or None."""
     setup = state.get("scheduled_setup")
     if not isinstance(setup, dict) or setup.get("busy"):
         return None
     turn = len(setup.get("history") or [])
-    if setup.get("draft"):
-        return {"id": f"sched-{turn}", "key": "scheduled", "title": "این کار ساخته شود؟", "input": True,
-                "description": "برای تغییر، هر چیزی را که می‌خواهید عوض شود در همین چت بنویسید.",
+    draft = setup.get("draft")
+    if draft:
+        files = draft.get("sources") or []
+        lines = [f"زمان اجرا: {describe(draft['schedule'])} (به وقت ایران)",
+                 f"موتور {ENGINE_FA.get(draft['engine'], draft['engine'])} · {_fa(draft['per_run'])} ویدیو در هر اجرا" + (" · با جست‌وجوی تازه در وب" if draft.get("research") else "")]
+        if files:
+            lines.append(f"فایل‌های منبع: {_fa(len(files))} فایل" + (" (هر ویدیو یک فایل تازه)" if draft.get("source_use") == "rotate" else " (همه در هر ویدیو)"))
+        return {"id": f"sched-{turn}", "key": "scheduled", "title": f"«{draft['name']}»", "input": True,
+                "description": "\n".join(lines), "summary": draft["instructions"],
                 "choices": [{"value": CREATE, "label": "بساز و فعال کن", "description": "طبق زمان‌بندی خودکار اجرا می‌شود"},
-                            {"value": CREATE_PAUSED, "label": "بساز ولی فعلاً متوقف بماند", "description": "بعداً از صفحه‌ی کارهای زمان‌بندی‌شده فعالش کنید"}]}
-    q = setup.get("question")
-    if not q:
+                            {"value": CREATE_PAUSED, "label": "بساز ولی فعلاً متوقف بماند", "description": "بعداً از صفحه‌ی کار فعالش کنید"}]}
+    options = setup.get("options") or []
+    if not options:
         return None
-    return {"id": f"sched-{turn}", "key": "scheduled", "title": q.get("text", ""), "input": True,
+    return {"id": f"sched-{turn}", "key": "scheduled", "title": "پاسخ سریع", "input": True,
             "choices": [{"value": o["label"] + (f" ({o['detail']})" if o.get("detail") else ""), "label": o["label"], "description": o.get("detail", "")}
-                        for o in q.get("options", [])]}
-
-
-def _draft_text(draft: dict) -> str:
-    lines = [f"پیش‌نویس کار: «{draft['name']}»", f"• زمان اجرا: {describe(draft['schedule'])} (به وقت ایران)",
-             f"• موتور: {ENGINE_FA.get(draft['engine'], draft['engine'])} · {_fa(draft['per_run'])} ویدیو در هر اجرا" + (" · با جست‌وجوی تازه در وب" if draft.get("research") else ""),
-             "• دستور کار هر اجرا:", draft["instructions"]]
-    return "\n".join(lines)
+                        for o in options]}
 
 
 async def _say(cid: str, user: str, text: str) -> None:
@@ -642,40 +702,76 @@ def _base_url() -> str:
     return "https://" + (settings.ALLOWED_HOSTS.split(",")[0].strip() or "editor.rafiei.co")
 
 
+async def _context(user: str, setup: dict) -> str:
+    """What the assistant should know besides the chat: files attached here, the person's recent library files, their brand profile."""
+    parts = []
+    files = setup.get("files") or []
+    if files:
+        parts.append("FILES ATTACHED IN THIS CHAT:\n" + "\n".join(f"- file_id={f['file_id']} kind={f.get('kind', '')} name={f.get('name', '')}" for f in files))
+    try:
+        from app import studio_files
+        library = (await studio_files.library(user)).get("files") or []
+        attached = {f["file_id"] for f in files}
+        recent = [f for f in library if f.get("kind") == "video" and f.get("id") not in attached][:15]
+        if recent:
+            parts.append("EARLIER FILES (the person's library, newest first; offer them only when footage is needed):\n" +
+                         "\n".join(f"- file_id={f['id']} kind={f['kind']} name={f.get('name', '')} from_chat={f.get('conversation_title', '')}" for f in recent))
+    except Exception:
+        log.exception("library for scheduled setup")
+    try:
+        from app import brand_profile
+        profile = await asyncio.to_thread(brand_profile.load, user)
+        known = {k: profile.get(k) for k in ("name", "tagline", "cta") if profile.get(k)}
+        if known:
+            parts.append("BRAND PROFILE (saved by the person; use as defaults, confirm briefly): " + json.dumps(known, ensure_ascii=False)[:600])
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
 async def _setup_answer(cid: str, user: str) -> None:
     """Background: the assistant's next turn in a setup chat."""
-    from app.studio_store import repo
     try:
+        from app.studio_store import repo
         conversation = await repo.get_conversation(cid, user)
         setup = dict((conversation.get("state") or {}).get("scheduled_setup") or {})
         try:
-            out = await asyncio.to_thread(_assist_call, user, setup.get("history") or [])
+            context = await _context(user, setup)
+            out = await asyncio.to_thread(_assist_call, user, setup.get("history") or [], context)
         except Exception as exc:
             log.warning("scheduled setup turn failed: %s", str(exc)[:200])
-            setup["busy"] = False
-            await _set_setup(cid, user, setup)
+            await _set_setup(cid, user, {**setup, "busy": False})
             await _say(cid, user, "دستیار الان پاسخ نداد؛ لطفاً پیامتان را دوباره بفرستید.")
             return
-        text = out["reply"]
-        if out["draft"]:
-            text = (text + "\n\n" if text else "") + _draft_text(out["draft"])
-        elif out["question"]:
-            text = (text + "\n" if text else "") + out["question"]["text"]
-        history = list(setup.get("history") or []) + [{"role": "assistant", "content": text}]
-        await _set_setup(cid, user, {"history": history, "question": out["question"], "draft": out["draft"], "busy": False})
-        await _say(cid, user, text or "…")
+        known = {f["file_id"] for f in setup.get("files") or []}
+        if out["draft"] and out["draft"].get("sources"):
+            # Only files the person attached here or that were offered from their library (the validated ids) are kept.
+            try:
+                from app import studio_files
+                library = {f["id"] for f in (await studio_files.library(user)).get("files") or []}
+            except Exception:
+                library = set()
+            out["draft"]["sources"] = [f for f in out["draft"]["sources"] if f["file_id"] in known or f["file_id"] in library]
+        text = out["reply"] or ("پیش‌نویس آماده است؛ اگر درست است بسازیدش." if out["draft"] else "…")
+        history = list(setup.get("history") or []) + [{"role": "assistant", "content": text + (f"\n[DRAFT {json.dumps(out['draft'], ensure_ascii=False)}]" if out["draft"] else "")}]
+        await _set_setup(cid, user, {**setup, "history": history, "options": out["options"], "draft": out["draft"], "busy": False})
+        await _say(cid, user, text)
     except Exception:
         log.exception("scheduled setup answer failed")
 
 
-async def setup_message(conversation: dict, user: str, text: str) -> dict:
+async def setup_message(conversation: dict, user: str, text: str, attachment_ids: list[str] | None = None) -> dict:
     """A message sent in a setup chat (called by send_message instead of dispatching to an engine)."""
     from app.studio_store import repo
     cid = conversation["id"]
     setup = dict((conversation.get("state") or {}).get("scheduled_setup") or {})
+    if setup.get("busy"):
+        raise HTTPException(409, "دستیار هنوز در حال پاسخ دادن است؛ چند ثانیه صبر کنید.")
     card = setup_question(conversation.get("state") or {})
     label = next((c["label"] for c in (card or {}).get("choices", []) if c["value"] == text), None)
-    message = await repo.add_message(cid, user, "user", label or text)
+    attachments = await repo.get_attachments(list(attachment_ids or []), cid, user, restore_media=False) if attachment_ids else []
+    message = await repo.add_message(cid, user, "user", label or text, [a["id"] for a in attachments])
+    files = list(setup.get("files") or []) + [{"file_id": "att:" + a["id"], "name": a.get("filename", ""), "kind": a.get("kind", "")} for a in attachments]
     if setup.get("draft") and text in (CREATE, CREATE_PAUSED):
         draft = dict(setup["draft"]) | {"status": "paused" if text == CREATE_PAUSED else "active"}
         with _lock:
@@ -684,7 +780,8 @@ async def setup_message(conversation: dict, user: str, text: str) -> dict:
                 await _say(cid, user, f"حداکثر {_fa(MAX_TASKS)} کار زمان‌بندی‌شده می‌توانید داشته باشید؛ یکی را از صفحه‌ی کارهای زمان‌بندی‌شده حذف کنید.")
                 return message
             stamp = _iso(_now())
-            task = TaskIn(**draft).model_dump() | {"id": uuid.uuid4().hex[:12], "created_at": stamp, "updated_at": stamp, "last_run_at": None, "runs": []}
+            task = TaskIn(**draft).model_dump() | {"id": uuid.uuid4().hex[:12], "created_at": stamp, "updated_at": stamp, "last_run_at": None, "runs": [],
+                                                   "source_cursor": 0, "setup_chat": cid}
             task["next_run_at"] = _iso(next_run(task["schedule"], _now())) if task["status"] == "active" else None
             tasks.append(task)
             _save(user, tasks)
@@ -694,8 +791,11 @@ async def setup_message(conversation: dict, user: str, text: str) -> dict:
         done = f"کار «{task['name']}» ساخته شد" + (f" و اولین اجرایش {_fa(when)} به وقت ایران است." if when else "؛ فعلاً متوقف است.")
         await _say(cid, user, done + f"\nهر اجرا در چت‌های تازه انجام می‌شود و تاریخچه‌اش در صفحه‌ی کار هست:\n{_base_url()}/scheduled/{task['id']}")
         return message
-    history = list(setup.get("history") or []) + [{"role": "user", "content": label or text}]
-    await _set_setup(cid, user, {**setup, "history": history, "busy": True})
+    said = label or text
+    if attachments:
+        said += "\n[فایل پیوست شد: " + "، ".join(f"{a.get('filename', '')} (file_id=att:{a['id']})" for a in attachments) + "]"
+    history = list(setup.get("history") or []) + [{"role": "user", "content": said}]
+    await _set_setup(cid, user, {**setup, "history": history, "files": files, "options": [], "busy": True})
     asyncio.create_task(_setup_answer(cid, user))
     return message
 
@@ -711,6 +811,7 @@ async def start_setup(request: Request):
     cid = conversation["id"]
     await repo.add_message(cid, user, "user", SETUP_SEED)
     await repo.set_conversation(cid, user, state={**(conversation.get("state") or {}), "agent_mode": "lite",
-                                                  "scheduled_setup": {"history": [{"role": "user", "content": SETUP_SEED}], "question": None, "draft": None, "busy": True}})
+                                                  "scheduled_setup": {"history": [{"role": "user", "content": SETUP_SEED}], "options": [], "draft": None,
+                                                                      "files": [], "busy": True}})
     asyncio.create_task(_setup_answer(cid, user))
     return {"id": cid}

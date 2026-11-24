@@ -666,6 +666,7 @@ export default function Studio() {
       setLocalFiles(files.map(item => ({ name: item.file.name, type: item.file.type, url: item.url })));
       setFiles([]); setText("");
     }
+    if (manualQuestion?.key === "scheduled") setSubmittedQuestionId(manualQuestion.id);    // the scheduled-task setup card goes away at once; the next one comes with the reply
     setPending({ id: `pending-${Date.now()}`, content: finalText, attachments: ids, createdAt: Date.now() });
     lastSendRef.current = { text: finalText, ids };
     try {

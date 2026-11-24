@@ -13,7 +13,7 @@ export function ManualQuestion({ question, busy, onAnswer }: { question: ManualQ
   return <section className="action-card manual-question" dir="rtl" aria-label={question.key === "scheduled" ? "تنظیم کار زمان‌بندی‌شده" : "تأیید مرحلهٔ دستی"}>
     {question.key === "scheduled" ? <div className="manual-heading"><Icon name="clock" size={16}/><span>کار زمان‌بندی‌شده</span></div> : <div className="manual-heading"><Icon name="hand" size={16}/><span>Manual</span></div>}
     <h3>{question.title}</h3>
-    {question.description ? <p>{question.description}</p> : null}
+    {question.description ? <p style={question.key === "scheduled" ? { whiteSpace: "pre-line" } : undefined}>{question.description}</p> : null}
     {typeof summary === "string" ? <p>{summary}</p> : summary ? <div className="manual-summary">
       {summary.hook || summary.title ? <p>{summary.hook || summary.title}</p> : null}
       {summary.cta ? <p>دعوت به اقدام: {summary.cta}</p> : null}

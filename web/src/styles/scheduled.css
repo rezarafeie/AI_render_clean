@@ -153,3 +153,16 @@
   .st-modal { padding: 18px; }
   .st-item { flex-wrap: wrap; }
 }
+
+/* source files */
+.st-opt { font-weight: 400; color: var(--text-3, #888); font-size: 12px; }
+.st-sources { display: grid; gap: 8px; }
+.st-sources ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 190px; overflow: auto; }
+.st-sources li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; background: var(--surface, #1a1a1a); border: 1px solid var(--border-subtle); font-size: 13px; }
+.st-sources li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sources li small { font-size: 11px; color: var(--text-3, #888); }
+.st-sources li[data-used="true"] { opacity: .55; }
+.st-sources li button { border: 0; background: none; color: var(--text-3, #888); cursor: pointer; display: grid; padding: 2px; }
+.st-sources-empty { margin: 0; font-size: 12.5px; color: var(--text-3, #888); }
+.st-sources-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.st-h3-gap { margin-top: 16px !important; }

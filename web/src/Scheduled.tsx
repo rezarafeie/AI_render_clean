@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { authFetch, BASE } from "./api";
 import { Icon } from "./components/Icon";
 import { short } from "./CreditsPage";
+import type { StudioFile } from "./api";
+const FilesPicker = React.lazy(() => import("./studio/FilesPicker").then(m => ({ default: m.FilesPicker })));
 import "./styles/scheduled.css";
 
 /* Scheduled tasks: a standing instruction that runs on its own (app/scheduled_tasks.py). Every run opens new chats; the task keeps the run history. */
@@ -10,10 +12,12 @@ import "./styles/scheduled.css";
 type Engine = "lite" | "medium" | "pro";
 type Kind = "hourly" | "daily" | "weekdays" | "weekly" | "once";
 export type Schedule = { kind: Kind; time: string; every_hours: number; weekday: number; date: string };
-export type TaskDraft = { name: string; instructions: string; engine: Engine; per_run: number; research: boolean; schedule: Schedule; status?: "active" | "paused" };
+export type Source = { file_id: string; name: string; kind: string };
+export type TaskDraft = { name: string; instructions: string; engine: Engine; per_run: number; research: boolean; schedule: Schedule; status?: "active" | "paused";
+  sources?: Source[]; source_use?: "rotate" | "all" };
 type Summary = TaskDraft & { id: string; status: "active" | "paused"; created_at: string; next_run_at: string | null; last_run_at: string | null;
-  last_run: { at: string; status: string } | null; runs_count: number };
-type RunItem = { title: string; prompt: string; conversation_id: string; status: string; error: string; credits: number };
+  last_run: { at: string; status: string } | null; runs_count: number; source_cursor: number };
+type RunItem = { title: string; prompt: string; conversation_id: string; status: string; error: string; credits: number; sources?: string[] };
 type Run = { id: string; at: string; trigger: string; status: string; items: RunItem[]; error: string; credits: number };
 type Detail = Summary & { runs: Run[]; running_now: boolean };
 
@@ -69,6 +73,30 @@ const TEMPLATES: { icon: "motion" | "film" | "spark" | "captions" | "globe" | "v
       instructions: "سه اتفاق یا ترند مهم این هفته در حوزه‌ی [حوزه] را پیدا کن و یک اکسپلینر ووکس عمودی ۷۵ ثانیه‌ای فارسی بساز که هر کدام را کوتاه و دقیق توضیح بدهد، با منابع واقعی." } },
 ];
 
+/* ── source files ─────────────────────────────────────────────────────────── */
+
+function Sources({ value, use, onChange, cursor = 0 }: { value: Source[]; use: "rotate" | "all"; onChange: (s: Source[], use: "rotate" | "all") => void; cursor?: number }) {
+  const [picking, setPicking] = React.useState(false);
+  const add = (files: StudioFile[]) => {
+    const known = new Set(value.map(v => v.file_id));
+    onChange([...value, ...files.filter(f => !known.has(f.id)).map(f => ({ file_id: f.id, name: f.name, kind: f.kind }))].slice(0, 60), use);
+    setPicking(false);
+  };
+  return <div className="st-sources">
+    {value.length ? <ol>{value.map((f, i) => <li key={f.file_id} data-used={use === "rotate" && i < cursor || undefined}>
+      <Icon name={f.kind === "image" ? "image" : f.kind === "audio" ? "music" : "video"} size={14}/><span>{f.name || f.file_id}</span>
+      {use === "rotate" && i < cursor ? <small>استفاده شد</small> : null}
+      <button type="button" aria-label="حذف" onClick={() => onChange(value.filter(x => x.file_id !== f.file_id), use)}><Icon name="close" size={12}/></button></li>)}</ol>
+      : <p className="st-sources-empty">هیچ فایلی انتخاب نشده؛ برای موشن‌گرافیک، ووکس و تبلیغ از لینک لازم نیست.</p>}
+    <div className="st-sources-bar">
+      <button type="button" className="st-btn ghost sm" onClick={() => setPicking(true)}><Icon name="plus" size={13}/>افزودن از فایل‌های من</button>
+      {value.length ? <label className="st-pick"><select value={use} onChange={e => onChange(value, e.target.value as "rotate" | "all")} aria-label="نحوه‌ی استفاده">
+        <option value="rotate">هر ویدیو یک فایل تازه</option><option value="all">همه‌ی فایل‌ها در هر ویدیو</option></select></label> : null}
+    </div>
+    {picking ? <React.Suspense fallback={null}><FilesPicker onClose={() => setPicking(false)} onAttach={add}/></React.Suspense> : null}
+  </div>;
+}
+
 /* ── form ─────────────────────────────────────────────────────────────────── */
 
 function TaskForm({ initial, title, onClose, onSaved, onAssist }: { initial: TaskDraft; title: string; onClose: () => void; onSaved: (id: string) => void;
@@ -83,6 +111,7 @@ function TaskForm({ initial, title, onClose, onSaved, onAssist }: { initial: Tas
     setBusy(true); setError("");
     try {
       const body = JSON.stringify({ name: d.name.trim(), instructions: d.instructions.trim(), engine: d.engine, per_run: d.per_run, research: d.research, schedule: d.schedule,
+        sources: d.sources || [], source_use: d.source_use || "rotate",
         ...(editing ? {} : { status: "active" }) });
       const out = editing ? await call<Summary>(`/tasks/${editing}`, { method: "PATCH", body }) : await call<Summary>("/tasks", { method: "POST", body });
       onSaved(out.id);
@@ -106,6 +135,9 @@ function TaskForm({ initial, title, onClose, onSaved, onAssist }: { initial: Tas
             <label className="st-check"><input type="checkbox" checked={d.research} onChange={e => set({ research: e.target.checked })}/>جست‌وجوی تازه در وب</label>
           </div>
         </div>
+      </div>
+      <div className="st-field"><span>فایل‌های منبع <small className="st-opt">(برای ریلز صحبتی، دوبله و کار روی ویدیوی خودتان)</small></span>
+        <Sources value={d.sources || []} use={d.source_use || "rotate"} onChange={(sources, use) => set({ sources, source_use: use })}/>
       </div>
       <div className="st-note"><Icon name="alert" size={15}/><span>هر اجرا بدون پرسیدن از شما کار را کامل می‌سازد و از اعتبارتان کم می‌کند. هر ویدیو در یک چت تازه ساخته می‌شود و اگر تلگرام وصل باشد، خروجی آن‌جا هم فرستاده می‌شود.</span></div>
       <div className="st-trigger"><span className="st-label">زمان اجرا</span>
@@ -247,7 +279,11 @@ export function ScheduledDetail() {
     {confirmDelete ? <div className="st-confirm"><span>این کار و تاریخچه‌اش حذف شود؟ چت‌ها و ویدیوهایی که ساخته پاک نمی‌شوند.</span>
       <button className="st-btn danger" disabled={!!busy} onClick={() => void act("delete")}>حذف</button><button className="st-btn ghost" onClick={() => setConfirmDelete(false)}>انصراف</button></div> : null}
     <div className="st-info">
-      <section><h3>دستور کار</h3><p className="st-instr-text">{task.instructions}</p></section>
+      <section><h3>دستور کار</h3><p className="st-instr-text">{task.instructions}</p>
+        {task.sources?.length ? <><h3 className="st-h3-gap">فایل‌های منبع · {task.source_use === "rotate" ? `${fa(Math.max(0, task.sources.length - task.source_cursor))} از ${fa(task.sources.length)} باقی مانده` : "همه در هر ویدیو"}</h3>
+          <Sources value={task.sources} use={task.source_use || "rotate"} cursor={task.source_cursor} onChange={(sources, source_use) => void call(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ sources, source_use }) }).then(load).catch(e => setError((e as Error).message))}/>
+          {task.source_use === "rotate" && task.source_cursor > 0 ? <button className="st-link" onClick={() => void call(`/tasks/${id}?reset_sources=1`, { method: "PATCH", body: "{}" }).then(load)}>استفاده‌ی دوباره از اول فهرست</button> : null}</> : null}
+      </section>
       <aside>
         <div><span>اجرای بعدی</span><b>{task.status === "active" ? when(task.next_run_at) : "متوقف است"}</b></div>
         <div><span>آخرین اجرا</span><b>{when(task.last_run_at)}</b></div>
@@ -268,7 +304,7 @@ export function ScheduledDetail() {
           {r.status === "preparing" && !r.items.length ? <div className="st-empty-sm">در حال انتخاب موضوع‌ها و آماده‌کردن درخواست‌ها…</div> : null}
           {r.items.map((it, i) => <div className="st-item" key={i}>
             <span className="st-badge sm" data-s={it.status}>{STATUS[it.status] || it.status}</span>
-            <div className="st-item-text"><b>{it.title}</b><small>{it.error || it.prompt}</small></div>
+            <div className="st-item-text"><b>{it.title}</b><small>{it.error || (it.sources?.length ? `فایل: ${it.sources.join("، ")} · ` : "") + it.prompt}</small></div>
             {it.credits ? <span className="st-item-cr">{short(it.credits)}</span> : null}
             {it.conversation_id ? <Link className="st-btn ghost sm" to={`/studio/${it.conversation_id}`}>باز کردن چت</Link> : null}
           </div>)}

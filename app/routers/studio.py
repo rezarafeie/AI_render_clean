@@ -603,7 +603,7 @@ async def send_message(request: Request, conversation_id: str, body: MessageCrea
         if (conversation.get("state") or {}).get("scheduled_setup"):
             # «ساخت با هوش مصنوعی» on the scheduled tasks page: this chat talks to the setup assistant, not to an engine.
             from app.scheduled_tasks import setup_message
-            return await setup_message(conversation, user_key, body.content.strip())
+            return await setup_message(conversation, user_key, body.content.strip(), body.attachment_ids)
         saved_mode = (conversation.get("state") or {}).get("agent_mode")
         chosen = body.agent_mode or (saved_mode if saved_mode in {"medium", "pro", "claude"} else "lite")
         # «Claude»: Claude itself with nothing of the studio around it (no skills, tools, prompt or rules); it runs in Pro's isolated container,
