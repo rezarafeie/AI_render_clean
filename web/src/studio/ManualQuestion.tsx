@@ -10,6 +10,11 @@ export interface ManualQuestionData {
 /** Only a live persisted backend question is interactive; no local wizard or fake stages. */
 export function ManualQuestion({ question, busy, onAnswer }: { question: ManualQuestionData; busy: boolean; onAnswer: (value: string) => void }) {
   const summary = question.summary;
+  // Scheduled-task setup: quick answers are small pills under the assistant's message (it already asked the question); the person can always type instead.
+  if (question.key === "scheduled" && !question.description) return <div className="quick-replies" dir="rtl" aria-label="پاسخ‌های سریع">
+    {question.choices.map(option => <button type="button" key={option.value} disabled={busy} title={option.description || undefined} onClick={() => onAnswer(option.value)}>{option.label}</button>)}
+    <span className="quick-hint">یا پاسخ خودتان را بنویسید</span>
+  </div>;
   return <section className="action-card manual-question" dir="rtl" aria-label={question.key === "scheduled" ? "تنظیم کار زمان‌بندی‌شده" : "تأیید مرحلهٔ دستی"}>
     {question.key === "scheduled" ? <div className="manual-heading"><Icon name="clock" size={16}/><span>کار زمان‌بندی‌شده</span></div> : <div className="manual-heading"><Icon name="hand" size={16}/><span>Manual</span></div>}
     <h3>{question.title}</h3>

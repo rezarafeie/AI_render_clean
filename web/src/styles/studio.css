@@ -975,3 +975,9 @@ a.pe-tool { text-decoration: none; }
 .studio .notice[data-tone="error"]::before, .thread .notice[data-tone="error"]::before, .ws .notice[data-tone="error"]::before,
 .mg .notice[data-tone="error"]::before, .dv .notice[data-tone="error"]::before {
   content: ""; flex: none; width: 8px; height: 8px; margin-top: 9px; border-radius: 50%; background: var(--error, #e5534b); }
+/* scheduled-task setup: quick answers as small pills */
+.quick-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0 4px; }
+.quick-replies button { font: inherit; font-size: 13px; line-height: 1.5; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-2, inherit); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.quick-replies button:hover:not(:disabled) { background: var(--hover, rgba(128,128,128,.12)); color: var(--text, inherit); }
+.quick-replies button:disabled { opacity: .5; cursor: default; }
+.quick-hint { font-size: 12px; color: var(--text-3, #888); margin-inline-start: 4px; }
