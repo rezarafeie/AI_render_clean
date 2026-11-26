@@ -889,6 +889,7 @@ def _fingerprint(record: dict) -> str:
     return hashlib.sha256(json.dumps([ENGINE_REV, brief, record.get("context", "")], ensure_ascii=False).encode()).hexdigest()[:16]
 
 
+@cm.cancel_aware
 def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> dict:
     """Make (or revise) the Vox film into directory/work. Returns {"video", "direction", "timing", "stills", "notes"} like the Claude motion engine; raises on failure."""
     def check():

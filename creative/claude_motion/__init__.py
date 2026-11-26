@@ -99,9 +99,54 @@ def _why(exc: Exception) -> str:
     return text[:70]
 
 
+# Stop only flips the film's run token, and the writer threads (several model calls in parallel, minutes long) used to notice it only after the whole code step:
+# a stopped film kept starting and paying for every remaining scene. Each film registers its cancel probe here (by its work id, which the worker threads carry),
+# and no model call is started once it says stop. Calls already sent cannot be taken back.
+_CANCEL: dict[str, Callable[[], bool]] = {}
+
+
+def _scope_key() -> str | None:
+    try:
+        from brain.lm_gateway import work_context
+        scope = work_context.get()
+        return str(scope[1]) if scope else None
+    except Exception:
+        return None
+
+
+def stop_if_cancelled() -> None:
+    probe = _CANCEL.get(_scope_key() or "")
+    if probe is None:
+        return
+    try:
+        stopped = bool(probe())
+    except Exception:
+        return
+    if stopped:
+        raise Cancelled()
+
+
+def cancel_aware(build):
+    """Decorator for an engine's build(directory, record, hooks, ...): registers hooks.cancelled for every model call made inside it."""
+    import functools
+
+    @functools.wraps(build)
+    def wrapper(directory, record, hooks, *args, **kwargs):
+        key = _scope_key()
+        if key:
+            _CANCEL[key] = hooks.cancelled
+        try:
+            return build(directory, record, hooks, *args, **kwargs)
+        finally:
+            if key:
+                _CANCEL.pop(key, None)
+    return wrapper
+
+
 def _retrying(call, tries: int = 4, waits=(20, 45, 90), on_retry=None):
     """The provider sometimes answers 502 'upstream unavailable' for a moment: the same call is tried again after a pause (an error that is not transient is raised at once)."""
     for attempt in range(tries):
+        stop_if_cancelled()                    # a stopped film starts no further model call
         try:
             return call()
         except Exception as exc:
@@ -1183,6 +1228,7 @@ class Hooks(BaseModel):
     snapshots: Callable[[list, list], None] | None = None    # called with ([(label, still path)], [narration line per scene]) as soon as the scene stills exist, so the chat shows them while the film is still being made
 
 
+@cancel_aware
 def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", reference_sheet: Path | None = None) -> dict:
     """Make (or revise) the film into directory/work. Returns {"video", "direction", "timing", "stills", "notes"}; raises on failure (the caller falls back)."""
     def check():

@@ -352,6 +352,7 @@ def _fingerprint(record: dict, kind: str) -> str:
 
 # ── the whole film ────────────────────────────────────────────────────────────
 
+@cm.cancel_aware
 def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> dict:
     """Make (or revise) the intro film into directory/work. Returns {"video", "direction", "timing", "stills", "notes"} like the other Claude engines."""
     def check():
