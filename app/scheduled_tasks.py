@@ -346,6 +346,50 @@ async def run_task(user: str, task_id: str, trigger: str = "schedule") -> dict |
 
 
 _FINAL = {"done", "failed"}
+# Answers the autopilot gives to the studio's own questions in a scheduled chat, in order of preference: approve, then «without it» / defaults
+# (never «use the attached file», there is none).
+_PREFERRED = ("approve", "skip", "none", "off", "default", "natural", "original", "minimal", "existing")
+
+
+async def _autopilot(user: str, item: dict) -> bool:
+    """Nobody is there to press the buttons in a scheduled run: answer the studio's questions, confirm its actions, approve its plans and pick the
+    recommended look, through the same endpoints the buttons use. Each gate is handled once (remembered in item["auto"]). True if it acted."""
+    from app.studio_store import repo
+    cid = item["conversation_id"]
+    done = set(item.get("auto") or [])
+    acted = False
+    try:
+        conversation = await repo.get_conversation(cid, user, message_limit=1)
+    except Exception:
+        return False
+    state = conversation.get("state") or {}
+    session = state.get("manual_session")
+    if session and session.get("question_id") and f"q:{session['question_id']}" not in done:
+        from app.studio_manual import question
+        spec = question(session)
+        values = [c["value"] for c in spec.get("choices") or [] if c.get("value") != "attached"]
+        pick = next((v for v in _PREFERRED if v in values), values[0] if values else "پیش‌فرض")
+        code, _ = await _api(user, "POST", f"/studio/conversations/{cid}/messages",
+                             {"content": pick, "manual_question_id": session["question_id"], "execution_mode": "auto", "render_target": "server"})
+        done.add(f"q:{session['question_id']}"); acted = code < 300
+    for action in conversation.get("actions") or []:
+        if action.get("status") == "pending" and f"a:{action['id']}" not in done:
+            code, _ = await _api(user, "POST", f"/studio/actions/{action['id']}/confirm")
+            done.add(f"a:{action['id']}"); acted = acted or code < 300
+    from app import creative_plan
+    for project in conversation.get("projects") or []:
+        pstate = project.get("state") or {}
+        version = creative_plan.current(pstate)
+        if pstate.get("workflow") == "awaiting_approval" and version and f"p:{version['id']}" not in done:
+            code, _ = await _api(user, "POST", f"/studio/projects/{project['id']}/plan/approve", {"version_id": version["id"]})
+            done.add(f"p:{version['id']}"); acted = acted or code < 300
+        question_ = pstate.get("design_question")
+        if question_ and not pstate.get("design_resolved") and f"d:{project['id']}" not in done:
+            code, _ = await _api(user, "POST", f"/studio/projects/{project['id']}/design-choice", {"choice": str(question_.get("recommended") or "")})
+            done.add(f"d:{project['id']}"); acted = acted or code < 300
+    if acted or done != set(item.get("auto") or []):
+        item["auto"] = sorted(done)
+    return acted
 
 
 async def _item_status(user: str, conversation_id: str) -> tuple[str, str | None]:
@@ -386,6 +430,10 @@ async def _refresh(user: str, task: dict, *, approve: bool = False) -> bool:
         for item in run.get("items", []):
             if item.get("status") in _FINAL or not item.get("conversation_id"):
                 continue
+            if approve:
+                before = list(item.get("auto") or [])
+                if await _autopilot(user, item) or list(item.get("auto") or []) != before:
+                    changed = True
             status, waiting = await _item_status(user, item["conversation_id"])
             if waiting and approve:
                 code, _ = await _api(user, "POST", f"/studio/agent-runs/{waiting}/resume", {"decision": "approve"})
