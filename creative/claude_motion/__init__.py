@@ -807,7 +807,7 @@ def write_art(direction: Direction, timeline: dict, *, previous: str = "", feedb
         _say(notes, key, f"دارم تصویرسازی‌های {names} را می‌کشم", "active", listing)
 
         def split() -> str:
-            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(parts_guide, user, 14000, None, tries=3)
+            return "\n\n".join(part([c], index) for c in group) if len(group) > 1 else _one_ask(parts_guide, user, 14000, None, tries=3, label=("art_parts", f"دارم تصویرسازی {names} را می‌کشم."))
 
         code = _one_ask(parts_guide, user, 14000, split if len(group) > 1 else None, tries=3, label=("art_parts", f"دارم تصویرسازی‌های {names} را می‌کشم."), on_retry=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t),
                         on_split=lambda t: _say(notes, key, f"تصویرسازی {names}: " + t))

@@ -662,7 +662,8 @@ def write_props(p: Plan, words: list[dict], names: set[str] | None = None, *, fe
 
         def split() -> str:                                             # a call that still fails is asked again one graphic at a time
             return "\n\n".join(ask([g]) for g in group)
-        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780)
+        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780,
+                          label=("graphics_code", "دارم گرافیک " + "، ".join("«" + (x.what[:40].strip() if re.search(r"[\u0600-\u06FF]", x.what or "") else x.name.replace("_", " ")) + "»" for x in group) + " را کدنویسی می‌کنم."))
 
     def one(group: list[Prop]) -> dict[str, str]:
         code = re.sub(r"^\s*import\s.*?;\s*$", "", ask(group), flags=re.M)

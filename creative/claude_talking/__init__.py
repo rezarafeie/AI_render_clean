@@ -363,7 +363,8 @@ def write_graphics(p: Plan, words: list[dict], *, feedback: dict[str, str] | Non
         def split() -> str:
             return "\n\n".join(ask([g]) for g in group)
 
-        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780)
+        return cm._one_ask(guide, user, 16000, split if len(group) > 1 else None, tries=3, seconds=780,
+                          label=("graphics_code", "دارم گرافیک " + "، ".join("«" + (x.what[:40].strip() if re.search(r"[\u0600-\u06FF]", x.what or "") else x.name.replace("_", " ")) + "»" for x in group) + " را کدنویسی می‌کنم."))
 
     def one(group: list[GraphicSpec]) -> dict[str, str]:
         if note:
