@@ -956,6 +956,42 @@ def write(direction: Direction, timeline: dict, *, previous: "Film | None" = Non
     return Film(art=art, blocks=blocks)
 
 
+# A build that fails because the SERVER was too busy (timeout, the browser killed, no memory) says nothing about the film's code. It used to be treated as a code error:
+# blame() found nothing to point at and answered "unknown: rewrite everything", so one timeout on a loaded server rewrote the whole film with the model (on one chat
+# 1.2 of its 2.1 million credits). Such a failure is now retried on the same code, and if it keeps happening the build stops with a clear message; the code stays saved.
+_INFRA = re.compile(r"timed out|timeout|Target closed|Protocol error|Session closed|browser (?:was )?(?:closed|disconnected|crashed)|ECONNRESET|ENOMEM|out of memory|"
+                    r"\bKilled\b|SIGKILL|SIGTERM|EAGAIN|Cannot allocate memory|Failed to launch", re.I)
+
+
+class ServerBusy(RuntimeError):
+    """The render server could not finish the build in time, repeatedly. The film's code is fine and saved; trying again continues from it."""
+
+
+def infrastructure_failure(detail: str) -> bool:
+    return bool(_INFRA.search((detail or "")[:600]))
+
+
+def patient_stills(run, note=None, tries: int = 3, waits=(40, 90)):
+    """run() -> (ok, detail, built). Retries a server-side failure on the SAME code (no model call); returns the last result.
+    Raises ServerBusy when the last attempt still failed for a server reason, so the caller never goes on to rewrite code."""
+    result = run()
+    for attempt in range(tries - 1):
+        ok, detail, built = result
+        if (ok and built) or not infrastructure_failure(detail):
+            return result
+        wait = waits[min(attempt, len(waits) - 1)]
+        log.warning("render build hit a server-side failure (%s); same code again in %d s", (detail or "")[:120], wait)
+        if note:
+            note("build", f"ساخت از زمان مجاز بیشتر طول کشید (سرور شلوغ است). همان کد را دوباره می‌سازم؛ چیزی با مدل دوباره نوشته نمی‌شود (تلاش {attempt + 2} از {tries})", "active", (detail or "")[:300])
+        time.sleep(wait)
+        stop_if_cancelled()
+        result = run()
+    ok, detail, built = result
+    if not (ok and built) and infrastructure_failure(detail):
+        raise ServerBusy("سرور رندر الان خیلی شلوغ است و ساخت فیلم چند بار از زمان مجاز بیشتر طول کشید. کد فیلم درست و ذخیره است و «تلاش دوباره» از همان‌جا ادامه می‌دهد؛ چیزی دوباره نوشته نشد.")
+    return result
+
+
 def blame(error: str, film: Film, timeline: dict) -> tuple[bool, list[str]]:
     """Which part an error points at: (art, [scene ids])."""
     ids = [s["id"] for s in timeline["scenes"]]
@@ -1348,7 +1384,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
         project(work, direction, timeline, film.code(timeline))
         hooks.note("build", "دارم پروژه را می‌سازم و از هر صحنه عکس می‌گیرم")
         hooks.progress(40 + attempt * 4, "دارم صحنه‌ها را می‌سازم و بررسی می‌کنم.")
-        ok, detail, built = stills(work, timeline)
+        ok, detail, built = patient_stills(lambda: stills(work, timeline), hooks.note)
         if ok and built:
             hooks.note("build", f"پروژه ساخته شد و از {len(built)} لحظه عکس گرفته شد", "done")
             if hooks.snapshots:

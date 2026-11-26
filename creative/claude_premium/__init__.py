@@ -994,7 +994,7 @@ def make(video: Path, transcript: dict, work: Path, out: Path, *, note: Note, pr
         project(work, data, source)
         note("build", "دارم پروژه را می‌سازم و از هر لحظه عکس می‌گیرم")
         progress(48 + attempt * 2, "دارم صحنه‌ها را می‌سازم و بررسی می‌کنم.")
-        ok, detail, built = stills(work, data)
+        ok, detail, built = cm.patient_stills(lambda: stills(work, data), note)
         if ok and built:
             note("build", f"پروژه ساخته شد و از {len(built)} لحظه عکس گرفته شد", "done")
             break

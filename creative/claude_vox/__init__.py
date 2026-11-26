@@ -1065,7 +1065,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "") -> d
         project(work, story, timeline, film.scenes_tsx(timeline), picture_dir, pictures)
         hooks.note("build", "دارم پروژه را می‌سازم و از لحظهٔ اصلی هر صحنه عکس می‌گیرم")
         hooks.progress(46 + attempt * 3, "دارم صحنه‌ها را می‌سازم و بررسی می‌کنم.")
-        ok, detail, built = stills(work, timeline, story)
+        ok, detail, built = cm.patient_stills(lambda: stills(work, timeline, story), hooks.note)
         if ok and built:
             hooks.note("build", f"پروژه ساخته شد و از {len(built)} صحنه عکس گرفته شد", "done")
             if hooks.snapshots:
