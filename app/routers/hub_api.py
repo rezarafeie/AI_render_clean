@@ -47,7 +47,7 @@ MEDIA_TTL = 3 * 3600                     # signed media URLs live 3 hours (at le
 UPLOAD_TTL = 2 * 3600
 PAGE = 30
 ACTIONS = ["auth.capabilities", "account.resolve", "account.link", "credits.get", "project.list", "project.create", "project.message",
-           "project.get", "project.delete", "upload.create"]
+           "project.get", "project.cancel", "project.delete", "upload.create"]
 SELF = "http://127.0.0.1:8000"
 
 
@@ -226,21 +226,37 @@ def _thumbnail(video: Path) -> Path | None:
 
 FAIL = {"tool.failed", "job.failed", "pro.failed", "assistant.response.failed"}
 OUTPUTS = {"render.completed", "motion.completed", "pro.output"}
+STOPPED = "شما این کار را متوقف کردید"
+HEARTBEAT = ("از شروع این مرحله", "هنوز گزارش پیشرفت")      # the engine's "still working" notes: kept in steps, not repeated as messages
+# Project (engine job) states: the agent can be finished while the engine it started still works (a talking reel, a dub, a storyboard render).
+PROJECT_ACTIVE = {"queued", "planning", "running", "rendering", "generating", "processing"}
+PROJECT_WAITING = {"awaiting_confirmation", "awaiting_input", "needs_input", "paused"}
 
 
-def _steps(events: list[dict]) -> list[dict]:
-    """The same timeline the EditorGPT chat shows (understanding → script → scenes → voice → render), one row per step, updated in place."""
+def _turn_of(at: str, turns: list[str]) -> int:
+    """Which run (user message) an event belongs to: 1 for the first message, 2 for the second, …"""
+    from bisect import bisect_right
+    return max(1, bisect_right(turns, at or ""))
+
+
+def _steps(events: list[dict], turns: list[str], *, running: bool, failed: bool) -> list[dict]:
+    """The chat's timeline as rows: one per step of each run (a new message starts new rows), updated in place within a run.
+    Each row: id, run, status (running|done|failed), title, log, created_at, updated_at (and the older kind/detail fields)."""
     rows: dict[str, dict] = {}
     order: list[str] = []
+    current = len(turns) or 1
 
     def put(key, kind, title, detail, at):
         if not title:
             return
+        turn = _turn_of(at, turns)
+        key = f"r{turn}:{key}"
         if key not in rows:
             order.append(key)
-            rows[key] = {"id": key, "kind": kind, "title": title[:300], "detail": detail[:600], "created_at": at}
+            rows[key] = {"id": key, "run": turn, "kind": kind, "title": title[:300], "detail": detail[:600], "created_at": at, "updated_at": at}
         else:
-            rows[key].update(kind=kind, title=title[:300] or rows[key]["title"], detail=(detail or rows[key]["detail"])[:600])
+            row = rows[key]
+            row.update(kind=kind, title=title[:300] or row["title"], detail=(detail or row["detail"])[:600], updated_at=at or row["updated_at"])
 
     for event in events:
         kind, data, at = event.get("type"), event.get("data") or {}, event.get("created_at")
@@ -267,7 +283,43 @@ def _steps(events: list[dict]) -> list[dict]:
             put(f"error-{event.get('seq')}", "error", text or str(data.get("error") or "خطا"), "", at)
         elif kind in OUTPUTS or kind == "pro.finished":
             put(f"done-{event.get('seq')}", "done", "ویدیو آماده شد" if kind in OUTPUTS else "کار تمام شد", "", at)
-    return [rows[k] for k in order]
+    out = [rows[k] for k in order]
+    for index, row in enumerate(out):
+        later = any(r["run"] == row["run"] for r in out[index + 1:])
+        if row["kind"] == "error":
+            row["status"] = "failed"
+        elif row["kind"] == "done":
+            row["status"] = "done"
+        elif row["run"] < current or not running:
+            # A step of an earlier run, or of a run that has ended: done, unless the run failed and this was its last open step.
+            row["status"] = "failed" if (failed and row["run"] == current and not later) else "done"
+        elif row["kind"] in ("think", "plan"):
+            row["status"] = "done" if later else "running"
+        else:
+            row["status"] = "running"                    # an engine step of the run in progress, not completed yet
+        row["log"] = row["detail"]
+    return out
+
+
+def _messages(messages: list[dict], events: list[dict]) -> list[dict]:
+    """Saved messages plus the assistant's narration as it is produced (narration events, and a reply still being streamed)."""
+    rows = [{"id": str(m.get("id")), "role": m.get("role"), "content": m.get("content") or "", "created_at": m.get("created_at")} for m in messages]
+    saved = {(m.get("content") or "").strip() for m in messages if m.get("role") == "assistant"}
+    streaming: dict[str, dict] = {}
+    for event in events:
+        kind, data = event.get("type"), event.get("data") or {}
+        if kind == "agent.narration":
+            text = str(data.get("text") or data.get("message") or "").strip()
+            if text and text not in saved and not text.startswith(HEARTBEAT) and (len(rows) == 0 or rows[-1]["content"] != text):
+                rows.append({"id": f"ev-{event.get('seq')}", "role": "assistant", "kind": "narration", "content": text, "created_at": event.get("created_at")})
+        elif kind == "assistant.response.delta":
+            streaming[str(data.get("response_id"))] = {"text": str(data.get("text") or ""), "at": event.get("created_at"), "seq": event.get("seq")}
+        elif kind in ("assistant.response.completed", "assistant.response.failed"):
+            streaming.pop(str(data.get("response_id")), None)
+    for rid, part in streaming.items():
+        if part["text"].strip() and part["text"].strip() not in saved:
+            rows.append({"id": f"ev-{part['seq']}", "role": "assistant", "kind": "partial", "content": part["text"], "created_at": part["at"]})
+    return sorted(rows, key=lambda r: r.get("created_at") or "")
 
 
 async def _project_view(user_id: str, project_id: str) -> dict:
@@ -285,9 +337,11 @@ async def _project_view(user_id: str, project_id: str) -> dict:
         after = max(e["seq"] for e in batch)
     messages = value.get("messages") or []
     users = [m for m in messages if m.get("role") == "user"]
-    last_user_at = users[-1]["created_at"] if users else ""
+    turns = sorted(m.get("created_at") or "" for m in users)
+    last_user_at = turns[-1] if turns else ""
     since = [e for e in events if (e.get("created_at") or "") >= last_user_at]
     output = {}
+    output_at = ""
     from app import telegram_outputs
     for event in reversed(events):
         if event.get("type") in OUTPUTS:
@@ -303,19 +357,29 @@ async def _project_view(user_id: str, project_id: str) -> dict:
                     output["thumbnail_url"] = await _sign(thumb, str(user_id), "image")
                 output_at = event.get("created_at") or ""
                 break
-    else:
-        output_at = ""
-    busy = bool(value.get("busy"))
+    # Working = the server's busy flag (a message, an agent run, a motion film) OR an engine job of this chat still running (talking reel, dub, storyboard).
+    projects = value.get("projects") or []
+    engine_active = [p for p in projects if str(p.get("status") or "") in PROJECT_ACTIVE]
+    waiting = [p for p in projects if str(p.get("status") or "") in PROJECT_WAITING]
+    agent_active = any(r.get("status") in ("queued", "running", "waiting_job") for r in value.get("agent_runs") or [])
+    busy = bool(value.get("busy")) or bool(engine_active) or agent_active
     failed = next((e for e in reversed(since) if e.get("type") in FAIL), None)
+    replies = [m for m in messages if m.get("role") == "assistant" and (m.get("created_at") or "") >= last_user_at]
+    stopped = bool(replies) and (replies[-1].get("content") or "").startswith(STOPPED)
+
     def at_render(event: dict) -> bool:
-        """The render stage itself (the motion engine's rendering status, a cloud render row, an engine job's render state), not a word in a message."""
         data = event.get("data") or {}
         marks = " ".join(str(data.get(k) or "") for k in ("status", "stage", "tool", "state", "key")).lower()
         return "render" in marks or "cloud_render" in marks
     recent = [e for e in since[-12:] if e.get("type") in ("tool.started", "tool.progress", "motion.progress", "motion.log", "pro.job")]
-    rendering = bool(recent) and at_render(recent[-1])
+    phase = None
     if busy:
-        status = "rendering" if rendering else "running"
+        status = "running"
+        phase = "rendering" if (recent and at_render(recent[-1])) or any(str(p.get("status")) == "rendering" for p in engine_active) else "working"
+    elif stopped:
+        status = "cancelled"
+    elif waiting and not (output_at and output_at >= last_user_at):
+        status, phase = "running", "needs_input"            # the studio waits for an answer in the EditorGPT chat (a plan or a choice)
     elif output_at and output_at >= last_user_at:
         status = "done"
     elif failed and not (output_at and output_at >= failed.get("created_at", "")):
@@ -326,12 +390,12 @@ async def _project_view(user_id: str, project_id: str) -> dict:
         status = "done"
     error = None
     if status == "failed":
-        replies = [m for m in messages if m.get("role") == "assistant" and m.get("created_at", "") >= last_user_at]
         error = (replies[-1]["content"] if replies else "ساخت ویدیو کامل نشد.")[:500]
+    steps = _steps(events, turns, running=status in ("running", "queued"), failed=status == "failed")
+    updated = max([s.get("updated_at") or "" for s in steps] + [m.get("created_at") or "" for m in messages[-1:]] + [""])
     return {"id": project_id, "title": value.get("title") or "", "prompt": users[0]["content"] if users else "", "status": status,
-            **({"error": error} if error else {}),
-            "messages": [{"id": str(m.get("id")), "role": m.get("role"), "content": m.get("content") or "", "created_at": m.get("created_at")} for m in messages],
-            "steps": _steps(events), "output": output}
+            **({"phase": phase} if phase else {}), **({"error": error} if error else {}), "run": len(turns), "updated_at": updated,
+            "messages": _messages(messages, events), "steps": steps, "output": output}
 
 
 # ── actions ─────────────────────────────────────────────────────────────────
@@ -530,6 +594,18 @@ async def _delete(request, body):
     return {"ok": True}
 
 
+async def _cancel(request, body):
+    """project.cancel: stop whatever the project is doing (the site's Stop button), then report it as cancelled."""
+    user, _ = await _user(request)
+    project_id = str(body.get("id") or "")
+    if not re.fullmatch(r"[0-9a-f]{32}", project_id):
+        raise HubError(400, "شناسهٔ پروژه نامعتبر است.")
+    response = await _call(str(user.id), "POST", f"/studio/conversations/{project_id}/stop")
+    if response.status_code not in (200, 202, 204):
+        raise _studio_error(response, "توقف پروژه ممکن نشد.")
+    return {"ok": True, "id": project_id, "status": "cancelled"}
+
+
 async def _upload_create(request, body):
     user, _ = await _user(request, create=True)
     from app.studio_ingest import kind_of
@@ -559,13 +635,13 @@ async def _upload_create(request, body):
 
 
 HANDLERS = {"auth.capabilities": _capabilities, "account.resolve": _resolve, "account.link": _link, "credits.get": _credits, "project.list": _list,
-            "project.create": _create, "project.message": _message, "project.get": _get, "project.delete": _delete, "upload.create": _upload_create}
+            "project.create": _create, "project.message": _message, "project.get": _get, "project.cancel": _cancel, "project.delete": _delete, "upload.create": _upload_create}
 
 
 # ── routes ──────────────────────────────────────────────────────────────────
 
 def _error(status: int, message: str) -> JSONResponse:
-    return JSONResponse({"error": message}, status_code=status)
+    return JSONResponse({"error": message}, status_code=status, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @router.get("/health")
@@ -618,7 +694,8 @@ async def run(action: str, request: Request):
                 raise
         data = await handler(request, body)
         _audit(action, who, 200, "", started)
-        return {"data": data}
+        # Live state: never cached by the relay, a CDN or the browser (project.get is polled every few seconds).
+        return JSONResponse({"data": data}, headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache", "CDN-Cache-Control": "no-store"})
     except HubError as exc:
         _audit(action, who, exc.status, exc.message, started)
         return _error(exc.status, exc.message)
