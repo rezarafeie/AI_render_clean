@@ -27,7 +27,11 @@ export function useMotionActive(motionId: string | undefined, events: StudioEven
 
 /** The scenes as a small album: one row of thumbnails (scrolls sideways), a click opens one larger with the arrow keys to move along. It stays
  * compact so the steps above it remain in view. */
-function ShotStrip({ motionId, shots, stamp }: { motionId: string; shots: { n: number; headline: string; t: number }[]; stamp: number }) {
+/** The picture's own address changes when the scenes are re-made (after a revision): the server stamps each snapshot (v); an older film falls back to the time of
+ * its last snapshot/revise step. Without this the same address kept the old picture (the browser and AuthenticatedMedia cache by address). */
+const snapshotUrl = (motionId: string, shot: { n: number; v?: number }, stamp: number) => `${api.motionSnapshotUrl(motionId, shot.n)}?v=${shot.v ?? stamp}`;
+
+function ShotStrip({ motionId, shots, stamp }: { motionId: string; shots: { n: number; headline: string; t: number; v?: number }[]; stamp: number }) {
   const [open, setOpen] = React.useState<number | null>(null);
   React.useEffect(() => {
     if (open === null) return;
@@ -44,14 +48,14 @@ function ShotStrip({ motionId, shots, stamp }: { motionId: string; shots: { n: n
     <ul className="mg-album" aria-label="صحنه‌ها">
       {shots.map((shot, index) => <li key={shot.n}>
         <button type="button" className="mg-thumb" onClick={() => setOpen(index)} aria-label={`صحنهٔ ${shot.n}: ${shot.headline}`} title={`${shot.n}. ${shot.headline}`}>
-          <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, shot.n)} alt="" loading="lazy" draggable={false}/>
+          <AuthenticatedMedia as="img" src={snapshotUrl(motionId, shot, stamp)} alt="" loading="lazy" draggable={false}/>
           <span className="mg-thumb-n" aria-hidden="true">{shot.n}</span>
         </button>
       </li>)}
     </ul>
     {current ? <div className="overlay" role="dialog" aria-modal="true" aria-label={`صحنهٔ ${current.n}`} onMouseDown={event => { if (event.target === event.currentTarget) setOpen(null); }}>
       <figure className="mg-lightbox">
-        <AuthenticatedMedia as="img" src={api.motionSnapshotUrl(motionId, current.n)} alt={`صحنهٔ ${current.n}: ${current.headline}`}/>
+        <AuthenticatedMedia as="img" src={snapshotUrl(motionId, current, stamp)} alt={`صحنهٔ ${current.n}: ${current.headline}`}/>
         <figcaption dir="auto">{current.n}. {current.headline}</figcaption>
         <button type="button" className="icon-btn mg-lightbox-close" onClick={() => setOpen(null)} aria-label="بستن"><Icon name="close" size={18}/></button>
       </figure>
@@ -174,7 +178,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
         </>;
       })()}
       {summaries?.ready && !motion.active ? <p className="mg-say bidi wrap-safe" dir="auto">{summaries.ready}</p> : null}
-      {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={motion.updated_at}/> : null}
+      {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={Math.round(Math.max(0, ...(motion.log || []).filter(l => l.key === "snapshots" || l.key === "revise").map(l => l.done_at ?? l.at)))}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" && motion.error === "stopped" ? <div className="notice" data-tone="info" role="status">ساخت متوقف شد.</div> : null}

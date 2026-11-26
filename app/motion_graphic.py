@@ -304,6 +304,11 @@ def _note(directory: Path, key: str, text: str, state: str = "active", detail: s
         record = load(directory)
         lines = record.setdefault("log", [])
         line = next((l for l in lines if l["key"] == key), None)
+        if line and line.get("state") == "done" and state != "done":
+            # The step starts AGAIN (the render of a revision, its music): a new row at the end with its own start time. Updating the old row in place kept
+            # the first run's position and clock, so a second render showed above the newer messages with an elapsed time counted from the first.
+            lines.remove(line)
+            line = None
         if line:
             line.update(text=text, state=state)
         else:
@@ -599,6 +604,7 @@ def _run(directory: Path, change: str) -> None:
         number = (record["versions"][-1]["n"] if record["versions"] else 0) + 1
         target = directory / f"v{number}"
         shutil.rmtree(target, ignore_errors=True)
+        _logo_into(directory, record)
         (directory / "work").replace(target)      # the files first, then the record that points at them
         record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": used,
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
@@ -675,7 +681,7 @@ def _publish_claude_snapshots(directory: Path, built: list, lines: list[str]) ->
         if not path.is_file():
             continue
         shutil.copy2(path, shots / f"{n}.jpg")
-        items.append({"n": n, "headline": (lines[n - 1] if n <= len(lines) else label)[:80], "t": 0})
+        items.append({"n": n, "headline": (lines[n - 1] if n <= len(lines) else label)[:80], "t": 0, "v": int(time.time())})
     with _lock(directory.name):
         record = load(directory)
         record["snapshots"] = items
@@ -708,6 +714,66 @@ def finish_claude_external(directory: Path, video: Path) -> None:
     _save_claude_version(directory, direction, pending["timing"], built, list(pending.get("notes") or []), change if isinstance(change, str) else "")
 
 
+LOGO_MAX_WIDTH, LOGO_MAX_HEIGHT, LOGO_CENTER_Y = 0.34, 0.044, 0.935      # of the frame: a small mark, centred, in the free band under the scenes' content (not on the edge, not mid-frame)
+
+
+def set_logo(directory: Path, source: Path, name: str = "") -> None:
+    """The person's logo for this film: kept in the film's folder and put on every version made from now on."""
+    from shutil import copyfile
+    target = directory / "logo.png"
+    try:
+        from PIL import Image
+        with Image.open(source) as image:
+            image.convert("RGBA").save(target)                 # any picture format, with its transparency
+    except Exception:
+        copyfile(source, target)
+    with _lock(directory.name):
+        record = load(directory)
+        record["logo"] = {"file": "logo.png", "name": name[:120], "at": time.time()}
+        save(directory, record)
+
+
+def apply_logo(video: Path, logo: Path) -> bool:
+    """Overlay the logo on a finished video in place (the sound is copied untouched, the original kept next to it as <name>.nologo.mp4)."""
+    import subprocess
+    if not (video.is_file() and logo.is_file()):
+        return False
+    try:
+        probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(video)],
+                               capture_output=True, text=True, timeout=60).stdout.strip().split("x")
+        width, height = int(probe[0]), int(probe[1])
+    except Exception:
+        log.warning("logo: the video could not be probed", exc_info=True)
+        return False
+    box_w, box_h = int(width * LOGO_MAX_WIDTH), int(height * LOGO_MAX_HEIGHT)
+    out = video.with_suffix(".logo.mp4")
+    flt = (f"[1:v]scale='min({box_w},iw)':'min({box_h},ih)':force_original_aspect_ratio=decrease,format=rgba[l];"
+           f"[0:v][l]overlay=x=(W-w)/2:y=H*{LOGO_CENTER_Y}-h/2:format=auto,format=yuv420p[v]")
+    result = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(logo), "-filter_complex", flt, "-map", "[v]", "-map", "0:a?",
+                             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-c:a", "copy", "-movflags", "+faststart", str(out)],
+                            capture_output=True, text=True, timeout=900)
+    if result.returncode != 0 or not out.is_file() or out.stat().st_size < 1000:
+        log.warning("logo overlay failed: %s", result.stderr[-300:])
+        out.unlink(missing_ok=True)
+        return False
+    original = video.with_suffix(".nologo.mp4")
+    if not original.exists():
+        video.replace(original)
+    out.replace(video)
+    return True
+
+
+def _logo_into(directory: Path, record: dict) -> None:
+    """Before a version is saved: the film's logo (if the person gave one) goes onto its final video."""
+    info = record.get("logo")
+    if info:
+        try:
+            if apply_logo(directory / "work" / "motion.mp4", directory / str(info.get("file") or "logo.png")):
+                log.info("logo placed on %s", directory.name)
+        except Exception:
+            log.warning("logo could not be placed", exc_info=True)
+
+
 def _save_claude_version(directory: Path, direction, timeline: dict, stills: list, notes: list[str], change: str) -> None:
     from creative import motion_graphic as mg
     record = load(directory)
@@ -721,6 +787,7 @@ def _save_claude_version(directory: Path, direction, timeline: dict, stills: lis
         number = (record["versions"][-1]["n"] if record["versions"] else 0) + 1
         target = directory / f"v{number}"
         shutil.rmtree(target, ignore_errors=True)
+        _logo_into(directory, record)
         (directory / "work").replace(target)
         record["versions"].append({"n": number, "created_at": time.time(), "change": change, "notes": notes, "models": ["claude_intro_" + record["intro"] if record.get("intro") else "claude_vox" if record.get("vox") else "claude_motion"], "engine": "claude",
                                    **page.public(), "page": page.model_dump(exclude={"questions"})})
@@ -1047,7 +1114,7 @@ def _snapshot_scenes(directory: Path, work: Path, plan) -> None:
             target = shots / f"{n}.jpg"
             made = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-vf", "scale=640:-2", "-q:v", "5", str(target)], capture_output=True, timeout=60)
             if made.returncode == 0 and target.is_file():
-                items.append({"n": n, "headline": scene.headline[:80], "t": t})
+                items.append({"n": n, "headline": scene.headline[:80], "t": t, "v": int(time.time())})
         if not items:
             log.warning("scene snapshots not made: %s", (done.stderr or done.stdout or "")[-200:])
             return

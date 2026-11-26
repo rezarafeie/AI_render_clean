@@ -1471,20 +1471,41 @@ def _continue_motion_graphic(conversation_id: str, user_key: str, conversation: 
                 _assistant(conversation_id, user_key, f"موسیقی «{track.get('filename', '')}» را جایگزین می‌کنم و روی بیت هم‌زمانش می‌کنم؛ فقط صدا دوباره ساخته می‌شود.")
                 _emit(conversation_id, "motion.revising", motion_id=record["id"])
                 return True
+        # A picture sent with «این را به‌عنوان لوگو بگذار پایین…» is the film's logo: it is kept and put on every version (it used to be ignored: only audio was read).
+        picture = next((a for a in attachments or [] if a.get("kind") == "image" and a.get("path")), None)
+        logo_asked = False
+        if picture and re.search(r"لوگو|logo|برند|نشان", text, re.I):
+            try:
+                motion_graphic.set_logo(directory, Path(str(picture["path"])), str(picture.get("filename") or ""))
+                logo_asked = True
+                other = re.search(r"صحنه|scene|رنگ|متن|نریشن|صدا|موسیقی|تایپ|تغییر|درست کن|اصلاح|حذف|اضافه", re.sub(r"لوگو|logo", "", text, flags=re.I), re.I)
+                current = next((v for v in record["versions"] if v.get("n") == record.get("current")), record["versions"][-1])
+                video = directory / f"v{current['n']}" / "motion.mp4"
+                if not other and len(text.split()) <= 16 and motion_graphic.apply_logo(video, directory / "logo.png"):
+                    # only the logo was asked for: it goes onto the current version at once, nothing is rebuilt (a rebuild is about a million credits)
+                    _assistant(conversation_id, user_key, "لوگو را روی همین نسخه گذاشتم: پایین فیلم، وسط و کمی بالاتر از لبه (نه چسبیده به لبه و نه میان صحنه‌ها). "
+                                                          "نسخهٔ بدون لوگو هم کنار فایل نگه داشته شده است. اگر جایش یا اندازه‌اش را می‌خواهید عوض کنم، بنویسید.")
+                    _emit(conversation_id, "motion.completed", motion_id=record["id"], version=current["n"], duration=current.get("duration"), format=current.get("format"))
+                    return True
+            except Exception:
+                log.warning("the logo of the message could not be kept", exc_info=True)
+                _assistant(conversation_id, user_key, "تصویر لوگو را نتوانستم بخوانم؛ لطفاً آن را به‌صورت PNG یا JPG دوباره بفرستید.")
+                return True
         from brain import localize as voices
         from creative import claude_motion
         voice = voices.narrator_for(text, user_key)               # «با صدای من/خودم» = the person's cloned voice; a narrator named in the message
         if not voice and voices.my_voice_requested(text):
             _assistant(conversation_id, user_key, "نوشته‌اید «با صدای خودم»، ولی هنوز صدایی از شما کلون نشده است. از تنظیمات ← «کلون صدا»، صدای خودتان را بسازید (ضبط ۳۰ ثانیه یا فایل صدا/ویدیو) و دوباره همین درخواست را بفرستید.")
             return True
-        motion_graphic.revise(directory, text, voice_id=voice)
+        motion_graphic.revise(directory, text + ("\n(The studio puts the person's own logo on the finished video by itself: do NOT draw any logo, brand mark or placeholder in the scenes.)" if logo_asked else ""), voice_id=voice)
         if claude_motion.voice_only_change(text):
             from creative.audio import persian as _persian
             fixes = _persian.pronunciations_from_text(text)
             said = ("تلفظ " + "، ".join(f"«{a}» ← «{b}»" for a, b in fixes.items()) + " ثبت شد و روی همهٔ جمله‌ها اعمال می‌شود. ") if fixes else ""
             _assistant(conversation_id, user_key, said + "فقط نریشن را" + (" با صدای انتخابی شما" if voice else "") + " دوباره می‌سازم؛ تصویرها و صحنه‌ها همان می‌مانند.")
         else:
-            _assistant(conversation_id, user_key, "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
+            _assistant(conversation_id, user_key, ("لوگوی شما را پایین فیلم، وسط و کمی بالاتر از لبه می‌گذارم (نه چسبیده به لبه و نه در میان صحنه‌ها). " if logo_asked else "")
+                       + "تغییر را روی آخرین نسخه اعمال می‌کنم و نسخهٔ جدید را می‌سازم.")
         _emit(conversation_id, "motion.revising", motion_id=record["id"])
     return True
 

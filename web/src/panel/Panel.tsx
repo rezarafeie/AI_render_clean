@@ -324,7 +324,7 @@ function AuthorizedPanel({id}: {id: string}) {
           {currentMotion && currentMotion.versions.length > 0 && <label>نسخهٔ موشن<select className="input" value={motionVersion || currentMotion.current} onChange={e => setMotionVersion(e.target.value)}>
             {[...currentMotion.versions].reverse().map(item => <option key={item.n} value={item.n}>نسخهٔ {item.n}</option>)}
           </select></label>}
-          {stills.length > 0 && <div className="mp-stills">{stills.map(shot => <AuthenticatedMedia key={shot.n} as="img" loading="lazy" alt={shot.headline} src={api.motionSnapshotUrl(motionId, shot.n)}/>)}</div>}
+          {stills.length > 0 && <div className="mp-stills">{stills.map(shot => <AuthenticatedMedia key={shot.n} as="img" loading="lazy" alt={shot.headline} src={`${api.motionSnapshotUrl(motionId, shot.n)}?v=${(shot as { v?: number }).v ?? currentMotion?.updated_at ?? 0}`}/>)}</div>}
           {effective !== "preview" && rendering && project && <React.Suspense fallback={<Loading/>}><RenderProgress project={project}/></React.Suspense>}
           {effective !== "preview" && renderActive && <button className="btn btn-secondary btn-sm" disabled={Boolean(busy)} onClick={() => void run("توقف", () =>
             project ? api.cancelStudioProject(project.id) : api.motionStop(motionId))}><Icon name="stop" size={15}/>توقف</button>}
