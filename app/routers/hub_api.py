@@ -322,19 +322,61 @@ def _messages(messages: list[dict], events: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r.get("created_at") or "")
 
 
+# The hub polls project.get every ~2.5 s per open project. Re-reading the whole event history and rebuilding the view each time was most of the app's CPU:
+# events are kept per project and only the new ones fetched, and a built view is reused for VIEW_TTL seconds.
+VIEW_TTL = 2.0
+_events_cache: dict[str, tuple[list[dict], int, float]] = {}     # project → (events, last seq, last used)
+_view_cache: dict[str, tuple[float, dict]] = {}
+_view_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _events(user_id: str, project_id: str) -> list[dict]:
+    key = f"{user_id}:{project_id}"
+    events, after, _ = _events_cache.get(key, ([], 0, 0.0))
+    events = list(events)
+    for _ in range(20):                                      # only what is new since the last poll, 500 per page
+        page = await _call(user_id, "GET", f"/studio/conversations/{project_id}/event-history", params={"after": after})
+        batch = page.json() if page.status_code == 200 else []
+        if not isinstance(batch, list):
+            break
+        events += batch
+        if batch:
+            after = max(int(e.get("seq") or 0) for e in batch)
+        if len(batch) < 500:
+            break
+    _events_cache[key] = (events, after, time.monotonic())
+    if len(_events_cache) > 200:                              # forget projects nobody polled for 30 minutes
+        for k, (_, _, used) in list(_events_cache.items()):
+            if time.monotonic() - used > 1800:
+                _events_cache.pop(k, None)
+    return events
+
+
 async def _project_view(user_id: str, project_id: str) -> dict:
+    key = f"{user_id}:{project_id}"
+    hit = _view_cache.get(key)
+    if hit and time.monotonic() - hit[0] < VIEW_TTL:
+        return hit[1]
+    lock = _view_locks.setdefault(key, asyncio.Lock())
+    async with lock:                                          # several polls at once build the view once
+        hit = _view_cache.get(key)
+        if hit and time.monotonic() - hit[0] < VIEW_TTL:
+            return hit[1]
+        view = await _build_view(user_id, project_id)
+        _view_cache[key] = (time.monotonic(), view)
+        if len(_view_cache) > 300:
+            for k, (at, _) in list(_view_cache.items()):
+                if time.monotonic() - at > 60:
+                    _view_cache.pop(k, None)
+        return view
+
+
+async def _build_view(user_id: str, project_id: str) -> dict:
     conversation = await _call(user_id, "GET", f"/studio/conversations/{project_id}", params={"messages": 100})
     if conversation.status_code != 200:
         raise _studio_error(conversation, "خواندن پروژه ممکن نشد.")
     value = conversation.json()
-    events, after = [], 0
-    for _ in range(20):                                      # the whole timeline, 500 events per page
-        page = await _call(user_id, "GET", f"/studio/conversations/{project_id}/event-history", params={"after": after})
-        batch = page.json() if page.status_code == 200 else []
-        events += batch
-        if len(batch) < 500:
-            break
-        after = max(e["seq"] for e in batch)
+    events = await _events(user_id, project_id)
     messages = value.get("messages") or []
     users = [m for m in messages if m.get("role") == "user"]
     turns = sorted(m.get("created_at") or "" for m in users)
@@ -571,6 +613,7 @@ async def _message(request, body):
     sent = await _call(uid, "POST", f"/studio/conversations/{project_id}/messages", json={"content": prompt, "attachment_ids": []})
     if sent.status_code not in (200, 201, 202):
         raise _studio_error(sent, "ارسال پیام به موتور ساخت ممکن نشد؛ کمی بعد دوباره امتحان کنید.")
+    _view_cache.pop(f"{uid}:{project_id}", None)              # the next poll shows the new run at once
     await _remember(name, {"ok": True})
     return {"ok": True}
 
@@ -603,6 +646,7 @@ async def _cancel(request, body):
     response = await _call(str(user.id), "POST", f"/studio/conversations/{project_id}/stop")
     if response.status_code not in (200, 202, 204):
         raise _studio_error(response, "توقف پروژه ممکن نشد.")
+    _view_cache.pop(f"{user.id}:{project_id}", None)
     return {"ok": True, "id": project_id, "status": "cancelled"}
 
 
