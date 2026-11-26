@@ -66,8 +66,10 @@ def provision(spec, *, ledger, provider: RunPod, flags: Flags, admin: bool,
                               compute='CPU' if backend == 'runpod_cpu' else 'GPU',
                               hardware_ids=hardware_ids, env={'EDITOR_RENDER_BOOTSTRAP_URL': url, 'RENDER_STORAGE_HOSTS': storage_hosts},
                               vcpu=vcpu, disk_gb=disk_gb, data_centers=data_centers)
-    except (ProviderRejected, ValueError):
-        ledger.finish(spec.job_id,spec.user_id,'failed','provisioning_rejected')
+    except (ProviderRejected, ValueError) as exc:
+        # Keep the provider's HTTP status (runpod_http_400 / _402 / _404 …): the reason of a refusal is otherwise lost (the relay hides the body by design).
+        status = str(exc) if str(exc).startswith('runpod_http_') else ''
+        ledger.finish(spec.job_id,spec.user_id,'failed','provisioning_rejected' + (':' + status if status else ''))
         ledger.rejected_create(spec.job_id,spec.user_id)
         raise ProviderError('provisioning_rejected') from None
     except ProviderError:

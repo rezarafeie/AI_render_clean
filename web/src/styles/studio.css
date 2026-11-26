@@ -981,3 +981,11 @@ a.pe-tool { text-decoration: none; }
 .quick-replies button:hover:not(:disabled) { background: var(--hover, rgba(128,128,128,.12)); color: var(--text, inherit); }
 .quick-replies button:disabled { opacity: .5; cursor: default; }
 .quick-hint { font-size: 12px; color: var(--text-3, #888); margin-inline-start: 4px; }
+/* render card: where the render runs + live frames of the reel */
+.rc-where { margin: 6px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--text-3, #999); }
+.rc-where[data-tone="cloud"] { color: var(--accent, #6ea2ff); }
+.rc-where[data-tone="warn"] { color: var(--warning, #f5a524); }
+.rc-frames { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 2px; }
+.rc-frames figure { margin: 0; flex: none; width: 76px; }
+.rc-frames img { display: block; width: 76px; aspect-ratio: 9/16; object-fit: cover; border-radius: 8px; background: var(--active, #222); border: 1px solid var(--border-subtle); }
+.rc-frames figcaption { font-size: 10.5px; text-align: center; color: var(--text-3, #888); padding-top: 2px; }

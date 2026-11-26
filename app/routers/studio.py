@@ -55,10 +55,61 @@ def _kind(filename: str) -> str:
     raise HTTPException(422, "Only supported video, image and audio files can be attached")
 
 
+_LIVE_FRAME = re.compile(r"s_\d+(?:\.\d+)?\.jpg")
+
+
+def _live_frames(ref: str | None) -> list[str]:
+    """The reel's own frames the engine renders for its quality check (talking reels: claude/stills/s_<seconds>.jpg), in time order."""
+    if not ref:
+        return []
+    try:
+        job = jobstore.get(ref)
+        folder = job.dir / "talking_reel_work" / "claude" / "stills" if job else None
+        if not folder or not folder.is_dir():
+            return []
+        names = [p.name for p in folder.iterdir() if _LIVE_FRAME.fullmatch(p.name)]
+        return sorted(names, key=lambda n: float(n[2:-4]))[:24]
+    except Exception:
+        return []
+
+
+def _cloud_attempts(ref: str | None) -> dict | None:
+    """Where this project's render runs: the latest cloud render attempts (RunPod) for it from the ledger, with the reason of a failed one."""
+    if not ref:
+        return None
+    try:
+        import sqlite3
+        from app.render_cloud.settings import CloudSettings
+        path = CloudSettings().ledger
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        db.row_factory = sqlite3.Row
+        rows = db.execute("select state, backend, progress, created, updated, details from cloud_render_executions where details like ? "
+                          "order by created desc limit 6", (f'%"project_id": "{ref}"%',)).fetchall()
+        db.close()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    def one(r):
+        details = json.loads(r["details"] or "{}")
+        spec = details.get("render_spec") or {}
+        return {"state": r["state"], "backend": r["backend"], "engine": spec.get("engine"), "progress": r["progress"], "created": r["created"],
+                "updated": r["updated"], "error": details.get("error_code") or details.get("error") or None}
+    attempts = [one(r) for r in rows]
+    return {"latest": attempts[0], "attempts": attempts[:4]}
+
+
 def _public_project(project: dict) -> dict:
     """Remove server-only file paths while preserving asset indices for the UI."""
     result = copy.deepcopy(project)
     state = result.get("state") or {}
+    if result.get("status") in ("running", "planning", "queued") or (state.get("last_observed") or {}).get("status") == "running":
+        frames = _live_frames(result.get("external_ref"))
+        if frames:
+            state["live_frames"] = frames
+        cloud = _cloud_attempts(result.get("external_ref"))
+        if cloud:
+            state["cloud_render"] = cloud
     assets = state.get("source_assets") or []
     state["source_assets"] = [{"index": index, "name": Path(str(item)).name} for index, item in enumerate(assets)]
     inspection = state.get("url_inspection")
@@ -820,6 +871,20 @@ async def scene_audio(request: Request, project_id: str, index: int):
             if path.is_file() and root in path.parents:
                 return FileResponse(path, media_type="audio/mpeg")
     raise HTTPException(404, "the narration of this scene is not ready yet")
+
+
+@router.get("/projects/{project_id}/live-frames/{name}")
+async def live_frame(request: Request, project_id: str, name: str):
+    """One frame of the reel being made (the engine's quality-check stills), shown in the render card while it works."""
+    if not _LIVE_FRAME.fullmatch(name):
+        raise HTTPException(404, "frame not found")
+    try: project = await repo.get_project(project_id, _user(request))
+    except KeyError: raise HTTPException(404, "project not found")
+    job = jobstore.get(project.get("external_ref")) if project.get("external_ref") else None
+    path = (job.dir / "talking_reel_work" / "claude" / "stills" / name) if job else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "frame not found")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.post("/actions/{action_id}/confirm")
