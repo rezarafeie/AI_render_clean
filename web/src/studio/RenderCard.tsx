@@ -6,7 +6,7 @@ import { formatDuration } from "../format";
 import { Link } from "react-router-dom";
 import { friendlyFailure, renderView } from "./model";
 import { RenderProgress } from './RenderProgress';
-import { useProgressAge } from './ProgressNotice';
+import { useRenderStatus } from './renderStatus';
 
 function useElapsed(startedAt: number, running: boolean) {
   const [now, setNow] = React.useState(() => Date.now());
@@ -33,9 +33,7 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
   const busy = view.phase === "queued" || view.phase === "rendering" || view.phase === "finalizing";
   const elapsed = useElapsed(startedAt, busy);
   const version = String(view.output || "").match(/\/v(\d+)(?:_preview)?\.mp4(?:$|\?)/)?.[1] || project.current_version;
-  const percent = view.progress;
-  const age = useProgressAge(busy, percent, view.stageLabel, project.state?.last_observed_at || project.updated_at);
-  const shownPercent = age >= 30 ? undefined : percent;
+  const status = useRenderStatus(project);
   const title = view.review ? "ویدیو آمادهٔ بررسی شماست" : view.phase === "done" ? "Your video is ready" : view.phase === "failed" ? "Rendering didn’t finish" : view.phase === "finalizing" ? "Finalizing your video" : "Rendering your video";
 
   return <article className="render-card" data-phase={view.phase} data-compact={compact || undefined} aria-label={title}>
@@ -49,14 +47,12 @@ export function RenderCard({ project, sourceUrl, startedAt, compact, onOpenPrevi
         {sourceUrl ? <AuthenticatedMedia as="video" muted playsInline preload="metadata" src={sourceUrl} className="rc-backdrop" aria-hidden="true" tabIndex={-1}/> : <div className="rc-backdrop skeleton" aria-hidden="true"/>}
         <div className="rc-overlay">
           {view.phase === "failed" ? <Icon name="alert" size={28}/> : <span className="spinner rc-spinner" aria-hidden="true"/>}
-          {view.phase !== "rendering" ? <strong>{view.stageLabel}</strong> : null}
-          {view.phase === "failed" ? <p dir="auto" className="bidi wrap-safe">{friendlyFailure(view.message)}</p> : null}
-          {busy && typeof shownPercent === "number" ? <span className="rc-pct" aria-hidden="true">{shownPercent}%</span> : null}
+          {view.phase === "failed" ? <><strong>{view.stageLabel}</strong><p dir="auto" className="bidi wrap-safe">{friendlyFailure(view.message)}</p></> : null}
         </div>
       </>}
     </div>}
 
-    {busy ? <RenderProgress project={project} hideLabel={title}/> : null}
+    {busy && status ? <RenderProgress project={project}/> : null}
 
     {view.phase === "done" && output ? <div className="rc-actions">
       <button className="btn btn-sm" onClick={() => void api.downloadAuthenticated(output, `${project.title || "video"}.mp4`)}><Icon name="download" size={15}/>Download</button>

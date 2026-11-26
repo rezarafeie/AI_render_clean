@@ -981,11 +981,17 @@ a.pe-tool { text-decoration: none; }
 .quick-replies button:hover:not(:disabled) { background: var(--hover, rgba(128,128,128,.12)); color: var(--text, inherit); }
 .quick-replies button:disabled { opacity: .5; cursor: default; }
 .quick-hint { font-size: 12px; color: var(--text-3, #888); margin-inline-start: 4px; }
-/* render card: where the render runs + live frames of the reel */
-.rc-where { margin: 6px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--text-3, #999); }
-.rc-where[data-tone="cloud"] { color: var(--accent, #6ea2ff); }
-.rc-where[data-tone="warn"] { color: var(--warning, #f5a524); }
-.rc-frames { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 2px; }
-.rc-frames figure { margin: 0; flex: none; width: 76px; }
-.rc-frames img { display: block; width: 76px; aspect-ratio: 9/16; object-fit: cover; border-radius: 8px; background: var(--active, #222); border: 1px solid var(--border-subtle); }
-.rc-frames figcaption { font-size: 10.5px; text-align: center; color: var(--text-3, #888); padding-top: 2px; }
+/* render card: one label, one percentage, one bar, one hint, the reel's frames */
+.rc-progress { display: grid; gap: 8px; padding-inline: 4px; }
+.rc-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rc-label { font-size: 13.5px; font-weight: 500; color: var(--text); line-height: 1.6; }
+.rc-percent { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.rc-hint { margin: 0; font-size: 12.5px; line-height: 1.7; color: var(--text-3, #999); }
+.rc-hint[data-tone="warn"] { color: var(--warning, #f5a524); }
+.rc-frames { display: flex; gap: 6px; padding-top: 4px; }
+.rc-frames img { flex: 1 1 0; min-width: 0; max-width: 64px; aspect-ratio: 9/16; object-fit: cover; border-radius: 7px; background: var(--active, #222); border: 1px solid var(--border-subtle); }
+/* the card and its progress block never grow wider than the chat (six frames side by side used to push the row past the card's edge) */
+.render-card { grid-template-columns: minmax(0, 1fr); }
+.rc-progress { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.rc-frames { overflow: hidden; min-width: 0; }
+.rc-frames img { flex: 1 1 0; min-width: 0; width: 0; }
