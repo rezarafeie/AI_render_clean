@@ -1388,6 +1388,22 @@ def _start_motion_graphic(conversation_id: str, user_key: str, conversation: dic
 
 
 _CONTINUE = re.compile(r"^\s*(?:لطفا\s*|لطفاً\s*)?(?:ادامه(?:\s*بده|\s*بدید|\s*بده\s*لطفا)?|بزن\s*بره|ادامه\s*همون|go\s*on|continue|keep\s*going)\s*[.!؟?]*\s*$", re.I)
+
+_FAILURE_FA = (
+    (re.compile(r"no audio stream", re.I), "این ویدیو صدا ندارد و فقط تصویر است؛ برای ریل صحبتی باید ویدیویی با صدای گوینده بفرستید."),
+    (re.compile(r"no speech found", re.I), "در صدای این ویدیو گفتاری شنیده نشد؛ ویدیویی با صدای واضح گوینده بفرستید."),
+    (re.compile(r"transcription failed", re.I), "تبدیل گفتار به متن انجام نشد؛ چند دقیقه بعد دوباره امتحان کنید."),
+)
+
+
+def _failure_text(message: str) -> str:
+    """The engine reports failures in English, which the chat hides (it showed only «این مرحله نیاز به بررسی دارد»): the known ones are said in Persian."""
+    for pattern, text in _FAILURE_FA:
+        if pattern.search(message or ""):
+            return text
+    return message
+
+
 _OUTCOME_EVENTS = {"motion.created", "motion.completed", "storyboard.ready", "render.started", "render.completed", "question.required", "assistant.error", "tool.failed"}
 
 
@@ -2797,6 +2813,8 @@ async def _sync_conversation_once(conversation_id: str, user_key: str) -> None:
                 failure_message = str((status.get("generation") or {}).get("error") or (status.get("render") or {}).get("message") or status.get("message") or "")
             elif isinstance(status, dict):
                 failure_message = str(status.get("message") or "")
+            if raw_status == "error":
+                failure_message = _failure_text(failure_message)
             observed = {"status": raw_status, "stage": stage, "progress": progress, "output": output,
                         "message": failure_message}
             if engine == 'talking' and status.get('render_metrics', {}).get('stage') == stage:

@@ -322,6 +322,38 @@ async def attach(user: str, conversation_id: str, file_id: str, *, defer: bool =
         raise
 
 
+_AUDIO_SEEN: dict[tuple[str, int, int], bool] = {}
+
+
+def _probe_audio(path: Path) -> bool:
+    """Whether a local video has a sound track. True when it cannot be told (the file is remote or ffprobe failed): a doubt never throws a file away."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return True
+    key = (str(path), stat.st_size, int(stat.st_mtime))
+    if key not in _AUDIO_SEEN:
+        try:
+            out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+                                 capture_output=True, text=True, timeout=20).stdout
+        except Exception:
+            return True
+        _AUDIO_SEEN[key] = bool(out.strip())
+    return _AUDIO_SEEN[key]
+
+
+async def has_audio(user: str, file_id: str) -> bool:
+    """A library video that is only a picture (e.g. a layer the Pro agent rendered apart from its sound) is no source for a talking video: a scheduled
+    task picked one and the engine stopped with «no speech found» (2026-11-27)."""
+    try:
+        path, info = await _resolve(user, file_id)
+    except KeyError:
+        return True
+    if info["kind"] not in ("att", "out"):
+        return True
+    return await asyncio.to_thread(_probe_audio, path)
+
+
 # ── a discovery clip still being cut: finished and attached by the server, whether the page stays open or not ─────────────────────────
 
 _WATCHING: set[tuple[str, str, str]] = set()

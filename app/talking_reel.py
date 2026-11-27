@@ -750,6 +750,8 @@ def transcript_for(job_dir: Path, video: Path) -> dict:
     if not transcript.get("words"):
         if transcript.get("fallback_reason") and "no audio" not in transcript["fallback_reason"]:
             raise RuntimeError("transcription failed (" + str(transcript["fallback_reason"])[:160] + "); try again")       # not the same as a video without speech
+        if "no audio" in str(transcript.get("fallback_reason") or ""):
+            raise RuntimeError("no audio stream in the video")     # the file has a picture only: said apart from a video whose sound holds no speech
         raise RuntimeError("no speech found in the video")
     return transcript
 

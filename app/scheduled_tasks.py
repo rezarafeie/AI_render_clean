@@ -280,17 +280,27 @@ async def run_task(user: str, task_id: str, trigger: str = "schedule") -> dict |
         if rotate:                                        # never more videos than unused files
             task = dict(task, per_run=min(int(task.get("per_run") or 1), len(sources) - cursor))
         briefs = await asyncio.to_thread(_briefs, task, user, recent)
+        from app import studio_files
+        silent = {src["file_id"] for src in sources if not await studio_files.has_audio(user, src["file_id"])}
         items, error = [], ""
         for index, brief in enumerate(briefs):
             if index:
                 await asyncio.sleep(BRIEF_GAP_SECONDS)
             item = {"title": brief["title"], "prompt": brief["prompt"][:600], "conversation_id": "", "status": "starting", "error": ""}
+            if silent:                                    # files without sound are skipped before a chat is opened for them
+                if rotate:
+                    while cursor < len(sources) and sources[cursor]["file_id"] in silent:
+                        cursor += 1
+                if (rotate and cursor >= len(sources)) or (sources and not rotate and all(src["file_id"] in silent for src in sources)):
+                    item.update(status="failed", error="فایل منبع صدا ندارد (فقط تصویر است) و برای ریل صحبتی قابل‌استفاده نیست. فایل دارای صدا اضافه کنید.")
+                    items.append(item); error = item["error"]
+                    break
             status, data = await _api(user, "POST", "/studio/conversations", {"title": brief["title"]})
             if status >= 300:
                 item.update(status="failed", error=_error_text(status, data)); items.append(item); error = item["error"]; break
             item["conversation_id"] = data.get("id", "")
             attachment_ids, used = [], []
-            chosen = [sources[cursor]] if rotate else (sources if sources else [])
+            chosen = [sources[cursor]] if rotate else [src for src in sources if src["file_id"] not in silent]
             for source in chosen:
                 code, attached = await _api(user, "POST", f"/studio/conversations/{item['conversation_id']}/attachments/library", {"file_id": source["file_id"]})
                 if code < 300 and attached.get("id"):
@@ -760,7 +770,12 @@ async def _context(user: str, setup: dict) -> str:
         from app import studio_files
         library = (await studio_files.library(user)).get("files") or []
         attached = {f["file_id"] for f in files}
-        recent = [f for f in library if f.get("kind") == "video" and f.get("id") not in attached][:15]
+        recent = []
+        for f in [f for f in library if f.get("kind") == "video" and f.get("id") not in attached][:40]:
+            if await studio_files.has_audio(user, f["id"]):           # a picture-only file cannot be the source of a talking video
+                recent.append(f)
+            if len(recent) >= 15:
+                break
         if recent:
             parts.append("EARLIER FILES (the person's library, newest first; offer them only when footage is needed):\n" +
                          "\n".join(f"- file_id={f['id']} kind={f['kind']} name={f.get('name', '')} from_chat={f.get('conversation_title', '')}" for f in recent))
