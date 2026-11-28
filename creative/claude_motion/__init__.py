@@ -58,7 +58,7 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
     """One long generation as plain text between =====FILE===== and =====END===== (code does not survive being a JSON string). A reply without the end marker was cut off and is an error."""
     from brain.lm_gateway import complete
     from brain.lm_adapters import text as adapter_text
-    response, _record = complete(route, [{"role": "system", "content": system}, {"role": "user", "content": user}], tokens=tokens)
+    response, record = complete(route, [{"role": "system", "content": system}, {"role": "user", "content": user}], tokens=tokens)
     reply = adapter_text("chat", response)
     try:
         finish = str((response.get("choices") or [{}])[0].get("finish_reason") or "").lower()
@@ -71,6 +71,11 @@ def ask_text(system: str, user: str, *, tokens: int, route: str = ROUTE) -> str:
     if not found:
         if finish in {"length", "max_tokens"}:
             raise CutOff(f"the reply was cut off at the output limit ({tokens} tokens asked)")
+        written = int((record or {}).get("output_tokens") or 0)
+        if written >= min(8000, tokens * 0.35) and "=====FILE=====" in reply:
+            # A long reply that stops without its end marker was cut off by the provider (the stream gives no finish reason): sent again it stops at the same
+            # place. 2026-11-27: one 73K-token request was sent three times this way, each reply stopping at 11,200 tokens.
+            raise CutOff(f"the reply stopped after {written} tokens without its end marker")
         raise RuntimeError(f"the model's reply had no complete FILE block (cut off or wrongly formatted; finish={finish or '?'}): " + reply[-200:].replace("\n", " "))
     body = found.group(1).strip()
     body = re.sub(r"^```[a-z]*\n|\n```$", "", body)
@@ -662,6 +667,34 @@ def art_names(art_tsx: str) -> list[str]:
     return list(dict.fromkeys(re.findall(r"export\s+(?:const|function)\s+([A-Za-z_]\w*)", art_tsx)))
 
 
+def art_api(art_tsx: str) -> str:
+    """What a scene author needs from art.tsx: every export with its props and defaults, the comment above it, the short constants and the gradient ids, without
+    the drawing code. The whole art.tsx (60-70K characters) was sent with every group of scenes and was the largest part of each scene call (Jarvis bills
+    every input token, cached or not; 2026-11-28)."""
+    starts = [m.start() for m in _DECL.finditer(art_tsx)] + [len(art_tsx)]
+    out = []
+    for begin, end in zip(starts, starts[1:]):
+        block = art_tsx[begin:end].rstrip()
+        if not block.startswith("export"):
+            continue
+        name = (_DECL.match(block).group(1) or "") if _DECL.match(block) else ""
+        before = art_tsx[:begin].rstrip("\n").split("\n")
+        comments = []
+        while before and before[-1].strip().startswith("//") and len(comments) < 3:
+            comments.insert(0, before.pop().strip())
+        if name == "Defs":
+            ids = list(dict.fromkeys(re.findall(r'id="([\w-]+)"', block)))
+            out += comments + [f"export const Defs: React.FC  // <defs> with these ids: {', '.join(ids)}"]
+            continue
+        if len(block) <= 400:
+            out += comments + [block]
+            continue
+        arrow = re.search(r"\)\s*(?::\s*[^=]{0,80})?=>", block)
+        head = block[:arrow.end()] if arrow else block.split("\n", 1)[0]
+        out += comments + [head + " { /* drawing omitted */ }"]
+    return "\n".join(out)
+
+
 def header(art_tsx: str) -> str:
     taken = set(re.findall(r"[A-Za-z_]\w*", SCENES_HEADER.split("const {", 1)[1]))      # the kit names already destructured: an art export with the same name would clash
     names = [n for n in art_names(art_tsx) if n not in taken]
@@ -883,7 +916,8 @@ def write_group(direction: Direction, timeline: dict, art_tsx: str, ids: list[st
     # The gateway caches the SYSTEM message only (a cache marker inside the user message is ignored; measured 2026-11-24): everything this film's
     # groups share (header, art, brief) is part of the system text, and the user message holds only this group's own request.
     guide = "\n\n".join([system + "\n\nYOUR CODE IS PLACED AFTER THIS HEADER (do not write imports; use only its names):\n" + header(art_tsx),
-                          "THIS FILM'S src/art.tsx (use its components by name, with their props):\n" + art_tsx, *_brief(direction, timeline)])
+                          "THIS FILM'S src/art.tsx, its exports (the drawing code is left out; use the components by name with these props and defaults, at the "
+                          "positions and scales their defaults suggest):\n" + art_api(art_tsx), *_brief(direction, timeline)])
     parts = [f"WRITE THESE SCENES NOW: {', '.join('S' + i for i in ids)} (the others are written by colleagues)."]
     if previous:
         parts.append("YOUR PREVIOUS CODE FOR THESE SCENES:\n" + previous)
