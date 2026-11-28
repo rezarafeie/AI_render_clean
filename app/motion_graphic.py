@@ -2279,6 +2279,24 @@ def make_thumb(video: Path, thumb: Path, duration: float) -> None:
                    capture_output=True, timeout=60)
 
 
+def _joined_takes(folder: Path) -> Path:
+    """The one-take narration's line clips (takes/lineNN.wav) joined with the film's gaps into takes/narration.mp3, for the voice step's player."""
+    lines = sorted(p for p in folder.glob("line[0-9][0-9].wav")) if folder.is_dir() else []
+    if not lines:
+        raise KeyError("voice")
+    out = folder / "narration.mp3"
+    if out.is_file() and out.stat().st_mtime >= max(p.stat().st_mtime for p in lines):
+        return out
+    inputs = [x for p in lines for x in ("-i", str(p))]
+    graph = "".join(f"[{n}:a]aresample=44100,apad=pad_dur=0.22[a{n}];" for n in range(len(lines))) + "".join(f"[a{n}]" for n in range(len(lines))) + f"concat=n={len(lines)}:v=0:a=1[out]"
+    try:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[out]", "-ac", "2", "-b:a", "128k", str(out)], check=True, timeout=180)
+    except Exception as exc:
+        log.warning("narration takes not joined: %s", str(exc)[:160])
+        raise KeyError("voice")
+    return out
+
+
 def media_path(directory: Path, kind: str, version: Optional[int] = None, *, restore_media: bool = True) -> Path:
     if kind == "voice":                                    # the narration take of the latest run, playable from the step's log
         try:
@@ -2287,7 +2305,7 @@ def media_path(directory: Path, kind: str, version: Optional[int] = None, *, res
             # The Claude engine says "narration ready" long before voice.json is written: the finished take is already on disk.
             takes = sorted((directory / "voice").glob("narration_*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True) if (directory / "voice").is_dir() else []
             if not takes:
-                raise KeyError("voice")
+                takes = [_joined_takes(directory / "voice" / "takes")]   # a Claude film read as one take before narration_take.mp3 existed
             audio = str(takes[0])
         path = Path(audio)
         if not path.is_file() or directory.resolve() not in path.resolve().parents:

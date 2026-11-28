@@ -526,6 +526,24 @@ def voice_timeline(direction: Direction, folder: Path, record: dict, hooks=None)
     return {"fps": FPS, "width": W, "height": H, "total": total, "scenes": scenes, "audio": clips}
 
 
+def narration_preview(timeline: dict, folder: Path) -> None:
+    """voice/narration_take.mp3: the narration as the film will play it (every line at its start), for the chat's player on the voice step."""
+    clips = [c for c in timeline.get("audio") or [] if Path(c["path"]).is_file()]
+    if not clips:
+        return
+    out = folder / "narration_take.mp3"
+    inputs, chains = [], []
+    for n, clip in enumerate(clips):
+        inputs += ["-i", str(clip["path"])]
+        chains.append(f"[{n}:a]aresample=44100,adelay={int(clip['start'] * 1000)}:all=1[a{n}]")
+    graph = ";".join(chains) + ";" + "".join(f"[a{n}]" for n in range(len(clips))) + f"amix=inputs={len(clips)}:normalize=0[out]"
+    try:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[out]", "-ac", "2", "-b:a", "128k", str(out)],
+                       check=True, timeout=180)
+    except Exception as exc:                                       # a preview only: the film does not depend on it
+        log.warning("narration preview not made: %s", str(exc)[:160])
+
+
 # ── 3. the code ──────────────────────────────────────────────────────────────
 
 class Code(BaseModel):
@@ -1379,6 +1397,7 @@ def build(directory: Path, record: dict, hooks: Hooks, *, change: str = "", refe
     # the lines are now exactly what the voice read (and what cue() searches)
     for beat, scene in zip(direction.beats, timeline["scenes"]):
         beat.line = scene["text"]
+    narration_preview(timeline, directory / "voice")
     hooks.note("voice", f"نریشن آماده شد: {timeline['total']:.1f} ثانیه، {len(timeline['scenes'])} جمله", "done")
     check()
 

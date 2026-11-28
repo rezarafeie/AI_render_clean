@@ -178,7 +178,7 @@ export function MotionGraphicCard({ motionId, events, version: fixedVersion, lat
         </>;
       })()}
       {summaries?.ready && !motion.active ? <p className="mg-say bidi wrap-safe" dir="auto">{summaries.ready}</p> : null}
-      {motion.snapshots?.length && !shown ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={Math.round(Math.max(0, ...(motion.log || []).filter(l => l.key === "snapshots" || l.key === "revise").map(l => l.done_at ?? l.at)))}/> : null}
+      {motion.snapshots?.length ? <ShotStrip motionId={motionId} shots={motion.snapshots} stamp={Math.round(Math.max(0, ...(motion.log || []).filter(l => l.key === "snapshots" || l.key === "revise").map(l => l.done_at ?? l.at)))}/> : null}
       {motion.active && motion.eta_s !== null && motion.eta_at !== null ? <p className="mg-eta" aria-live="off">{etaText(motion.eta_at + motion.eta_s, now)}</p> : null}
       {motion.status === "needs_input" ? <div className="notice" data-tone="info">منتظر پاسخ شما هستم؛ جواب را همین‌جا در چت بنویسید.</div> : null}
       {motion.status === "failed" && motion.error === "stopped" ? <div className="notice" data-tone="info" role="status">ساخت متوقف شد.</div> : null}

@@ -224,6 +224,8 @@ export interface TimelineInput {
 export function buildTimeline({ messages, events, projects, pending, processing, discoveryId, motionId }: TimelineInput): TimelineItem[] {
   const savedIds = new Set(messages.filter(m => m.role === 'assistant').map(m => String(m.id)));
   const openRuns = new Map<string, Extract<TimelineItem, { kind: "motion" }>>();
+  // The model calls a motion film makes while it is being built: its card already lists those steps from the film's own log.
+  const filmCalls = new Set<string>();
   const runCount = new Map<string, number>();
   const savedResponses = new Set(events.filter(e => e.type.startsWith('assistant.response.') && savedIds.has(String(e.data.message_id))).map(e => e.data.response_id));
   type Entry = { t: number; order: number; tie: number; message?: StudioMessage; event?: StudioEvent };
@@ -370,6 +372,11 @@ export function buildTimeline({ messages, events, projects, pending, processing,
       const owner = projects.find(p => p.id === projectId);
       if (owner && owner.status !== "error") continue;
       if (lastFailure.get(projectId) !== event.seq) continue;
+    }
+    if (event.type.startsWith("tool.") && !projectId) {
+      const call = String(event.data.activity_id || "");
+      if (call && event.type === "tool.started" && openRuns.size) filmCalls.add(call);
+      if (call && filmCalls.has(call)) continue;
     }
     const key = stepKey(event);
     if (!key) continue;

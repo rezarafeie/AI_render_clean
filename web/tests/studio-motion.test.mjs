@@ -118,3 +118,15 @@ test("the agent's narration of the plan and the result becomes the card's step s
   assert.equal(items.filter(i => i.kind === "message" && i.role === "assistant").length, 0);
   assert.equal(items.find(i => i.kind === "motion").summaries.plan, "طرح حرکت آماده شد؛ شش صحنه");
 });
+
+test("the model calls a film makes while it is built are its card's steps, not a second list of chat steps", () => {
+  const call = (seq, type, id, extra = {}) => at(seq, type, { tool: "art_parts", stage: "art_parts", activity_id: id, message: "دارم تصویرسازی را می‌کشم.", ...extra }, seq);
+  const items = buildTimeline({ ...base, messages: [message(1, "user", "بساز", 0)],
+    events: [at(2, "tool.started", { tool: "understanding_request", stage: "understanding_request", activity_id: "before", message: "تشخیص" }, 2),
+             at(3, "tool.completed", { tool: "understanding_request", stage: "understanding_request", activity_id: "before" }, 3),
+             at(4, "motion.created", { motion_id: MG }, 4), call(5, "tool.started", "film"), call(6, "tool.progress", "film"),
+             call(8, "tool.completed", "film"), at(9, "motion.completed", { motion_id: MG, version: 1 }, 9), call(10, "tool.completed", "film")] });
+  const steps = items.filter(i => i.kind === "activity").flatMap(i => i.steps.map(s => s.tool));
+  assert.deepEqual(steps, ["understanding_request"]);
+  assert.equal(items.filter(i => i.kind === "motion").length, 1);
+});
